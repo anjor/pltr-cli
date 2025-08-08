@@ -51,5 +51,6 @@ class TokenAuthProvider(AuthProvider):
         return {
             "type": "token",
             "host": self.host,
-            "token": "***" + (self.token[-4:] if self.token and len(self.token) > 4 else ""),
+            "token": "***"
+            + (self.token[-4:] if self.token and len(self.token) > 4 else ""),
         }

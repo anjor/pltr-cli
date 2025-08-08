@@ -74,6 +74,11 @@ class OAuthClientProvider(AuthProvider):
             "type": "oauth",
             "host": self.host,
             "client_id": self.client_id,
-            "client_secret": "***" + (self.client_secret[-4:] if self.client_secret and len(self.client_secret) > 4 else ""),
+            "client_secret": "***"
+            + (
+                self.client_secret[-4:]
+                if self.client_secret and len(self.client_secret) > 4
+                else ""
+            ),
             "scopes": self.scopes,
         }
