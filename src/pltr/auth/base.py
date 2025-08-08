@@ -20,7 +20,7 @@ class AuthProvider(ABC):
         pass
 
     @abstractmethod
-    def get_config(self) -> Dict[str, any]:
+    def get_config(self) -> Dict[str, Any]:
         """Return authentication configuration."""
         pass
 

@@ -46,10 +46,10 @@ class TokenAuthProvider(AuthProvider):
         except Exception as e:
             raise InvalidCredentialsError(f"Token validation failed: {e}")
 
-    def get_config(self) -> Dict[str, any]:
+    def get_config(self) -> Dict[str, Any]:
         """Return authentication configuration."""
         return {
             "type": "token",
             "host": self.host,
-            "token": "***" + self.token[-4:] if len(self.token) > 4 else "***",
+            "token": "***" + (self.token[-4:] if self.token and len(self.token) > 4 else ""),
         }

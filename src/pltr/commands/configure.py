@@ -37,6 +37,10 @@ def configure(
     """Configure authentication for Palantir Foundry."""
     storage = CredentialStorage()
     profile_manager = ProfileManager()
+    
+    # Ensure profile is not None
+    if not profile:
+        profile = "default"
 
     # Check if profile already exists
     if storage.profile_exists(profile):

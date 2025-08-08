@@ -4,7 +4,7 @@ Secure credential storage using keyring.
 
 import json
 import keyring
-from typing import Dict
+from typing import Dict, Any
 
 from .base import ProfileNotFoundError
 
@@ -18,7 +18,7 @@ class CredentialStorage:
         """Initialize credential storage."""
         self.keyring = keyring
 
-    def save_profile(self, profile: str, credentials: Dict[str, any]) -> None:
+    def save_profile(self, profile: str, credentials: Dict[str, Any]) -> None:
         """
         Save credentials for a profile.
 
@@ -30,7 +30,7 @@ class CredentialStorage:
         credentials_json = json.dumps(credentials)
         self.keyring.set_password(self.SERVICE_NAME, profile, credentials_json)
 
-    def get_profile(self, profile: str) -> Dict[str, any]:
+    def get_profile(self, profile: str) -> Dict[str, Any]:
         """
         Retrieve credentials for a profile.
 

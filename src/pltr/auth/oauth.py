@@ -68,14 +68,12 @@ class OAuthClientProvider(AuthProvider):
         except Exception as e:
             raise InvalidCredentialsError(f"OAuth validation failed: {e}")
 
-    def get_config(self) -> Dict[str, any]:
+    def get_config(self) -> Dict[str, Any]:
         """Return authentication configuration."""
         return {
             "type": "oauth",
             "host": self.host,
             "client_id": self.client_id,
-            "client_secret": "***" + self.client_secret[-4:]
-            if len(self.client_secret) > 4
-            else "***",
+            "client_secret": "***" + (self.client_secret[-4:] if self.client_secret and len(self.client_secret) > 4 else ""),
             "scopes": self.scopes,
         }

@@ -41,4 +41,5 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.8",
+    "types-requests>=2.32.4.20250611",
 ]
