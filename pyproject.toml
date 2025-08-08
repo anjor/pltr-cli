@@ -1,0 +1,43 @@
+[project]
+name = "pltr"
+version = "0.1.0"
+description = "Command-line interface for Palantir Foundry APIs"
+authors = [
+    { name = "anjor", email = "anjor@umd.edu" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "foundry-platform-sdk>=1.27.0",
+    "keyring>=25.6.0",
+    "python-dotenv>=1.1.1",
+    "rich>=14.1.0",
+    "typer>=0.16.0",
+]
+keywords = ["palantir", "foundry", "cli", "api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+pltr = "pltr.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.8",
+]
