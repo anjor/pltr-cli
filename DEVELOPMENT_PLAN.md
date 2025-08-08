@@ -34,22 +34,22 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Create .gitignore for Python/uv
 - [x] Create README.md with project overview
 - [x] Create DEVELOPMENT_PLAN.md (this file)
-- [ ] Make initial commit on main branch
-- [ ] Create feature/project-setup branch
-- [ ] Initialize uv project structure
-- [ ] Add core dependencies
-- [ ] Create basic CLI entry point
-- [ ] Merge to main
+- [x] Make initial commit on main branch
+- [x] Create feature/project-setup branch
+- [x] Initialize uv project structure
+- [x] Add core dependencies
+- [x] Create basic CLI entry point
+- [x] Merge to main
 
-### Phase 2: Authentication Module
-- [ ] Create feature/authentication branch
-- [ ] Implement auth base classes
-- [ ] Add token authentication support
-- [ ] Add OAuth2 client authentication
-- [ ] Implement secure credential storage with keyring
-- [ ] Create `pltr configure` command
-- [ ] Add multi-profile support
-- [ ] Add environment variable fallback
+### Phase 2: Authentication Module (In Progress)
+- [x] Create feature/authentication branch
+- [x] Implement auth base classes
+- [x] Add token authentication support
+- [x] Add OAuth2 client authentication
+- [x] Implement secure credential storage with keyring
+- [x] Create `pltr configure` command
+- [x] Add multi-profile support
+- [x] Add environment variable fallback
 - [ ] Write tests for auth module
 - [ ] Merge to main
 

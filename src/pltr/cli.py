@@ -5,12 +5,16 @@ import typer
 from typing_extensions import Annotated
 
 from pltr import __version__
+from pltr.commands import configure
 
 app = typer.Typer(
     name="pltr",
     help="Command-line interface for Palantir Foundry APIs",
     no_args_is_help=True,
 )
+
+# Add subcommands
+app.add_typer(configure.app, name="configure", help="Manage authentication profiles")
 
 
 def version_callback(value: bool):
