@@ -1,6 +1,7 @@
 """
 OAuth2 client authentication for Palantir Foundry.
 """
+
 import os
 from typing import Dict, Optional, Any
 
@@ -9,47 +10,53 @@ from .base import AuthProvider, InvalidCredentialsError, MissingCredentialsError
 
 class OAuthClientProvider(AuthProvider):
     """Authentication provider using OAuth2 client credentials."""
-    
+
     def __init__(
         self,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         host: Optional[str] = None,
-        scopes: Optional[list] = None
+        scopes: Optional[list] = None,
     ):
         """
         Initialize OAuth2 client authentication.
-        
+
         Args:
             client_id: OAuth2 client ID
             client_secret: OAuth2 client secret
             host: Foundry host URL (e.g., 'https://your-stack.palantirfoundry.com')
             scopes: List of scopes to request
         """
-        self.client_id = client_id or os.environ.get('FOUNDRY_CLIENT_ID')
-        self.client_secret = client_secret or os.environ.get('FOUNDRY_CLIENT_SECRET')
-        self.host = host or os.environ.get('FOUNDRY_HOST')
+        self.client_id = client_id or os.environ.get("FOUNDRY_CLIENT_ID")
+        self.client_secret = client_secret or os.environ.get("FOUNDRY_CLIENT_SECRET")
+        self.host = host or os.environ.get("FOUNDRY_HOST")
         self.scopes = scopes or []
-        
+
         if not self.client_id:
-            raise MissingCredentialsError("Client ID is required for OAuth authentication")
+            raise MissingCredentialsError(
+                "Client ID is required for OAuth authentication"
+            )
         if not self.client_secret:
-            raise MissingCredentialsError("Client secret is required for OAuth authentication")
+            raise MissingCredentialsError(
+                "Client secret is required for OAuth authentication"
+            )
         if not self.host:
-            raise MissingCredentialsError("Host URL is required for OAuth authentication")
-    
+            raise MissingCredentialsError(
+                "Host URL is required for OAuth authentication"
+            )
+
     def get_client(self) -> Any:
         """Return an authenticated Foundry client."""
         from foundry import FoundryClient
         from foundry.v1.auth import ConfidentialClientAuth
-        
+
         auth = ConfidentialClientAuth(
             client_id=self.client_id,
             client_secret=self.client_secret,
-            scopes=self.scopes
+            scopes=self.scopes,
         )
         return FoundryClient(auth=auth, foundry_host=self.host)
-    
+
     def validate(self) -> bool:
         """Validate authentication credentials."""
         try:
@@ -60,13 +67,15 @@ class OAuthClientProvider(AuthProvider):
             return True
         except Exception as e:
             raise InvalidCredentialsError(f"OAuth validation failed: {e}")
-    
+
     def get_config(self) -> Dict[str, any]:
         """Return authentication configuration."""
         return {
-            'type': 'oauth',
-            'host': self.host,
-            'client_id': self.client_id,
-            'client_secret': '***' + self.client_secret[-4:] if len(self.client_secret) > 4 else '***',
-            'scopes': self.scopes
+            "type": "oauth",
+            "host": self.host,
+            "client_id": self.client_id,
+            "client_secret": "***" + self.client_secret[-4:]
+            if len(self.client_secret) > 4
+            else "***",
+            "scopes": self.scopes,
         }

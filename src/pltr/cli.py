@@ -1,6 +1,7 @@
 """
 Main CLI entry point for pltr.
 """
+
 import typer
 from typing_extensions import Annotated
 
@@ -27,11 +28,13 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
-    version: Annotated[bool, typer.Option("--version", callback=version_callback, help="Show version")] = False,
+    version: Annotated[
+        bool, typer.Option("--version", callback=version_callback, help="Show version")
+    ] = False,
 ):
     """
     Command-line interface for Palantir Foundry APIs.
-    
+
     Built on top of the official foundry-platform-sdk, pltr provides
     intuitive commands for dataset management, ontology operations,
     SQL queries, and more.
