@@ -2,7 +2,6 @@
 Simplified tests for verify command.
 """
 
-import pytest
 from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 from pltr.commands.verify import app

@@ -5,7 +5,7 @@ Configuration settings management for pltr CLI.
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class Settings:

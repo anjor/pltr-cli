@@ -114,7 +114,7 @@ def verify(
             user_info = response.json()
 
             # Display success with user information
-            console.print(f"[green]✓[/green] Authentication successful!")
+            console.print("[green]✓[/green] Authentication successful!")
             console.print()
 
             # Create a table with user information
@@ -149,13 +149,13 @@ def verify(
             )
 
         elif response.status_code == 401:
-            console.print(f"[red]✗[/red] Authentication failed: Invalid credentials")
+            console.print("[red]✗[/red] Authentication failed: Invalid credentials")
             console.print(
                 f"Please check your token/credentials for profile '{active_profile}'"
             )
             raise typer.Exit(1)
         elif response.status_code == 403:
-            console.print(f"[red]✗[/red] Authentication failed: Access forbidden")
+            console.print("[red]✗[/red] Authentication failed: Access forbidden")
             console.print(
                 "Your credentials are valid but you don't have access to this endpoint"
             )
@@ -176,7 +176,7 @@ def verify(
         raise typer.Exit(1)
     except requests.exceptions.ConnectionError:
         console.print(
-            f"[red]✗[/red] Connection failed: Unable to reach the Foundry host"
+            "[red]✗[/red] Connection failed: Unable to reach the Foundry host"
         )
         console.print("Please check your network connection and host URL")
         raise typer.Exit(1)

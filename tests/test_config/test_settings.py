@@ -3,7 +3,6 @@ Tests for settings management.
 """
 
 import pytest
-import json
 from pathlib import Path
 from pltr.config.settings import Settings
 
@@ -131,7 +130,7 @@ class TestSettings:
                 "_get_config_dir",
                 lambda self: temp_config_dir / "test_config",
             )
-            settings = Settings()
+            Settings()
 
             # Directory should now exist
             assert (temp_config_dir / "test_config").exists()
@@ -178,7 +177,6 @@ class TestSettings:
 
     def test_get_config_dir_xdg(self, temp_config_dir):
         """Test XDG config directory preference."""
-        import os
 
         xdg_dir = temp_config_dir / "xdg_config"
 
@@ -191,7 +189,6 @@ class TestSettings:
 
     def test_get_config_dir_home_fallback(self, temp_config_dir):
         """Test fallback to ~/.config/pltr when XDG_CONFIG_HOME is not set."""
-        import os
 
         home_dir = temp_config_dir / "fake_home"
 

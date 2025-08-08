@@ -60,7 +60,7 @@ class OAuthClientProvider(AuthProvider):
     def validate(self) -> bool:
         """Validate authentication credentials."""
         try:
-            client = self.get_client()
+            self.get_client()
             # Try to make a simple API call to validate the credentials
             # This would need to be replaced with an actual validation call
             # when the SDK provides one

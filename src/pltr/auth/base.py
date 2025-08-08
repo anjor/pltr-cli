@@ -3,7 +3,7 @@ Base authentication classes for Palantir Foundry.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Any
+from typing import Dict, Any
 
 
 class AuthProvider(ABC):

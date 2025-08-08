@@ -4,7 +4,6 @@ Tests for credential storage.
 
 import pytest
 import json
-from unittest.mock import Mock
 from pltr.auth.storage import CredentialStorage
 from pltr.auth.base import ProfileNotFoundError
 

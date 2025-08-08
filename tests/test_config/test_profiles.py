@@ -3,7 +3,6 @@ Tests for profile management.
 """
 
 import pytest
-import json
 from pltr.config.profiles import ProfileManager
 
 
@@ -138,7 +137,6 @@ class TestProfileManager:
 
     def test_get_active_profile_from_environment(self, mock_profile_manager):
         """Test getting active profile from environment variable."""
-        import os
 
         manager = mock_profile_manager
         manager.add_profile("env_profile")
@@ -153,7 +151,6 @@ class TestProfileManager:
 
     def test_get_active_profile_env_nonexistent(self, mock_profile_manager):
         """Test environment profile that doesn't exist falls back to default."""
-        import os
 
         manager = mock_profile_manager
         manager.add_profile("default_profile")

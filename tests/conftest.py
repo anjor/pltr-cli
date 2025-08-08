@@ -4,7 +4,6 @@ Pytest configuration and fixtures for pltr tests.
 
 import pytest
 import tempfile
-import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
 from typing import Generator

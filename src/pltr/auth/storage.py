@@ -4,7 +4,7 @@ Secure credential storage using keyring.
 
 import json
 import keyring
-from typing import Dict, Optional
+from typing import Dict
 
 from .base import ProfileNotFoundError
 

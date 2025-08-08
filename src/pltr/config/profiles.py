@@ -3,7 +3,6 @@ Profile management for pltr CLI.
 """
 
 import json
-from pathlib import Path
 from typing import List, Optional
 
 from .settings import Settings

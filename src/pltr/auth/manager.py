@@ -123,7 +123,7 @@ class AuthManager:
         Raises:
             Exception if validation fails
         """
-        client = self.get_client(profile)
+        self.get_client(profile)
         # The actual validation will happen when we try to use the client
         # in the verify command
         return True
