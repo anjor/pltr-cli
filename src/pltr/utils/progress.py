@@ -7,15 +7,15 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from rich.progress import (
-    Progress, 
-    TextColumn, 
-    BarColumn, 
-    TaskProgressColumn, 
-    TimeRemainingColumn, 
+    Progress,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+    TimeRemainingColumn,
     FileSizeColumn,
     TotalFileSizeColumn,
     TransferSpeedColumn,
-    SpinnerColumn
+    SpinnerColumn,
 )
 
 
@@ -33,7 +33,9 @@ class FileProgressTracker:
         self._progress: Optional[Progress] = None
 
     @contextmanager
-    def track_upload(self, file_path: Union[str, Path], description: Optional[str] = None) -> Iterator[Any]:
+    def track_upload(
+        self, file_path: Union[str, Path], description: Optional[str] = None
+    ) -> Iterator[Any]:
         """
         Context manager for tracking file upload progress.
 
@@ -56,25 +58,30 @@ class FileProgressTracker:
             TotalFileSizeColumn(),
             TimeRemainingColumn(),
         ]
-        
+
         if self.show_speed:
             columns.append(TransferSpeedColumn())
 
         with Progress(*columns) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total_size)
-            
+
             def update_progress(bytes_transferred: int):
                 """Update progress with bytes transferred."""
                 progress.update(task_id, completed=bytes_transferred)
-            
+
             try:
                 yield update_progress
             finally:
                 self._progress = None
 
     @contextmanager
-    def track_download(self, target_path: Union[str, Path], total_size: Optional[int] = None, description: Optional[str] = None) -> Iterator[Any]:
+    def track_download(
+        self,
+        target_path: Union[str, Path],
+        total_size: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> Iterator[Any]:
         """
         Context manager for tracking file download progress.
 
@@ -94,31 +101,35 @@ class FileProgressTracker:
             BarColumn(),
             TaskProgressColumn(),
         ]
-        
+
         if total_size:
-            columns.extend([
-                FileSizeColumn(),
-                TotalFileSizeColumn(),
-                TimeRemainingColumn(),
-            ])
+            columns.extend(
+                [
+                    FileSizeColumn(),
+                    TotalFileSizeColumn(),
+                    TimeRemainingColumn(),
+                ]
+            )
             if self.show_speed:
                 columns.append(TransferSpeedColumn())
 
         with Progress(*columns) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total_size)
-            
+
             def update_progress(bytes_transferred: int):
                 """Update progress with bytes transferred."""
                 progress.update(task_id, completed=bytes_transferred)
-            
+
             try:
                 yield update_progress
             finally:
                 self._progress = None
 
     @contextmanager
-    def track_operation(self, description: str, total: Optional[int] = None) -> Iterator[Any]:
+    def track_operation(
+        self, description: str, total: Optional[int] = None
+    ) -> Iterator[Any]:
         """
         Context manager for tracking general operations.
 
@@ -134,18 +145,18 @@ class FileProgressTracker:
             BarColumn(),
             TaskProgressColumn(),
         ]
-        
+
         if total:
             columns.append(TimeRemainingColumn())
 
         with Progress(*columns) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total)
-            
+
             def update_progress(completed: int):
                 """Update progress with completed items."""
                 progress.update(task_id, completed=completed)
-            
+
             try:
                 yield update_progress
             finally:
@@ -178,14 +189,16 @@ class SpinnerProgressTracker:
         with Progress(*columns, transient=True) as progress:
             self._progress = progress
             progress.add_task(description)
-            
+
             try:
                 yield
             finally:
                 self._progress = None
 
 
-def create_file_chunks(file_path: Union[str, Path], chunk_size: int = 8192) -> Iterator[bytes]:
+def create_file_chunks(
+    file_path: Union[str, Path], chunk_size: int = 8192
+) -> Iterator[bytes]:
     """
     Create file chunks for streaming upload with progress tracking.
 
@@ -197,7 +210,7 @@ def create_file_chunks(file_path: Union[str, Path], chunk_size: int = 8192) -> I
         File chunks as bytes
     """
     file_path = Path(file_path)
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -244,7 +257,10 @@ class ProgressCallbackAdapter:
 
 # Utility functions for common progress patterns
 
-def with_upload_progress(file_path: Union[str, Path], description: Optional[str] = None) -> FileProgressTracker:
+
+def with_upload_progress(
+    file_path: Union[str, Path], description: Optional[str] = None
+) -> FileProgressTracker:
     """
     Create a progress tracker configured for file uploads.
 

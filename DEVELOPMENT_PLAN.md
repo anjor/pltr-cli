@@ -59,19 +59,19 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Write comprehensive test suite (88 tests, 65% coverage)
 - [x] Merge to main
 
-### Phase 3: Dataset Commands
-- [ ] Create feature/dataset-commands branch
-- [ ] Implement dataset service wrapper
-- [ ] Add `pltr dataset list` command
-- [ ] Add `pltr dataset get <id>` command
-- [ ] Add `pltr dataset upload <id> <file>` with progress bar
-- [ ] Add `pltr dataset download <id>` with progress bar
-- [ ] Add `pltr dataset create` command
-- [ ] Add `pltr dataset delete` command
-- [ ] Implement branch operations
-- [ ] Add output formatting (table, json, csv)
-- [ ] Write tests for dataset commands
-- [ ] Merge to main
+### Phase 3: Dataset Commands ✅
+- [x] Create feature/dataset-commands branch
+- [x] Implement dataset service wrapper
+- [x] Add `pltr dataset list` command
+- [x] Add `pltr dataset get <id>` command
+- [x] Add `pltr dataset upload <id> <file>` with progress bar
+- [x] Add `pltr dataset download <id>` with progress bar
+- [x] Add `pltr dataset create` command
+- [x] Add `pltr dataset delete` command
+- [x] Implement branch operations
+- [x] Add output formatting (table, json, csv)
+- [x] Write tests for dataset commands
+- [x] Merge to main
 
 ### Phase 4: Ontology Commands
 - [ ] Create feature/ontology-commands branch
@@ -264,7 +264,21 @@ pltr group add-member engineering john.doe@company.com
 - All critical authentication flows validated with edge case handling
 - **Merged via PR #1 on 2025-08-08**
 
-**Phase 7 - GitHub Actions CI/CD ✅ (IN PROGRESS):**
+**Phase 3 - Dataset Commands ✅ (COMPLETED & MERGED):**
+- Implemented comprehensive dataset management system with BaseService foundation
+- Added complete dataset CLI command suite with 9 commands covering all major operations
+- Created DatasetService wrapper around foundry-platform-sdk for robust API integration
+- Built rich output formatting system supporting table, JSON, and CSV formats
+- Integrated file progress tracking with Rich progress bars for upload/download operations
+- Added comprehensive branch management capabilities for dataset versioning
+- All commands support profile-based authentication and environment variable fallbacks
+- Error handling with user-friendly messages and proper exit codes
+- Comprehensive test suite: 71 new tests with full command and service coverage
+- Service layer tests with mocked SDK interactions and edge case handling
+- Command tests using Typer's testing framework with real file operations
+- **Merged via PR #3 on 2025-08-08**
+
+**Phase 7 - GitHub Actions CI/CD ✅ (COMPLETED):**
 - Set up comprehensive CI/CD pipeline with GitHub Actions
 - Multi-Python version testing (3.9, 3.10, 3.11, 3.12)
 - Cross-platform testing (Ubuntu, macOS, Windows)
@@ -272,3 +286,4 @@ pltr group add-member engineering john.doe@company.com
 - Automated code quality checks (ruff linting, mypy type checking)
 - Test execution with coverage reporting
 - Codecov integration for coverage tracking
+- **Merged via PR #2 on 2025-08-08**

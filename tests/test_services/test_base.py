@@ -11,7 +11,7 @@ from pltr.auth.base import ProfileNotFoundError, MissingCredentialsError
 
 class TestService(BaseService):
     """Test service implementation for testing BaseService."""
-    
+
     def _get_service(self):
         """Return a mock service."""
         return Mock()
@@ -36,14 +36,14 @@ def test_base_service_client_property(mock_auth_manager):
     mock_auth_instance = Mock()
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
-    
+
     service = TestService()
-    
+
     # First call should create client
     client = service.client
     assert client == mock_client
     mock_auth_instance.get_client.assert_called_once_with(None)
-    
+
     # Second call should return cached client
     client2 = service.client
     assert client2 == mock_client
@@ -57,9 +57,9 @@ def test_base_service_client_with_profile(mock_auth_manager):
     mock_auth_instance = Mock()
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
-    
+
     service = TestService(profile="test-profile")
-    
+
     client = service.client
     assert client == mock_client
     mock_auth_instance.get_client.assert_called_once_with("test-profile")
@@ -69,11 +69,13 @@ def test_base_service_client_with_profile(mock_auth_manager):
 def test_base_service_client_profile_not_found(mock_auth_manager):
     """Test client property with non-existent profile."""
     mock_auth_instance = Mock()
-    mock_auth_instance.get_client.side_effect = ProfileNotFoundError("Profile not found")
+    mock_auth_instance.get_client.side_effect = ProfileNotFoundError(
+        "Profile not found"
+    )
     mock_auth_manager.return_value = mock_auth_instance
-    
+
     service = TestService()
-    
+
     with pytest.raises(ProfileNotFoundError):
         service.client
 
@@ -82,11 +84,13 @@ def test_base_service_client_profile_not_found(mock_auth_manager):
 def test_base_service_client_missing_credentials(mock_auth_manager):
     """Test client property with missing credentials."""
     mock_auth_instance = Mock()
-    mock_auth_instance.get_client.side_effect = MissingCredentialsError("Missing credentials")
+    mock_auth_instance.get_client.side_effect = MissingCredentialsError(
+        "Missing credentials"
+    )
     mock_auth_manager.return_value = mock_auth_instance
-    
+
     service = TestService()
-    
+
     with pytest.raises(MissingCredentialsError):
         service.client
 
@@ -99,12 +103,12 @@ def test_base_service_service_property(mock_auth_manager):
     mock_auth_instance = Mock()
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
-    
+
     service = TestService()
-    
+
     # Mock the _get_service method to return our mock service
     service._get_service = Mock(return_value=mock_service)
-    
+
     result = service.service
     assert result == mock_service
     service._get_service.assert_called_once()
@@ -119,6 +123,7 @@ def test_base_service_abstract_method():
 
 class InvalidService(BaseService):
     """Service without implementing _get_service (should fail)."""
+
     pass
 
 

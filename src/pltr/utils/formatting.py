@@ -26,10 +26,10 @@ class OutputFormatter:
         self.console = console or Console()
 
     def format_output(
-        self, 
-        data: Union[Dict[str, Any], List[Dict[str, Any]]], 
+        self,
+        data: Union[Dict[str, Any], List[Dict[str, Any]]],
         format_type: str = "table",
-        output_file: Optional[str] = None
+        output_file: Optional[str] = None,
     ) -> Optional[str]:
         """
         Format data according to specified format.
@@ -51,25 +51,31 @@ class OutputFormatter:
         else:
             raise ValueError(f"Unsupported format type: {format_type}")
 
-    def _format_json(self, data: Any, output_file: Optional[str] = None) -> Optional[str]:
+    def _format_json(
+        self, data: Any, output_file: Optional[str] = None
+    ) -> Optional[str]:
         """Format data as JSON."""
         # Convert datetime objects to strings for JSON serialization
         data_serializable = self._make_json_serializable(data)
         json_str = json.dumps(data_serializable, indent=2, default=str)
-        
+
         if output_file:
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 f.write(json_str)
             return None
         else:
             rich_print(json_str)
             return json_str
 
-    def _format_csv(self, data: Union[Dict[str, Any], List[Dict[str, Any]]], output_file: Optional[str] = None) -> Optional[str]:
+    def _format_csv(
+        self,
+        data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
         """Format data as CSV."""
         if isinstance(data, dict):
             data = [data]
-        
+
         if not data:
             csv_str = ""
         else:
@@ -78,11 +84,11 @@ class OutputFormatter:
             for item in data:
                 fieldnames_set.update(item.keys())
             fieldnames = sorted(fieldnames_set)
-            
+
             output = StringIO()
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
-            
+
             for item in data:
                 # Convert complex objects to strings
                 row = {}
@@ -95,44 +101,48 @@ class OutputFormatter:
                     else:
                         row[key] = str(value)
                 writer.writerow(row)
-            
+
             csv_str = output.getvalue()
-        
+
         if output_file:
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 f.write(csv_str)
             return None
         else:
-            print(csv_str, end='')
+            print(csv_str, end="")
             return csv_str
 
-    def _format_table(self, data: Union[Dict[str, Any], List[Dict[str, Any]]], output_file: Optional[str] = None) -> Optional[str]:
+    def _format_table(
+        self,
+        data: Union[Dict[str, Any], List[Dict[str, Any]]],
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
         """Format data as a rich table."""
         if isinstance(data, dict):
             data = [data]
-        
+
         if not data:
             if output_file:
-                with open(output_file, 'w') as f:
+                with open(output_file, "w") as f:
                     f.write("No data to display\n")
                 return None
             else:
                 self.console.print("No data to display")
                 return "No data to display"
-        
+
         # Create table
         table = Table(show_header=True, header_style="bold blue")
-        
+
         # Get all unique columns
         columns_set: set[str] = set()
         for item in data:
             columns_set.update(item.keys())
         columns = sorted(columns_set)
-        
+
         # Add columns to table
         for column in columns:
             table.add_column(column, overflow="fold")
-        
+
         # Add rows
         for item in data:
             row = []
@@ -148,10 +158,10 @@ class OutputFormatter:
                 else:
                     row.append(str(value))
             table.add_row(*row)
-        
+
         if output_file:
             # For file output, convert to plain text
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 console = Console(file=f, force_terminal=False)
                 console.print(table)
             return None
@@ -170,7 +180,12 @@ class OutputFormatter:
         else:
             return data
 
-    def format_dataset_list(self, datasets: List[Dict[str, Any]], format_type: str = "table", output_file: Optional[str] = None) -> Optional[str]:
+    def format_dataset_list(
+        self,
+        datasets: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Format dataset list with specific columns.
 
@@ -190,13 +205,20 @@ class OutputFormatter:
                 "Name": dataset.get("name", ""),
                 "Created": self._format_datetime(dataset.get("created_time")),
                 "Size": self._format_file_size(dataset.get("size_bytes")),
-                "Description": dataset.get("description", "")[:50] + "..." if dataset.get("description", "") else ""
+                "Description": dataset.get("description", "")[:50] + "..."
+                if dataset.get("description", "")
+                else "",
             }
             formatted_datasets.append(formatted_dataset)
-        
+
         return self.format_output(formatted_datasets, format_type, output_file)
 
-    def format_dataset_detail(self, dataset: Dict[str, Any], format_type: str = "table", output_file: Optional[str] = None) -> Optional[str]:
+    def format_dataset_detail(
+        self,
+        dataset: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Format detailed dataset information.
 
@@ -214,18 +236,35 @@ class OutputFormatter:
                 {"Property": "RID", "Value": dataset.get("rid", "")},
                 {"Property": "Name", "Value": dataset.get("name", "")},
                 {"Property": "Description", "Value": dataset.get("description", "")},
-                {"Property": "Created Time", "Value": self._format_datetime(dataset.get("created_time"))},
+                {
+                    "Property": "Created Time",
+                    "Value": self._format_datetime(dataset.get("created_time")),
+                },
                 {"Property": "Created By", "Value": dataset.get("created_by", "")},
-                {"Property": "Last Modified", "Value": self._format_datetime(dataset.get("last_modified"))},
-                {"Property": "Size", "Value": self._format_file_size(dataset.get("size_bytes"))},
+                {
+                    "Property": "Last Modified",
+                    "Value": self._format_datetime(dataset.get("last_modified")),
+                },
+                {
+                    "Property": "Size",
+                    "Value": self._format_file_size(dataset.get("size_bytes")),
+                },
                 {"Property": "Schema ID", "Value": dataset.get("schema_id", "")},
-                {"Property": "Parent Folder", "Value": dataset.get("parent_folder_rid", "")}
+                {
+                    "Property": "Parent Folder",
+                    "Value": dataset.get("parent_folder_rid", ""),
+                },
             ]
             return self.format_output(details, format_type, output_file)
         else:
             return self.format_output(dataset, format_type, output_file)
 
-    def format_file_list(self, files: List[Dict[str, Any]], format_type: str = "table", output_file: Optional[str] = None) -> Optional[str]:
+    def format_file_list(
+        self,
+        files: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Format file list with specific columns.
 
@@ -244,10 +283,12 @@ class OutputFormatter:
                 "Path": file.get("path", ""),
                 "Size": self._format_file_size(file.get("size_bytes")),
                 "Last Modified": self._format_datetime(file.get("last_modified")),
-                "Transaction": file.get("transaction_rid", "")[:12] + "..." if file.get("transaction_rid") else ""
+                "Transaction": file.get("transaction_rid", "")[:12] + "..."
+                if file.get("transaction_rid")
+                else "",
             }
             formatted_files.append(formatted_file)
-        
+
         return self.format_output(formatted_files, format_type, output_file)
 
     def _format_datetime(self, dt: Any) -> str:
@@ -264,15 +305,15 @@ class OutputFormatter:
         """Format file size in human-readable format."""
         if size_bytes is None:
             return ""
-        
+
         if size_bytes < 1024:
             return f"{size_bytes} B"
-        elif size_bytes < 1024 ** 2:
+        elif size_bytes < 1024**2:
             return f"{size_bytes / 1024:.1f} KB"
-        elif size_bytes < 1024 ** 3:
-            return f"{size_bytes / (1024 ** 2):.1f} MB"
+        elif size_bytes < 1024**3:
+            return f"{size_bytes / (1024**2):.1f} MB"
         else:
-            return f"{size_bytes / (1024 ** 3):.1f} GB"
+            return f"{size_bytes / (1024**3):.1f} GB"
 
     def print_success(self, message: str):
         """Print success message with formatting."""
