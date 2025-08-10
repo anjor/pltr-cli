@@ -63,6 +63,9 @@ jobs:
           VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Install tomli-w for version updating
+        run: uv add tomli-w --dev
+
       - name: Create test version
         id: test_version
         run: |
@@ -91,9 +94,6 @@ jobs:
           with open('pyproject.toml', 'wb') as f:
               tomli_w.dump(config, f)
           "
-
-      - name: Install tomli-w for version updating
-        run: uv add tomli-w --dev
 
       - name: Build package
         run: |
