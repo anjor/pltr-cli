@@ -159,9 +159,7 @@ def test_create_dataset_with_profile(mock_dataset_service, sample_dataset):
     """Test dataset creation with specific profile."""
     mock_dataset_service.create_dataset.return_value = sample_dataset
 
-    result = runner.invoke(
-        app, ["create", "New Dataset", "--profile", "test-profile"]
-    )
+    result = runner.invoke(app, ["create", "New Dataset", "--profile", "test-profile"])
 
     assert result.exit_code == 0
 

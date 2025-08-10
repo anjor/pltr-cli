@@ -74,7 +74,9 @@ def test_get_dataset_success(mock_dataset_service, sample_dataset):
     assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
     assert result["name"] == "Test Dataset"
     assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    mock_dataset_class.get.assert_called_once_with("ri.foundry.main.dataset.test-dataset")
+    mock_dataset_class.get.assert_called_once_with(
+        "ri.foundry.main.dataset.test-dataset"
+    )
 
 
 def test_get_dataset_with_full_attributes(mock_dataset_service, sample_dataset_full):
@@ -89,7 +91,9 @@ def test_get_dataset_with_full_attributes(mock_dataset_service, sample_dataset_f
     assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
     assert result["name"] == "Test Dataset"
     assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    mock_dataset_class.get.assert_called_once_with("ri.foundry.main.dataset.test-dataset")
+    mock_dataset_class.get.assert_called_once_with(
+        "ri.foundry.main.dataset.test-dataset"
+    )
 
 
 def test_get_dataset_error(mock_dataset_service):
@@ -115,7 +119,7 @@ def test_create_dataset_success(mock_dataset_service, sample_dataset):
     assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
     assert result["name"] == "Test Dataset"
     assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    
+
     # Verify the create method was called with correct parameters
     mock_dataset_class.create.assert_called_once_with(
         name="New Dataset", parent_folder_rid=None
@@ -130,13 +134,12 @@ def test_create_dataset_with_parent_folder(mock_dataset_service, sample_dataset)
     mock_dataset_class.create.return_value = sample_dataset
 
     result = service.create_dataset(
-        name="New Dataset",
-        parent_folder_rid="ri.foundry.main.folder.parent"
+        name="New Dataset", parent_folder_rid="ri.foundry.main.folder.parent"
     )
 
     assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
     assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    
+
     # Verify the create method was called with parent folder
     mock_dataset_class.create.assert_called_once_with(
         name="New Dataset", parent_folder_rid="ri.foundry.main.folder.parent"
@@ -166,8 +169,7 @@ def test_read_table_arrow_format(mock_dataset_service):
 
     assert result == mock_table
     mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset",
-        format="arrow"
+        "ri.foundry.main.dataset.test-dataset", format="arrow"
     )
 
 
@@ -183,8 +185,7 @@ def test_read_table_pandas_format(mock_dataset_service):
 
     assert result == mock_df
     mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset",
-        format="pandas"
+        "ri.foundry.main.dataset.test-dataset", format="pandas"
     )
 
 
