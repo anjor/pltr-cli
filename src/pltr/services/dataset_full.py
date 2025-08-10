@@ -15,7 +15,7 @@ class DatasetService(BaseService):
         """Get the Foundry datasets service."""
         return self.client.datasets
 
-# list_datasets method removed - not supported by foundry-platform-sdk v1.27.0
+    # list_datasets method removed - not supported by foundry-platform-sdk v1.27.0
 
     def get_dataset(self, dataset_rid: str) -> Dict[str, Any]:
         """
@@ -50,7 +50,7 @@ class DatasetService(BaseService):
                 "dataset_rid": dataset_rid,
                 "schema": schema,
                 "type": str(type(schema)),
-                "status": "Schema retrieved successfully"
+                "status": "Schema retrieved successfully",
             }
         except Exception as e:
             raise RuntimeError(f"Failed to get schema for dataset {dataset_rid}: {e}")

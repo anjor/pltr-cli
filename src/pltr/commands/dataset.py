@@ -88,10 +88,10 @@ def create_dataset(
 def main():
     """
     Dataset operations using foundry-platform-sdk.
-    
+
     Note: This SDK version requires knowing dataset RIDs in advance.
     Find dataset RIDs in the Foundry web interface.
-    
+
     Available commands work with Resource Identifiers (RIDs) like:
     ri.foundry.main.dataset.12345678-1234-1234-1234-123456789abc
     """

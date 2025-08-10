@@ -28,22 +28,24 @@ class DatasetServiceV2(BaseService):
         try:
             # The v2 API returns a Dataset object
             dataset = self.service.Dataset.get(dataset_rid)
-            
+
             # Format the response
             return {
                 "rid": dataset_rid,
-                "name": getattr(dataset, 'name', 'Unknown'),
-                "description": getattr(dataset, 'description', ''),
-                "path": getattr(dataset, 'path', ''),
-                "created": getattr(dataset, 'created_time', None),
-                "modified": getattr(dataset, 'modified_time', None),
+                "name": getattr(dataset, "name", "Unknown"),
+                "description": getattr(dataset, "description", ""),
+                "path": getattr(dataset, "path", ""),
+                "created": getattr(dataset, "created_time", None),
+                "modified": getattr(dataset, "modified_time", None),
                 # The actual attributes available depend on the SDK version
-                "status": "Retrieved successfully"
+                "status": "Retrieved successfully",
             }
         except Exception as e:
             raise RuntimeError(f"Failed to get dataset {dataset_rid}: {e}")
 
-    def create_dataset(self, name: str, parent_folder_rid: Optional[str] = None) -> Dict[str, Any]:
+    def create_dataset(
+        self, name: str, parent_folder_rid: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Create a new dataset.
 
@@ -57,15 +59,14 @@ class DatasetServiceV2(BaseService):
         try:
             # The create method parameters depend on the SDK version
             dataset = self.service.Dataset.create(
-                name=name,
-                parent_folder_rid=parent_folder_rid
+                name=name, parent_folder_rid=parent_folder_rid
             )
-            
+
             return {
-                "rid": getattr(dataset, 'rid', 'unknown'),
+                "rid": getattr(dataset, "rid", "unknown"),
                 "name": name,
                 "parent_folder_rid": parent_folder_rid,
-                "status": "Created successfully"
+                "status": "Created successfully",
             }
         except Exception as e:
             raise RuntimeError(f"Failed to create dataset '{name}': {e}")
@@ -98,12 +99,12 @@ class DatasetServiceV2(BaseService):
         """
         try:
             schema = self.service.Dataset.get_schema(dataset_rid)
-            
+
             # Format schema for display
             return {
                 "dataset_rid": dataset_rid,
                 "schema": schema,
-                "status": "Schema retrieved successfully"
+                "status": "Schema retrieved successfully",
             }
         except Exception as e:
             raise RuntimeError(f"Failed to get schema for dataset {dataset_rid}: {e}")
@@ -111,7 +112,7 @@ class DatasetServiceV2(BaseService):
     def list_datasets(self, limit: Optional[int] = None) -> list:
         """
         List datasets - NOT SUPPORTED BY SDK v2.
-        
+
         The foundry_sdk v2 API doesn't provide a list_datasets method.
         Dataset operations are RID-based. You need to know the dataset RID
         to interact with it.

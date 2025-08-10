@@ -34,7 +34,9 @@ class DatasetService(BaseService):
 
     # get_schema method removed - uses preview-only API
 
-    def create_dataset(self, name: str, parent_folder_rid: Optional[str] = None) -> Dict[str, Any]:
+    def create_dataset(
+        self, name: str, parent_folder_rid: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Create a new dataset.
 
@@ -48,8 +50,7 @@ class DatasetService(BaseService):
         try:
             # The create method parameters depend on the SDK version
             dataset = self.service.Dataset.create(
-                name=name,
-                parent_folder_rid=parent_folder_rid
+                name=name, parent_folder_rid=parent_folder_rid
             )
             return self._format_dataset_info(dataset)
         except Exception as e:
