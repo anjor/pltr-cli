@@ -59,19 +59,17 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Write comprehensive test suite (88 tests, 65% coverage)
 - [x] Merge to main
 
-### Phase 3: Dataset Commands
-- [ ] Create feature/dataset-commands branch
-- [ ] Implement dataset service wrapper
-- [ ] Add `pltr dataset list` command
-- [ ] Add `pltr dataset get <id>` command
-- [ ] Add `pltr dataset upload <id> <file>` with progress bar
-- [ ] Add `pltr dataset download <id>` with progress bar
-- [ ] Add `pltr dataset create` command
-- [ ] Add `pltr dataset delete` command
-- [ ] Implement branch operations
-- [ ] Add output formatting (table, json, csv)
-- [ ] Write tests for dataset commands
-- [ ] Merge to main
+### Phase 3: Dataset Commands ✅
+- [x] Create feature/dataset-commands branch
+- [x] Implement dataset service wrapper (services/dataset.py)
+- [x] Add `pltr dataset get <rid>` command (RID-based API)
+- [x] Add `pltr dataset create <name>` command
+- [x] Add output formatting utilities (table, json, csv)
+- [x] Fix foundry-platform-sdk import issues (foundry_sdk not foundry)
+- [x] Adapt to SDK v2 API limitations (RID-based, no listing operations)
+- [x] Write comprehensive test suite for working commands
+- [x] Clean up implementation to only include supported operations
+- [x] Merge to main
 
 ### Phase 4: Ontology Commands
 - [ ] Create feature/ontology-commands branch
@@ -208,11 +206,9 @@ pltr-cli/
 pltr configure --profile production
 pltr configure --profile development
 
-# Dataset operations
-pltr dataset list --limit 10
-pltr dataset get dataset-rid-123
-pltr dataset upload dataset-rid-123 data.csv --progress
-pltr dataset download dataset-rid-123 --output ./downloads/
+# Dataset operations (RID-based API)
+pltr dataset get ri.foundry.main.dataset.6fd66e5e-e525-4adf-ba2f-1167fc476a4a
+pltr dataset create "New Dataset" --parent-folder-rid ri.foundry.main.folder.abc123
 
 # Ontology operations
 pltr ontology object search "customer name:John"
@@ -264,7 +260,24 @@ pltr group add-member engineering john.doe@company.com
 - All critical authentication flows validated with edge case handling
 - **Merged via PR #1 on 2025-08-08**
 
-**Phase 7 - GitHub Actions CI/CD ✅ (IN PROGRESS):**
+**Phase 3 - Dataset Commands ✅ (COMPLETED & MERGED):**
+- Discovered foundry-platform-sdk v1.27.0 uses `foundry_sdk` imports (not `foundry`)
+- Fixed SDK client initialization: FoundryClient(auth=auth, hostname=host) 
+- Implemented simplified DatasetService wrapper adapted to SDK v2 API limitations
+- Added two working commands: `pltr dataset get <rid>` and `pltr dataset create <name>`
+- Built rich output formatting system supporting table, JSON, and CSV formats
+- Created comprehensive service layer architecture with BaseService foundation
+- SDK is RID-based: requires knowing dataset Resource Identifiers in advance
+- Removed non-functional commands (list, schema, upload, download) due to SDK limitations
+- Dataset.get_schema() uses preview-only API that throws ApiFeaturePreviewUsageOnly errors
+- DatasetsClient has no list_datasets method - browsing operations not supported
+- All commands support profile-based authentication and environment variable fallbacks
+- Error handling with user-friendly messages and proper exit codes
+- Successfully tested with real dataset RID: ri.foundry.main.dataset.6fd66e5e-e525-4adf-ba2f-1167fc476a4a
+- **Implementation Notes**: SDK has limited functionality compared to initial assumptions
+- **Merged via PR #3 on 2025-08-08**
+
+**Phase 7 - GitHub Actions CI/CD ✅ (COMPLETED):**
 - Set up comprehensive CI/CD pipeline with GitHub Actions
 - Multi-Python version testing (3.9, 3.10, 3.11, 3.12)
 - Cross-platform testing (Ubuntu, macOS, Windows)
@@ -272,3 +285,4 @@ pltr group add-member engineering john.doe@company.com
 - Automated code quality checks (ruff linting, mypy type checking)
 - Test execution with coverage reporting
 - Codecov integration for coverage tracking
+- **Merged via PR #2 on 2025-08-08**

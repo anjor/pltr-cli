@@ -47,15 +47,14 @@ class OAuthClientProvider(AuthProvider):
 
     def get_client(self) -> Any:
         """Return an authenticated Foundry client."""
-        from foundry import FoundryClient
-        from foundry.v1.auth import ConfidentialClientAuth
+        from foundry_sdk import FoundryClient, ConfidentialClientAuth
 
         auth = ConfidentialClientAuth(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
+            client_id=self.client_id,  # type: ignore
+            client_secret=self.client_secret,  # type: ignore
             scopes=self.scopes,
         )
-        return FoundryClient(auth=auth, foundry_host=self.host)
+        return FoundryClient(auth=auth, hostname=self.host)
 
     def validate(self) -> bool:
         """Validate authentication credentials."""
