@@ -57,5 +57,6 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.8",
+    "tomli-w>=1.2.0",
     "types-requests>=2.32.4.20250611",
 ]
