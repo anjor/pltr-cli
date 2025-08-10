@@ -49,37 +49,7 @@ def get_dataset(
         raise typer.Exit(1)
 
 
-@app.command("schema")
-def get_schema(
-    dataset_rid: str = typer.Argument(..., help="Dataset Resource Identifier"),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    format: str = typer.Option(
-        "json", "--format", "-f", help="Output format (json, table)"
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """Get schema information for a dataset."""
-    try:
-        service = DatasetService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching schema for {dataset_rid}..."
-        ):
-            schema_info = service.get_schema(dataset_rid)
-
-        formatter.format_output(schema_info, format, output)
-
-        if output:
-            formatter.print_success(f"Schema information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get schema: {e}")
-        raise typer.Exit(1)
+# schema command removed - uses preview-only API that returns INVALID_ARGUMENT
 
 
 @app.command("create")

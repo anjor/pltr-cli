@@ -32,26 +32,7 @@ class DatasetService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to get dataset {dataset_rid}: {e}")
 
-    def get_schema(self, dataset_rid: str) -> Dict[str, Any]:
-        """
-        Get dataset schema.
-
-        Args:
-            dataset_rid: Dataset Resource Identifier
-
-        Returns:
-            Schema information
-        """
-        try:
-            schema = self.service.Dataset.get_schema(dataset_rid)
-            return {
-                "dataset_rid": dataset_rid,
-                "schema": schema,
-                "type": str(type(schema)),
-                "status": "Schema retrieved successfully"
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to get schema for dataset {dataset_rid}: {e}")
+    # get_schema method removed - uses preview-only API
 
     def create_dataset(self, name: str, parent_folder_rid: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -100,19 +81,9 @@ class DatasetService(BaseService):
         Returns:
             Formatted dataset information dictionary
         """
-        # The v2 Dataset object has different attributes
+        # The v2 Dataset object only has rid, name, and parent_folder_rid
         return {
-            "rid": getattr(dataset, "rid", "unknown"),
-            "name": getattr(dataset, "name", "Unknown"),
-            "description": getattr(dataset, "description", ""),
-            "path": getattr(dataset, "path", None),
-            "created": getattr(dataset, "created", None),
-            "modified": getattr(dataset, "modified", None),
-            # Try to get additional attributes that might exist
-            "created_time": getattr(dataset, "created_time", None),
-            "created_by": getattr(dataset, "created_by", None),
-            "last_modified": getattr(dataset, "last_modified", None),
-            "size_bytes": getattr(dataset, "size_bytes", None),
-            "schema_id": getattr(dataset, "schema_id", None),
-            "parent_folder_rid": getattr(dataset, "parent_folder_rid", None),
+            "rid": dataset.rid,
+            "name": dataset.name,
+            "parent_folder_rid": dataset.parent_folder_rid,
         }

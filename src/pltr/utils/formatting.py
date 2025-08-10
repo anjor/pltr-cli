@@ -231,30 +231,21 @@ class OutputFormatter:
             Formatted string if no output file specified
         """
         if format_type == "table":
-            # For table format, show key-value pairs
-            details = [
-                {"Property": "RID", "Value": dataset.get("rid", "")},
-                {"Property": "Name", "Value": dataset.get("name", "")},
-                {"Property": "Description", "Value": dataset.get("description", "")},
-                {
-                    "Property": "Created Time",
-                    "Value": self._format_datetime(dataset.get("created_time")),
-                },
-                {"Property": "Created By", "Value": dataset.get("created_by", "")},
-                {
-                    "Property": "Last Modified",
-                    "Value": self._format_datetime(dataset.get("last_modified")),
-                },
-                {
-                    "Property": "Size",
-                    "Value": self._format_file_size(dataset.get("size_bytes")),
-                },
-                {"Property": "Schema ID", "Value": dataset.get("schema_id", "")},
-                {
-                    "Property": "Parent Folder",
-                    "Value": dataset.get("parent_folder_rid", ""),
-                },
-            ]
+            # For table format, show key-value pairs (only show fields that exist)
+            details = []
+            
+            if dataset.get("rid"):
+                details.append({"Property": "RID", "Value": dataset["rid"]})
+            if dataset.get("name"):
+                details.append({"Property": "Name", "Value": dataset["name"]})
+            if dataset.get("parent_folder_rid"):
+                details.append({"Property": "Parent Folder", "Value": dataset["parent_folder_rid"]})
+                
+            # Add any other fields that might exist
+            for key, value in dataset.items():
+                if key not in ["rid", "name", "parent_folder_rid"] and value is not None and value != "":
+                    details.append({"Property": key.replace("_", " ").title(), "Value": str(value)})
+            
             return self.format_output(details, format_type, output_file)
         else:
             return self.format_output(dataset, format_type, output_file)
