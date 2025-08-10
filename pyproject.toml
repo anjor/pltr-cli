@@ -48,6 +48,9 @@ pltr = "pltr.cli:app"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/pltr"]
+
 [dependency-groups]
 dev = [
     "mypy>=1.17.1",
