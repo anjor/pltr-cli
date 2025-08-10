@@ -17,17 +17,17 @@ A command-line interface tool for interacting with Palantir Foundry APIs.
 
 ## Installation
 
-### Using pip (once published)
+### Using pip
 
 ```bash
-pip install pltr-cli
+pip install pltr
 ```
 
 ### From source
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pltr-cli.git
+git clone https://github.com/anjor/pltr-cli.git
 cd pltr-cli
 
 # Install with uv
@@ -119,7 +119,7 @@ export FOUNDRY_TOKEN=your-token-here
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pltr-cli.git
+git clone https://github.com/anjor/pltr-cli.git
 cd pltr-cli
 
 # Install dependencies

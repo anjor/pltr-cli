@@ -16,17 +16,30 @@ dependencies = [
     "rich>=14.1.0",
     "typer>=0.16.0",
 ]
-keywords = ["palantir", "foundry", "cli", "api"]
+keywords = ["palantir", "foundry", "cli", "api", "data", "ontology"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
 ]
+
+[project.urls]
+Homepage = "https://github.com/anjor/pltr-cli"
+Repository = "https://github.com/anjor/pltr-cli"
+Issues = "https://github.com/anjor/pltr-cli/issues"
+Changelog = "https://github.com/anjor/pltr-cli/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/anjor/pltr-cli/blob/main/README.md"
 
 [project.scripts]
 pltr = "pltr.cli:app"
