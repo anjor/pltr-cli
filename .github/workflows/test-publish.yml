@@ -122,7 +122,7 @@ jobs:
           # Try to install the package from TestPyPI
           uv run pip install --index-url https://test.pypi.org/simple/ \
                             --extra-index-url https://pypi.org/simple/ \
-                            pltr==${{ steps.test_version.outputs.TEST_VERSION }}
+                            pltr-cli==${{ steps.test_version.outputs.TEST_VERSION }}
           
           # Test basic import and CLI functionality
           uv run python -c "import pltr; print('Package import successful')"
@@ -133,7 +133,7 @@ jobs:
         run: |
           echo "## Test Publish Results" >> $GITHUB_STEP_SUMMARY
           echo "- **Test Version**: ${{ steps.test_version.outputs.TEST_VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **TestPyPI URL**: https://test.pypi.org/project/pltr/${{ steps.test_version.outputs.TEST_VERSION }}/" >> $GITHUB_STEP_SUMMARY
+          echo "- **TestPyPI URL**: https://test.pypi.org/project/pltr-cli/${{ steps.test_version.outputs.TEST_VERSION }}/" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ job.status }}" == "success" ]]; then
             echo "- **Status**: ✅ Successfully published and tested" >> $GITHUB_STEP_SUMMARY
           else
