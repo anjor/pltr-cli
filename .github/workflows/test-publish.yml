@@ -1,0 +1,141 @@
+name: Test Publish to TestPyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_version:
+        description: 'Test version suffix (e.g., dev1, alpha1, rc1)'
+        required: false
+        default: 'dev1'
+        type: string
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'pyproject.toml'
+      - 'src/**'
+      - '.github/workflows/publish.yml'
+      - '.github/workflows/test-publish.yml'
+
+jobs:
+  test-build:
+    name: Test build and publish to TestPyPI
+    runs-on: ubuntu-latest
+    environment: 
+      name: testpypi
+      url: https://test.pypi.org/project/pltr/
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: |
+          uv run pytest --cov=pltr --cov-report=xml --cov-report=term
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: |
+          uv run mypy src/pltr
+
+      - name: Get current version
+        id: current_version
+        run: |
+          VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install tomli-w for version updating
+        run: uv add tomli-w --dev
+
+      - name: Create test version
+        id: test_version
+        run: |
+          BASE_VERSION="${{ steps.current_version.outputs.VERSION }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TEST_SUFFIX="${{ github.event.inputs.test_version }}"
+          else
+            # For PR builds, use PR number and run number
+            TEST_SUFFIX="dev${{ github.run_number }}"
+          fi
+          TEST_VERSION="${BASE_VERSION}.${TEST_SUFFIX}"
+          echo "TEST_VERSION=$TEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Building test version: $TEST_VERSION"
+
+      - name: Update version for test build
+        run: |
+          # Create a temporary pyproject.toml with test version
+          uv run python -c "
+          import tomllib, tomli_w
+          
+          with open('pyproject.toml', 'rb') as f:
+              config = tomllib.load(f)
+          
+          config['project']['version'] = '${{ steps.test_version.outputs.TEST_VERSION }}'
+          
+          with open('pyproject.toml', 'wb') as f:
+              tomli_w.dump(config, f)
+          "
+
+      - name: Build package
+        run: |
+          uv build --no-sources
+
+      - name: Verify package contents
+        run: |
+          echo "Built distributions:"
+          ls -la dist/
+          echo ""
+          echo "Checking wheel contents:"
+          uv run python -m zipfile -l dist/*.whl
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+          skip-existing: true
+
+      - name: Test installation from TestPyPI
+        run: |
+          # Wait a moment for TestPyPI to process the upload
+          sleep 30
+          
+          # Try to install the package from TestPyPI
+          uv run pip install --index-url https://test.pypi.org/simple/ \
+                            --extra-index-url https://pypi.org/simple/ \
+                            pltr==${{ steps.test_version.outputs.TEST_VERSION }}
+          
+          # Test basic import and CLI functionality
+          uv run python -c "import pltr; print('Package import successful')"
+          uv run pltr --help
+
+      - name: Report test results
+        if: always()
+        run: |
+          echo "## Test Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Version**: ${{ steps.test_version.outputs.TEST_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **TestPyPI URL**: https://test.pypi.org/project/pltr/${{ steps.test_version.outputs.TEST_VERSION }}/" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "- **Status**: ✅ Successfully published and tested" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status**: ❌ Test failed" >> $GITHUB_STEP_SUMMARY
+          fi

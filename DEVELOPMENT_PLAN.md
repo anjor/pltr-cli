@@ -135,15 +135,15 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [ ] Create API wrapper documentation
 - [ ] Merge to main
 
-### Phase 10: Distribution
-- [ ] Create feature/distribution branch
-- [ ] Configure package metadata
-- [ ] Set up PyPI publishing
-- [ ] Create GitHub releases workflow
-- [ ] Add Homebrew formula (macOS)
-- [ ] Create Docker image
-- [ ] Write installation guide
-- [ ] Merge to main
+### Phase 10: Distribution ✅
+- [x] Create feature/distribution branch
+- [x] Configure package metadata (enhanced pyproject.toml with URLs and classifiers)
+- [x] Set up PyPI publishing (GitHub Actions with Trusted Publishing)
+- [x] Create GitHub releases workflow (automated with Sigstore signing)
+- [x] Create TestPyPI workflow for safe testing
+- [x] Add version management script (scripts/release.py)
+- [x] Write installation guide (updated README.md)
+- [x] Merge to main
 
 ## Project Structure
 
@@ -286,3 +286,61 @@ pltr group add-member engineering john.doe@company.com
 - Test execution with coverage reporting
 - Codecov integration for coverage tracking
 - **Merged via PR #2 on 2025-08-08**
+
+**Phase 10 - Distribution & PyPI Publishing ✅ (COMPLETED):**
+- Enhanced pyproject.toml with comprehensive metadata, URLs, and classifiers for PyPI
+- Implemented automated PyPI publishing workflow using GitHub Actions and Trusted Publishing
+- Created TestPyPI workflow for safe testing before production releases
+- Built comprehensive release script (scripts/release.py) with semantic versioning support
+- Added GitHub Releases automation with Sigstore signing for security attestation
+- Configured environments for manual approval (pypi, testpypi) with proper permissions
+- **Publishing Process**: Tag-based releases (v*) trigger automated build, test, and publish pipeline
+- **Security**: No API tokens required - uses PyPI Trusted Publishing with OIDC tokens
+- **Testing**: All changes tested on TestPyPI before production, with package installation verification
+
+## Release Process
+
+### Creating a New Release
+
+Use the release script for semantic versioning:
+
+```bash
+# Patch release (0.1.0 → 0.1.1)
+python scripts/release.py --type patch
+
+# Minor release (0.1.0 → 0.2.0)  
+python scripts/release.py --type minor
+
+# Major release (0.1.0 → 1.0.0)
+python scripts/release.py --type major
+
+# Specific version
+python scripts/release.py --version 1.2.3
+
+# Dry run to see what would happen
+python scripts/release.py --type patch --dry-run
+```
+
+### Release Workflow
+
+1. **Prepare Release**: Ensure all changes are committed and tested
+2. **Run Release Script**: Updates version, creates commit and tag
+3. **Push to GitHub**: Script asks if you want to push automatically
+4. **GitHub Actions**: Automatically builds, tests, and publishes to PyPI
+5. **Monitor**: Check GitHub Actions workflow for successful publish
+
+### Testing Releases
+
+Test releases on TestPyPI before production:
+
+```bash
+# Manual trigger via GitHub Actions UI
+# Or automatic on PRs that modify publishing-related files
+```
+
+### Post-Release Steps
+
+After PyPI publishing:
+1. Configure Trusted Publishing on PyPI (first release only)
+2. Monitor package availability: https://pypi.org/project/pltr/
+3. Test installation: `pip install pltr`
