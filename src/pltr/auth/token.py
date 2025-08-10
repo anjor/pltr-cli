@@ -31,7 +31,7 @@ class TokenAuthProvider(AuthProvider):
         """Return an authenticated Foundry client."""
         from foundry_sdk import FoundryClient, UserTokenAuth
 
-        auth = UserTokenAuth(token=self.token)
+        auth = UserTokenAuth(token=self.token)  # type: ignore
         return FoundryClient(auth=auth, hostname=self.host)
 
     def validate(self) -> bool:

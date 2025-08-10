@@ -4,7 +4,6 @@ This is a simplified version that works with the actual foundry_sdk API.
 """
 
 from typing import Any, Optional, Dict
-from pathlib import Path
 
 from .base import BaseService
 

@@ -50,8 +50,8 @@ class OAuthClientProvider(AuthProvider):
         from foundry_sdk import FoundryClient, ConfidentialClientAuth
 
         auth = ConfidentialClientAuth(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
+            client_id=self.client_id,  # type: ignore
+            client_secret=self.client_secret,  # type: ignore
             scopes=self.scopes,
         )
         return FoundryClient(auth=auth, hostname=self.host)
