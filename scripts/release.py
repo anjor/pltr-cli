@@ -102,12 +102,12 @@ def create_release_commit_and_tag(version, release_type):
     if push_choice in ["y", "yes"]:
         run_git_command("git push origin HEAD")
         run_git_command(f"git push origin {tag_name}")
-        print(f"Pushed commit and tag to origin")
-        print(f"GitHub Actions will now build and publish the release automatically")
-        print(f"Monitor the workflow at: https://github.com/anjor/pltr-cli/actions")
+        print("Pushed commit and tag to origin")
+        print("GitHub Actions will now build and publish the release automatically")
+        print("Monitor the workflow at: https://github.com/anjor/pltr-cli/actions")
     else:
         print("Not pushing to origin. You can push manually later with:")
-        print(f"  git push origin HEAD")
+        print("  git push origin HEAD")
         print(f"  git push origin {tag_name}")
 
 
@@ -152,7 +152,7 @@ def main():
     # Ensure we're in a git repository
     try:
         run_git_command("git rev-parse --git-dir")
-    except:
+    except subprocess.CalledProcessError:
         print("Error: Not in a git repository")
         sys.exit(1)
 
