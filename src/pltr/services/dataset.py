@@ -19,45 +19,29 @@ class DatasetService(BaseService):
         """
         List all datasets accessible to the user.
 
+        Note: The foundry_sdk v2 API does not provide a list_datasets method.
+        This functionality is not currently available.
+
         Args:
             limit: Maximum number of datasets to return
 
         Returns:
             List of dataset information dictionaries
+
+        Raises:
+            NotImplementedError: This operation is not supported by the SDK
         """
-        datasets = []
-        page_token = None
-        count = 0
-
-        while True:
-            try:
-                response = self.service.list_datasets(
-                    limit=min(limit - count if limit else 100, 100),
-                    page_token=page_token,
-                )
-
-                batch = list(response.data)
-                datasets.extend(batch)
-                count += len(batch)
-
-                # Check if we should continue pagination
-                if limit and count >= limit:
-                    break
-                if (
-                    not hasattr(response, "next_page_token")
-                    or not response.next_page_token
-                ):
-                    break
-
-                page_token = response.next_page_token
-
-            except Exception as e:
-                raise RuntimeError(f"Failed to list datasets: {e}")
-
-        return [
-            self._format_dataset_info(dataset)
-            for dataset in (datasets[:limit] if limit else datasets)
-        ]
+        # The foundry_sdk v2 doesn't have a list_datasets method
+        # Dataset operations are RID-based
+        raise NotImplementedError(
+            "Dataset listing is not supported by foundry-platform-sdk v1.27.0.\n"
+            "The SDK uses a RID-based API where you need to know dataset identifiers.\n\n"
+            "To find dataset RIDs:\n"
+            "  1. Use the Foundry web interface to browse datasets\n"
+            "  2. Copy the RID from the dataset URL or info panel\n"
+            "  3. Use: pltr dataset get <dataset-rid>\n\n"
+            "Alternative: Your Foundry administrator may provide a list of available datasets."
+        )
 
     def get_dataset(self, dataset_rid: str) -> Dict[str, Any]:
         """
@@ -70,7 +54,8 @@ class DatasetService(BaseService):
             Dataset information dictionary
         """
         try:
-            dataset = self.service.get_dataset(dataset_rid)
+            # Use the v2 API's Dataset.get method
+            dataset = self.service.Dataset.get(dataset_rid)
             return self._format_dataset_info(dataset)
         except Exception as e:
             raise RuntimeError(f"Failed to get dataset {dataset_rid}: {e}")
@@ -304,10 +289,15 @@ class DatasetService(BaseService):
         Returns:
             Formatted dataset information dictionary
         """
+        # The v2 Dataset object has different attributes
         return {
-            "rid": dataset.rid,
+            "rid": getattr(dataset, "rid", "unknown"),
             "name": getattr(dataset, "name", "Unknown"),
             "description": getattr(dataset, "description", ""),
+            "path": getattr(dataset, "path", None),
+            "created": getattr(dataset, "created", None),
+            "modified": getattr(dataset, "modified", None),
+            # Try to get additional attributes that might exist
             "created_time": getattr(dataset, "created_time", None),
             "created_by": getattr(dataset, "created_by", None),
             "last_modified": getattr(dataset, "last_modified", None),
