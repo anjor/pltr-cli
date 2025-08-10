@@ -3,11 +3,9 @@ Tests for dataset service.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 from pltr.services.dataset import DatasetService
-from pltr.auth.base import ProfileNotFoundError, MissingCredentialsError
 
 
 @pytest.fixture
