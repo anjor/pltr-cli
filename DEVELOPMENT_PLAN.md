@@ -342,5 +342,40 @@ Test releases on TestPyPI before production:
 
 After PyPI publishing:
 1. Configure Trusted Publishing on PyPI (first release only)
-2. Monitor package availability: https://pypi.org/project/pltr/
-3. Test installation: `pip install pltr`
+2. Monitor package availability: https://pypi.org/project/pltr-cli/
+3. Test installation: `pip install pltr-cli`
+
+## Release History
+
+### Version 0.1.0 (2025-08-10) ✅ RELEASED
+
+**First production release of pltr-cli to PyPI!**
+
+- **Published to PyPI**: https://pypi.org/project/pltr-cli/0.1.0/
+- **Installation**: `pip install pltr-cli`
+- **GitHub Tag**: v0.1.0
+
+**Core Features:**
+- Complete authentication system with token and OAuth2 support
+- Secure credential storage using keyring
+- Multi-profile configuration management
+- Dataset operations (get, create) using foundry-platform-sdk v1.27.0
+- Rich terminal output with table formatting
+- Comprehensive test suite (126 tests, ~65% coverage)
+- Cross-platform compatibility (Windows, macOS, Linux)
+
+**Distribution:**
+- Automated PyPI publishing via GitHub Actions with Trusted Publishing
+- Built with uv for modern Python dependency management
+- Full CI/CD pipeline with linting, type checking, and multi-Python testing
+- Sigstore signing for security attestation (GitHub Release creation had minor issues)
+
+**Known Limitations:**
+- Dataset operations are RID-based only (SDK v1.27.0 limitations)
+- No dataset listing/browsing capabilities
+- Ontology and SQL commands not yet implemented
+
+**Next Steps:**
+- Phase 4: Implement ontology commands
+- Phase 5: Add SQL query support
+- Phase 6: Admin commands for user/group management

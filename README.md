@@ -20,7 +20,7 @@ A command-line interface tool for interacting with Palantir Foundry APIs.
 ### Using pip
 
 ```bash
-pip install pltr
+pip install pltr-cli
 ```
 
 ### From source
