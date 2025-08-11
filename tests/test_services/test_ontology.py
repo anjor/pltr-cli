@@ -258,19 +258,23 @@ def test_get_object():
         mock_client = Mock()
         mock_ontologies = Mock()
         mock_ontology_object_class = Mock()
-        
+
         # Create a simple mock object with the required attributes
-        mock_obj = type('MockObject', (), {
-            'employee_id': 'EMP001',
-            'name': 'John Doe',
-            'department': 'Engineering',
-            '__dict__': {
-                'employee_id': 'EMP001',
-                'name': 'John Doe',
-                'department': 'Engineering',
-            }
-        })()
-        
+        mock_obj = type(
+            "MockObject",
+            (),
+            {
+                "employee_id": "EMP001",
+                "name": "John Doe",
+                "department": "Engineering",
+                "__dict__": {
+                    "employee_id": "EMP001",
+                    "name": "John Doe",
+                    "department": "Engineering",
+                },
+            },
+        )()
+
         mock_ontology_object_class.get.return_value = mock_obj
         mock_ontologies.OntologyObject = mock_ontology_object_class
         mock_client.ontologies = mock_ontologies
@@ -407,13 +411,11 @@ def test_execute_query_with_objects_result(mock_query_service):
     """Test executing a query that returns objects."""
     service, mock_query_class = mock_query_service
     # Create a mock with spec to control attributes
-    mock_result = Mock(spec=['objects'])
+    mock_result = Mock(spec=["objects"])
     mock_result.objects = [{"id": "1", "name": "Test"}]
     mock_query_class.execute.return_value = mock_result
 
-    result = service.execute_query(
-        "ri.ontology.main.ontology.test", "get_all_objects"
-    )
+    result = service.execute_query("ri.ontology.main.ontology.test", "get_all_objects")
 
     assert "objects" in result
     assert len(result["objects"]) == 1

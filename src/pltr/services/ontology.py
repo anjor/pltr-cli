@@ -79,9 +79,7 @@ class ObjectTypeService(BaseService):
             List of object type information dictionaries
         """
         try:
-            result = self.service.ObjectType.list(
-                ontology_rid, page_size=page_size
-            )
+            result = self.service.ObjectType.list(ontology_rid, page_size=page_size)
             object_types = []
             for obj_type in result:
                 object_types.append(self._format_object_type_info(obj_type))
@@ -89,9 +87,7 @@ class ObjectTypeService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to list object types: {e}")
 
-    def get_object_type(
-        self, ontology_rid: str, object_type: str
-    ) -> Dict[str, Any]:
+    def get_object_type(self, ontology_rid: str, object_type: str) -> Dict[str, Any]:
         """
         Get a specific object type.
 
@@ -328,9 +324,7 @@ class ActionService(BaseService):
             Action result
         """
         try:
-            result = self.service.Action.apply(
-                ontology_rid, action_type, parameters
-            )
+            result = self.service.Action.apply(ontology_rid, action_type, parameters)
             return self._format_action_result(result)
         except Exception as e:
             raise RuntimeError(f"Failed to apply action {action_type}: {e}")
@@ -353,9 +347,7 @@ class ActionService(BaseService):
             Validation result
         """
         try:
-            result = self.service.Action.validate(
-                ontology_rid, action_type, parameters
-            )
+            result = self.service.Action.validate(ontology_rid, action_type, parameters)
             return self._format_validation_result(result)
         except Exception as e:
             raise RuntimeError(f"Failed to validate action {action_type}: {e}")
@@ -380,7 +372,7 @@ class ActionService(BaseService):
         try:
             if len(requests) > 20:
                 raise ValueError("Maximum 20 actions can be applied in a batch")
-            
+
             result = self.service.Action.apply_batch(
                 ontology_rid, action_type, requests
             )

@@ -15,12 +15,13 @@ runner = CliRunner()
 @pytest.fixture
 def mock_services():
     """Mock all ontology services."""
-    with patch("pltr.commands.ontology.OntologyService") as mock_ont_svc, \
-         patch("pltr.commands.ontology.ObjectTypeService") as mock_obj_type_svc, \
-         patch("pltr.commands.ontology.OntologyObjectService") as mock_obj_svc, \
-         patch("pltr.commands.ontology.ActionService") as mock_action_svc, \
-         patch("pltr.commands.ontology.QueryService") as mock_query_svc:
-        
+    with (
+        patch("pltr.commands.ontology.OntologyService") as mock_ont_svc,
+        patch("pltr.commands.ontology.ObjectTypeService") as mock_obj_type_svc,
+        patch("pltr.commands.ontology.OntologyObjectService") as mock_obj_svc,
+        patch("pltr.commands.ontology.ActionService") as mock_action_svc,
+        patch("pltr.commands.ontology.QueryService") as mock_query_svc,
+    ):
         yield {
             "ontology": mock_ont_svc,
             "object_type": mock_obj_type_svc,
@@ -184,7 +185,12 @@ def test_aggregate_objects_command(mock_services):
     aggregations = json.dumps([{"type": "count"}])
     result = runner.invoke(
         app,
-        ["object-aggregate", "ri.ontology.main.ontology.test", "Employee", aggregations],
+        [
+            "object-aggregate",
+            "ri.ontology.main.ontology.test",
+            "Employee",
+            aggregations,
+        ],
     )
 
     assert result.exit_code == 0
@@ -343,7 +349,9 @@ def test_authentication_error(mock_services):
     from pltr.auth.base import ProfileNotFoundError
 
     mock_instance = Mock()
-    mock_instance.list_ontologies.side_effect = ProfileNotFoundError("Profile not found")
+    mock_instance.list_ontologies.side_effect = ProfileNotFoundError(
+        "Profile not found"
+    )
     mock_services["ontology"].return_value = mock_instance
 
     result = runner.invoke(app, ["list"])

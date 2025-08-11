@@ -356,7 +356,7 @@ class OutputFormatter:
                 filtered_item = {col: item.get(col) for col in columns}
                 filtered_data.append(filtered_item)
             data = filtered_data
-        
+
         return self.format_output(data, format, output)
 
     def format_list(
@@ -379,7 +379,7 @@ class OutputFormatter:
         # Convert list items to dicts if needed
         if data and not isinstance(data[0], dict):
             data = [{"value": item} for item in data]
-        
+
         return self.format_output(data, format, output)
 
     def format_dict(

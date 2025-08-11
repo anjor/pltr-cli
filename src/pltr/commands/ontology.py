@@ -40,20 +40,20 @@ def list_ontologies(
     """List all available ontologies."""
     try:
         service = OntologyService(profile=profile)
-        
+
         with SpinnerProgressTracker().track_spinner("Fetching ontologies..."):
             ontologies = service.list_ontologies(page_size=page_size)
-        
+
         formatter.format_table(
             ontologies,
             columns=["rid", "api_name", "display_name", "description"],
             format=format,
             output=output,
         )
-        
+
         if output:
             formatter.print_success(f"Ontologies saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -76,17 +76,17 @@ def get_ontology(
     """Get details of a specific ontology."""
     try:
         service = OntologyService(profile=profile)
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching ontology {ontology_rid}..."
         ):
             ontology = service.get_ontology(ontology_rid)
-        
+
         formatter.format_dict(ontology, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Ontology information saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -113,20 +113,20 @@ def list_object_types(
     """List object types in an ontology."""
     try:
         service = ObjectTypeService(profile=profile)
-        
+
         with SpinnerProgressTracker().track_spinner("Fetching object types..."):
             object_types = service.list_object_types(ontology_rid, page_size=page_size)
-        
+
         formatter.format_table(
             object_types,
             columns=["api_name", "display_name", "description", "primary_key"],
             format=format,
             output=output,
         )
-        
+
         if output:
             formatter.print_success(f"Object types saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -150,17 +150,17 @@ def get_object_type(
     """Get details of a specific object type."""
     try:
         service = ObjectTypeService(profile=profile)
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching object type {object_type}..."
         ):
             obj_type = service.get_object_type(ontology_rid, object_type)
-        
+
         formatter.format_dict(obj_type, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Object type information saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -191,26 +191,28 @@ def list_objects(
     """List objects of a specific type."""
     try:
         service = OntologyObjectService(profile=profile)
-        
+
         prop_list = properties.split(",") if properties else None
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching {object_type} objects..."
         ):
             objects = service.list_objects(
                 ontology_rid, object_type, page_size=page_size, properties=prop_list
             )
-        
+
         if format == "table" and objects:
             # Use first object's keys as columns
             columns = list(objects[0].keys()) if objects else []
-            formatter.format_table(objects, columns=columns, format=format, output=output)
+            formatter.format_table(
+                objects, columns=columns, format=format, output=output
+            )
         else:
             formatter.format_list(objects, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Objects saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -238,21 +240,21 @@ def get_object(
     """Get a specific object by primary key."""
     try:
         service = OntologyObjectService(profile=profile)
-        
+
         prop_list = properties.split(",") if properties else None
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching object {primary_key}..."
         ):
             obj = service.get_object(
                 ontology_rid, object_type, primary_key, properties=prop_list
             )
-        
+
         formatter.format_dict(obj, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Object information saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -283,22 +285,26 @@ def aggregate_objects(
     """Aggregate objects with specified functions."""
     try:
         service = OntologyObjectService(profile=profile)
-        
+
         # Parse JSON inputs
         agg_list = json.loads(aggregations)
         group_list = group_by.split(",") if group_by else None
         filter_dict = json.loads(filter) if filter else None
-        
+
         with SpinnerProgressTracker().track_spinner("Aggregating objects..."):
             result = service.aggregate_objects(
-                ontology_rid, object_type, agg_list, group_by=group_list, filter=filter_dict
+                ontology_rid,
+                object_type,
+                agg_list,
+                group_by=group_list,
+                filter=filter_dict,
             )
-        
+
         formatter.format_dict(result, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Aggregation results saved to {output}")
-    
+
     except json.JSONDecodeError as e:
         formatter.print_error(f"Invalid JSON: {e}")
         raise typer.Exit(1)
@@ -333,9 +339,9 @@ def list_linked_objects(
     """List objects linked to a specific object."""
     try:
         service = OntologyObjectService(profile=profile)
-        
+
         prop_list = properties.split(",") if properties else None
-        
+
         with SpinnerProgressTracker().track_spinner("Fetching linked objects..."):
             objects = service.list_linked_objects(
                 ontology_rid,
@@ -345,17 +351,19 @@ def list_linked_objects(
                 page_size=page_size,
                 properties=prop_list,
             )
-        
+
         if format == "table" and objects:
             # Use first object's keys as columns
             columns = list(objects[0].keys()) if objects else []
-            formatter.format_table(objects, columns=columns, format=format, output=output)
+            formatter.format_table(
+                objects, columns=columns, format=format, output=output
+            )
         else:
             formatter.format_list(objects, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Linked objects saved to {output}")
-    
+
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
@@ -381,20 +389,20 @@ def apply_action(
     """Apply an action with given parameters."""
     try:
         service = ActionService(profile=profile)
-        
+
         # Parse JSON parameters
         params = json.loads(parameters)
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Applying action {action_type}..."
         ):
             result = service.apply_action(ontology_rid, action_type, params)
-        
+
         formatter.format_dict(result, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Action result saved to {output}")
-    
+
     except json.JSONDecodeError as e:
         formatter.print_error(f"Invalid JSON: {e}")
         raise typer.Exit(1)
@@ -422,25 +430,25 @@ def validate_action(
     """Validate action parameters without executing."""
     try:
         service = ActionService(profile=profile)
-        
+
         # Parse JSON parameters
         params = json.loads(parameters)
-        
+
         with SpinnerProgressTracker().track_spinner(
             f"Validating action {action_type}..."
         ):
             result = service.validate_action(ontology_rid, action_type, params)
-        
+
         formatter.format_dict(result, format=format, output=output)
-        
+
         if result.get("valid"):
             formatter.print_success("Action parameters are valid")
         else:
             formatter.print_error("Action parameters are invalid")
-        
+
         if output:
             formatter.print_success(f"Validation result saved to {output}")
-    
+
     except json.JSONDecodeError as e:
         formatter.print_error(f"Invalid JSON: {e}")
         raise typer.Exit(1)
@@ -471,13 +479,13 @@ def execute_query(
     """Execute a predefined query."""
     try:
         service = QueryService(profile=profile)
-        
+
         # Parse JSON parameters if provided
         params = json.loads(parameters) if parameters else None
-        
+
         with SpinnerProgressTracker().track_spinner(f"Executing query {query_name}..."):
             result = service.execute_query(ontology_rid, query_name, parameters=params)
-        
+
         # Handle different result formats
         if "rows" in result:
             formatter.format_list(result["rows"], format=format, output=output)
@@ -485,10 +493,10 @@ def execute_query(
             formatter.format_list(result["objects"], format=format, output=output)
         else:
             formatter.format_dict(result, format=format, output=output)
-        
+
         if output:
             formatter.print_success(f"Query results saved to {output}")
-    
+
     except json.JSONDecodeError as e:
         formatter.print_error(f"Invalid JSON: {e}")
         raise typer.Exit(1)
