@@ -1,13 +1,10 @@
-## Dependency Management
-
-Use uv for dependency management
-
-
 ## Development tips
 
 Always keep @DEVELOPMENT_PLAN.md up to date.
 The basis of the SDK is https://github.com/palantir/foundry-platform-python . This is a
 CLI that wraps around the SDK to give a CLI interface.
+
+Use uv for dependency management as well as to run scripts.
 
 ## General Guidance
 
