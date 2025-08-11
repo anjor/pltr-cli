@@ -30,25 +30,20 @@ class TestAdminCommands:
         user_result = {
             "users": [
                 {"id": "user1", "username": "john.doe", "email": "john@example.com"},
-                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"}
+                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"},
             ],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_service.list_users.return_value = user_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "list", "--format", "json"]
-            )
+            result = runner.invoke(app, ["user", "list", "--format", "json"])
 
         # Assert
         assert result.exit_code == 0
-        mock_service.list_users.assert_called_once_with(
-            page_size=None,
-            page_token=None
-        )
+        mock_service.list_users.assert_called_once_with(page_size=None, page_token=None)
 
     def test_user_list_with_pagination(self, runner, mock_service):
         """Test user list command with pagination."""
@@ -66,8 +61,7 @@ class TestAdminCommands:
         # Assert
         assert result.exit_code == 0
         mock_service.list_users.assert_called_once_with(
-            page_size=10,
-            page_token="prev123"
+            page_size=10, page_token="prev123"
         )
 
     def test_user_get_command_success(self, runner, mock_service):
@@ -78,16 +72,14 @@ class TestAdminCommands:
             "id": user_id,
             "username": "john.doe",
             "email": "john@example.com",
-            "displayName": "John Doe"
+            "displayName": "John Doe",
         }
         mock_service.get_user.return_value = user_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "get", user_id]
-            )
+            result = runner.invoke(app, ["user", "get", user_id])
 
         # Assert
         assert result.exit_code == 0
@@ -99,16 +91,14 @@ class TestAdminCommands:
         user_result = {
             "id": "current_user",
             "username": "current.user",
-            "email": "current@example.com"
+            "email": "current@example.com",
         }
         mock_service.get_current_user.return_value = user_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "current", "--format", "table"]
-            )
+            result = runner.invoke(app, ["user", "current", "--format", "table"])
 
         # Assert
         assert result.exit_code == 0
@@ -120,23 +110,19 @@ class TestAdminCommands:
         query = "john"
         search_result = {
             "users": [{"id": "user1", "username": "john.doe"}],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_service.search_users.return_value = search_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "search", query]
-            )
+            result = runner.invoke(app, ["user", "search", query])
 
         # Assert
         assert result.exit_code == 0
         mock_service.search_users.assert_called_once_with(
-            query=query,
-            page_size=None,
-            page_token=None
+            query=query, page_size=None, page_token=None
         )
 
     def test_user_markings_command_success(self, runner, mock_service):
@@ -145,16 +131,14 @@ class TestAdminCommands:
         user_id = "user123"
         markings_result = {
             "markings": ["public", "internal"],
-            "permissions": ["read", "write"]
+            "permissions": ["read", "write"],
         }
         mock_service.get_user_markings.return_value = markings_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "markings", user_id]
-            )
+            result = runner.invoke(app, ["user", "markings", user_id])
 
         # Assert
         assert result.exit_code == 0
@@ -166,16 +150,14 @@ class TestAdminCommands:
         user_id = "user123"
         revoke_result = {
             "success": True,
-            "message": f"All tokens revoked for user {user_id}"
+            "message": f"All tokens revoked for user {user_id}",
         }
         mock_service.revoke_user_tokens.return_value = revoke_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "revoke-tokens", user_id, "--confirm"]
-            )
+            result = runner.invoke(app, ["user", "revoke-tokens", user_id, "--confirm"])
 
         # Assert
         assert result.exit_code == 0
@@ -188,24 +170,21 @@ class TestAdminCommands:
         group_result = {
             "groups": [
                 {"id": "group1", "name": "Engineering", "description": "Dev team"},
-                {"id": "group2", "name": "Product", "description": "Product team"}
+                {"id": "group2", "name": "Product", "description": "Product team"},
             ],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_service.list_groups.return_value = group_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "list"]
-            )
+            result = runner.invoke(app, ["group", "list"])
 
         # Assert
         assert result.exit_code == 0
         mock_service.list_groups.assert_called_once_with(
-            page_size=None,
-            page_token=None
+            page_size=None, page_token=None
         )
 
     def test_group_get_command_success(self, runner, mock_service):
@@ -215,16 +194,14 @@ class TestAdminCommands:
         group_result = {
             "id": group_id,
             "name": "Engineering",
-            "description": "Engineering team"
+            "description": "Engineering team",
         }
         mock_service.get_group.return_value = group_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "get", group_id]
-            )
+            result = runner.invoke(app, ["group", "get", group_id])
 
         # Assert
         assert result.exit_code == 0
@@ -236,23 +213,19 @@ class TestAdminCommands:
         query = "engineering"
         search_result = {
             "groups": [{"id": "group1", "name": "Engineering"}],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_service.search_groups.return_value = search_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "search", query, "--page-size", "5"]
-            )
+            result = runner.invoke(app, ["group", "search", query, "--page-size", "5"])
 
         # Assert
         assert result.exit_code == 0
         mock_service.search_groups.assert_called_once_with(
-            query=query,
-            page_size=5,
-            page_token=None
+            query=query, page_size=5, page_token=None
         )
 
     def test_group_create_command_success(self, runner, mock_service):
@@ -264,7 +237,7 @@ class TestAdminCommands:
         create_result = {
             "id": "new_group_id",
             "name": group_name,
-            "description": description
+            "description": description,
         }
         mock_service.create_group.return_value = create_result
 
@@ -272,44 +245,40 @@ class TestAdminCommands:
             mock_service_class.return_value = mock_service
 
             result = runner.invoke(
-                app, [
-                    "group", "create", group_name,
-                    "--description", description,
-                    "--org-rid", org_rid
-                ]
+                app,
+                [
+                    "group",
+                    "create",
+                    group_name,
+                    "--description",
+                    description,
+                    "--org-rid",
+                    org_rid,
+                ],
             )
 
         # Assert
         assert result.exit_code == 0
         mock_service.create_group.assert_called_once_with(
-            name=group_name,
-            description=description,
-            organization_rid=org_rid
+            name=group_name, description=description, organization_rid=org_rid
         )
 
     def test_group_create_command_minimal(self, runner, mock_service):
         """Test group create command with minimal parameters."""
         # Setup
         group_name = "Simple Group"
-        create_result = {
-            "id": "simple_group_id",
-            "name": group_name
-        }
+        create_result = {"id": "simple_group_id", "name": group_name}
         mock_service.create_group.return_value = create_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "create", group_name]
-            )
+            result = runner.invoke(app, ["group", "create", group_name])
 
         # Assert
         assert result.exit_code == 0
         mock_service.create_group.assert_called_once_with(
-            name=group_name,
-            description=None,
-            organization_rid=None
+            name=group_name, description=None, organization_rid=None
         )
 
     def test_group_delete_command_with_confirm(self, runner, mock_service):
@@ -318,16 +287,14 @@ class TestAdminCommands:
         group_id = "group123"
         delete_result = {
             "success": True,
-            "message": f"Group {group_id} deleted successfully"
+            "message": f"Group {group_id} deleted successfully",
         }
         mock_service.delete_group.return_value = delete_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "delete", group_id, "--confirm"]
-            )
+            result = runner.invoke(app, ["group", "delete", group_id, "--confirm"])
 
         # Assert
         assert result.exit_code == 0
@@ -341,16 +308,14 @@ class TestAdminCommands:
         role_result = {
             "id": role_id,
             "name": "Admin",
-            "description": "Administrator role"
+            "description": "Administrator role",
         }
         mock_service.get_role.return_value = role_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["role", "get", role_id]
-            )
+            result = runner.invoke(app, ["role", "get", role_id])
 
         # Assert
         assert result.exit_code == 0
@@ -364,16 +329,14 @@ class TestAdminCommands:
         org_result = {
             "id": org_id,
             "name": "Acme Corp",
-            "description": "Example organization"
+            "description": "Example organization",
         }
         mock_service.get_organization.return_value = org_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["org", "get", org_id]
-            )
+            result = runner.invoke(app, ["org", "get", org_id])
 
         # Assert
         assert result.exit_code == 0
@@ -388,9 +351,7 @@ class TestAdminCommands:
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "list"]
-            )
+            result = runner.invoke(app, ["user", "list"])
 
         # Assert
         assert result.exit_code == 1
@@ -405,9 +366,7 @@ class TestAdminCommands:
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "get", user_id]
-            )
+            result = runner.invoke(app, ["user", "get", user_id])
 
         # Assert
         assert result.exit_code == 1
@@ -422,9 +381,7 @@ class TestAdminCommands:
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["group", "create", group_name]
-            )
+            result = runner.invoke(app, ["group", "create", group_name])
 
         # Assert
         assert result.exit_code == 1
@@ -441,9 +398,7 @@ class TestAdminCommands:
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["user", "list", "--profile", profile_name]
-            )
+            result = runner.invoke(app, ["user", "list", "--profile", profile_name])
 
         # Assert
         assert result.exit_code == 0
@@ -475,21 +430,19 @@ class TestAdminCommands:
         user_result = {"users": [{"id": "user1", "username": "john"}]}
         mock_service.list_users.return_value = user_result
 
-        with patch("pltr.commands.admin.AdminService") as mock_service_class, \
-             patch("pltr.commands.admin.OutputFormatter") as mock_formatter:
+        with (
+            patch("pltr.commands.admin.AdminService") as mock_service_class,
+            patch("pltr.commands.admin.OutputFormatter") as mock_formatter,
+        ):
             mock_service_class.return_value = mock_service
             mock_formatter_instance = Mock()
             mock_formatter.return_value = mock_formatter_instance
 
-            result = runner.invoke(
-                app, ["user", "list", "--format", "json"]
-            )
+            result = runner.invoke(app, ["user", "list", "--format", "json"])
 
         # Assert
         assert result.exit_code == 0
-        mock_formatter_instance.display.assert_called_once_with(
-            user_result, "json"
-        )
+        mock_formatter_instance.display.assert_called_once_with(user_result, "json")
 
     def test_group_create_csv_format(self, runner, mock_service):
         """Test group create command with CSV format."""
@@ -498,8 +451,10 @@ class TestAdminCommands:
         create_result = {"id": "csv_group", "name": group_name}
         mock_service.create_group.return_value = create_result
 
-        with patch("pltr.commands.admin.AdminService") as mock_service_class, \
-             patch("pltr.commands.admin.OutputFormatter") as mock_formatter:
+        with (
+            patch("pltr.commands.admin.AdminService") as mock_service_class,
+            patch("pltr.commands.admin.OutputFormatter") as mock_formatter,
+        ):
             mock_service_class.return_value = mock_service
             mock_formatter_instance = Mock()
             mock_formatter.return_value = mock_formatter_instance
@@ -510,6 +465,4 @@ class TestAdminCommands:
 
         # Assert
         assert result.exit_code == 0
-        mock_formatter_instance.display.assert_called_once_with(
-            create_result, "csv"
-        )
+        mock_formatter_instance.display.assert_called_once_with(create_result, "csv")

@@ -14,7 +14,9 @@ from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
 
 # Create the main admin app
-app = typer.Typer(name="admin", help="Admin operations for user, group, and organization management")
+app = typer.Typer(
+    name="admin", help="Admin operations for user, group, and organization management"
+)
 
 # Create sub-apps for different admin categories
 user_app = typer.Typer(name="user", help="User management operations")
@@ -56,10 +58,7 @@ def list_users(
         service = AdminService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Fetching users..."):
-            result = service.list_users(
-                page_size=page_size,
-                page_token=page_token
-            )
+            result = service.list_users(page_size=page_size, page_token=page_token)
 
         # Format and display results
         if output_file:
@@ -168,11 +167,11 @@ def search_users(
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Searching users for '{query}'..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Searching users for '{query}'..."
+        ):
             result = service.search_users(
-                query=query,
-                page_size=page_size,
-                page_token=page_token
+                query=query, page_size=page_size, page_token=page_token
             )
 
         # Format and display results
@@ -207,7 +206,9 @@ def get_user_markings(
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Fetching markings for user {user_id}..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching markings for user {user_id}..."
+        ):
             result = service.get_user_markings(user_id)
 
         # Format and display results
@@ -228,9 +229,7 @@ def revoke_user_tokens(
     profile: Optional[str] = typer.Option(
         None, "--profile", help="Auth profile to use"
     ),
-    confirm: bool = typer.Option(
-        False, "--confirm", help="Skip confirmation prompt"
-    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
 ) -> None:
     """Revoke all tokens for a specific user."""
     console = Console()
@@ -247,7 +246,9 @@ def revoke_user_tokens(
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Revoking tokens for user {user_id}..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Revoking tokens for user {user_id}..."
+        ):
             result = service.revoke_user_tokens(user_id)
 
         console.print(f"[green]{result['message']}[/green]")
@@ -284,10 +285,7 @@ def list_groups(
         service = AdminService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Fetching groups..."):
-            result = service.list_groups(
-                page_size=page_size,
-                page_token=page_token
-            )
+            result = service.list_groups(page_size=page_size, page_token=page_token)
 
         # Format and display results
         if output_file:
@@ -362,11 +360,11 @@ def search_groups(
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Searching groups for '{query}'..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Searching groups for '{query}'..."
+        ):
             result = service.search_groups(
-                query=query,
-                page_size=page_size,
-                page_token=page_token
+                query=query, page_size=page_size, page_token=page_token
             )
 
         # Format and display results
@@ -409,9 +407,7 @@ def create_group(
 
         with SpinnerProgressTracker().track_spinner(f"Creating group '{name}'..."):
             result = service.create_group(
-                name=name,
-                description=description,
-                organization_rid=organization_rid
+                name=name, description=description, organization_rid=organization_rid
             )
 
         # Format and display results
@@ -433,9 +429,7 @@ def delete_group(
     profile: Optional[str] = typer.Option(
         None, "--profile", help="Auth profile to use"
     ),
-    confirm: bool = typer.Option(
-        False, "--confirm", help="Skip confirmation prompt"
-    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
 ) -> None:
     """Delete a specific group."""
     console = Console()
@@ -519,7 +513,9 @@ def get_organization(
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Fetching organization {organization_id}..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching organization {organization_id}..."
+        ):
             result = service.get_organization(organization_id)
 
         # Format and display results

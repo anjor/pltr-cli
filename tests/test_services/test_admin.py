@@ -3,7 +3,7 @@ Tests for Admin service.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from pltr.services.admin import AdminService
 
@@ -37,9 +37,9 @@ class TestAdminService:
         mock_response.dict.return_value = {
             "users": [
                 {"id": "user1", "username": "john.doe", "email": "john@example.com"},
-                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"}
+                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"},
             ],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_client.admin.User.list.return_value = mock_response
 
@@ -59,7 +59,7 @@ class TestAdminService:
         mock_response = Mock()
         mock_response.dict.return_value = {
             "users": [{"id": "user1", "username": "john.doe"}],
-            "nextPageToken": "token123"
+            "nextPageToken": "token123",
         }
         mock_client.admin.User.list.return_value = mock_response
 
@@ -81,7 +81,7 @@ class TestAdminService:
             "id": user_id,
             "username": "john.doe",
             "email": "john@example.com",
-            "displayName": "John Doe"
+            "displayName": "John Doe",
         }
         mock_client.admin.User.get.return_value = mock_response
 
@@ -100,7 +100,7 @@ class TestAdminService:
         mock_response.dict.return_value = {
             "id": "current_user",
             "username": "current.user",
-            "email": "current@example.com"
+            "email": "current@example.com",
         }
         mock_client.admin.User.get_current.return_value = mock_response
 
@@ -118,7 +118,7 @@ class TestAdminService:
         mock_response = Mock()
         mock_response.dict.return_value = {
             "users": [{"id": "user1", "username": "john.doe"}],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_client.admin.User.search.return_value = mock_response
 
@@ -138,7 +138,7 @@ class TestAdminService:
         mock_response = Mock()
         mock_response.dict.return_value = {
             "markings": ["public", "internal"],
-            "permissions": ["read", "write"]
+            "permissions": ["read", "write"],
         }
         mock_client.admin.User.get_markings.return_value = mock_response
 
@@ -170,10 +170,14 @@ class TestAdminService:
         mock_response = Mock()
         mock_response.dict.return_value = {
             "groups": [
-                {"id": "group1", "name": "Engineering", "description": "Engineering team"},
-                {"id": "group2", "name": "Product", "description": "Product team"}
+                {
+                    "id": "group1",
+                    "name": "Engineering",
+                    "description": "Engineering team",
+                },
+                {"id": "group2", "name": "Product", "description": "Product team"},
             ],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_client.admin.Group.list.return_value = mock_response
 
@@ -196,7 +200,7 @@ class TestAdminService:
             "id": group_id,
             "name": "Engineering",
             "description": "Engineering team",
-            "memberCount": 25
+            "memberCount": 25,
         }
         mock_client.admin.Group.get.return_value = mock_response
 
@@ -215,7 +219,7 @@ class TestAdminService:
         mock_response = Mock()
         mock_response.dict.return_value = {
             "groups": [{"id": "group1", "name": "Engineering"}],
-            "nextPageToken": None
+            "nextPageToken": None,
         }
         mock_client.admin.Group.search.return_value = mock_response
 
@@ -238,22 +242,18 @@ class TestAdminService:
         mock_response.dict.return_value = {
             "id": "new_group_id",
             "name": group_name,
-            "description": description
+            "description": description,
         }
         mock_client.admin.Group.create.return_value = mock_response
 
         # Execute
         result = service.create_group(
-            name=group_name,
-            description=description,
-            organization_rid=org_rid
+            name=group_name, description=description, organization_rid=org_rid
         )
 
         # Assert
         mock_client.admin.Group.create.assert_called_once_with(
-            name=group_name,
-            description=description,
-            organization_rid=org_rid
+            name=group_name, description=description, organization_rid=org_rid
         )
         assert result["name"] == group_name
 
@@ -262,10 +262,7 @@ class TestAdminService:
         # Setup
         group_name = "Simple Group"
         mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "simple_group_id",
-            "name": group_name
-        }
+        mock_response.dict.return_value = {"id": "simple_group_id", "name": group_name}
         mock_client.admin.Group.create.return_value = mock_response
 
         # Execute
@@ -298,7 +295,7 @@ class TestAdminService:
         mock_response.dict.return_value = {
             "id": org_id,
             "name": "Acme Corp",
-            "description": "Example organization"
+            "description": "Example organization",
         }
         mock_client.admin.Organization.get.return_value = mock_response
 
@@ -319,7 +316,7 @@ class TestAdminService:
         mock_response.dict.return_value = {
             "id": role_id,
             "name": "Admin",
-            "description": "Administrator role"
+            "description": "Administrator role",
         }
         mock_client.admin.Role.get.return_value = mock_response
 
@@ -376,6 +373,7 @@ class TestAdminService:
 
     def test_serialize_response_with_dict_attr(self, service):
         """Test serialization of response with __dict__ attribute."""
+
         # Setup
         class MockResponse:
             def __init__(self):
@@ -400,6 +398,7 @@ class TestAdminService:
 
     def test_serialize_response_non_serializable(self, service):
         """Test serialization of non-serializable response."""
+
         # Setup
         class NonSerializableResponse:
             def __init__(self):

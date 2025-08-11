@@ -18,9 +18,7 @@ class AdminService(BaseService):
 
     # User Management Methods
     def list_users(
-        self, 
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None
+        self, page_size: Optional[int] = None, page_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         List all users in the organization.
@@ -34,8 +32,7 @@ class AdminService(BaseService):
         """
         try:
             response = self.service.User.list(
-                page_size=page_size,
-                page_token=page_token
+                page_size=page_size, page_token=page_token
             )
             return self._serialize_response(response)
         except Exception as e:
@@ -71,10 +68,10 @@ class AdminService(BaseService):
             raise RuntimeError(f"Failed to get current user: {str(e)}")
 
     def search_users(
-        self, 
+        self,
         query: str,
         page_size: Optional[int] = None,
-        page_token: Optional[str] = None
+        page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Search for users by query string.
@@ -89,9 +86,7 @@ class AdminService(BaseService):
         """
         try:
             response = self.service.User.search(
-                query=query,
-                page_size=page_size,
-                page_token=page_token
+                query=query, page_size=page_size, page_token=page_token
             )
             return self._serialize_response(response)
         except Exception as e:
@@ -125,15 +120,16 @@ class AdminService(BaseService):
         """
         try:
             self.service.User.revoke_all_tokens(user_id)
-            return {"success": True, "message": f"All tokens revoked for user {user_id}"}
+            return {
+                "success": True,
+                "message": f"All tokens revoked for user {user_id}",
+            }
         except Exception as e:
             raise RuntimeError(f"Failed to revoke tokens for user {user_id}: {str(e)}")
 
     # Group Management Methods
     def list_groups(
-        self, 
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None
+        self, page_size: Optional[int] = None, page_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         List all groups in the organization.
@@ -147,8 +143,7 @@ class AdminService(BaseService):
         """
         try:
             response = self.service.Group.list(
-                page_size=page_size,
-                page_token=page_token
+                page_size=page_size, page_token=page_token
             )
             return self._serialize_response(response)
         except Exception as e:
@@ -171,10 +166,10 @@ class AdminService(BaseService):
             raise RuntimeError(f"Failed to get group {group_id}: {str(e)}")
 
     def search_groups(
-        self, 
+        self,
         query: str,
         page_size: Optional[int] = None,
-        page_token: Optional[str] = None
+        page_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Search for groups by query string.
@@ -189,19 +184,17 @@ class AdminService(BaseService):
         """
         try:
             response = self.service.Group.search(
-                query=query,
-                page_size=page_size,
-                page_token=page_token
+                query=query, page_size=page_size, page_token=page_token
             )
             return self._serialize_response(response)
         except Exception as e:
             raise RuntimeError(f"Failed to search groups: {str(e)}")
 
     def create_group(
-        self, 
+        self,
         name: str,
         description: Optional[str] = None,
-        organization_rid: Optional[str] = None
+        organization_rid: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new group.
@@ -221,7 +214,7 @@ class AdminService(BaseService):
                 create_params["description"] = description
             if organization_rid:
                 create_params["organization_rid"] = organization_rid
-                
+
             response = self.service.Group.create(**create_params)
             return self._serialize_response(response)
         except Exception as e:
@@ -239,7 +232,10 @@ class AdminService(BaseService):
         """
         try:
             self.service.Group.delete(group_id)
-            return {"success": True, "message": f"Group {group_id} deleted successfully"}
+            return {
+                "success": True,
+                "message": f"Group {group_id} deleted successfully",
+            }
         except Exception as e:
             raise RuntimeError(f"Failed to delete group {group_id}: {str(e)}")
 
@@ -258,7 +254,9 @@ class AdminService(BaseService):
             response = self.service.Organization.get(organization_id)
             return self._serialize_response(response)
         except Exception as e:
-            raise RuntimeError(f"Failed to get organization {organization_id}: {str(e)}")
+            raise RuntimeError(
+                f"Failed to get organization {organization_id}: {str(e)}"
+            )
 
     # Role Management Methods
     def get_role(self, role_id: str) -> Dict[str, Any]:
@@ -291,14 +289,14 @@ class AdminService(BaseService):
             return {}
 
         # Handle different response types
-        if hasattr(response, 'dict'):
+        if hasattr(response, "dict"):
             # Pydantic models
             return response.dict()
-        elif hasattr(response, '__dict__'):
+        elif hasattr(response, "__dict__"):
             # Regular objects
             result = {}
             for key, value in response.__dict__.items():
-                if not key.startswith('_'):
+                if not key.startswith("_"):
                     try:
                         # Try to serialize the value
                         json.dumps(value)
