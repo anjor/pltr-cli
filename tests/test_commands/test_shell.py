@@ -81,7 +81,9 @@ class TestShellCommand:
 
     def test_start_command_help(self):
         """Test start command help."""
-        result = self.runner.invoke(shell_app, ["start", "--help"])
+        result = self.runner.invoke(
+            shell_app, ["start", "--help"], env={"NO_COLOR": "1"}
+        )
 
         assert result.exit_code == 0
         assert "Start an interactive shell session" in result.stdout
@@ -98,7 +100,9 @@ class TestShellCommand:
         """Test start command with profile option."""
         # Test that the profile option is accepted
         result = self.runner.invoke(
-            shell_app, ["start", "--profile", "test-profile", "--help"]
+            shell_app,
+            ["start", "--profile", "test-profile", "--help"],
+            env={"NO_COLOR": "1"},
         )
 
         assert result.exit_code == 0
