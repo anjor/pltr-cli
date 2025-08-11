@@ -2,15 +2,12 @@
 Tests for shell command.
 """
 
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
-from pltr.commands.shell import get_history_file, get_prompt, shell_app, start
+from pltr.commands.shell import get_history_file, get_prompt, shell_app
 
 
 class TestShellCommand:
