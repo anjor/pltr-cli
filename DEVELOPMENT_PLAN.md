@@ -133,7 +133,7 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [ ] Add batch operations support
 - [ ] Add caching for improved performance
 - [ ] Implement plugin architecture
-- [ ] Add command completion
+- [x] Add command completion
 - [ ] Merge to main
 
 ### Phase 9: Documentation
@@ -379,7 +379,9 @@ pltr shell
 - Created comprehensive test suite for admin functionality
 - **Merged via PR #8 on 2025-08-11**
 
-**Phase 8 - Advanced Features: Interactive Mode 🚧 (IN PROGRESS - 2025-08-11):**
+**Phase 8 - Advanced Features 🚧 (IN PROGRESS - 2025-08-11):**
+
+**Interactive Mode (COMPLETED):**
 - Added `click-repl>=0.3.0` dependency for advanced REPL functionality
 - Implemented `pltr shell` command for interactive mode with features:
   - Tab completion for all existing commands (dataset, ontology, sql, admin, etc.)
@@ -407,6 +409,34 @@ pltr shell
   pltr> dataset get ri.foundry.main.dataset.123
   pltr> sql execute "SELECT * FROM table LIMIT 10"
   pltr> admin user current
+  ```
+
+**Command Completion (COMPLETED - 2025-08-11):**
+- Implemented shell completion support for bash, zsh, and fish
+- Created `pltr completion` command group with subcommands:
+  - `pltr completion install` - Install shell completions
+  - `pltr completion show` - Display completion script
+  - `pltr completion uninstall` - Remove completions
+- Auto-detection of shell type from environment
+- Custom completion functions for dynamic values:
+  - RID completion with caching (~/.cache/pltr/recent_rids.json)
+  - Profile name completion from ProfileManager
+  - Output format completion (table, json, csv)
+  - SQL query template completion
+  - File path completion
+- Integrated Typer's autocompletion parameter for commands
+- Comprehensive test suite (19 tests) for completion functionality
+- **Installation Examples:**
+  ```bash
+  # Install completions for current shell
+  pltr completion install
+  
+  # Install for specific shell
+  pltr completion install --shell bash
+  pltr completion install --shell zsh --path ~/.zfunc/_pltr
+  
+  # Show completion script
+  pltr completion show --shell fish
   ```
 
 ## Release Process

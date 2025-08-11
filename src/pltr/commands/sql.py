@@ -12,18 +12,29 @@ from rich.console import Console
 from ..services.sql import SqlService
 from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
+from ..utils.completion import complete_profile, complete_output_format, complete_sql_query
 
 app = typer.Typer(name="sql", help="Execute SQL queries against Foundry datasets")
 
 
 @app.command("execute")
 def execute_query(
-    query: str = typer.Argument(..., help="SQL query to execute"),
+    query: str = typer.Argument(
+        ..., 
+        help="SQL query to execute",
+        autocompletion=complete_sql_query
+    ),
     profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
+        None, 
+        "--profile", 
+        help="Auth profile to use",
+        autocompletion=complete_profile
     ),
     output_format: str = typer.Option(
-        "table", "--format", help="Output format (table, json, csv)"
+        "table", 
+        "--format", 
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format
     ),
     output_file: Optional[Path] = typer.Option(
         None, "--output", help="Save results to file"
