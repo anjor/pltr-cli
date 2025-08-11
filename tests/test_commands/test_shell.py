@@ -31,8 +31,9 @@ class TestShellCommand:
         # Should return a Path object
         assert isinstance(history_file, Path)
 
-        # Should be in the correct location
-        assert str(history_file).endswith(".config/pltr/repl_history")
+        # Should be in the correct location (cross-platform compatible)
+        expected_path = Path.home() / ".config" / "pltr" / "repl_history"
+        assert history_file == expected_path
 
     @patch("pltr.commands.shell.ProfileManager")
     def test_get_prompt_with_profile(self, mock_profile_manager_class):
