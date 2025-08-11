@@ -105,16 +105,16 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Write comprehensive tests for SQL commands (40+ tests)
 - [x] Merge to main
 
-### Phase 6: Admin Commands
-- [ ] Create feature/admin-commands branch
-- [ ] Implement admin service wrapper
-- [ ] Add `pltr user list` command
-- [ ] Add `pltr user get <id>` command
-- [ ] Add `pltr group list` command
-- [ ] Add `pltr group manage` operations
-- [ ] Add permission management commands
-- [ ] Write tests for admin commands
-- [ ] Merge to main
+### Phase 6: Admin Commands ✅
+- [x] Create feature/admin-commands branch
+- [x] Implement admin service wrapper
+- [x] Add `pltr user list` command
+- [x] Add `pltr user get <id>` command
+- [x] Add `pltr group list` command
+- [x] Add `pltr group manage` operations
+- [x] Add permission management commands
+- [x] Write tests for admin commands
+- [x] Merge to main
 
 ### Phase 7: Testing & Quality
 - [ ] Create feature/testing branch
@@ -126,9 +126,9 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [ ] Add pre-commit hooks
 - [ ] Merge to main
 
-### Phase 8: Advanced Features
-- [ ] Create feature/advanced branch
-- [ ] Add interactive mode (REPL)
+### Phase 8: Advanced Features 🚧 (IN PROGRESS)
+- [x] Create feature/advanced branch
+- [x] Add interactive mode (REPL)
 - [ ] Implement command aliases
 - [ ] Add batch operations support
 - [ ] Add caching for improved performance
@@ -222,17 +222,26 @@ pltr dataset get ri.foundry.main.dataset.6fd66e5e-e525-4adf-ba2f-1167fc476a4a
 pltr dataset create "New Dataset" --parent-folder-rid ri.foundry.main.folder.abc123
 
 # Ontology operations
-pltr ontology object search "customer name:John"
-pltr ontology object get object-rid-456
-pltr ontology action execute send-email --params '{"to": "user@example.com"}'
+pltr ontology list
+pltr ontology object-list ontology-rid object-type
+pltr ontology action-apply ontology-rid action-name
 
 # SQL operations
 pltr sql execute "SELECT * FROM dataset LIMIT 10"
 pltr sql export "SELECT * FROM dataset" --output results.csv --format csv
 
 # Admin operations
-pltr user list --filter "active:true"
-pltr group add-member engineering john.doe@company.com
+pltr admin user list
+pltr admin group create "Engineering Team"
+
+# Interactive shell mode (NEW!)
+pltr shell
+
+# In shell mode, commands work without 'pltr' prefix:
+# pltr> dataset get ri.foundry.main.dataset.123
+# pltr> sql execute "SELECT COUNT(*) FROM my_table"
+# pltr> admin user current
+# pltr> exit
 ```
 
 ## Success Metrics
@@ -347,6 +356,59 @@ pltr group add-member engineering john.doe@company.com
 - **Security**: No API tokens required - uses PyPI Trusted Publishing with OIDC tokens
 - **Testing**: All changes tested on TestPyPI before production, with package installation verification
 
+**Phase 6 - Admin Commands ✅ (COMPLETED & MERGED):**
+- Implemented AdminService wrapper for foundry-platform-sdk admin operations
+- Created comprehensive admin command structure with 4 sub-apps (user, group, role, org)
+- Added 10+ admin commands for user management:
+  - `pltr admin user list` - List all users with pagination
+  - `pltr admin user get <id>` - Get specific user details
+  - `pltr admin user current` - Get current authenticated user
+  - `pltr admin user search <query>` - Search users
+  - `pltr admin user markings <id>` - Get user permissions
+  - `pltr admin user revoke-tokens <id>` - Revoke user tokens
+- Added 5 group management commands:
+  - `pltr admin group list` - List all groups
+  - `pltr admin group get <id>` - Get group details
+  - `pltr admin group search <query>` - Search groups
+  - `pltr admin group create <name>` - Create new group
+  - `pltr admin group delete <id>` - Delete group
+- Added role and organization management commands
+- All commands support multiple output formats (table, JSON, CSV) with file export
+- Implemented pagination support for list operations
+- Added confirmation prompts for destructive operations
+- Created comprehensive test suite for admin functionality
+- **Merged via PR #8 on 2025-08-11**
+
+**Phase 8 - Advanced Features: Interactive Mode 🚧 (IN PROGRESS - 2025-08-11):**
+- Added `click-repl>=0.3.0` dependency for advanced REPL functionality
+- Implemented `pltr shell` command for interactive mode with features:
+  - Tab completion for all existing commands (dataset, ontology, sql, admin, etc.)
+  - Persistent command history across sessions (saved to ~/.config/pltr/repl_history)
+  - Dynamic prompt showing current profile: `pltr (profile-name)> ` or `pltr> `
+  - All commands available without 'pltr' prefix in shell mode
+  - Support for profile selection with `--profile` option
+  - Graceful exit with 'exit' command or Ctrl+D
+- Built on `prompt_toolkit` under the hood for advanced features:
+  - Multi-line editing support
+  - History search with Ctrl+R
+  - Command completion while typing
+  - Rich terminal integration maintained
+- Created comprehensive test suite (13 tests) covering:
+  - Command structure and help text
+  - Profile integration
+  - History file management
+  - CLI integration verification
+- **Usage Examples:**
+  ```bash
+  # Start interactive shell
+  pltr shell
+  
+  # In shell, run any command without 'pltr' prefix:
+  pltr> dataset get ri.foundry.main.dataset.123
+  pltr> sql execute "SELECT * FROM table LIMIT 10"
+  pltr> admin user current
+  ```
+
 ## Release Process
 
 ### Creating a New Release
@@ -395,6 +457,14 @@ After PyPI publishing:
 3. Test installation: `pip install pltr-cli`
 
 ## Release History
+
+### Version 0.1.2 (2025-08-11)
+- **GitHub Actions**: Updated sigstore action to v3.0.1 to resolve deprecated upload-artifact v3 warnings
+- **Bug Fixes**: Fixed release workflow compatibility issues
+
+### Version 0.1.1 (2025-08-10)
+- **Documentation**: Fixed installation instructions in README
+- **Dependencies**: Added tomli_w dependency for release script functionality
 
 ### Version 0.1.0 (2025-08-10) ✅ RELEASED
 

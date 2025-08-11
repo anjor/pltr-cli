@@ -6,7 +6,7 @@ import typer
 from typing_extensions import Annotated
 
 from pltr import __version__
-from pltr.commands import configure, verify, dataset, ontology, sql, admin
+from pltr.commands import configure, verify, dataset, ontology, sql, admin, shell
 
 app = typer.Typer(
     name="pltr",
@@ -25,6 +25,7 @@ app.add_typer(
     name="admin",
     help="Admin operations for user, group, and organization management",
 )
+app.add_typer(shell.shell_app, name="shell", help="Interactive shell mode")
 
 
 def version_callback(value: bool):
