@@ -4,7 +4,7 @@ Ontology commands for interacting with Foundry ontologies.
 
 import json
 import typer
-from typing import Optional, List
+from typing import Optional
 from rich.console import Console
 
 from ..services.ontology import (
