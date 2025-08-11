@@ -2,7 +2,6 @@
 Tests for SQL service.
 """
 
-import json
 import pytest
 from unittest.mock import Mock, patch
 from foundry_sdk.v2.sql_queries.models import (

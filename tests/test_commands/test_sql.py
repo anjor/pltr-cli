@@ -2,10 +2,8 @@
 Tests for SQL commands.
 """
 
-import json
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 
 from pltr.commands.sql import app
