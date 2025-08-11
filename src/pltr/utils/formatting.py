@@ -329,3 +329,79 @@ class OutputFormatter:
     def print_info(self, message: str):
         """Print info message with formatting."""
         self.console.print(f"ℹ️  {message}", style="blue")
+
+    def format_table(
+        self,
+        data: List[Dict[str, Any]],
+        columns: Optional[List[str]] = None,
+        format: str = "table",
+        output: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format data as a table with specified columns.
+
+        Args:
+            data: List of dictionaries to format
+            columns: List of column names to display (uses all if None)
+            format: Output format ('table', 'json', 'csv')
+            output: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if columns:
+            # Filter data to only include specified columns
+            filtered_data = []
+            for item in data:
+                filtered_item = {col: item.get(col) for col in columns}
+                filtered_data.append(filtered_item)
+            data = filtered_data
+
+        return self.format_output(data, format, output)
+
+    def format_list(
+        self,
+        data: List[Any],
+        format: str = "table",
+        output: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format a list of items.
+
+        Args:
+            data: List of items to format
+            format: Output format ('table', 'json', 'csv')
+            output: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        # Convert list items to dicts if needed
+        if data and not isinstance(data[0], dict):
+            data = [{"value": item} for item in data]
+
+        return self.format_output(data, format, output)
+
+    def format_dict(
+        self,
+        data: Dict[str, Any],
+        format: str = "table",
+        output: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format a dictionary for display.
+
+        Args:
+            data: Dictionary to format
+            format: Output format ('table', 'json', 'csv')
+            output: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format == "table":
+            # Convert to key-value pairs for table display
+            table_data = [{"Property": k, "Value": str(v)} for k, v in data.items()]
+            return self.format_output(table_data, format, output)
+        else:
+            return self.format_output(data, format, output)
