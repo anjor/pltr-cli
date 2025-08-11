@@ -2,12 +2,19 @@
 Tests for shell command.
 """
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from pltr.commands.shell import get_history_file, get_prompt, shell_app
+
+
+def strip_ansi_codes(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", text)
 
 
 class TestShellCommand:
@@ -81,13 +88,12 @@ class TestShellCommand:
 
     def test_start_command_help(self):
         """Test start command help."""
-        result = self.runner.invoke(
-            shell_app, ["start", "--help"], env={"NO_COLOR": "1"}
-        )
+        result = self.runner.invoke(shell_app, ["start", "--help"])
 
         assert result.exit_code == 0
-        assert "Start an interactive shell session" in result.stdout
-        assert "--profile" in result.stdout
+        clean_output = strip_ansi_codes(result.stdout)
+        assert "Start an interactive shell session" in clean_output
+        assert "--profile" in clean_output
 
     def test_start_command_basic(self):
         """Test start command basic execution."""
@@ -100,13 +106,12 @@ class TestShellCommand:
         """Test start command with profile option."""
         # Test that the profile option is accepted
         result = self.runner.invoke(
-            shell_app,
-            ["start", "--profile", "test-profile", "--help"],
-            env={"NO_COLOR": "1"},
+            shell_app, ["start", "--profile", "test-profile", "--help"]
         )
 
         assert result.exit_code == 0
-        assert "--profile" in result.stdout
+        clean_output = strip_ansi_codes(result.stdout)
+        assert "--profile" in clean_output
 
     def test_shell_callback_no_subcommand(self):
         """Test shell callback when no subcommand is provided."""
