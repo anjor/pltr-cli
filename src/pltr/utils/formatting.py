@@ -405,3 +405,135 @@ class OutputFormatter:
             return self.format_output(table_data, format, output)
         else:
             return self.format_output(data, format, output)
+
+    def display(self, data: Any, format_type: str = "table") -> None:
+        """
+        Display data using the appropriate formatter.
+
+        Args:
+            data: Data to display
+            format_type: Display format ('table', 'json', 'csv')
+        """
+        if isinstance(data, list):
+            if data and isinstance(data[0], dict):
+                self.format_output(data, format_type)
+            else:
+                self.format_list(data, format_type)
+        elif isinstance(data, dict):
+            self.format_dict(data, format_type)
+        else:
+            # For simple values, just print them
+            if format_type == "json":
+                rich_print(json.dumps(data, indent=2, default=str))
+            else:
+                rich_print(str(data))
+
+    def save_to_file(self, data: Any, file_path: Any, format_type: str) -> None:
+        """
+        Save data to a file in the specified format.
+
+        Args:
+            data: Data to save
+            file_path: Path object or string for output file
+            format_type: File format ('table', 'json', 'csv')
+        """
+        file_path_str = str(file_path)
+
+        if isinstance(data, list):
+            if data and isinstance(data[0], dict):
+                self.format_output(data, format_type, file_path_str)
+            else:
+                self.format_list(data, format_type, file_path_str)
+        elif isinstance(data, dict):
+            self.format_dict(data, format_type, file_path_str)
+        else:
+            # For simple values, save as text
+            with open(file_path_str, "w") as f:
+                if format_type == "json":
+                    json.dump(data, f, indent=2, default=str)
+                else:
+                    f.write(str(data))
+
+    def format_sql_results(
+        self,
+        results: Any,
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format SQL query results for display.
+
+        Args:
+            results: Query results (could be dict, list, or other types)
+            format_type: Output format ('table', 'json', 'csv')
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        # Handle different types of SQL results
+        if isinstance(results, dict):
+            # Check for special result types
+            if "text" in results:
+                # Text result - display as-is
+                text_data = results["text"]
+                if output_file:
+                    with open(output_file, "w") as f:
+                        f.write(text_data)
+                    return None
+                else:
+                    rich_print(text_data)
+                    return text_data
+            elif "type" in results and results["type"] == "binary":
+                # Binary result - show metadata
+                return self.format_output(results, format_type, output_file)
+            elif "results" in results:
+                # Results array
+                return self.format_output(results["results"], format_type, output_file)
+            elif "result" in results:
+                # Single result
+                single_result = results["result"]
+                if isinstance(single_result, (dict, list)):
+                    return self.format_output(single_result, format_type, output_file)
+                else:
+                    # Simple value
+                    display_data = [{"Result": single_result}]
+                    return self.format_output(display_data, format_type, output_file)
+            else:
+                # Regular dictionary
+                return self.format_dict(results, format_type, output_file)
+        elif isinstance(results, list):
+            # List of results
+            return self.format_output(results, format_type, output_file)
+        else:
+            # Simple value
+            display_data = [{"Result": results}]
+            return self.format_output(display_data, format_type, output_file)
+
+    def format_query_status(
+        self,
+        status_info: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format query status information.
+
+        Args:
+            status_info: Query status dictionary
+            format_type: Output format ('table', 'json', 'csv')
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            # Convert to key-value display for better readability
+            display_data = []
+            for key, value in status_info.items():
+                display_data.append(
+                    {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                )
+            return self.format_output(display_data, format_type, output_file)
+        else:
+            return self.format_output(status_info, format_type, output_file)
