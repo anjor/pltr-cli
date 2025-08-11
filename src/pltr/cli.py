@@ -6,7 +6,7 @@ import typer
 from typing_extensions import Annotated
 
 from pltr import __version__
-from pltr.commands import configure, verify, dataset, ontology
+from pltr.commands import configure, verify, dataset, ontology, sql
 
 app = typer.Typer(
     name="pltr",
@@ -19,6 +19,7 @@ app.add_typer(configure.app, name="configure", help="Manage authentication profi
 app.add_typer(verify.app, name="verify", help="Verify authentication")
 app.add_typer(dataset.app, name="dataset", help="Manage datasets")
 app.add_typer(ontology.app, name="ontology", help="Ontology operations")
+app.add_typer(sql.app, name="sql", help="Execute SQL queries")
 
 
 def version_callback(value: bool):
