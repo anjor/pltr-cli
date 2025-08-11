@@ -87,7 +87,7 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Add `pltr ontology query-execute <ontology-rid> <query>` command - Execute query
 - [x] Implement filtering and pagination support
 - [x] Write comprehensive test suite for ontology commands (150+ tests)
-- [ ] Merge to main
+- [x] Merge to main
 
 ### Phase 5: SQL Commands ✅
 - [x] Create feature/sql-commands branch
@@ -103,7 +103,7 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Add support for fallback branch IDs
 - [x] Implement query status polling and timeout handling
 - [x] Write comprehensive tests for SQL commands (40+ tests)
-- [ ] Merge to main
+- [x] Merge to main
 
 ### Phase 6: Admin Commands
 - [ ] Create feature/admin-commands branch
@@ -298,7 +298,7 @@ pltr group add-member engineering john.doe@company.com
 - Codecov integration for coverage tracking
 - **Merged via PR #2 on 2025-08-08**
 
-**Phase 4 - Ontology Commands ✅ (COMPLETED):**
+**Phase 4 - Ontology Commands ✅ (COMPLETED & MERGED):**
 - Implemented complete ontology service layer with 5 specialized service classes
 - Created OntologyService, ObjectTypeService, OntologyObjectService, ActionService, QueryService
 - Added 13 new commands for comprehensive ontology operations
@@ -312,9 +312,9 @@ pltr group add-member engineering john.doe@company.com
 - Commands support multiple output formats (table, JSON, CSV) with file export
 - Error handling includes friendly messages for authentication and JSON parsing errors
 - **SDK Limitations Handled**: RID-based operations only, no discovery/browsing capabilities
-- **Ready for PR**: All tests passing, documentation updated
+- **Merged via PR #6 on 2025-08-11**
 
-**Phase 5 - SQL Commands ✅ (COMPLETED):**
+**Phase 5 - SQL Commands ✅ (COMPLETED & MERGED):**
 - Implemented SqlService wrapper for foundry-platform-sdk SQL queries API
 - Discovered and integrated with `client.sql_queries.SqlQuery` service
 - Added 7 comprehensive SQL commands:
@@ -334,7 +334,7 @@ pltr group add-member engineering john.doe@company.com
 - Created comprehensive test suite: 25+ service tests and 20+ command tests
 - All commands support profile-based authentication and multiple output formats
 - **SDK Integration**: Full integration with foundry-platform-sdk v1.27.0 SQL capabilities
-- **Ready for PR**: All functionality implemented and tested
+- **Merged via PR #7 on 2025-08-11**
 
 **Phase 10 - Distribution & PyPI Publishing ✅ (COMPLETED):**
 - Enhanced pyproject.toml with comprehensive metadata, URLs, and classifiers for PyPI
