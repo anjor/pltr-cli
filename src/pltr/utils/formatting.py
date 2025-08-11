@@ -428,9 +428,7 @@ class OutputFormatter:
             else:
                 rich_print(str(data))
 
-    def save_to_file(
-        self, data: Any, file_path: Any, format_type: str
-    ) -> None:
+    def save_to_file(self, data: Any, file_path: Any, format_type: str) -> None:
         """
         Save data to a file in the specified format.
 
@@ -440,7 +438,7 @@ class OutputFormatter:
             format_type: File format ('table', 'json', 'csv')
         """
         file_path_str = str(file_path)
-        
+
         if isinstance(data, list):
             if data and isinstance(data[0], dict):
                 self.format_output(data, format_type, file_path_str)
@@ -533,10 +531,9 @@ class OutputFormatter:
             # Convert to key-value display for better readability
             display_data = []
             for key, value in status_info.items():
-                display_data.append({
-                    "Property": key.replace("_", " ").title(),
-                    "Value": str(value)
-                })
+                display_data.append(
+                    {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                )
             return self.format_output(display_data, format_type, output_file)
         else:
             return self.format_output(status_info, format_type, output_file)

@@ -61,9 +61,7 @@ class SqlService(BaseService):
                 raise RuntimeError("Query was canceled")
             elif isinstance(status, RunningQueryStatus):
                 # Wait for completion
-                return self._wait_for_query_completion(
-                    status.query_id, timeout, format
-                )
+                return self._wait_for_query_completion(status.query_id, timeout, format)
             else:
                 raise RuntimeError(f"Unknown query status type: {type(status)}")
 
@@ -191,11 +189,11 @@ class SqlService(BaseService):
             RuntimeError: If query fails or times out
         """
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             try:
                 status = self.service.get_status(query_id)
-                
+
                 if isinstance(status, SucceededQueryStatus):
                     return self._format_query_status(status)
                 elif isinstance(status, FailedQueryStatus):
@@ -208,12 +206,12 @@ class SqlService(BaseService):
                     continue
                 else:
                     raise RuntimeError(f"Unknown status type: {type(status)}")
-                    
+
             except Exception as e:
                 if isinstance(e, RuntimeError):
                     raise
                 raise RuntimeError(f"Error checking query status: {e}")
-        
+
         # Timeout reached
         raise RuntimeError(f"Query timed out after {timeout} seconds")
 
@@ -233,7 +231,7 @@ class SqlService(BaseService):
         """
         # Wait for completion
         self.wait_for_completion(query_id, timeout)
-        
+
         # Get results
         return self._format_completed_query(query_id, format)
 
@@ -250,7 +248,7 @@ class SqlService(BaseService):
         """
         results_bytes = self.service.get_results(query_id)
         results = self._format_query_results(results_bytes, format)
-        
+
         return {
             "query_id": query_id,
             "status": "succeeded",
@@ -258,7 +256,13 @@ class SqlService(BaseService):
         }
 
     def _format_query_status(
-        self, status: Union[RunningQueryStatus, SucceededQueryStatus, FailedQueryStatus, CanceledQueryStatus]
+        self,
+        status: Union[
+            RunningQueryStatus,
+            SucceededQueryStatus,
+            FailedQueryStatus,
+            CanceledQueryStatus,
+        ],
     ) -> Dict[str, Any]:
         """
         Format query status for consistent output.
@@ -270,12 +274,12 @@ class SqlService(BaseService):
             Formatted status dictionary
         """
         base_info: Dict[str, Any] = {"status": status.type}
-        
+
         if isinstance(status, (RunningQueryStatus, SucceededQueryStatus)):
             base_info["query_id"] = status.query_id
         elif isinstance(status, FailedQueryStatus):
             base_info["error_message"] = status.error_message
-        
+
         return base_info
 
     def _format_query_results(self, results_bytes: bytes, format: str) -> Any:
@@ -291,18 +295,20 @@ class SqlService(BaseService):
         """
         if format == "raw":
             return results_bytes
-        
+
         # Try to decode as text first
         try:
-            results_text = results_bytes.decode('utf-8')
+            results_text = results_bytes.decode("utf-8")
         except UnicodeDecodeError:
             # If it's binary data, return as base64 or hex
             return {
                 "type": "binary",
                 "size_bytes": len(results_bytes),
-                "data": results_bytes.hex()[:200] + "..." if len(results_bytes) > 100 else results_bytes.hex()
+                "data": results_bytes.hex()[:200] + "..."
+                if len(results_bytes) > 100
+                else results_bytes.hex(),
             }
-        
+
         if format == "json":
             try:
                 # Try to parse as JSON
@@ -310,7 +316,7 @@ class SqlService(BaseService):
             except json.JSONDecodeError:
                 # Return as text if not valid JSON
                 return {"text": results_text}
-        
+
         elif format == "table":
             # For table format, we'll return structured data
             # that the formatter can convert to a table
@@ -324,11 +330,11 @@ class SqlService(BaseService):
                     return {"result": data}
             except json.JSONDecodeError:
                 # Return as text data
-                lines = results_text.strip().split('\n')
+                lines = results_text.strip().split("\n")
                 if len(lines) == 1:
                     return {"result": lines[0]}
                 else:
                     return {"results": lines}
-        
+
         # Default: return as text
         return {"text": results_text}
