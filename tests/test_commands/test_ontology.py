@@ -398,7 +398,7 @@ def test_output_formats(mock_services):
     assert result.exit_code == 0
 
     # Test output to file
-    with patch("builtins.open", create=True) as mock_open:
+    with patch("builtins.open", create=True):
         result = runner.invoke(app, ["list", "--output", "output.json"])
         assert result.exit_code == 0
         assert "Ontologies saved to output.json" in result.output
