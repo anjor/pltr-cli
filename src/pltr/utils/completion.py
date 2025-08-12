@@ -69,11 +69,7 @@ def complete_profile(ctx, param, incomplete):
     try:
         manager = ProfileManager()
         profiles = manager.list_profiles()
-        return [
-            profile
-            for profile in profiles
-            if profile.startswith(incomplete)
-        ]
+        return [profile for profile in profiles if profile.startswith(incomplete)]
     except Exception:
         return []
 

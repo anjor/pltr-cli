@@ -16,15 +16,9 @@ if "_PLTR_COMPLETE" in os.environ:
     # Get the completion instruction from environment
     complete_var = "_PLTR_COMPLETE"
     instruction = os.environ.get(complete_var, "")
-    
+
     # Run Click's completion
-    exit_code = shell_complete(
-        click_app, 
-        {}, 
-        "pltr",
-        complete_var,
-        instruction
-    )
+    exit_code = shell_complete(click_app, {}, "pltr", complete_var, instruction)
     sys.exit(exit_code)
 
 # Normal CLI execution
