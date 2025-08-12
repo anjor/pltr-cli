@@ -6,7 +6,16 @@ import typer
 from typing_extensions import Annotated
 
 from pltr import __version__
-from pltr.commands import configure, verify, dataset, ontology, sql, admin, shell, completion
+from pltr.commands import (
+    configure,
+    verify,
+    dataset,
+    ontology,
+    sql,
+    admin,
+    shell,
+    completion,
+)
 
 app = typer.Typer(
     name="pltr",

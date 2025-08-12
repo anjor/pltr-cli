@@ -9,10 +9,10 @@ if "_PLTR_COMPLETE" in os.environ:
     from click.shell_completion import shell_complete
     import typer
     from pltr.cli import app
-    
+
     # Convert Typer app to Click command
     click_app = typer.main.get_command(app)
-    
+
     # Run Click's completion
     shell_complete(click_app, {}, sys.argv[1] if len(sys.argv) > 1 else "pltr")
     sys.exit(0)

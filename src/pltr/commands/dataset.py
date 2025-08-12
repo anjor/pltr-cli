@@ -10,7 +10,12 @@ from ..services.dataset import DatasetService
 from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
 from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import complete_rid, complete_profile, complete_output_format, cache_rid
+from ..utils.completion import (
+    complete_rid,
+    complete_profile,
+    complete_output_format,
+    cache_rid,
+)
 
 app = typer.Typer()
 console = Console()
@@ -20,23 +25,17 @@ formatter = OutputFormatter(console)
 @app.command("get")
 def get_dataset(
     dataset_rid: str = typer.Argument(
-        ..., 
-        help="Dataset Resource Identifier",
-        autocompletion=complete_rid
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
     ),
     profile: Optional[str] = typer.Option(
-        None, 
-        "--profile", 
-        "-p", 
-        help="Profile name",
-        autocompletion=complete_profile
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),
     format: str = typer.Option(
-        "table", 
-        "--format", 
-        "-f", 
+        "table",
+        "--format",
+        "-f",
         help="Output format (table, json, csv)",
-        autocompletion=complete_output_format
+        autocompletion=complete_output_format,
     ),
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
@@ -46,7 +45,7 @@ def get_dataset(
     try:
         # Cache the RID for future completions
         cache_rid(dataset_rid)
-        
+
         service = DatasetService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner(

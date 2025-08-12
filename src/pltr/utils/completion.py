@@ -12,7 +12,7 @@ def get_cached_rids() -> List[str]:
     """Get recently used RIDs from cache."""
     cache_dir = Path.home() / ".cache" / "pltr"
     rid_cache_file = cache_dir / "recent_rids.json"
-    
+
     if rid_cache_file.exists():
         try:
             with open(rid_cache_file) as f:
@@ -20,7 +20,7 @@ def get_cached_rids() -> List[str]:
                 return data.get("rids", [])
         except Exception:
             pass
-    
+
     # Return some example RIDs if no cache
     return [
         "ri.foundry.main.dataset.",
@@ -34,7 +34,7 @@ def cache_rid(rid: str):
     cache_dir = Path.home() / ".cache" / "pltr"
     cache_dir.mkdir(parents=True, exist_ok=True)
     rid_cache_file = cache_dir / "recent_rids.json"
-    
+
     # Load existing cache
     rids = []
     if rid_cache_file.exists():
@@ -44,12 +44,12 @@ def cache_rid(rid: str):
                 rids = data.get("rids", [])
         except Exception:
             pass
-    
+
     # Add new RID (keep last 50)
     if rid not in rids:
         rids.insert(0, rid)
         rids = rids[:50]
-    
+
     # Save cache
     try:
         with open(rid_cache_file, "w") as f:
@@ -61,11 +61,7 @@ def cache_rid(rid: str):
 def complete_rid(ctx, param, incomplete):
     """Complete RID arguments."""
     rids = get_cached_rids()
-    return [
-        rid
-        for rid in rids
-        if rid.startswith(incomplete)
-    ]
+    return [rid for rid in rids if rid.startswith(incomplete)]
 
 
 def complete_profile(ctx, param, incomplete):
@@ -85,11 +81,7 @@ def complete_profile(ctx, param, incomplete):
 def complete_output_format(ctx, param, incomplete):
     """Complete output format options."""
     formats = ["table", "json", "csv"]
-    return [
-        fmt
-        for fmt in formats
-        if fmt.startswith(incomplete)
-    ]
+    return [fmt for fmt in formats if fmt.startswith(incomplete)]
 
 
 def complete_sql_query(ctx, param, incomplete):
@@ -106,11 +98,7 @@ def complete_sql_query(ctx, param, incomplete):
         "LEFT JOIN ",
         "INNER JOIN ",
     ]
-    return [
-        tmpl
-        for tmpl in templates
-        if tmpl.lower().startswith(incomplete.lower())
-    ]
+    return [tmpl for tmpl in templates if tmpl.lower().startswith(incomplete.lower())]
 
 
 def complete_ontology_action(ctx, param, incomplete):
@@ -124,25 +112,21 @@ def complete_ontology_action(ctx, param, incomplete):
         "link",
         "unlink",
     ]
-    return [
-        action
-        for action in actions
-        if action.startswith(incomplete)
-    ]
+    return [action for action in actions if action.startswith(incomplete)]
 
 
 def complete_file_path(ctx, param, incomplete):
     """Complete file paths."""
     # This is handled by shell natively, but we can provide hints
     path = Path(incomplete) if incomplete else Path.cwd()
-    
+
     if incomplete and not path.exists():
         parent = path.parent
         prefix = path.name
     else:
         parent = path if path.is_dir() else path.parent
         prefix = ""
-    
+
     try:
         items = []
         for item in parent.iterdir():
@@ -157,7 +141,7 @@ def complete_file_path(ctx, param, incomplete):
 def setup_completion_environment():
     """Set up environment for shell completion support."""
     # This is called when the CLI starts to register completion handlers
-    
+
     # Check if we're in completion mode
     if os.environ.get("_PLTR_COMPLETE"):
         # We're generating completions
@@ -169,11 +153,11 @@ def handle_completion():
     """Handle shell completion requests."""
     # This is the main entry point for completion handling
     # It's called when _PLTR_COMPLETE environment variable is set
-    
+
     complete_var = os.environ.get("_PLTR_COMPLETE")
     if not complete_var:
         return False
-    
+
     # Click handles the completion automatically through Typer
     # Our custom completion functions are registered via autocompletion parameter
     return True
