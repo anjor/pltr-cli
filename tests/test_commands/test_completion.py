@@ -2,10 +2,9 @@
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import tempfile
 
-import pytest
 from typer.testing import CliRunner
 
 from pltr.commands import completion
@@ -137,8 +136,6 @@ class TestCompletionFunctions:
     def test_cache_and_get_rids(self):
         """Test RID caching and retrieval."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_file = Path(tmpdir) / ".cache" / "pltr" / "recent_rids.json"
-
             # Mock home directory
             with patch.object(Path, "home", return_value=Path(tmpdir)):
                 # Initially should return example RIDs
@@ -253,8 +250,6 @@ class TestCompletionFunctions:
 
     def test_default_completion_paths(self):
         """Test default paths for completion files."""
-        home = Path.home()
-
         # Bash path
         bash_path = completion.get_default_completion_path("bash")
         assert "bash" in str(bash_path) or "completion" in str(bash_path)
