@@ -161,12 +161,12 @@ class TestCompletionFunctions:
             ]
 
             # Complete with prefix
-            results = complete_rid(None, None, "ri.foundry.main.dataset.")
+            results = complete_rid("ri.foundry.main.dataset.")
             assert len(results) == 2
             assert all("dataset" in r for r in results)
 
             # Complete with partial
-            results = complete_rid(None, None, "ri.foundry.main.d")
+            results = complete_rid("ri.foundry.main.d")
             assert len(results) == 2
 
     def test_complete_profile(self):
@@ -179,11 +179,11 @@ class TestCompletionFunctions:
             MockManager.return_value = mock_manager
 
             # Complete all
-            results = complete_profile(None, None, "")
+            results = complete_profile("")
             assert len(results) == 3
 
             # Complete with prefix
-            results = complete_profile(None, None, "de")
+            results = complete_profile("de")
             assert len(results) == 2
             assert "default" in results
             assert "development" in results
@@ -191,35 +191,35 @@ class TestCompletionFunctions:
     def test_complete_output_format(self):
         """Test output format completion."""
         # Complete all
-        results = complete_output_format(None, None, "")
+        results = complete_output_format("")
         assert len(results) == 3
         assert "table" in results
         assert "json" in results
         assert "csv" in results
 
         # Complete with prefix
-        results = complete_output_format(None, None, "j")
+        results = complete_output_format("j")
         assert len(results) == 1
         assert results[0] == "json"
 
     def test_complete_sql_query(self):
         """Test SQL query template completion."""
         # Complete SELECT
-        results = complete_sql_query(None, None, "SEL")
+        results = complete_sql_query("SEL")
         assert any("SELECT * FROM " in r for r in results)
         assert any("SELECT COUNT(*) FROM " in r for r in results)
 
         # Complete JOIN (only matches templates that start with "JOIN")
-        results = complete_sql_query(None, None, "JOIN")
+        results = complete_sql_query("JOIN")
         assert "JOIN " in results
         # LEFT JOIN and INNER JOIN don't start with "JOIN", so they won't match
 
         # Complete LEFT
-        results = complete_sql_query(None, None, "LEFT")
+        results = complete_sql_query("LEFT")
         assert "LEFT JOIN " in results
 
         # Case insensitive
-        results = complete_sql_query(None, None, "sel")
+        results = complete_sql_query("sel")
         assert any("SELECT" in r for r in results)
 
     def test_shell_detection(self):

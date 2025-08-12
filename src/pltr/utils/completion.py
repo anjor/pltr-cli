@@ -58,13 +58,13 @@ def cache_rid(rid: str):
         pass
 
 
-def complete_rid(ctx, param, incomplete):
+def complete_rid(incomplete: str):
     """Complete RID arguments."""
     rids = get_cached_rids()
     return [rid for rid in rids if rid.startswith(incomplete)]
 
 
-def complete_profile(ctx, param, incomplete):
+def complete_profile(incomplete: str):
     """Complete profile names."""
     try:
         manager = ProfileManager()
@@ -74,13 +74,13 @@ def complete_profile(ctx, param, incomplete):
         return []
 
 
-def complete_output_format(ctx, param, incomplete):
+def complete_output_format(incomplete: str):
     """Complete output format options."""
     formats = ["table", "json", "csv"]
     return [fmt for fmt in formats if fmt.startswith(incomplete)]
 
 
-def complete_sql_query(ctx, param, incomplete):
+def complete_sql_query(incomplete: str):
     """Complete SQL query templates."""
     templates = [
         "SELECT * FROM ",
@@ -97,7 +97,7 @@ def complete_sql_query(ctx, param, incomplete):
     return [tmpl for tmpl in templates if tmpl.lower().startswith(incomplete.lower())]
 
 
-def complete_ontology_action(ctx, param, incomplete):
+def complete_ontology_action(incomplete: str):
     """Complete ontology action names."""
     # This would ideally fetch from the API but for now return common patterns
     actions = [
@@ -111,7 +111,7 @@ def complete_ontology_action(ctx, param, incomplete):
     return [action for action in actions if action.startswith(incomplete)]
 
 
-def complete_file_path(ctx, param, incomplete):
+def complete_file_path(incomplete: str):
     """Complete file paths."""
     # This is handled by shell natively, but we can provide hints
     path = Path(incomplete) if incomplete else Path.cwd()
