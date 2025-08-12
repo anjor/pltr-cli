@@ -171,11 +171,7 @@ class TestCompletionFunctions:
 
     def test_complete_profile(self):
         """Test profile name completion."""
-        mock_profiles = [
-            {"name": "default", "is_default": True},
-            {"name": "production", "is_default": False},
-            {"name": "development", "is_default": False},
-        ]
+        mock_profiles = ["default", "production", "development"]
 
         with patch("pltr.utils.completion.ProfileManager") as MockManager:
             mock_manager = MagicMock()

@@ -13,9 +13,19 @@ if "_PLTR_COMPLETE" in os.environ:
     # Convert Typer app to Click command
     click_app = typer.main.get_command(app)
 
+    # Get the completion instruction from environment
+    complete_var = "_PLTR_COMPLETE"
+    instruction = os.environ.get(complete_var, "")
+    
     # Run Click's completion
-    shell_complete(click_app, {}, sys.argv[1] if len(sys.argv) > 1 else "pltr")
-    sys.exit(0)
+    exit_code = shell_complete(
+        click_app, 
+        {}, 
+        "pltr",
+        complete_var,
+        instruction
+    )
+    sys.exit(exit_code)
 
 # Normal CLI execution
 from pltr.cli import app
