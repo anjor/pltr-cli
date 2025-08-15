@@ -209,7 +209,7 @@ class TestAuthenticationFlow:
         # Create a profile via environment variable
         monkeypatch.setenv("PLTR_PROFILE", "env-profile")
 
-        with patch("pltr.commands.verify.CredentialStorage") as mock_storage:
+        with patch("pltr.auth.storage.CredentialStorage") as mock_storage:
             mock_storage_instance = Mock()
             mock_storage_instance.get_profile.return_value = {
                 "auth_type": "token",

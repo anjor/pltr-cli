@@ -27,18 +27,22 @@ class TestCLIIntegration:
     def mock_auth(self, temp_config_dir):
         """Mock authentication setup."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            profile_manager = ProfileManager()
-            storage = CredentialStorage()
-            storage.save_profile(
-                "test",
-                {
-                    "auth_type": "token",
-                    "host": "https://test.palantirfoundry.com",
-                    "token": "test_token",
-                },
-            )
-            profile_manager.add_profile("test")
-            profile_manager.set_default("test")
+            with patch("keyring.set_password"):
+                with patch("keyring.get_password") as mock_get_password:
+                    mock_get_password.return_value = None
+
+                    profile_manager = ProfileManager()
+                    storage = CredentialStorage()
+                    storage.save_profile(
+                        "test",
+                        {
+                            "auth_type": "token",
+                            "host": "https://test.palantirfoundry.com",
+                            "token": "test_token",
+                        },
+                    )
+                    profile_manager.add_profile("test")
+                    profile_manager.set_default("test")
 
             with patch("pltr.commands.verify.AuthManager") as mock_auth_cls:
                 mock_auth = Mock()
@@ -63,18 +67,23 @@ class TestCLIIntegration:
         """Test successful authentication verification."""
         # Setup profile
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            profile_manager = ProfileManager()
-            storage = CredentialStorage()
-            storage.save_profile(
-                "test",
-                {
-                    "auth_type": "token",
-                    "host": "https://test.palantirfoundry.com",
-                    "token": "test_token",
-                },
-            )
-            profile_manager.add_profile("test")
-            profile_manager.set_default("test")
+            with patch("keyring.set_password"), patch(
+                "keyring.get_password"
+            ) as mock_get:
+                mock_get.return_value = None
+
+                profile_manager = ProfileManager()
+                storage = CredentialStorage()
+                storage.save_profile(
+                    "test",
+                    {
+                        "auth_type": "token",
+                        "host": "https://test.palantirfoundry.com",
+                        "token": "test_token",
+                    },
+                )
+                profile_manager.add_profile("test")
+                profile_manager.set_default("test")
 
             # Mock successful verification
             with patch("pltr.commands.verify.requests.get") as mock_get:
@@ -95,18 +104,23 @@ class TestCLIIntegration:
     def test_verify_command_failure(self, runner, temp_config_dir):
         """Test failed authentication verification."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            profile_manager = ProfileManager()
-            storage = CredentialStorage()
-            storage.save_profile(
-                "test",
-                {
-                    "auth_type": "token",
-                    "host": "https://test.palantirfoundry.com",
-                    "token": "invalid_token",
-                },
-            )
-            profile_manager.add_profile("test")
-            profile_manager.set_default("test")
+            with patch("keyring.set_password"), patch(
+                "keyring.get_password"
+            ) as mock_get:
+                mock_get.return_value = None
+
+                profile_manager = ProfileManager()
+                storage = CredentialStorage()
+                storage.save_profile(
+                    "test",
+                    {
+                        "auth_type": "token",
+                        "host": "https://test.palantirfoundry.com",
+                        "token": "invalid_token",
+                    },
+                )
+                profile_manager.add_profile("test")
+                profile_manager.set_default("test")
 
             # Mock failed verification
             with patch("pltr.commands.verify.requests.get") as mock_get:
@@ -341,7 +355,7 @@ class TestCLIIntegration:
         """Test that environment profile variable works."""
         monkeypatch.setenv("PLTR_PROFILE", "env-profile")
 
-        with patch("pltr.commands.verify.CredentialStorage") as mock_storage:
+        with patch("pltr.auth.storage.CredentialStorage") as mock_storage:
             mock_storage_instance = Mock()
             mock_storage_instance.get_profile.return_value = {
                 "auth_type": "token",
