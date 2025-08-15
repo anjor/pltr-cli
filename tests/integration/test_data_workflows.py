@@ -13,6 +13,7 @@ import pytest
 from pltr.cli import app
 from pltr.config.profiles import ProfileManager
 from pltr.config.settings import Settings
+from pltr.auth.storage import CredentialStorage
 
 
 class TestDataWorkflows:
@@ -28,7 +29,8 @@ class TestDataWorkflows:
         """Create an authenticated profile for testing."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -36,7 +38,8 @@ class TestDataWorkflows:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
             yield profile_manager
 
     def test_dataset_creation_and_retrieval_workflow(

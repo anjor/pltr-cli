@@ -9,8 +9,8 @@ from pltr.services.base import BaseService
 from pltr.auth.base import ProfileNotFoundError, MissingCredentialsError
 
 
-class TestService(BaseService):
-    """Test service implementation for testing BaseService."""
+class MockService(BaseService):
+    """Mock service implementation for testing BaseService."""
 
     def _get_service(self):
         """Return a mock service."""
@@ -19,13 +19,13 @@ class TestService(BaseService):
 
 def test_base_service_initialization():
     """Test BaseService initialization."""
-    service = TestService()
+    service = MockService()
     assert service.profile is None
     assert service._client is None
     assert service.auth_manager is not None
 
     # Test with profile
-    service_with_profile = TestService(profile="test")
+    service_with_profile = MockService(profile="test")
     assert service_with_profile.profile == "test"
 
 
@@ -37,7 +37,7 @@ def test_base_service_client_property(mock_auth_manager):
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
 
-    service = TestService()
+    service = MockService()
 
     # First call should create client
     client = service.client
@@ -58,7 +58,7 @@ def test_base_service_client_with_profile(mock_auth_manager):
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
 
-    service = TestService(profile="test-profile")
+    service = MockService(profile="test-profile")
 
     client = service.client
     assert client == mock_client
@@ -74,7 +74,7 @@ def test_base_service_client_profile_not_found(mock_auth_manager):
     )
     mock_auth_manager.return_value = mock_auth_instance
 
-    service = TestService()
+    service = MockService()
 
     with pytest.raises(ProfileNotFoundError):
         service.client
@@ -89,7 +89,7 @@ def test_base_service_client_missing_credentials(mock_auth_manager):
     )
     mock_auth_manager.return_value = mock_auth_instance
 
-    service = TestService()
+    service = MockService()
 
     with pytest.raises(MissingCredentialsError):
         service.client
@@ -104,7 +104,7 @@ def test_base_service_service_property(mock_auth_manager):
     mock_auth_instance.get_client.return_value = mock_client
     mock_auth_manager.return_value = mock_auth_instance
 
-    service = TestService()
+    service = MockService()
 
     # Mock the _get_service method to return our mock service
     service._get_service = Mock(return_value=mock_service)

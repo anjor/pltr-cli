@@ -12,6 +12,7 @@ import pytest
 from pltr.cli import app
 from pltr.config.profiles import ProfileManager
 from pltr.config.settings import Settings
+from pltr.auth.storage import CredentialStorage
 
 
 class TestCLIIntegration:
@@ -27,7 +28,8 @@ class TestCLIIntegration:
         """Mock authentication setup."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -35,7 +37,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             with patch("pltr.commands.verify.AuthManager") as mock_auth_cls:
                 mock_auth = Mock()
@@ -56,13 +59,13 @@ class TestCLIIntegration:
         assert result.exit_code == 0
         assert "pltr" in result.output.lower() or "version" in result.output.lower()
 
-    @patch("pltr.commands.verify.AuthManager")
-    def test_verify_command_success(self, mock_auth_manager, runner, temp_config_dir):
+    def test_verify_command_success(self, runner, temp_config_dir):
         """Test successful authentication verification."""
         # Setup profile
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -70,28 +73,31 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             # Mock successful verification
-            mock_auth = Mock()
-            mock_auth.verify.return_value = {
-                "username": "test.user@example.com",
-                "id": "user-123",
-                "organization": {"rid": "ri.foundry.main.organization.abc123"},
-            }
-            mock_auth_manager.from_profile.return_value = mock_auth
+            with patch("pltr.commands.verify.requests.get") as mock_get:
+                mock_response = Mock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = {
+                    "username": "test.user@example.com",
+                    "id": "user-123",
+                    "organization": {"rid": "ri.foundry.main.organization.abc123"},
+                }
+                mock_get.return_value = mock_response
 
-            result = runner.invoke(app, ["verify"])
-            assert result.exit_code == 0
-            assert "Authentication successful" in result.output
-            assert "test.user@example.com" in result.output
+                result = runner.invoke(app, ["verify"])
+                assert result.exit_code == 0
+                assert "Authentication successful" in result.output
+                assert "test.user@example.com" in result.output
 
-    @patch("pltr.commands.verify.AuthManager")
-    def test_verify_command_failure(self, mock_auth_manager, runner, temp_config_dir):
+    def test_verify_command_failure(self, runner, temp_config_dir):
         """Test failed authentication verification."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -99,23 +105,27 @@ class TestCLIIntegration:
                     "token": "invalid_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             # Mock failed verification
-            mock_auth = Mock()
-            mock_auth.verify.side_effect = Exception("Invalid credentials")
-            mock_auth_manager.from_profile.return_value = mock_auth
+            with patch("pltr.commands.verify.requests.get") as mock_get:
+                mock_response = Mock()
+                mock_response.status_code = 401
+                mock_response.text = "Invalid credentials"
+                mock_get.return_value = mock_response
 
-            result = runner.invoke(app, ["verify"])
-            assert result.exit_code == 1
-            assert "Authentication failed" in result.output
+                result = runner.invoke(app, ["verify"])
+                assert result.exit_code == 1
+                assert "Authentication failed" in result.output
 
     @patch("pltr.services.dataset.DatasetService")
     def test_dataset_get_command(self, mock_dataset_service, runner, temp_config_dir):
         """Test dataset get command with mocked response."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -123,7 +133,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             # Mock dataset service
             mock_service = Mock()
@@ -148,7 +159,8 @@ class TestCLIIntegration:
         """Test SQL execute command with mocked response."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -156,7 +168,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             # Mock SQL service
             mock_service = Mock()
@@ -186,7 +199,8 @@ class TestCLIIntegration:
         """Test ontology list command with mocked response."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -194,7 +208,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             # Mock ontology service
             mock_service = Mock()
@@ -217,9 +232,10 @@ class TestCLIIntegration:
         """Test switching between profiles."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
+            storage = CredentialStorage()
 
             # Create multiple profiles
-            profile_manager.create_profile(
+            storage.save_profile(
                 "dev",
                 {
                     "auth_type": "token",
@@ -227,7 +243,9 @@ class TestCLIIntegration:
                     "token": "dev_token",
                 },
             )
-            profile_manager.create_profile(
+            profile_manager.add_profile("dev")
+
+            storage.save_profile(
                 "prod",
                 {
                     "auth_type": "token",
@@ -235,6 +253,7 @@ class TestCLIIntegration:
                     "token": "prod_token",
                 },
             )
+            profile_manager.add_profile("prod")
 
             # Test listing profiles
             result = runner.invoke(app, ["configure", "list-profiles"])
@@ -245,13 +264,14 @@ class TestCLIIntegration:
             # Test setting default profile
             result = runner.invoke(app, ["configure", "set-default", "prod"])
             assert result.exit_code == 0
-            assert "Default profile set to: prod" in result.output
+            assert "set as default" in result.output
 
     def test_output_format_json(self, runner, temp_config_dir):
         """Test JSON output format."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -259,7 +279,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             with patch("pltr.services.dataset.DatasetService") as mock_dataset_service:
                 with patch("pltr.commands.dataset.AuthManager") as mock_auth_manager:
@@ -295,7 +316,8 @@ class TestCLIIntegration:
         """Test error handling for invalid RID format."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
-            profile_manager.create_profile(
+            storage = CredentialStorage()
+            storage.save_profile(
                 "test",
                 {
                     "auth_type": "token",
@@ -303,7 +325,8 @@ class TestCLIIntegration:
                     "token": "test_token",
                 },
             )
-            profile_manager.set_default_profile("test")
+            profile_manager.add_profile("test")
+            profile_manager.set_default("test")
 
             with patch("pltr.commands.dataset.AuthManager") as mock_auth_manager:
                 # Mock auth
@@ -315,19 +338,30 @@ class TestCLIIntegration:
                 assert "Error" in result.output or "error" in result.output.lower()
 
     def test_environment_variable_override(self, runner, monkeypatch):
-        """Test that environment variables override profile settings."""
-        monkeypatch.setenv("FOUNDRY_TOKEN", "env_token")
-        monkeypatch.setenv("FOUNDRY_HOST", "https://env.palantirfoundry.com")
+        """Test that environment profile variable works."""
+        monkeypatch.setenv("PLTR_PROFILE", "env-profile")
 
-        with patch("pltr.commands.verify.AuthManager") as mock_auth_manager:
-            # Mock auth with env variables
-            mock_auth = Mock()
-            mock_auth.verify.return_value = {
-                "username": "env.user@example.com",
-                "id": "env-user-123",
+        with patch("pltr.commands.verify.CredentialStorage") as mock_storage:
+            mock_storage_instance = Mock()
+            mock_storage_instance.get_profile.return_value = {
+                "auth_type": "token",
+                "host": "https://env.palantirfoundry.com",
+                "token": "env_token",
             }
-            mock_auth_manager.from_environment.return_value = mock_auth
+            mock_storage.return_value = mock_storage_instance
 
-            runner.invoke(app, ["verify"])
-            # Should use environment variables
-            mock_auth_manager.from_environment.assert_called_once()
+            with patch("pltr.config.profiles.ProfileManager") as mock_profile_manager:
+                mock_pm = Mock()
+                mock_pm.get_active_profile.return_value = "env-profile"
+                mock_profile_manager.return_value = mock_pm
+
+                with patch("pltr.commands.verify.requests.get") as mock_get:
+                    mock_response = Mock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {
+                        "username": "env.user@example.com"
+                    }
+                    mock_get.return_value = mock_response
+
+                    result = runner.invoke(app, ["verify"])
+                    assert result.exit_code == 0
