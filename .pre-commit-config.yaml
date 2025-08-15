@@ -1,0 +1,109 @@
+# Pre-commit hooks for pltr-cli
+# See https://pre-commit.com for more information
+
+repos:
+  # General file fixes
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Fix trailing whitespace
+        description: Removes trailing whitespace
+      - id: end-of-file-fixer
+        name: Fix end of files
+        description: Ensures files end with a newline
+      - id: check-yaml
+        name: Check YAML files
+        description: Validates YAML file syntax
+      - id: check-added-large-files
+        name: Check for large files
+        description: Prevents large files from being committed
+        args: ['--maxkb=1000']
+      - id: check-toml
+        name: Check TOML files
+        description: Validates TOML file syntax
+      - id: check-json
+        name: Check JSON files
+        description: Validates JSON file syntax
+      - id: check-merge-conflict
+        name: Check merge conflicts
+        description: Checks for merge conflict markers
+      - id: check-ast
+        name: Check Python syntax
+        description: Validates Python file syntax
+      - id: debug-statements
+        name: Check for debug statements
+        description: Checks for Python debug statements
+      - id: mixed-line-ending
+        name: Fix mixed line endings
+        description: Checks for mixed line ending
+        args: ['--fix=lf']
+
+  # Python code formatting with Ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        name: Ruff linter
+        description: Fast Python linter
+        args: [--fix]
+      - id: ruff-format
+        name: Ruff formatter
+        description: Fast Python formatter
+
+  # Type checking with mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy type checker
+        description: Static type checker for Python
+        additional_dependencies:
+          - types-requests
+          - types-setuptools
+        args: [--ignore-missing-imports, --no-strict-optional, --explicit-package-bases]
+        files: ^src/
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        name: Bandit security linter
+        description: Security linter for Python
+        args: ['-ll', '--skip', 'B101,B601']
+        files: ^src/
+
+
+# Configuration
+default_language_version:
+  python: python3.9
+
+# Run hooks on all files by default
+default_install_hook_types: [pre-commit, pre-push]
+
+# Exclude directories
+exclude: |
+  (?x)^(
+    \.git/|
+    \.venv/|
+    venv/|
+    \.env/|
+    env/|
+    __pycache__/|
+    \.pytest_cache/|
+    \.mypy_cache/|
+    \.ruff_cache/|
+    build/|
+    dist/|
+    \.eggs/|
+    .*\.egg-info/|
+    uv\.lock
+  )
+
+# CI configuration
+ci:
+  autofix_prs: true
+  autofix_commit_msg: '[pre-commit.ci] auto fixes from pre-commit hooks'
+  autoupdate_schedule: weekly
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'

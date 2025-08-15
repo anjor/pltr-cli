@@ -97,6 +97,7 @@ def verify(
                     "client_id": client_id,
                     "client_secret": client_secret,
                 },
+                timeout=30,
             )
             if token_response.status_code == 200:
                 access_token = token_response.json().get("access_token")
@@ -108,7 +109,7 @@ def verify(
                 raise typer.Exit(1)
 
         # Make the request to /multipass/api/me
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=30)
 
         if response.status_code == 200:
             user_info = response.json()
