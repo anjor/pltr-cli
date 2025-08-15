@@ -145,7 +145,7 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Add command completion
 - [x] Merge to main
 
-### Phase 9: Documentation ✅ (COMPLETED)
+### Phase 9: Documentation ✅ (COMPLETED & MERGED)
 - [x] Create feature/documentation branch
 - [x] Write comprehensive command reference (all 65+ commands)
 - [x] Create quick start guide (installation → first query)
@@ -155,9 +155,9 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Create API wrapper documentation (for developers)
 - [x] Add examples gallery (real-world use cases)
 - [x] Update README.md with documentation links
-- [ ] Merge to main
+- [x] Merge to main
 
-**Priority Justification**: All core functionality is complete and tested. The CLI is fully functional but lacks user-facing documentation, which is the primary barrier to adoption.
+**Completed**: Complete documentation suite merged in v0.2.0 release, removing the primary adoption barrier.
 
 ### Phase 10: Distribution ✅
 - [x] Create feature/distribution branch
@@ -500,6 +500,53 @@ After PyPI publishing:
 3. Test installation: `pip install pltr-cli`
 
 ## Release History
+
+### Version 0.2.0 (2025-08-15) ✅ RELEASED
+
+**Major feature release with interactive capabilities and complete documentation!**
+
+- **Published to PyPI**: https://pypi.org/project/pltr-cli/0.2.0/
+- **Installation**: `pip install pltr-cli`
+- **GitHub Tag**: v0.2.0
+
+**🆕 New Features:**
+- **Interactive Shell Mode**: `pltr shell` command with REPL functionality
+  - Tab completion for all commands
+  - Persistent command history across sessions
+  - Dynamic prompt showing current profile
+  - All commands available without 'pltr' prefix
+- **Shell Completion**: Auto-completion support for bash, zsh, and fish shells
+  - `pltr completion install` - Install completions for current shell
+  - `pltr completion show` - Display completion script
+  - Custom completion functions for RIDs, profiles, formats
+- **Complete Documentation Suite**: Comprehensive user and developer documentation
+  - Quick start guide (5-minute setup to first query)
+  - Authentication setup tutorial (token + OAuth2)
+  - Full command reference for all 65+ commands
+  - Common workflows and automation examples
+  - Troubleshooting guide with solutions
+  - API wrapper documentation for developers
+  - Examples gallery with real-world scripts
+
+**🧪 Enhanced Testing & Quality:**
+- 291 unit tests passing with 67% coverage
+- Enhanced integration test infrastructure with proper mocking
+- Pre-commit hooks for automated code quality enforcement
+- Improved CI reliability and performance
+
+**📦 Complete Feature Set:**
+- 65+ commands across all major Foundry operations
+- Dataset operations (get, create)
+- Comprehensive ontology support (13 commands)
+- Full SQL query lifecycle (7 commands)
+- Admin operations (16 commands for users/groups/roles)
+- Multi-profile authentication with secure credential storage
+
+**Distribution & Quality:**
+- Automated PyPI publishing with GitHub Actions and Trusted Publishing
+- Cross-platform compatibility (Windows, macOS, Linux)
+- Modern Python tooling (uv, ruff, mypy, pre-commit)
+- Security attestation with Sigstore signing
 
 ### Version 0.1.2 (2025-08-11)
 - **GitHub Actions**: Updated sigstore action to v3.0.1 to resolve deprecated upload-artifact v3 warnings
