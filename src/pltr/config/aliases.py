@@ -155,15 +155,27 @@ class AliasManager:
         Returns:
             True if this would create a cycle
         """
-        # Start with the command and follow the chain
+        # Direct self-reference
+        if command == name:
+            return True
+
+        # Follow the chain starting from command
+        # If we ever reach 'name', it would create a cycle
         current = command
-        seen = {name}  # Include the new alias name
+        visited = set()
 
         while current in self.aliases:
-            if current in seen:
-                return True
-            seen.add(current)
+            # Check for existing cycles
+            if current in visited:
+                break
+            visited.add(current)
+
+            # Get what this alias points to
             current = self.aliases[current]
+
+            # If we reached the name we're trying to add, it's a cycle
+            if current == name:
+                return True
 
         return False
 

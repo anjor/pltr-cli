@@ -132,9 +132,14 @@ class TestAliasManager:
     def test_import_aliases_skip_cycles(self, alias_manager):
         """Test that import skips aliases that would create cycles."""
         alias_manager.add_alias("a", "b")
-        data = {"b": "c", "c": "a"}  # Would create cycle
+        # Initial state: a -> b
+        # Trying to import: b -> c (safe), c -> a (would create cycle a->b->c->a)
+        data = {"b": "c", "c": "a"}
         count = alias_manager.import_aliases(data)
+        # b -> c is safe to import
+        # c -> a would create cycle, should be skipped
         assert count == 1  # Only "b": "c" should be imported
+        assert alias_manager.aliases["a"] == "b"
         assert alias_manager.aliases["b"] == "c"
         assert "c" not in alias_manager.aliases
 
