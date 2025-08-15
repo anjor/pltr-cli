@@ -8,6 +8,7 @@ Welcome to the pltr-cli documentation! This CLI tool provides a command-line int
 - **[Quick Start Guide](user-guide/quick-start.md)** - Get up and running in minutes
 - **[Authentication Setup](user-guide/authentication.md)** - Configure token and OAuth2 authentication
 - **[Command Reference](user-guide/commands.md)** - Complete reference for all 50+ commands
+- **[Command Aliases](user-guide/aliases.md)** - Create shortcuts for frequently used commands
 - **[Common Workflows](user-guide/workflows.md)** - Real-world data analysis patterns
 - **[Troubleshooting](user-guide/troubleshooting.md)** - Common issues and solutions
 
