@@ -152,12 +152,12 @@ def generate_bash_completion() -> str:
 _pltr_completion() {
     local IFS=$'\\n'
     local response
-    
+
     response=$(env COMP_WORDS="${COMP_WORDS[*]}" COMP_CWORD=$COMP_CWORD _PLTR_COMPLETE=bash_complete pltr)
-    
+
     for completion in $response; do
         IFS=',' read type value <<< "$completion"
-        
+
         if [[ $type == 'dir' ]]; then
             COMPREPLY+=("$value/")
             compopt -o dirnames
@@ -168,7 +168,7 @@ _pltr_completion() {
             COMPREPLY+=("$value")
         fi
     done
-    
+
     return 0
 }
 
@@ -191,9 +191,9 @@ _pltr() {
     local -a completions_with_descriptions
     local -a response
     (( ! $+commands[pltr] )) && return 1
-    
+
     response=("${(@f)$(env COMP_WORDS="${words[*]}" COMP_CWORD=$((CURRENT-1)) _PLTR_COMPLETE=zsh_complete pltr)}")
-    
+
     for type key descr in ${response}; do
         if [[ "$type" == "plain" ]]; then
             if [[ "$descr" == "_" ]]; then
@@ -207,11 +207,11 @@ _pltr() {
             _path_files -f
         fi
     done
-    
+
     if [ -n "$completions_with_descriptions" ]; then
         _describe -V unsorted completions_with_descriptions -U
     fi
-    
+
     if [ -n "$completions" ]; then
         compadd -U -V unsorted -a completions
     fi
@@ -232,10 +232,10 @@ def generate_fish_completion() -> str:
 
 function _pltr_completion
     set -l response (env COMP_WORDS=(commandline -cp) COMP_CWORD=(commandline -t) _PLTR_COMPLETE=fish_complete pltr)
-    
+
     for completion in $response
         set -l metadata (string split "," $completion)
-        
+
         if test $metadata[1] = "dir"
             __fish_complete_directories $metadata[2]
         else if test $metadata[1] = "file"

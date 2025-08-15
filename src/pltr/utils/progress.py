@@ -310,7 +310,7 @@ with tracker.track_upload("data.csv") as progress:
         # ... upload chunk ...
         progress(len(chunk))
 
-# File download with progress  
+# File download with progress
 tracker = with_download_progress()
 with tracker.track_download("output.csv", total_size=1024000) as progress:
     # Download file
