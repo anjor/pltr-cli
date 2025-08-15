@@ -15,6 +15,7 @@ from pltr.commands import (
     admin,
     shell,
     completion,
+    alias,
 )
 
 app = typer.Typer(
@@ -36,6 +37,7 @@ app.add_typer(
 )
 app.add_typer(shell.shell_app, name="shell", help="Interactive shell mode")
 app.add_typer(completion.app, name="completion", help="Manage shell completions")
+app.add_typer(alias.app, name="alias", help="Manage command aliases")
 
 
 def version_callback(value: bool):

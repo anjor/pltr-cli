@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 
 from pltr.config.profiles import ProfileManager
+from pltr.config.aliases import AliasManager
 
 
 def get_cached_rids() -> List[str]:
@@ -109,6 +110,13 @@ def complete_ontology_action(incomplete: str):
         "unlink",
     ]
     return [action for action in actions if action.startswith(incomplete)]
+
+
+def complete_alias_names(incomplete: str):
+    """Complete alias names."""
+    manager = AliasManager()
+    aliases = manager.get_completion_items()
+    return [alias for alias in aliases if alias.startswith(incomplete)]
 
 
 def complete_file_path(incomplete: str):
