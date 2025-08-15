@@ -67,9 +67,10 @@ class TestCLIIntegration:
         """Test successful authentication verification."""
         # Setup profile
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            with patch("keyring.set_password"), patch(
-                "keyring.get_password"
-            ) as mock_get:
+            with (
+                patch("keyring.set_password"),
+                patch("keyring.get_password") as mock_get,
+            ):
                 mock_get.return_value = None
 
                 profile_manager = ProfileManager()
@@ -104,9 +105,10 @@ class TestCLIIntegration:
     def test_verify_command_failure(self, runner, temp_config_dir):
         """Test failed authentication verification."""
         with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            with patch("keyring.set_password"), patch(
-                "keyring.get_password"
-            ) as mock_get:
+            with (
+                patch("keyring.set_password"),
+                patch("keyring.get_password") as mock_get,
+            ):
                 mock_get.return_value = None
 
                 profile_manager = ProfileManager()
