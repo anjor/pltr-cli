@@ -6,7 +6,7 @@ verification, profile management, and token handling.
 """
 
 from unittest.mock import Mock, patch
-from click.testing import CliRunner
+from typer.testing import CliRunner
 import pytest
 
 from pltr.cli import app
@@ -37,9 +37,7 @@ class TestAuthenticationFlow:
 
     def test_token_auth_configuration_flow(self, runner, temp_config_dir):
         """Test complete token authentication configuration flow."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             with patch.object(
                 Settings, "_get_config_dir", return_value=temp_config_dir
             ):
@@ -81,9 +79,7 @@ class TestAuthenticationFlow:
 
     def test_oauth_auth_configuration_flow(self, runner, temp_config_dir):
         """Test complete OAuth2 authentication configuration flow."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             with patch.object(
                 Settings, "_get_config_dir", return_value=temp_config_dir
             ):
@@ -126,9 +122,7 @@ class TestAuthenticationFlow:
 
     def test_profile_switching_workflow(self, runner, temp_config_dir):
         """Test switching between multiple authentication profiles."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
 
             # Create multiple profiles
@@ -210,9 +204,7 @@ class TestAuthenticationFlow:
 
     def test_environment_override_profile(self, runner, temp_config_dir, monkeypatch):
         """Test that environment variables override profile settings."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             # Create a profile
             profile_manager = ProfileManager()
             profile_manager.create_profile(
@@ -243,9 +235,7 @@ class TestAuthenticationFlow:
 
     def test_token_expiration_handling(self, runner, temp_config_dir):
         """Test handling of expired authentication tokens."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
             profile_manager.create_profile(
                 "test",
@@ -271,9 +261,7 @@ class TestAuthenticationFlow:
 
     def test_profile_deletion_workflow(self, runner, temp_config_dir):
         """Test profile deletion and cleanup."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             profile_manager = ProfileManager()
 
             # Create profiles
@@ -309,7 +297,7 @@ class TestAuthenticationFlow:
 
     def test_missing_credentials_error(self, runner):
         """Test error handling when no credentials are configured."""
-        with patch("pltr.commands.verify.ProfileManager") as mock_profile_manager:
+        with patch("pltr.auth.manager.ProfileManager") as mock_profile_manager:
             mock_pm = Mock()
             mock_pm.get_default_profile.return_value = None
             mock_pm.list_profiles.return_value = []
@@ -324,9 +312,7 @@ class TestAuthenticationFlow:
 
     def test_invalid_host_format(self, runner, temp_config_dir):
         """Test validation of host URL format."""
-        with patch.object(
-            ProfileManager, "_get_config_dir", return_value=temp_config_dir
-        ):
+        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
             with patch.object(
                 Settings, "_get_config_dir", return_value=temp_config_dir
             ):
