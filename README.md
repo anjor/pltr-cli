@@ -1,19 +1,22 @@
 # pltr-cli
 
-A command-line interface tool for interacting with Palantir Foundry APIs.
+A comprehensive command-line interface for Palantir Foundry APIs, providing 65+ commands for data analysis, ontology operations, SQL queries, and administrative tasks.
 
 ## Overview
 
-`pltr-cli` provides a streamlined way to interact with Palantir Foundry services from the command line. Built on top of the official `foundry-platform-sdk`, it offers intuitive commands for dataset management, ontology operations, SQL queries, and more.
+`pltr-cli` provides a powerful and intuitive way to interact with Palantir Foundry from the command line. Built on top of the official `foundry-platform-sdk`, it offers comprehensive access to Foundry's capabilities with a focus on productivity and ease of use.
 
-## Features
+## ✨ Key Features
 
-- 🔐 **Secure Authentication**: Support for both token and OAuth2 authentication with secure credential storage
-- 📊 **Dataset Management**: List, create, upload, and download datasets with progress indicators
-- 🔍 **Ontology Operations**: Search and interact with ontology objects and actions
-- 📝 **SQL Queries**: Execute SQL queries directly from the command line
-- 🎨 **Rich Output**: Beautiful terminal output with table formatting and color support
-- 👤 **Multi-Profile Support**: Manage multiple Foundry environments with profile configurations
+- 🔐 **Secure Authentication**: Token and OAuth2 support with encrypted credential storage
+- 📊 **Dataset Operations**: Get dataset information and create new datasets (RID-based API)
+- 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
+- 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
+- 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
+- 💻 **Interactive Shell**: REPL mode with tab completion and command history
+- ⚡ **Shell Completion**: Auto-completion for bash, zsh, and fish
+- 🎨 **Rich Output**: Beautiful terminal formatting with multiple export formats (table, JSON, CSV)
+- 👤 **Multi-Profile Support**: Manage multiple Foundry environments seamlessly
 
 ## Installation
 
@@ -37,126 +40,199 @@ uv sync
 uv run pltr --help
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### Configure Authentication
+### 1. Configure Authentication
 
 Set up your Foundry credentials:
 
 ```bash
-pltr configure --profile production
+pltr configure configure
 ```
 
-This will prompt you for:
-- Foundry host URL
+Follow the interactive prompts to enter:
+- Foundry hostname (e.g., `foundry.company.com`)
 - Authentication method (token or OAuth2)
-- Credentials
+- Your credentials
 
-### Basic Usage
+### 2. Verify Connection
+
+Test your setup:
 
 ```bash
-# List datasets
-pltr dataset list
-
-# Upload a file to a dataset
-pltr dataset upload <dataset-id> path/to/file.csv
-
-# Execute a SQL query
-pltr sql execute "SELECT * FROM dataset LIMIT 10"
-
-# Search ontology objects
-pltr ontology object search "customer name:John"
+pltr verify
 ```
 
-## Command Reference
+### 3. Start Exploring
 
-### Dataset Commands
+```bash
+# Check current user
+pltr admin user current
 
-- `pltr dataset list` - List all accessible datasets
-- `pltr dataset get <id>` - Get dataset details
-- `pltr dataset upload <id> <file>` - Upload file to dataset
-- `pltr dataset download <id>` - Download dataset files
+# List available ontologies
+pltr ontology list
 
-### Ontology Commands
+# Execute a simple SQL query
+pltr sql execute "SELECT 1 as test"
 
-- `pltr ontology object search <query>` - Search for objects
-- `pltr ontology object get <id>` - Get specific object
-- `pltr ontology action execute <action>` - Execute ontology action
+# Start interactive mode for exploration
+pltr shell
+```
 
-### SQL Commands
+### 4. Enable Shell Completion
 
-- `pltr sql execute <query>` - Execute SQL query
-- `pltr sql export <query> --output <file>` - Export query results
+For the best experience:
 
-### Configuration Commands
+```bash
+pltr completion install
+```
 
-- `pltr configure` - Set up authentication
-- `pltr configure --profile <name>` - Configure named profile
+📖 **Need more help?** See the **[Quick Start Guide](docs/user-guide/quick-start.md)** for detailed setup instructions.
 
-## Configuration
+## 📚 Documentation
 
-Configuration files are stored in `~/.pltr/`:
-- `~/.pltr/config` - Profile configurations
-- Credentials are stored securely in your system keyring
+pltr-cli provides comprehensive documentation to help you get the most out of the tool:
+
+### 📖 User Guides
+- **[Quick Start Guide](docs/user-guide/quick-start.md)** - Get up and running in 5 minutes
+- **[Authentication Setup](docs/user-guide/authentication.md)** - Complete guide to token and OAuth2 setup
+- **[Command Reference](docs/user-guide/commands.md)** - Complete reference for all 65+ commands
+- **[Common Workflows](docs/user-guide/workflows.md)** - Real-world data analysis patterns
+- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Solutions to common issues
+
+### 🔧 Developer Resources
+- **[API Wrapper Documentation](docs/api/wrapper.md)** - Architecture and extension guide
+- **[Examples Gallery](docs/examples/gallery.md)** - Real-world use cases and automation scripts
+
+### 🎯 Quick Command Overview
+
+**Most Common Commands:**
+```bash
+# Authentication & Setup
+pltr configure configure        # Set up authentication
+pltr verify                    # Test connection
+
+# Data Analysis
+pltr sql execute "SELECT * FROM table"  # Run SQL queries
+pltr ontology list             # List ontologies
+pltr dataset get <rid>         # Get dataset info
+
+# Administrative
+pltr admin user current        # Current user info
+pltr admin user list          # List users
+
+# Interactive & Tools
+pltr shell                    # Interactive mode
+pltr completion install       # Enable tab completion
+```
+
+💡 **Tip**: Use `pltr --help` or `pltr <command> --help` for detailed command help.
+
+For the complete command reference with examples, see **[Command Reference](docs/user-guide/commands.md)**.
+
+## ⚙️ Configuration
+
+pltr-cli stores configuration securely using industry best practices:
+
+- **Profile Configuration**: `~/.config/pltr/profiles.json`
+- **Credentials**: Encrypted in system keyring (never stored in plain text)
+- **Shell History**: `~/.config/pltr/repl_history` (for interactive mode)
 
 ### Environment Variables
 
-You can also configure authentication via environment variables:
+For CI/CD and automation, use environment variables:
 
 ```bash
-export FOUNDRY_HOST=https://your-foundry.palantir.com
-export FOUNDRY_TOKEN=your-token-here
+# Token authentication
+export FOUNDRY_TOKEN="your-api-token"
+export FOUNDRY_HOST="foundry.company.com"
+
+# OAuth2 authentication
+export FOUNDRY_CLIENT_ID="your-client-id"
+export FOUNDRY_CLIENT_SECRET="your-client-secret"
+export FOUNDRY_HOST="foundry.company.com"
 ```
 
-## Development
+See **[Authentication Setup](docs/user-guide/authentication.md)** for complete configuration options.
+
+## 🔧 Development
 
 ### Prerequisites
 
 - Python 3.9+
 - [uv](https://github.com/astral-sh/uv) for dependency management
 
-### Setup
+### Quick Development Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/anjor/pltr-cli.git
 cd pltr-cli
 
-# Install dependencies
+# Install dependencies and development tools
 uv sync
+
+# Install pre-commit hooks
+uv run pre-commit install
 
 # Run tests
 uv run pytest
 
-# Format code
-uv run ruff format
-uv run ruff check --fix
+# Run linting and formatting
+uv run ruff check src/
+uv run ruff format src/
+uv run mypy src/
 ```
 
-### Project Structure
+### Project Architecture
 
-```
-pltr-cli/
-├── src/
-│   └── pltr/
-│       ├── cli.py           # Main CLI entry point
-│       ├── auth/            # Authentication handling
-│       ├── commands/        # CLI command implementations
-│       ├── services/        # Foundry service wrappers
-│       ├── config/          # Configuration management
-│       └── utils/           # Utilities and helpers
-└── tests/                   # Test suite
-```
+pltr-cli uses a layered architecture:
 
-## Contributing
+- **CLI Layer** (Typer): Command-line interface and argument parsing
+- **Command Layer**: Command implementations with validation
+- **Service Layer**: Business logic and foundry-platform-sdk integration
+- **Auth Layer**: Secure authentication and credential management
+- **Utils Layer**: Formatting, progress, and helper functions
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed architecture information and extension guides.
+
+## 📊 Current Status
+
+pltr-cli is **production-ready** with comprehensive features:
+
+- ✅ **65+ Commands** across 8 command groups
+- ✅ **273 Unit Tests** with 67% code coverage
+- ✅ **Published on PyPI** with automated releases
+- ✅ **Cross-Platform** support (Windows, macOS, Linux)
+- ✅ **Comprehensive Documentation** (Quick start, guides, examples)
+- ✅ **Interactive Shell** with tab completion and history
+- ✅ **CI/CD Ready** with environment variable support
+
+**Latest Release**: Available on [PyPI](https://pypi.org/project/pltr-cli/)
+
+## 🤝 Contributing
+
+Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation.
+
+### Getting Started
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes following the existing patterns
+4. Add tests for new functionality
+5. Run the test suite and linting
+6. Commit using conventional commit format (`feat:`, `fix:`, `docs:`, etc.)
+7. Push to your branch and create a Pull Request
+
+### Development Guidelines
+
+- Follow existing code patterns and architecture
+- Add tests for new functionality
+- Update documentation for user-facing changes
+- Use type hints throughout
+- Follow the existing error handling patterns
+
+See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed development guidelines.
 
 ## License
 
