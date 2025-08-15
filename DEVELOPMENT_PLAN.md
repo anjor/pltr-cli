@@ -135,15 +135,15 @@ Building a command-line interface tool for interacting with Palantir Foundry API
 - [x] Fix major testing issues (keyring, API mismatches, CI reliability)
 - [x] Merge to main
 
-### Phase 8: Advanced Features ✅ (PARTIALLY COMPLETED)
+### Phase 8: Advanced Features 🚧 (IN PROGRESS)
 - [x] Create feature/advanced branch
 - [x] Add interactive mode (REPL)
-- [ ] Implement command aliases
+- [x] Implement command aliases (PR #15 - pending merge)
 - [ ] Add batch operations support
 - [ ] Add caching for improved performance
 - [ ] Implement plugin architecture
 - [x] Add command completion
-- [x] Merge to main
+- [ ] Merge remaining features to main
 
 ### Phase 9: Documentation ✅ (COMPLETED & MERGED)
 - [x] Create feature/documentation branch
