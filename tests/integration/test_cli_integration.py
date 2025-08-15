@@ -44,10 +44,8 @@ class TestCLIIntegration:
                     profile_manager.add_profile("test")
                     profile_manager.set_default("test")
 
-            with patch("pltr.commands.verify.AuthManager") as mock_auth_cls:
-                mock_auth = Mock()
-                mock_auth_cls.from_profile.return_value = mock_auth
-                yield mock_auth
+                # Mocking AuthManager is not needed since verify command uses requests directly
+            yield None
 
     def test_help_command(self, runner):
         """Test that help command works."""
@@ -299,34 +297,30 @@ class TestCLIIntegration:
             profile_manager.set_default("test")
 
             with patch("pltr.services.dataset.DatasetService") as mock_dataset_service:
-                with patch("pltr.commands.dataset.AuthManager") as mock_auth_manager:
-                    # Mock auth
-                    mock_auth = Mock()
-                    mock_auth_manager.from_profile.return_value = mock_auth
+                # Service mocking handles authentication internally
+                # Mock dataset service
+                mock_service = Mock()
+                mock_service.get.return_value = {
+                    "rid": "ri.foundry.main.dataset.123",
+                    "name": "Test Dataset",
+                }
+                mock_dataset_service.return_value = mock_service
 
-                    # Mock dataset service
-                    mock_service = Mock()
-                    mock_service.get.return_value = {
-                        "rid": "ri.foundry.main.dataset.123",
-                        "name": "Test Dataset",
-                    }
-                    mock_dataset_service.return_value = mock_service
-
-                    result = runner.invoke(
-                        app,
-                        [
-                            "dataset",
-                            "get",
-                            "ri.foundry.main.dataset.123",
-                            "--format",
-                            "json",
-                        ],
-                    )
-                    assert result.exit_code == 0
-                    # Verify JSON output
-                    output_json = json.loads(result.output)
-                    assert output_json["rid"] == "ri.foundry.main.dataset.123"
-                    assert output_json["name"] == "Test Dataset"
+                result = runner.invoke(
+                    app,
+                    [
+                        "dataset",
+                        "get",
+                        "ri.foundry.main.dataset.123",
+                        "--format",
+                        "json",
+                    ],
+                )
+                assert result.exit_code == 0
+                # Verify JSON output
+                output_json = json.loads(result.output)
+                assert output_json["rid"] == "ri.foundry.main.dataset.123"
+                assert output_json["name"] == "Test Dataset"
 
     def test_error_handling_invalid_rid(self, runner, temp_config_dir):
         """Test error handling for invalid RID format."""
@@ -344,14 +338,10 @@ class TestCLIIntegration:
             profile_manager.add_profile("test")
             profile_manager.set_default("test")
 
-            with patch("pltr.commands.dataset.AuthManager") as mock_auth_manager:
-                # Mock auth
-                mock_auth = Mock()
-                mock_auth_manager.from_profile.return_value = mock_auth
-
-                result = runner.invoke(app, ["dataset", "get", "invalid-rid"])
-                assert result.exit_code == 1
-                assert "Error" in result.output or "error" in result.output.lower()
+            # Service mocking handles authentication internally
+            result = runner.invoke(app, ["dataset", "get", "invalid-rid"])
+            assert result.exit_code == 1
+            assert "Error" in result.output or "error" in result.output.lower()
 
     def test_environment_variable_override(self, runner, monkeypatch):
         """Test that environment profile variable works."""
