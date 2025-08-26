@@ -38,8 +38,11 @@ def mock_object_type_service():
         # Set up client mock
         mock_client = Mock()
         mock_ontologies = Mock()
+        mock_ontology_class = Mock()
         mock_object_type_class = Mock()
-        mock_ontologies.ObjectType = mock_object_type_class
+        # ObjectType is nested under Ontology in the SDK
+        mock_ontology_class.ObjectType = mock_object_type_class
+        mock_ontologies.Ontology = mock_ontology_class
         mock_client.ontologies = mock_ontologies
         mock_auth.return_value.get_client.return_value = mock_client
 
@@ -187,7 +190,10 @@ def test_ontology_service_initialization():
 def test_list_ontologies(mock_ontology_service, sample_ontology):
     """Test listing ontologies."""
     service, mock_ontology_class = mock_ontology_service
-    mock_ontology_class.list.return_value = [sample_ontology]
+    # Mock the response with a 'data' field
+    mock_response = Mock()
+    mock_response.data = [sample_ontology]
+    mock_ontology_class.list.return_value = mock_response
 
     result = service.list_ontologies()
 
@@ -213,7 +219,10 @@ def test_get_ontology(mock_ontology_service, sample_ontology):
 def test_list_object_types(mock_object_type_service, sample_object_type):
     """Test listing object types."""
     service, mock_object_type_class = mock_object_type_service
-    mock_object_type_class.list.return_value = [sample_object_type]
+    # Mock the response with a 'data' field
+    mock_response = Mock()
+    mock_response.data = [sample_object_type]
+    mock_object_type_class.list.return_value = mock_response
 
     result = service.list_object_types("ri.ontology.main.ontology.test")
 
