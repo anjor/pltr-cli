@@ -13,20 +13,18 @@ class OntologyService(BaseService):
         """Get the Foundry ontologies service."""
         return self.client.ontologies
 
-    def list_ontologies(self, page_size: Optional[int] = None) -> List[Dict[str, Any]]:
+    def list_ontologies(self) -> List[Dict[str, Any]]:
         """
         List all ontologies visible to the current user.
-
-        Args:
-            page_size: Number of results per page
 
         Returns:
             List of ontology information dictionaries
         """
         try:
-            result = self.service.Ontology.list(page_size=page_size)
+            result = self.service.Ontology.list()
             ontologies = []
-            for ontology in result:
+            # The response has a 'data' field containing the list of ontologies
+            for ontology in result.data:
                 ontologies.append(self._format_ontology_info(ontology))
             return ontologies
         except Exception as e:
@@ -65,23 +63,22 @@ class ObjectTypeService(BaseService):
         """Get the Foundry ontologies service."""
         return self.client.ontologies
 
-    def list_object_types(
-        self, ontology_rid: str, page_size: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    def list_object_types(self, ontology_rid: str) -> List[Dict[str, Any]]:
         """
         List object types in an ontology.
 
         Args:
             ontology_rid: Ontology Resource Identifier
-            page_size: Number of results per page
 
         Returns:
             List of object type information dictionaries
         """
         try:
-            result = self.service.ObjectType.list(ontology_rid, page_size=page_size)
+            # ObjectType is nested under Ontology in the SDK
+            result = self.service.Ontology.ObjectType.list(ontology_rid)
             object_types = []
-            for obj_type in result:
+            # The response has a 'data' field containing the list of object types
+            for obj_type in result.data:
                 object_types.append(self._format_object_type_info(obj_type))
             return object_types
         except Exception as e:
@@ -99,13 +96,14 @@ class ObjectTypeService(BaseService):
             Object type information dictionary
         """
         try:
-            obj_type = self.service.ObjectType.get(ontology_rid, object_type)
+            # ObjectType is nested under Ontology in the SDK
+            obj_type = self.service.Ontology.ObjectType.get(ontology_rid, object_type)
             return self._format_object_type_info(obj_type)
         except Exception as e:
             raise RuntimeError(f"Failed to get object type {object_type}: {e}")
 
     def list_outgoing_link_types(
-        self, ontology_rid: str, object_type: str, page_size: Optional[int] = None
+        self, ontology_rid: str, object_type: str
     ) -> List[Dict[str, Any]]:
         """
         List outgoing link types for an object type.
@@ -113,17 +111,18 @@ class ObjectTypeService(BaseService):
         Args:
             ontology_rid: Ontology Resource Identifier
             object_type: Object type API name
-            page_size: Number of results per page
 
         Returns:
             List of link type information dictionaries
         """
         try:
-            result = self.service.ObjectType.list_outgoing_link_types(
-                ontology_rid, object_type, page_size=page_size
+            # ObjectType is nested under Ontology in the SDK
+            result = self.service.Ontology.ObjectType.list_outgoing_link_types(
+                ontology_rid, object_type
             )
             link_types = []
-            for link_type in result:
+            # The response has a 'data' field containing the list of link types
+            for link_type in result.data:
                 link_types.append(self._format_link_type_info(link_type))
             return link_types
         except Exception as e:

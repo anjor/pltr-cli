@@ -33,16 +33,13 @@ def list_ontologies(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
-    ),
 ):
     """List all available ontologies."""
     try:
         service = OntologyService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Fetching ontologies..."):
-            ontologies = service.list_ontologies(page_size=page_size)
+            ontologies = service.list_ontologies()
 
         formatter.format_table(
             ontologies,
@@ -106,16 +103,13 @@ def list_object_types(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
-    ),
 ):
     """List object types in an ontology."""
     try:
         service = ObjectTypeService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Fetching object types..."):
-            object_types = service.list_object_types(ontology_rid, page_size=page_size)
+            object_types = service.list_object_types(ontology_rid)
 
         formatter.format_table(
             object_types,
