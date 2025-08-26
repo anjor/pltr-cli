@@ -229,7 +229,9 @@ def test_list_object_types(mock_object_type_service, sample_object_type):
     assert len(result) == 1
     assert result[0]["api_name"] == "Employee"
     assert result[0]["primary_key"] == "employee_id"
-    mock_object_type_class.list.assert_called_once()
+    mock_object_type_class.list.assert_called_once_with(
+        "ri.ontology.main.ontology.test"
+    )
 
 
 def test_get_object_type(mock_object_type_service, sample_object_type):

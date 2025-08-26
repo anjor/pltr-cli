@@ -13,18 +13,14 @@ class OntologyService(BaseService):
         """Get the Foundry ontologies service."""
         return self.client.ontologies
 
-    def list_ontologies(self, page_size: Optional[int] = None) -> List[Dict[str, Any]]:
+    def list_ontologies(self) -> List[Dict[str, Any]]:
         """
         List all ontologies visible to the current user.
-
-        Args:
-            page_size: Number of results per page (currently not supported by SDK)
 
         Returns:
             List of ontology information dictionaries
         """
         try:
-            # Note: page_size is not supported by the SDK's Ontology.list() method
             result = self.service.Ontology.list()
             ontologies = []
             # The response has a 'data' field containing the list of ontologies
@@ -67,22 +63,18 @@ class ObjectTypeService(BaseService):
         """Get the Foundry ontologies service."""
         return self.client.ontologies
 
-    def list_object_types(
-        self, ontology_rid: str, page_size: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    def list_object_types(self, ontology_rid: str) -> List[Dict[str, Any]]:
         """
         List object types in an ontology.
 
         Args:
             ontology_rid: Ontology Resource Identifier
-            page_size: Number of results per page (currently not supported by SDK)
 
         Returns:
             List of object type information dictionaries
         """
         try:
             # ObjectType is nested under Ontology in the SDK
-            # Note: page_size is not supported by the SDK's list() method
             result = self.service.Ontology.ObjectType.list(ontology_rid)
             object_types = []
             # The response has a 'data' field containing the list of object types
@@ -111,7 +103,7 @@ class ObjectTypeService(BaseService):
             raise RuntimeError(f"Failed to get object type {object_type}: {e}")
 
     def list_outgoing_link_types(
-        self, ontology_rid: str, object_type: str, page_size: Optional[int] = None
+        self, ontology_rid: str, object_type: str
     ) -> List[Dict[str, Any]]:
         """
         List outgoing link types for an object type.
@@ -119,14 +111,12 @@ class ObjectTypeService(BaseService):
         Args:
             ontology_rid: Ontology Resource Identifier
             object_type: Object type API name
-            page_size: Number of results per page (currently not supported by SDK)
 
         Returns:
             List of link type information dictionaries
         """
         try:
             # ObjectType is nested under Ontology in the SDK
-            # Note: page_size is not supported by the SDK's list_outgoing_link_types() method
             result = self.service.Ontology.ObjectType.list_outgoing_link_types(
                 ontology_rid, object_type
             )
