@@ -39,7 +39,7 @@ pltr-cli needs to authenticate with your Foundry instance. You have two options:
 If you have a Foundry API token:
 
 ```bash
-pltr configure
+pltr configure configure
 ```
 
 Follow the prompts to enter:
