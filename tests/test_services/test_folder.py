@@ -82,7 +82,9 @@ def test_create_folder(mock_folder_service, sample_folder):
     assert result["type"] == "folder"
 
     mock_folder_class.create.assert_called_once_with(
-        display_name="Test Folder", parent_folder_rid="ri.compass.main.folder.parent"
+        display_name="Test Folder",
+        parent_folder_rid="ri.compass.main.folder.parent",
+        preview=True,
     )
 
 
@@ -97,7 +99,9 @@ def test_get_folder(mock_folder_service, sample_folder):
     assert result["display_name"] == "Test Folder"
     assert result["description"] == "Test folder description"
 
-    mock_folder_class.get.assert_called_once_with("ri.compass.main.folder.test-folder")
+    mock_folder_class.get.assert_called_once_with(
+        "ri.compass.main.folder.test-folder", preview=True
+    )
 
 
 def test_list_children(mock_folder_service, sample_children):
@@ -124,7 +128,7 @@ def test_list_children(mock_folder_service, sample_children):
     assert result[1]["name"] == "Child Dataset"
 
     mock_folder_class.children.assert_called_once_with(
-        "ri.compass.main.folder.parent", page_size=None, page_token=None
+        "ri.compass.main.folder.parent", page_size=None, page_token=None, preview=True
     )
 
 
@@ -140,7 +144,10 @@ def test_list_children_with_pagination(mock_folder_service, sample_children):
     assert len(result) == 2
 
     mock_folder_class.children.assert_called_once_with(
-        "ri.compass.main.folder.parent", page_size=10, page_token="next-page-token"
+        "ri.compass.main.folder.parent",
+        page_size=10,
+        page_token="next-page-token",
+        preview=True,
     )
 
 
@@ -161,7 +168,7 @@ def test_get_folders_batch(mock_folder_service, sample_folder):
     assert result[0]["rid"] == "ri.compass.main.folder.test-folder"
     assert result[1]["rid"] == "ri.compass.main.folder.test-folder"
 
-    mock_folder_class.get_batch.assert_called_once_with(body=folder_rids)
+    mock_folder_class.get_batch.assert_called_once_with(body=folder_rids, preview=True)
 
 
 def test_get_folders_batch_exceeds_limit(mock_folder_service):
