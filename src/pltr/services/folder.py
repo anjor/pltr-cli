@@ -29,7 +29,9 @@ class FolderService(BaseService):
         """
         try:
             folder = self.service.Folder.create(
-                display_name=display_name, parent_folder_rid=parent_folder_rid
+                display_name=display_name,
+                parent_folder_rid=parent_folder_rid,
+                preview=True,
             )
             return self._format_folder_info(folder)
         except Exception as e:
@@ -46,7 +48,7 @@ class FolderService(BaseService):
             Folder information dictionary
         """
         try:
-            folder = self.service.Folder.get(folder_rid)
+            folder = self.service.Folder.get(folder_rid, preview=True)
             return self._format_folder_info(folder)
         except Exception as e:
             raise RuntimeError(f"Failed to get folder {folder_rid}: {e}")
@@ -72,7 +74,7 @@ class FolderService(BaseService):
             children = []
             # The children method returns an iterator
             for child in self.service.Folder.children(
-                folder_rid, page_size=page_size, page_token=page_token
+                folder_rid, page_size=page_size, page_token=page_token, preview=True
             ):
                 children.append(self._format_resource_info(child))
             return children
@@ -93,7 +95,7 @@ class FolderService(BaseService):
             raise ValueError("Maximum batch size is 1000 folders")
 
         try:
-            response = self.service.Folder.get_batch(body=folder_rids)
+            response = self.service.Folder.get_batch(body=folder_rids, preview=True)
             folders = []
             for folder in response.folders:
                 folders.append(self._format_folder_info(folder))
