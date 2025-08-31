@@ -1,6 +1,6 @@
 # pltr-cli
 
-A comprehensive command-line interface for Palantir Foundry APIs, providing 65+ commands for data analysis, ontology operations, SQL queries, and administrative tasks.
+A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ commands for data analysis, ontology operations, SQL queries, folder management, and administrative tasks.
 
 ## Overview
 
@@ -10,6 +10,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 65+ 
 
 - 🔐 **Secure Authentication**: Token and OAuth2 support with encrypted credential storage
 - 📊 **Dataset Operations**: Get dataset information and create new datasets (RID-based API)
+- 📁 **Folder Management**: Create, explore, and manage Foundry filesystem structure
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
 - 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
@@ -72,6 +73,12 @@ pltr admin user current
 # List available ontologies
 pltr ontology list
 
+# Create a new folder
+pltr folder create "My Project"
+
+# List root folder contents
+pltr folder list ri.compass.main.folder.0
+
 # Execute a simple SQL query
 pltr sql execute "SELECT 1 as test"
 
@@ -96,7 +103,7 @@ pltr-cli provides comprehensive documentation to help you get the most out of th
 ### 📖 User Guides
 - **[Quick Start Guide](docs/user-guide/quick-start.md)** - Get up and running in 5 minutes
 - **[Authentication Setup](docs/user-guide/authentication.md)** - Complete guide to token and OAuth2 setup
-- **[Command Reference](docs/user-guide/commands.md)** - Complete reference for all 65+ commands
+- **[Command Reference](docs/user-guide/commands.md)** - Complete reference for all 70+ commands
 - **[Common Workflows](docs/user-guide/workflows.md)** - Real-world data analysis patterns
 - **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Solutions to common issues
 
