@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all pltr-cli commands. The CLI provides 65+ commands across 8 major command groups for comprehensive Foundry API access.
+Complete reference for all pltr-cli commands. The CLI provides 70+ commands across 9 major command groups for comprehensive Foundry API access.
 
 ## Global Options
 
@@ -144,6 +144,101 @@ pltr dataset create "My New Dataset"
 # Create in specific folder
 pltr dataset create "Analysis Results" --parent-folder ri.foundry.main.folder.xyz789
 ```
+
+---
+
+## 📁 Folder Commands
+
+Folder operations for managing the Foundry filesystem structure using the foundry-platform-sdk.
+
+### `pltr folder create [OPTIONS] NAME`
+Create a new folder in Foundry.
+
+**Arguments:**
+- `NAME` (required): Folder display name
+
+**Options:**
+- `--parent-folder`, `-p` TEXT: Parent folder RID [default: ri.compass.main.folder.0 (root)]
+- `--profile` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Examples:**
+```bash
+# Create folder in root
+pltr folder create "My Project"
+
+# Create folder in specific parent
+pltr folder create "Sub Folder" --parent-folder ri.compass.main.folder.xyz123
+
+# Create with JSON output
+pltr folder create "Analysis" --format json
+```
+
+### `pltr folder get [OPTIONS] FOLDER_RID`
+Get detailed information about a specific folder.
+
+**Arguments:**
+- `FOLDER_RID` (required): Folder Resource Identifier
+
+**Options:**
+- `--profile` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Get folder info
+pltr folder get ri.compass.main.folder.abc123
+
+# Export as JSON
+pltr folder get ri.compass.main.folder.abc123 --format json --output folder-info.json
+```
+
+### `pltr folder list [OPTIONS] FOLDER_RID`
+List all child resources of a folder.
+
+**Arguments:**
+- `FOLDER_RID` (required): Folder Resource Identifier (use 'ri.compass.main.folder.0' for root)
+
+**Options:**
+- `--profile` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+- `--page-size` INTEGER: Number of items per page
+
+**Examples:**
+```bash
+# List root folder contents
+pltr folder list ri.compass.main.folder.0
+
+# List with pagination
+pltr folder list ri.compass.main.folder.abc123 --page-size 50
+
+# Export children list
+pltr folder list ri.compass.main.folder.abc123 --format csv --output children.csv
+```
+
+### `pltr folder batch-get [OPTIONS] FOLDER_RIDS...`
+Get multiple folders in a single request (max 1000).
+
+**Arguments:**
+- `FOLDER_RIDS...` (required): Space-separated list of folder Resource Identifiers
+
+**Options:**
+- `--profile` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Get multiple folders
+pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def456
+
+# Export batch results
+pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def456 --format json --output folders.json
+```
+
+**Root Folder RID**: `ri.compass.main.folder.0` - Use this as the parent folder RID to create folders in the root directory.
 
 ---
 
@@ -583,6 +678,11 @@ pltr verify                                # Test connection
 pltr sql execute "SELECT * FROM table"     # Run SQL query
 pltr ontology list                         # List ontologies
 pltr dataset get <rid>                     # Get dataset info
+
+# Folder Management
+pltr folder create "My Folder"             # Create folder
+pltr folder list ri.compass.main.folder.0  # List root contents
+pltr folder get <folder-rid>               # Get folder info
 
 # Admin
 pltr admin user current                    # Current user info
