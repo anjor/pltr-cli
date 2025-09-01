@@ -537,3 +537,285 @@ class OutputFormatter:
             return self.format_output(display_data, format_type, output_file)
         else:
             return self.format_output(status_info, format_type, output_file)
+
+    # ============================================================================
+    # Orchestration Formatting Methods
+    # ============================================================================
+
+    def format_build_detail(
+        self,
+        build: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed build information.
+
+        Args:
+            build: Build dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            # For table format, show key-value pairs
+            details = []
+
+            # Define the order of properties to display
+            property_order = [
+                "rid",
+                "status",
+                "created_by",
+                "created_time",
+                "started_time",
+                "finished_time",
+                "branch_name",
+                "commit_hash",
+            ]
+
+            for prop in property_order:
+                if build.get(prop) is not None:
+                    value = build[prop]
+                    # Format timestamps
+                    if "time" in prop:
+                        value = self._format_datetime(value)
+                    details.append(
+                        {
+                            "Property": prop.replace("_", " ").title(),
+                            "Value": str(value),
+                        }
+                    )
+
+            # Add any remaining properties
+            for key, value in build.items():
+                if key not in property_order and value is not None:
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(build, format_type, output_file)
+
+    def format_builds_list(
+        self,
+        builds: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format list of builds.
+
+        Args:
+            builds: List of build dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_builds = []
+        for build in builds:
+            formatted_build = {
+                "RID": build.get("rid", ""),
+                "Status": build.get("status", ""),
+                "Created By": build.get("created_by", ""),
+                "Created": self._format_datetime(build.get("created_time")),
+                "Branch": build.get("branch_name", ""),
+            }
+            formatted_builds.append(formatted_build)
+
+        return self.format_output(formatted_builds, format_type, output_file)
+
+    def format_job_detail(
+        self,
+        job: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed job information.
+
+        Args:
+            job: Job dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            # For table format, show key-value pairs
+            details = []
+
+            # Define the order of properties to display
+            property_order = [
+                "rid",
+                "status",
+                "job_type",
+                "build_rid",
+                "created_time",
+                "started_time",
+                "finished_time",
+            ]
+
+            for prop in property_order:
+                if job.get(prop) is not None:
+                    value = job[prop]
+                    # Format timestamps
+                    if "time" in prop:
+                        value = self._format_datetime(value)
+                    details.append(
+                        {
+                            "Property": prop.replace("_", " ").title(),
+                            "Value": str(value),
+                        }
+                    )
+
+            # Add any remaining properties
+            for key, value in job.items():
+                if key not in property_order and value is not None:
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(job, format_type, output_file)
+
+    def format_jobs_list(
+        self,
+        jobs: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format list of jobs.
+
+        Args:
+            jobs: List of job dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_jobs = []
+        for job in jobs:
+            formatted_job = {
+                "RID": job.get("rid", ""),
+                "Status": job.get("status", ""),
+                "Type": job.get("job_type", ""),
+                "Build": job.get("build_rid", "")[:12] + "..."
+                if job.get("build_rid")
+                else "",
+                "Started": self._format_datetime(job.get("started_time")),
+            }
+            formatted_jobs.append(formatted_job)
+
+        return self.format_output(formatted_jobs, format_type, output_file)
+
+    def format_schedule_detail(
+        self,
+        schedule: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed schedule information.
+
+        Args:
+            schedule: Schedule dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            # For table format, show key-value pairs
+            details = []
+
+            # Define the order of properties to display
+            property_order = [
+                "rid",
+                "display_name",
+                "description",
+                "paused",
+                "created_by",
+                "created_time",
+                "modified_by",
+                "modified_time",
+            ]
+
+            for prop in property_order:
+                if schedule.get(prop) is not None:
+                    value = schedule[prop]
+                    # Format timestamps
+                    if "time" in prop:
+                        value = self._format_datetime(value)
+                    # Format boolean values
+                    elif prop == "paused":
+                        value = "Yes" if value else "No"
+                    details.append(
+                        {
+                            "Property": prop.replace("_", " ").title(),
+                            "Value": str(value),
+                        }
+                    )
+
+            # Handle special nested properties
+            if schedule.get("trigger"):
+                details.append(
+                    {"Property": "Trigger", "Value": str(schedule["trigger"])}
+                )
+            if schedule.get("action"):
+                details.append({"Property": "Action", "Value": str(schedule["action"])})
+
+            # Add any remaining properties
+            for key, value in schedule.items():
+                if (
+                    key not in property_order + ["trigger", "action"]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(schedule, format_type, output_file)
+
+    def format_schedules_list(
+        self,
+        schedules: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format list of schedules.
+
+        Args:
+            schedules: List of schedule dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_schedules = []
+        for schedule in schedules:
+            formatted_schedule = {
+                "RID": schedule.get("rid", ""),
+                "Name": schedule.get("display_name", ""),
+                "Description": schedule.get("description", "")[:50] + "..."
+                if schedule.get("description")
+                else "",
+                "Paused": "Yes" if schedule.get("paused") else "No",
+                "Created": self._format_datetime(schedule.get("created_time")),
+            }
+            formatted_schedules.append(formatted_schedule)
+
+        return self.format_output(formatted_schedules, format_type, output_file)
