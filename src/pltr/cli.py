@@ -12,6 +12,7 @@ from pltr.commands import (
     dataset,
     folder,
     ontology,
+    orchestration,
     sql,
     admin,
     shell,
@@ -31,6 +32,9 @@ app.add_typer(verify.app, name="verify", help="Verify authentication")
 app.add_typer(dataset.app, name="dataset", help="Manage datasets")
 app.add_typer(folder.app, name="folder", help="Manage folders")
 app.add_typer(ontology.app, name="ontology", help="Ontology operations")
+app.add_typer(
+    orchestration.app, name="orchestration", help="Manage builds, jobs, and schedules"
+)
 app.add_typer(sql.app, name="sql", help="Execute SQL queries")
 app.add_typer(
     admin.app,
