@@ -79,12 +79,17 @@ pltr admin user current
 pltr ontology list
 ```
 
-### 3. Execute a Simple SQL Query
+### 3. Search for Builds (Orchestration)
+```bash
+pltr orchestration builds search
+```
+
+### 4. Execute a Simple SQL Query
 ```bash
 pltr sql execute "SELECT 1 as test"
 ```
 
-### 4. Get Dataset Information (if you have a dataset RID)
+### 5. Get Dataset Information (if you have a dataset RID)
 ```bash
 pltr dataset get ri.foundry.main.dataset.your-dataset-rid
 ```
@@ -147,6 +152,7 @@ Now that you're set up, explore these key areas:
 
 ### Advanced Features
 - **[Multi-Profile Setup](authentication.md#multiple-profiles)**: Work with multiple Foundry instances
+- **[Orchestration Operations](commands.md#orchestration-commands)**: Manage builds, jobs, and schedules
 - **[Ontology Operations](commands.md#ontology-commands)**: Work with Foundry ontologies
 - **[Admin Tasks](commands.md#admin-commands)**: User and group management
 

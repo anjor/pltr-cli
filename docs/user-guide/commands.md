@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all pltr-cli commands. The CLI provides 70+ commands across 9 major command groups for comprehensive Foundry API access.
+Complete reference for all pltr-cli commands. The CLI provides 80+ commands across 9 major command groups for comprehensive Foundry API access.
 
 ## Global Options
 
@@ -239,6 +239,241 @@ pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def45
 ```
 
 **Root Folder RID**: `ri.compass.main.folder.0` - Use this as the parent folder RID to create folders in the root directory.
+
+---
+
+## 🏗️ Orchestration Commands
+
+Comprehensive orchestration operations for managing builds, jobs, and schedules in Foundry.
+
+### Build Commands
+
+#### `pltr orchestration builds search [OPTIONS]`
+Search for builds.
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+- `--page-size` INTEGER: Number of results per page
+
+**Example:**
+```bash
+pltr orchestration builds search --format table
+```
+
+#### `pltr orchestration builds get [OPTIONS] BUILD_RID`
+Get detailed information about a specific build.
+
+**Arguments:**
+- `BUILD_RID` (required): Build Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr orchestration builds get ri.orchestration.main.build.abc123
+```
+
+#### `pltr orchestration builds create [OPTIONS] TARGET`
+Create a new build.
+
+**Arguments:**
+- `TARGET` (required): Build target configuration in JSON format
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--branch` TEXT: Branch name for the build
+- `--force`: Force build even if no changes
+- `--abort-on-failure`: Abort on failure
+- `--notifications/--no-notifications`: Enable notifications [default: enabled]
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Example:**
+```bash
+pltr orchestration builds create '{"dataset_rid": "ri.foundry.main.dataset.abc"}' --branch main --force
+```
+
+#### `pltr orchestration builds cancel [OPTIONS] BUILD_RID`
+Cancel a build and all its unfinished jobs.
+
+**Arguments:**
+- `BUILD_RID` (required): Build Resource Identifier
+
+**Example:**
+```bash
+pltr orchestration builds cancel ri.orchestration.main.build.abc123
+```
+
+#### `pltr orchestration builds jobs [OPTIONS] BUILD_RID`
+List all jobs in a build.
+
+**Arguments:**
+- `BUILD_RID` (required): Build Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--page-size` INTEGER: Number of results per page
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr orchestration builds jobs ri.orchestration.main.build.abc123
+```
+
+### Job Commands
+
+#### `pltr orchestration jobs get [OPTIONS] JOB_RID`
+Get detailed information about a specific job.
+
+**Arguments:**
+- `JOB_RID` (required): Job Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr orchestration jobs get ri.orchestration.main.job.def456
+```
+
+#### `pltr orchestration jobs get-batch [OPTIONS] JOB_RIDS`
+Get multiple jobs in batch (max 500).
+
+**Arguments:**
+- `JOB_RIDS` (required): Comma-separated list of Job RIDs
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr orchestration jobs get-batch "ri.orchestration.main.job.abc,ri.orchestration.main.job.def"
+```
+
+### Schedule Commands
+
+#### `pltr orchestration schedules get [OPTIONS] SCHEDULE_RID`
+Get detailed information about a specific schedule.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--preview`: Enable preview mode
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr orchestration schedules get ri.orchestration.main.schedule.ghi789 --preview
+```
+
+#### `pltr orchestration schedules create [OPTIONS] ACTION`
+Create a new schedule.
+
+**Arguments:**
+- `ACTION` (required): Schedule action configuration in JSON format
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--name` TEXT: Display name for the schedule
+- `--description` TEXT: Schedule description
+- `--trigger` TEXT: Trigger configuration in JSON format
+- `--preview`: Enable preview mode
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Example:**
+```bash
+pltr orchestration schedules create '{"type": "BUILD", "target": "ri.foundry.main.dataset.abc"}' \
+  --name "Daily Build" \
+  --description "Automated daily build" \
+  --trigger '{"type": "CRON", "expression": "0 2 * * *"}'
+```
+
+#### `pltr orchestration schedules delete [OPTIONS] SCHEDULE_RID`
+Delete a schedule.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--yes`, `-y`: Skip confirmation prompt
+
+**Example:**
+```bash
+pltr orchestration schedules delete ri.orchestration.main.schedule.ghi789 --yes
+```
+
+#### `pltr orchestration schedules pause [OPTIONS] SCHEDULE_RID`
+Pause a schedule.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+
+**Example:**
+```bash
+pltr orchestration schedules pause ri.orchestration.main.schedule.ghi789
+```
+
+#### `pltr orchestration schedules unpause [OPTIONS] SCHEDULE_RID`
+Unpause a schedule.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+
+**Example:**
+```bash
+pltr orchestration schedules unpause ri.orchestration.main.schedule.ghi789
+```
+
+#### `pltr orchestration schedules run [OPTIONS] SCHEDULE_RID`
+Execute a schedule immediately.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+
+**Example:**
+```bash
+pltr orchestration schedules run ri.orchestration.main.schedule.ghi789
+```
+
+#### `pltr orchestration schedules replace [OPTIONS] SCHEDULE_RID ACTION`
+Replace an existing schedule.
+
+**Arguments:**
+- `SCHEDULE_RID` (required): Schedule Resource Identifier
+- `ACTION` (required): Schedule action configuration in JSON format
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--name` TEXT: Display name for the schedule
+- `--description` TEXT: Schedule description
+- `--trigger` TEXT: Trigger configuration in JSON format
+- `--preview`: Enable preview mode
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Example:**
+```bash
+pltr orchestration schedules replace ri.orchestration.main.schedule.ghi789 \
+  '{"type": "BUILD", "target": "ri.foundry.main.dataset.new"}' \
+  --name "Updated Schedule"
+```
+
+**Note**: All orchestration operations require Resource Identifiers (RIDs) which can be found in the Foundry web interface. RIDs follow the pattern:
+- Builds: `ri.orchestration.main.build.{uuid}`
+- Jobs: `ri.orchestration.main.job.{uuid}`
+- Schedules: `ri.orchestration.main.schedule.{uuid}`
 
 ---
 

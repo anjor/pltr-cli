@@ -20,6 +20,9 @@ pltr ontology object-type-list ri.ontology.main.ontology.abc123
 
 # 4. Check current user permissions
 pltr admin user current
+
+# 5. Search for recent builds to understand processing activity
+pltr orchestration builds search --format table
 ```
 
 ### SQL-Based Analysis Workflow
@@ -174,6 +177,88 @@ pltr sql execute "
     AVG(numeric_field) as avg_value
   FROM critical_dataset
 " --format json --output data_profile.json
+```
+
+## 🏗️ Orchestration Workflows
+
+### Build Management Workflow
+
+Monitor and manage build processes:
+
+```bash
+# 1. Search for recent builds
+pltr orchestration builds search --format table
+
+# 2. Get details of a specific build
+pltr orchestration builds get ri.orchestration.main.build.abc123 --format json
+
+# 3. Check build jobs and their status
+pltr orchestration builds jobs ri.orchestration.main.build.abc123
+
+# 4. Create a new build for a dataset
+pltr orchestration builds create '{"dataset_rid": "ri.foundry.main.dataset.abc"}' \
+  --branch production --notifications
+
+# 5. Cancel a running build if needed
+pltr orchestration builds cancel ri.orchestration.main.build.abc123
+```
+
+### Schedule Management Workflow
+
+Automate recurring data processes:
+
+```bash
+# 1. List existing schedules to understand current automation
+pltr orchestration schedules get ri.orchestration.main.schedule.daily-etl
+
+# 2. Create a daily build schedule
+pltr orchestration schedules create '{
+  "type": "BUILD",
+  "target": "ri.foundry.main.dataset.daily-data"
+}' \
+  --name "Daily ETL Pipeline" \
+  --description "Automated daily data processing" \
+  --trigger '{
+    "type": "CRON",
+    "expression": "0 2 * * *"
+  }' \
+  --format json --output new_schedule.json
+
+# 3. Test schedule immediately
+pltr orchestration schedules run ri.orchestration.main.schedule.daily-etl
+
+# 4. Pause schedule during maintenance
+pltr orchestration schedules pause ri.orchestration.main.schedule.daily-etl
+
+# 5. Resume after maintenance
+pltr orchestration schedules unpause ri.orchestration.main.schedule.daily-etl
+```
+
+### Job Monitoring Workflow
+
+Track job execution and performance:
+
+```bash
+#!/bin/bash
+# job_monitor.sh - Monitor jobs in a build
+
+BUILD_RID="ri.orchestration.main.build.abc123"
+
+echo "Monitoring build: $BUILD_RID"
+
+# 1. Get build overview
+pltr orchestration builds get $BUILD_RID --format table
+
+# 2. List all jobs in the build
+pltr orchestration builds jobs $BUILD_RID --format json --output build_jobs.json
+
+# 3. Get details for multiple jobs
+JOB_RIDS=$(cat build_jobs.json | jq -r '.[] | select(.status == "RUNNING") | .rid' | tr '\n' ',' | sed 's/,$//')
+if [ ! -z "$JOB_RIDS" ]; then
+  pltr orchestration jobs get-batch "$JOB_RIDS" --format table
+fi
+
+echo "Job monitoring complete"
 ```
 
 ## 🏢 Administrative Workflows
