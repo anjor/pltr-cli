@@ -1,6 +1,6 @@
 # pltr-cli
 
-A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ commands for data analysis, ontology operations, SQL queries, folder management, and administrative tasks.
+A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ commands for data analysis, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
 
 ## Overview
 
@@ -12,6 +12,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ 
 - 📊 **Dataset Operations**: Get dataset information and create new datasets (RID-based API)
 - 📁 **Folder Management**: Create, explore, and manage Foundry filesystem structure
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
+- 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
 - 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
 - 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
 - 💻 **Interactive Shell**: REPL mode with tab completion and command history
@@ -73,6 +74,9 @@ pltr admin user current
 # List available ontologies
 pltr ontology list
 
+# Search for builds
+pltr orchestration builds search
+
 # Create a new folder
 pltr folder create "My Project"
 
@@ -124,6 +128,11 @@ pltr sql execute "SELECT * FROM table"  # Run SQL queries
 pltr ontology list             # List ontologies
 pltr dataset get <rid>         # Get dataset info
 
+# Orchestration
+pltr orchestration builds search       # Search builds
+pltr orchestration jobs get <job-rid>  # Get job details
+pltr orchestration schedules create   # Create schedule
+
 # Administrative
 pltr admin user current        # Current user info
 pltr admin user list          # List users
@@ -136,6 +145,63 @@ pltr completion install       # Enable tab completion
 💡 **Tip**: Use `pltr --help` or `pltr <command> --help` for detailed command help.
 
 For the complete command reference with examples, see **[Command Reference](docs/user-guide/commands.md)**.
+
+### 🏗️ Orchestration Commands
+
+pltr-cli provides comprehensive support for Foundry's Orchestration module:
+
+#### Build Management
+```bash
+# Search for builds
+pltr orchestration builds search
+
+# Get build details
+pltr orchestration builds get ri.orchestration.main.build.12345
+
+# Create a new build
+pltr orchestration builds create '{"dataset_rid": "ri.foundry.main.dataset.abc"}' --branch main
+
+# Cancel a running build
+pltr orchestration builds cancel ri.orchestration.main.build.12345
+
+# List jobs in a build
+pltr orchestration builds jobs ri.orchestration.main.build.12345
+```
+
+#### Job Management
+```bash
+# Get job details
+pltr orchestration jobs get ri.orchestration.main.job.12345
+
+# Get multiple jobs in batch
+pltr orchestration jobs get-batch "rid1,rid2,rid3"
+```
+
+#### Schedule Management
+```bash
+# Get schedule information
+pltr orchestration schedules get ri.orchestration.main.schedule.12345
+
+# Create a new schedule
+pltr orchestration schedules create '{"type": "BUILD", "target": "dataset-rid"}' \
+  --name "Daily Build" --description "Automated daily build"
+
+# Pause/unpause schedules
+pltr orchestration schedules pause ri.orchestration.main.schedule.12345
+pltr orchestration schedules unpause ri.orchestration.main.schedule.12345
+
+# Execute schedule immediately
+pltr orchestration schedules run ri.orchestration.main.schedule.12345
+
+# Delete a schedule
+pltr orchestration schedules delete ri.orchestration.main.schedule.12345 --yes
+```
+
+**All orchestration commands support:**
+- Multiple output formats (table, JSON, CSV)
+- File output (`--output filename`)
+- Profile selection (`--profile production`)
+- Preview mode for schedules (`--preview`)
 
 ## ⚙️ Configuration
 
@@ -207,7 +273,7 @@ See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed architectu
 
 pltr-cli is **production-ready** with comprehensive features:
 
-- ✅ **65+ Commands** across 8 command groups
+- ✅ **80+ Commands** across 9 command groups
 - ✅ **273 Unit Tests** with 67% code coverage
 - ✅ **Published on PyPI** with automated releases
 - ✅ **Cross-Platform** support (Windows, macOS, Linux)
