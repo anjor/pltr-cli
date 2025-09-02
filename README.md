@@ -1,6 +1,6 @@
 # pltr-cli
 
-A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ commands for data analysis, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
+A comprehensive command-line interface for Palantir Foundry APIs, providing 80+ commands for data analysis, dataset management, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
 
 ## Overview
 
@@ -9,7 +9,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ 
 ## ✨ Key Features
 
 - 🔐 **Secure Authentication**: Token and OAuth2 support with encrypted credential storage
-- 📊 **Dataset Operations**: Get dataset information and create new datasets (RID-based API)
+- 📊 **Dataset Operations**: Complete dataset management with branches, files, transactions, and views (RID-based API)
 - 📁 **Folder Management**: Create, explore, and manage Foundry filesystem structure
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
@@ -86,6 +86,11 @@ pltr folder list ri.compass.main.folder.0
 
 # Execute a simple SQL query
 pltr sql execute "SELECT 1 as test"
+
+# Explore dataset operations (requires dataset RID)
+pltr dataset get ri.foundry.main.dataset.abc123
+pltr dataset branches list ri.foundry.main.dataset.abc123
+pltr dataset files list ri.foundry.main.dataset.abc123
 
 # Start interactive mode for exploration
 pltr shell
