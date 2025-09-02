@@ -946,3 +946,232 @@ class OutputFormatter:
             return self.format_output(details, format_type, output_file)
         else:
             return self.format_output(reference, format_type, output_file)
+
+    # Dataset formatting methods
+
+    def format_branches(
+        self,
+        branches: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset branches for display.
+
+        Args:
+            branches: List of branch dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_branches = []
+        for branch in branches:
+            formatted_branch = {
+                "Name": branch.get("name", ""),
+                "Transaction": branch.get("transaction_rid", "")[:12] + "..."
+                if branch.get("transaction_rid")
+                else "",
+                "Created": self._format_datetime(branch.get("created_time")),
+                "Created By": branch.get("created_by", ""),
+            }
+            formatted_branches.append(formatted_branch)
+
+        return self.format_output(formatted_branches, format_type, output_file)
+
+    def format_branch_detail(
+        self,
+        branch: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed branch information.
+
+        Args:
+            branch: Branch dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("name", "Branch Name"),
+                ("dataset_rid", "Dataset RID"),
+                ("parent_branch", "Parent Branch"),
+                ("transaction_rid", "Transaction RID"),
+                ("created_time", "Created"),
+                ("created_by", "Created By"),
+            ]
+
+            for key, label in property_order:
+                if branch.get(key) is not None:
+                    value = branch[key]
+                    if key == "created_time":
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in branch.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(branch, format_type, output_file)
+
+    def format_files(
+        self,
+        files: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset files for display.
+
+        Args:
+            files: List of file dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_files = []
+        for file in files:
+            formatted_file = {
+                "Path": file.get("path", ""),
+                "Size": self._format_file_size(file.get("size_bytes")),
+                "Last Modified": self._format_datetime(file.get("last_modified")),
+                "Transaction": file.get("transaction_rid", "")[:12] + "..."
+                if file.get("transaction_rid")
+                else "",
+            }
+            formatted_files.append(formatted_file)
+
+        return self.format_output(formatted_files, format_type, output_file)
+
+    def format_transactions(
+        self,
+        transactions: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset transactions for display.
+
+        Args:
+            transactions: List of transaction dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_transactions = []
+        for transaction in transactions:
+            formatted_transaction = {
+                "Transaction RID": transaction.get("transaction_rid", "")[:12] + "..."
+                if transaction.get("transaction_rid")
+                else "",
+                "Created": self._format_datetime(transaction.get("created_time")),
+                "Created By": transaction.get("created_by", ""),
+                "Status": transaction.get("status", ""),
+            }
+            formatted_transactions.append(formatted_transaction)
+
+        return self.format_output(formatted_transactions, format_type, output_file)
+
+    def format_views(
+        self,
+        views: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset views for display.
+
+        Args:
+            views: List of view dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_views = []
+        for view in views:
+            formatted_view = {
+                "View RID": view.get("view_rid", "")[:12] + "..."
+                if view.get("view_rid")
+                else "",
+                "Name": view.get("name", ""),
+                "Description": view.get("description", "")[:50] + "..."
+                if view.get("description", "")
+                else "",
+                "Created": self._format_datetime(view.get("created_time")),
+                "Created By": view.get("created_by", ""),
+            }
+            formatted_views.append(formatted_view)
+
+        return self.format_output(formatted_views, format_type, output_file)
+
+    def format_view_detail(
+        self,
+        view: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed view information.
+
+        Args:
+            view: View dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("view_rid", "View RID"),
+                ("name", "Name"),
+                ("description", "Description"),
+                ("dataset_rid", "Dataset RID"),
+                ("created_time", "Created"),
+                ("created_by", "Created By"),
+            ]
+
+            for key, label in property_order:
+                if view.get(key) is not None:
+                    value = view[key]
+                    if key == "created_time":
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in view.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(view, format_type, output_file)
