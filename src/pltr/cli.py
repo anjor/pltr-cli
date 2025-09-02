@@ -18,6 +18,7 @@ from pltr.commands import (
     shell,
     completion,
     alias,
+    mediasets,
 )
 
 app = typer.Typer(
@@ -36,6 +37,9 @@ app.add_typer(
     orchestration.app, name="orchestration", help="Manage builds, jobs, and schedules"
 )
 app.add_typer(sql.app, name="sql", help="Execute SQL queries")
+app.add_typer(
+    mediasets.app, name="media-sets", help="Manage media sets and media content"
+)
 app.add_typer(
     admin.app,
     name="admin",

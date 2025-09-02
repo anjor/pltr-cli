@@ -819,3 +819,130 @@ class OutputFormatter:
             formatted_schedules.append(formatted_schedule)
 
         return self.format_output(formatted_schedules, format_type, output_file)
+
+    # MediaSets formatting methods
+
+    def format_media_item_info(
+        self,
+        media_item: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format media item information for display.
+
+        Args:
+            media_item: Media item information dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("media_item_rid", "Media Item RID"),
+                ("filename", "Filename"),
+                ("size", "Size"),
+                ("content_type", "Content Type"),
+                ("created_time", "Created"),
+                ("updated_time", "Updated"),
+            ]
+
+            for key, label in property_order:
+                if media_item.get(key) is not None:
+                    value = media_item[key]
+                    if key in ["created_time", "updated_time"]:
+                        value = self._format_datetime(value)
+                    elif key == "size":
+                        value = self._format_file_size(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in media_item.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(media_item, format_type, output_file)
+
+    def format_media_path_lookup(
+        self,
+        lookup_result: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format media path lookup result for display.
+
+        Args:
+            lookup_result: Path lookup result dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = [
+                {"Property": "Path", "Value": lookup_result.get("path", "")},
+                {"Property": "Media Item RID", "Value": lookup_result.get("rid", "")},
+            ]
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(lookup_result, format_type, output_file)
+
+    def format_media_reference(
+        self,
+        reference: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format media reference information for display.
+
+        Args:
+            reference: Media reference dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("reference_id", "Reference ID"),
+                ("url", "URL"),
+                ("expires_at", "Expires At"),
+            ]
+
+            for key, label in property_order:
+                if reference.get(key) is not None:
+                    value = reference[key]
+                    if key == "expires_at":
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in reference.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(reference, format_type, output_file)
