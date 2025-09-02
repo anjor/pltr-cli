@@ -13,6 +13,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 70+ 
 - 📁 **Folder Management**: Create, explore, and manage Foundry filesystem structure
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
+- 🎬 **MediaSets Operations**: Upload, download, and manage media content with transaction support
 - 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
 - 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
 - 💻 **Interactive Shell**: REPL mode with tab completion and command history
@@ -133,6 +134,11 @@ pltr orchestration builds search       # Search builds
 pltr orchestration jobs get <job-rid>  # Get job details
 pltr orchestration schedules create   # Create schedule
 
+# MediaSets
+pltr media-sets get <set-rid> <item-rid>  # Get media item info
+pltr media-sets upload <set-rid> file.jpg "/path/file.jpg" <txn-id>  # Upload media
+pltr media-sets download <set-rid> <item-rid> output.jpg  # Download media
+
 # Administrative
 pltr admin user current        # Current user info
 pltr admin user list          # List users
@@ -202,6 +208,56 @@ pltr orchestration schedules delete ri.orchestration.main.schedule.12345 --yes
 - File output (`--output filename`)
 - Profile selection (`--profile production`)
 - Preview mode for schedules (`--preview`)
+
+### 🎬 MediaSets Commands
+
+pltr-cli provides full support for Foundry's MediaSets module for managing media content:
+
+#### Media Item Operations
+```bash
+# Get media item information
+pltr media-sets get ri.mediasets.main.media-set.abc ri.mediasets.main.media-item.123
+
+# Get media item RID by path
+pltr media-sets get-by-path ri.mediasets.main.media-set.abc "/images/photo.jpg"
+
+# Get a reference for embedding
+pltr media-sets reference ri.mediasets.main.media-set.abc ri.mediasets.main.media-item.123
+```
+
+#### Transaction Management
+```bash
+# Create a new upload transaction
+pltr media-sets create ri.mediasets.main.media-set.abc --branch main
+
+# Commit transaction (makes uploads available)
+pltr media-sets commit ri.mediasets.main.media-set.abc transaction-id-12345
+
+# Abort transaction (deletes uploads)
+pltr media-sets abort ri.mediasets.main.media-set.abc transaction-id-12345 --yes
+```
+
+#### Upload and Download
+```bash
+# Upload a file to media set
+pltr media-sets upload ri.mediasets.main.media-set.abc \
+  /local/path/image.jpg "/media/images/image.jpg" transaction-id-12345
+
+# Download media item (processed version)
+pltr media-sets download ri.mediasets.main.media-set.abc \
+  ri.mediasets.main.media-item.123 /local/download/image.jpg
+
+# Download original version
+pltr media-sets download ri.mediasets.main.media-set.abc \
+  ri.mediasets.main.media-item.123 /local/download/original.jpg --original
+```
+
+**All MediaSets commands support:**
+- Multiple output formats (table, JSON, CSV)
+- File output (`--output filename`)
+- Profile selection (`--profile production`)
+- Preview mode (`--preview`)
+- Transaction-based upload workflow
 
 ## ⚙️ Configuration
 
@@ -273,7 +329,7 @@ See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed architectu
 
 pltr-cli is **production-ready** with comprehensive features:
 
-- ✅ **80+ Commands** across 9 command groups
+- ✅ **80+ Commands** across 10 command groups
 - ✅ **273 Unit Tests** with 67% code coverage
 - ✅ **Published on PyPI** with automated releases
 - ✅ **Cross-Platform** support (Windows, macOS, Linux)

@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all pltr-cli commands. The CLI provides 80+ commands across 9 major command groups for comprehensive Foundry API access.
+Complete reference for all pltr-cli commands. The CLI provides 80+ commands across 10 major command groups for comprehensive Foundry API access.
 
 ## Global Options
 
@@ -474,6 +474,179 @@ pltr orchestration schedules replace ri.orchestration.main.schedule.ghi789 \
 - Builds: `ri.orchestration.main.build.{uuid}`
 - Jobs: `ri.orchestration.main.job.{uuid}`
 - Schedules: `ri.orchestration.main.schedule.{uuid}`
+
+---
+
+## 🎬 MediaSets Commands
+
+Manage media sets and media content with support for uploading, downloading, and transaction-based operations.
+
+### Media Item Information
+
+#### `pltr media-sets get [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID`
+Get detailed information about a specific media item.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv)
+- `--output`, `-o` TEXT: Output file path
+- `--preview`: Enable preview mode
+
+**Example:**
+```bash
+pltr media-sets get ri.mediasets.main.media-set.abc123 ri.mediasets.main.media-item.def456
+```
+
+#### `pltr media-sets get-by-path [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_PATH`
+Get media item RID by its path within the media set.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `MEDIA_ITEM_PATH`: Path to media item within the media set (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--branch` TEXT: Branch name
+- `--format`, `-f` TEXT: Output format (table, json, csv)
+- `--output`, `-o` TEXT: Output file path
+- `--preview`: Enable preview mode
+
+**Example:**
+```bash
+pltr media-sets get-by-path ri.mediasets.main.media-set.abc123 "/images/photo.jpg"
+```
+
+#### `pltr media-sets reference [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID`
+Get a reference to a media item (e.g., for embedding).
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv)
+- `--output`, `-o` TEXT: Output file path
+- `--preview`: Enable preview mode
+
+**Example:**
+```bash
+pltr media-sets reference ri.mediasets.main.media-set.abc123 ri.mediasets.main.media-item.def456
+```
+
+### Transaction Management
+
+#### `pltr media-sets create [OPTIONS] MEDIA_SET_RID`
+Create a new transaction for uploading to a media set.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--branch` TEXT: Branch name
+- `--preview`: Enable preview mode
+
+**Example:**
+```bash
+pltr media-sets create ri.mediasets.main.media-set.abc123 --branch main
+```
+
+#### `pltr media-sets commit [OPTIONS] MEDIA_SET_RID TRANSACTION_ID`
+Commit a transaction, making uploaded items available.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `TRANSACTION_ID`: Transaction ID to commit (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--preview`: Enable preview mode
+- `--yes`, `-y`: Skip confirmation prompt
+
+**Example:**
+```bash
+pltr media-sets commit ri.mediasets.main.media-set.abc123 transaction-id-12345 --yes
+```
+
+#### `pltr media-sets abort [OPTIONS] MEDIA_SET_RID TRANSACTION_ID`
+Abort a transaction, deleting any uploaded items.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `TRANSACTION_ID`: Transaction ID to abort (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--preview`: Enable preview mode
+- `--yes`, `-y`: Skip confirmation prompt
+
+**Example:**
+```bash
+pltr media-sets abort ri.mediasets.main.media-set.abc123 transaction-id-12345 --yes
+```
+
+### Upload and Download Operations
+
+#### `pltr media-sets upload [OPTIONS] MEDIA_SET_RID FILE_PATH MEDIA_ITEM_PATH TRANSACTION_ID`
+Upload a media file to a media set within a transaction.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `FILE_PATH`: Local path to the file to upload (required)
+- `MEDIA_ITEM_PATH`: Path within media set where file should be stored (required)
+- `TRANSACTION_ID`: Transaction ID for the upload (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--preview`: Enable preview mode
+
+**Example:**
+```bash
+pltr media-sets upload ri.mediasets.main.media-set.abc123 \
+  /local/path/image.jpg "/media/images/image.jpg" transaction-id-12345
+```
+
+#### `pltr media-sets download [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH`
+Download a media item from a media set.
+
+**Arguments:**
+- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
+- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
+- `OUTPUT_PATH`: Local path where file should be saved (required)
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--original`: Download original version instead of processed
+- `--preview`: Enable preview mode
+- `--overwrite`: Overwrite existing file
+
+**Example:**
+```bash
+# Download processed version
+pltr media-sets download ri.mediasets.main.media-set.abc123 \
+  ri.mediasets.main.media-item.def456 /local/download/image.jpg
+
+# Download original version
+pltr media-sets download ri.mediasets.main.media-set.abc123 \
+  ri.mediasets.main.media-item.def456 /local/download/original.jpg --original
+```
+
+### MediaSets Workflow
+
+The typical workflow for working with MediaSets involves transactions:
+
+1. **Create a transaction**: `pltr media-sets create <media-set-rid>`
+2. **Upload files**: `pltr media-sets upload <media-set-rid> <local-file> <remote-path> <transaction-id>`
+3. **Commit or abort**: `pltr media-sets commit <media-set-rid> <transaction-id>`
+
+**Note**: All MediaSets operations require Resource Identifiers (RIDs) which can be found in the Foundry web interface. RIDs follow the pattern:
+- Media Sets: `ri.mediasets.main.media-set.{uuid}`
+- Media Items: `ri.mediasets.main.media-item.{uuid}`
 
 ---
 
