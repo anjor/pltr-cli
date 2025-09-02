@@ -103,9 +103,11 @@ pltr verify --profile staging  # Verify specific profile
 
 ## 📊 Dataset Commands
 
-Dataset operations using the foundry-platform-sdk. **Note**: SDK requires knowing dataset RIDs in advance.
+Comprehensive dataset operations using the foundry-platform-sdk with support for branches, files, transactions, and views. **Note**: SDK requires knowing dataset RIDs in advance.
 
-### `pltr dataset get [OPTIONS] DATASET_RID`
+### Basic Dataset Operations
+
+#### `pltr dataset get [OPTIONS] DATASET_RID`
 Get detailed information about a specific dataset.
 
 **Arguments:**
@@ -125,7 +127,7 @@ pltr dataset get ri.foundry.main.dataset.abc123
 pltr dataset get ri.foundry.main.dataset.abc123 --format json --output dataset-info.json
 ```
 
-### `pltr dataset create [OPTIONS] NAME`
+#### `pltr dataset create [OPTIONS] NAME`
 Create a new dataset.
 
 **Arguments:**
@@ -144,6 +146,175 @@ pltr dataset create "My New Dataset"
 # Create in specific folder
 pltr dataset create "Analysis Results" --parent-folder ri.foundry.main.folder.xyz789
 ```
+
+### Branch Operations
+
+#### `pltr dataset branches list [OPTIONS] DATASET_RID`
+List all branches for a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List dataset branches
+pltr dataset branches list ri.foundry.main.dataset.abc123
+
+# Export branch list as CSV
+pltr dataset branches list ri.foundry.main.dataset.abc123 --format csv --output branches.csv
+```
+
+#### `pltr dataset branches create [OPTIONS] DATASET_RID BRANCH_NAME`
+Create a new branch for a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+- `BRANCH_NAME` (required): Name for the new branch
+
+**Options:**
+- `--parent` TEXT: Parent branch to branch from [default: master]
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Examples:**
+```bash
+# Create branch from master
+pltr dataset branches create ri.foundry.main.dataset.abc123 "feature-branch"
+
+# Create branch from specific parent
+pltr dataset branches create ri.foundry.main.dataset.abc123 "hotfix" --parent development
+```
+
+### File Operations
+
+#### `pltr dataset files list [OPTIONS] DATASET_RID`
+List all files in a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+
+**Options:**
+- `--branch` TEXT: Dataset branch [default: master]
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List files in master branch
+pltr dataset files list ri.foundry.main.dataset.abc123
+
+# List files in specific branch
+pltr dataset files list ri.foundry.main.dataset.abc123 --branch development
+
+# Export file list
+pltr dataset files list ri.foundry.main.dataset.abc123 --format json --output files.json
+```
+
+#### `pltr dataset files get [OPTIONS] DATASET_RID FILE_PATH OUTPUT_PATH`
+Download a file from a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+- `FILE_PATH` (required): Path of file within dataset
+- `OUTPUT_PATH` (required): Local path to save the downloaded file
+
+**Options:**
+- `--branch` TEXT: Dataset branch [default: master]
+- `--profile`, `-p` TEXT: Profile name
+
+**Examples:**
+```bash
+# Download file from master branch
+pltr dataset files get ri.foundry.main.dataset.abc123 "/data/results.csv" "./downloaded_results.csv"
+
+# Download from specific branch
+pltr dataset files get ri.foundry.main.dataset.abc123 "/analysis/report.pdf" "./report.pdf" --branch feature-branch
+```
+
+### Transaction Operations
+
+#### `pltr dataset transactions list [OPTIONS] DATASET_RID`
+List transactions for a dataset branch.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+
+**Options:**
+- `--branch` TEXT: Dataset branch [default: master]
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List transactions for master branch
+pltr dataset transactions list ri.foundry.main.dataset.abc123
+
+# List transactions for specific branch
+pltr dataset transactions list ri.foundry.main.dataset.abc123 --branch development
+```
+
+**Note:** Transaction operations may not be available in all foundry-platform-python SDK versions. If unavailable, a warning message will be displayed.
+
+### View Operations
+
+#### `pltr dataset views list [OPTIONS] DATASET_RID`
+List all views for a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List dataset views
+pltr dataset views list ri.foundry.main.dataset.abc123
+
+# Export views as JSON
+pltr dataset views list ri.foundry.main.dataset.abc123 --format json --output views.json
+```
+
+#### `pltr dataset views create [OPTIONS] DATASET_RID VIEW_NAME`
+Create a new view for a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+- `VIEW_NAME` (required): Name for the new view
+
+**Options:**
+- `--description` TEXT: Optional description for the view
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Examples:**
+```bash
+# Create a simple view
+pltr dataset views create ri.foundry.main.dataset.abc123 "analysis-view"
+
+# Create view with description
+pltr dataset views create ri.foundry.main.dataset.abc123 "monthly-report" --description "Monthly analysis report view"
+```
+
+**Note:** View operations may not be available in all foundry-platform-python SDK versions. If unavailable, a warning message will be displayed.
+
+### Dataset RID Format
+Dataset Resource Identifiers follow the pattern: `ri.foundry.main.dataset.{uuid}`
+
+### SDK Compatibility Notes
+- Branch and file operations are available in most SDK versions
+- Transaction and view operations require newer SDK versions and will gracefully degrade with informative messages if unavailable
+- All dataset operations work with the RID-based API and require knowing dataset RIDs in advance
+- Find dataset RIDs in the Foundry web interface or via other API calls
 
 ---
 
@@ -1086,6 +1257,8 @@ pltr verify                                # Test connection
 pltr sql execute "SELECT * FROM table"     # Run SQL query
 pltr ontology list                         # List ontologies
 pltr dataset get <rid>                     # Get dataset info
+pltr dataset branches list <rid>           # List dataset branches
+pltr dataset files list <rid>              # List dataset files
 
 # Folder Management
 pltr folder create "My Folder"             # Create folder
