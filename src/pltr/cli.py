@@ -11,6 +11,10 @@ from pltr.commands import (
     verify,
     dataset,
     folder,
+    project,
+    resource,
+    resource_role,
+    space,
     ontology,
     orchestration,
     sql,
@@ -32,6 +36,12 @@ app.add_typer(configure.app, name="configure", help="Manage authentication profi
 app.add_typer(verify.app, name="verify", help="Verify authentication")
 app.add_typer(dataset.app, name="dataset", help="Manage datasets")
 app.add_typer(folder.app, name="folder", help="Manage folders")
+app.add_typer(project.app, name="project", help="Manage projects")
+app.add_typer(resource.app, name="resource", help="Manage resources")
+app.add_typer(
+    resource_role.app, name="resource-role", help="Manage resource permissions"
+)
+app.add_typer(space.app, name="space", help="Manage spaces")
 app.add_typer(ontology.app, name="ontology", help="Ontology operations")
 app.add_typer(
     orchestration.app, name="orchestration", help="Manage builds, jobs, and schedules"

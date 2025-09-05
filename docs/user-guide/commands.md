@@ -1206,6 +1206,521 @@ pltr (production)> exit
 
 ---
 
+## 🌐 Space Commands
+
+Manage Foundry spaces, including creation, member management, and space administration.
+
+### `pltr space create [OPTIONS] DISPLAY_NAME ORGANIZATION_RID`
+Create a new space in Foundry.
+
+**Arguments:**
+- `DISPLAY_NAME` (required): Display name for the space
+- `ORGANIZATION_RID` (required): Organization Resource Identifier
+
+**Options:**
+- `--description` TEXT: Space description
+- `--default-roles` TEXT: Comma-separated list of default roles
+- `--role-grants` TEXT: JSON string of role grants configuration
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Create basic space
+pltr space create "Data Science Team" ri.compass.main.organization.abc123
+
+# Create with description and default roles
+pltr space create "Analytics Space" ri.compass.main.organization.abc123 \
+  --description "Space for analytics work" \
+  --default-roles "viewer,editor"
+```
+
+### `pltr space get [OPTIONS] SPACE_RID`
+Get detailed information about a specific space.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr space get ri.compass.main.space.def456
+```
+
+### `pltr space list [OPTIONS]`
+List all accessible spaces.
+
+**Options:**
+- `--organization-rid` TEXT: Filter by organization RID
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+# List all spaces
+pltr space list
+
+# Filter by organization
+pltr space list --organization-rid ri.compass.main.organization.abc123
+```
+
+### `pltr space update [OPTIONS] SPACE_RID`
+Update space information.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+
+**Options:**
+- `--display-name` TEXT: New display name
+- `--description` TEXT: New description
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Example:**
+```bash
+pltr space update ri.compass.main.space.def456 \
+  --display-name "Updated Space Name" \
+  --description "Updated description"
+```
+
+### `pltr space delete [OPTIONS] SPACE_RID`
+Delete a space.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--yes`, `-y`: Skip confirmation prompt
+
+**Example:**
+```bash
+pltr space delete ri.compass.main.space.def456 --yes
+```
+
+### `pltr space batch-get [OPTIONS] SPACE_RIDS...`
+Get multiple spaces in a single request (max 1000).
+
+**Arguments:**
+- `SPACE_RIDS...` (required): Space-separated list of space Resource Identifiers
+
+**Example:**
+```bash
+pltr space batch-get ri.compass.main.space.abc123 ri.compass.main.space.def456
+```
+
+### Space Member Management
+
+#### `pltr space members [OPTIONS] SPACE_RID`
+List all members of a space.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+
+**Example:**
+```bash
+pltr space members ri.compass.main.space.def456
+```
+
+#### `pltr space add-member [OPTIONS] SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
+Add a member to a space.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+- `PRINCIPAL_ID` (required): User ID or Group ID
+- `PRINCIPAL_TYPE` (required): "User" or "Group"
+- `ROLE_NAME` (required): Role name to assign
+
+**Example:**
+```bash
+pltr space add-member ri.compass.main.space.def456 john.doe User viewer
+pltr space add-member ri.compass.main.space.def456 data-team Group editor
+```
+
+#### `pltr space remove-member [OPTIONS] SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE`
+Remove a member from a space.
+
+**Arguments:**
+- `SPACE_RID` (required): Space Resource Identifier
+- `PRINCIPAL_ID` (required): User ID or Group ID
+- `PRINCIPAL_TYPE` (required): "User" or "Group"
+
+**Example:**
+```bash
+pltr space remove-member ri.compass.main.space.def456 john.doe User
+```
+
+---
+
+## 🏗️ Project Commands
+
+Manage Foundry projects within spaces, including creation, updates, and project administration.
+
+### `pltr project create [OPTIONS] DISPLAY_NAME SPACE_RID`
+Create a new project within a space.
+
+**Arguments:**
+- `DISPLAY_NAME` (required): Display name for the project
+- `SPACE_RID` (required): Space Resource Identifier where project will be created
+
+**Options:**
+- `--description` TEXT: Project description
+- `--organization-rids` TEXT: Comma-separated list of organization RIDs
+- `--default-roles` TEXT: Comma-separated list of default roles
+- `--role-grants` TEXT: JSON string of role grants configuration
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Create basic project
+pltr project create "ML Pipeline" ri.compass.main.space.abc123
+
+# Create with full configuration
+pltr project create "Analytics Project" ri.compass.main.space.abc123 \
+  --description "Project for data analytics" \
+  --organization-rids "ri.compass.main.org.def456" \
+  --default-roles "viewer"
+```
+
+### `pltr project get [OPTIONS] PROJECT_RID`
+Get detailed information about a specific project.
+
+**Arguments:**
+- `PROJECT_RID` (required): Project Resource Identifier
+
+**Example:**
+```bash
+pltr project get ri.compass.main.project.ghi789
+```
+
+### `pltr project list [OPTIONS]`
+List all accessible projects.
+
+**Options:**
+- `--space-rid` TEXT: Filter by space RID
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List all projects
+pltr project list
+
+# Filter by space
+pltr project list --space-rid ri.compass.main.space.abc123
+```
+
+### `pltr project update [OPTIONS] PROJECT_RID`
+Update project information.
+
+**Arguments:**
+- `PROJECT_RID` (required): Project Resource Identifier
+
+**Options:**
+- `--display-name` TEXT: New display name
+- `--description` TEXT: New description
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+
+**Example:**
+```bash
+pltr project update ri.compass.main.project.ghi789 \
+  --display-name "Updated Project" \
+  --description "Updated project description"
+```
+
+### `pltr project delete [OPTIONS] PROJECT_RID`
+Delete a project.
+
+**Arguments:**
+- `PROJECT_RID` (required): Project Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--yes`, `-y`: Skip confirmation prompt
+
+**Example:**
+```bash
+pltr project delete ri.compass.main.project.ghi789 --yes
+```
+
+### `pltr project batch-get [OPTIONS] PROJECT_RIDS...`
+Get multiple projects in a single request (max 1000).
+
+**Arguments:**
+- `PROJECT_RIDS...` (required): Space-separated list of project Resource Identifiers
+
+**Example:**
+```bash
+pltr project batch-get ri.compass.main.project.abc123 ri.compass.main.project.def456
+```
+
+---
+
+## 📄 Resource Commands
+
+Generic resource operations for managing any Foundry resource, including metadata and search capabilities.
+
+### `pltr resource get [OPTIONS] RESOURCE_RID`
+Get information about any Foundry resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+
+**Example:**
+```bash
+pltr resource get ri.foundry.main.dataset.abc123
+```
+
+### `pltr resource list [OPTIONS]`
+List resources in the filesystem.
+
+**Options:**
+- `--folder-rid` TEXT: Filter by folder RID
+- `--resource-type` TEXT: Filter by resource type (dataset, folder, etc.)
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+# List all resources
+pltr resource list
+
+# Filter by folder and type
+pltr resource list --folder-rid ri.compass.main.folder.abc123 --resource-type dataset
+```
+
+### `pltr resource batch-get [OPTIONS] RESOURCE_RIDS...`
+Get multiple resources in a single request (max 1000).
+
+**Arguments:**
+- `RESOURCE_RIDS...` (required): Space-separated list of Resource Identifiers
+
+**Example:**
+```bash
+pltr resource batch-get ri.foundry.main.dataset.abc123 ri.compass.main.folder.def456
+```
+
+### `pltr resource search [OPTIONS] QUERY`
+Search for resources across Foundry.
+
+**Arguments:**
+- `QUERY` (required): Search query string
+
+**Options:**
+- `--resource-type` TEXT: Filter by resource type
+- `--folder-rid` TEXT: Filter by folder RID
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Search for datasets
+pltr resource search "sales data"
+
+# Search with filters
+pltr resource search "analytics" --resource-type dataset --folder-rid ri.compass.main.folder.abc123
+```
+
+### Resource Metadata Operations
+
+#### `pltr resource metadata get [OPTIONS] RESOURCE_RID`
+Get metadata for a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+
+**Example:**
+```bash
+pltr resource metadata get ri.foundry.main.dataset.abc123
+```
+
+#### `pltr resource metadata set [OPTIONS] RESOURCE_RID METADATA`
+Set metadata for a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `METADATA` (required): JSON string of metadata to set
+
+**Example:**
+```bash
+pltr resource metadata set ri.foundry.main.dataset.abc123 '{"owner": "data-team", "environment": "production"}'
+```
+
+#### `pltr resource metadata delete [OPTIONS] RESOURCE_RID KEYS`
+Delete specific metadata keys from a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `KEYS` (required): Comma-separated list of metadata keys to delete
+
+**Example:**
+```bash
+pltr resource metadata delete ri.foundry.main.dataset.abc123 "temporary,test-key"
+```
+
+### `pltr resource move [OPTIONS] RESOURCE_RID TARGET_FOLDER_RID`
+Move a resource to a different folder.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier to move
+- `TARGET_FOLDER_RID` (required): Target folder Resource Identifier
+
+**Example:**
+```bash
+pltr resource move ri.foundry.main.dataset.abc123 ri.compass.main.folder.new456
+```
+
+---
+
+## 🔐 Resource Role Commands
+
+Manage resource-based permissions, including granting and revoking roles on specific resources.
+
+### `pltr resource-role grant [OPTIONS] RESOURCE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
+Grant a role to a user or group on a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `PRINCIPAL_ID` (required): User ID or Group ID
+- `PRINCIPAL_TYPE` (required): "User" or "Group"
+- `ROLE_NAME` (required): Role name to grant
+
+**Examples:**
+```bash
+# Grant viewer role to user
+pltr resource-role grant ri.foundry.main.dataset.abc123 john.doe User viewer
+
+# Grant editor role to group
+pltr resource-role grant ri.foundry.main.dataset.abc123 data-team Group editor
+```
+
+### `pltr resource-role revoke [OPTIONS] RESOURCE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
+Revoke a role from a user or group on a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `PRINCIPAL_ID` (required): User ID or Group ID
+- `PRINCIPAL_TYPE` (required): "User" or "Group"
+- `ROLE_NAME` (required): Role name to revoke
+
+**Example:**
+```bash
+pltr resource-role revoke ri.foundry.main.dataset.abc123 john.doe User viewer
+```
+
+### `pltr resource-role list [OPTIONS] RESOURCE_RID`
+List all role grants for a resource.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+
+**Options:**
+- `--principal-type` TEXT: Filter by principal type (User or Group)
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List all permissions
+pltr resource-role list ri.foundry.main.dataset.abc123
+
+# Filter by users only
+pltr resource-role list ri.foundry.main.dataset.abc123 --principal-type User
+```
+
+### `pltr resource-role get-principal-roles [OPTIONS] PRINCIPAL_ID PRINCIPAL_TYPE`
+Get all resource roles for a specific user or group.
+
+**Arguments:**
+- `PRINCIPAL_ID` (required): User ID or Group ID
+- `PRINCIPAL_TYPE` (required): "User" or "Group"
+
+**Options:**
+- `--resource-rid` TEXT: Filter by specific resource RID
+- `--page-size` INTEGER: Number of results per page
+- `--page-token` TEXT: Pagination token
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+# Get all roles for user
+pltr resource-role get-principal-roles john.doe User
+
+# Filter by specific resource
+pltr resource-role get-principal-roles john.doe User --resource-rid ri.foundry.main.dataset.abc123
+```
+
+### Bulk Operations
+
+#### `pltr resource-role bulk-grant [OPTIONS] RESOURCE_RID ROLE_GRANTS`
+Grant multiple roles in a single operation.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `ROLE_GRANTS` (required): JSON array of role grant objects
+
+**Example:**
+```bash
+pltr resource-role bulk-grant ri.foundry.main.dataset.abc123 '[
+  {"principal_id": "john.doe", "principal_type": "User", "role_name": "viewer"},
+  {"principal_id": "jane.smith", "principal_type": "User", "role_name": "editor"},
+  {"principal_id": "data-team", "principal_type": "Group", "role_name": "owner"}
+]'
+```
+
+#### `pltr resource-role bulk-revoke [OPTIONS] RESOURCE_RID ROLE_REVOCATIONS`
+Revoke multiple roles in a single operation.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+- `ROLE_REVOCATIONS` (required): JSON array of role revocation objects
+
+**Example:**
+```bash
+pltr resource-role bulk-revoke ri.foundry.main.dataset.abc123 '[
+  {"principal_id": "john.doe", "principal_type": "User", "role_name": "viewer"},
+  {"principal_id": "old-group", "principal_type": "Group", "role_name": "editor"}
+]'
+```
+
+### `pltr resource-role available-roles [OPTIONS] RESOURCE_RID`
+List all available roles for a resource type.
+
+**Arguments:**
+- `RESOURCE_RID` (required): Resource Identifier
+
+**Example:**
+```bash
+pltr resource-role available-roles ri.foundry.main.dataset.abc123
+```
+
+---
+
 ## ⚡ Shell Completion
 
 ### `pltr completion install [OPTIONS]`
@@ -1260,10 +1775,13 @@ pltr dataset get <rid>                     # Get dataset info
 pltr dataset branches list <rid>           # List dataset branches
 pltr dataset files list <rid>              # List dataset files
 
-# Folder Management
+# Filesystem Management
 pltr folder create "My Folder"             # Create folder
 pltr folder list ri.compass.main.folder.0  # List root contents
-pltr folder get <folder-rid>               # Get folder info
+pltr space create "Team Space" <org-rid>   # Create space
+pltr project create "ML Project" <space-rid> # Create project
+pltr resource search "dataset name"        # Search resources
+pltr resource-role grant <resource-rid> <user-id> User viewer # Grant permissions
 
 # Admin
 pltr admin user current                    # Current user info
