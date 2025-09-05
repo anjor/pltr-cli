@@ -125,16 +125,16 @@ class SpaceService(BaseService):
         Returns:
             Updated space information
         """
+        update_request: Dict[str, Any] = {}
+        if display_name:
+            update_request["display_name"] = display_name
+        if description:
+            update_request["description"] = description
+
+        if not update_request:
+            raise ValueError("At least one field must be provided for update")
+
         try:
-            update_request: Dict[str, Any] = {}
-            if display_name:
-                update_request["display_name"] = display_name
-            if description:
-                update_request["description"] = description
-
-            if not update_request:
-                raise ValueError("At least one field must be provided for update")
-
             space = self.service.Space.update(
                 space_rid=space_rid,
                 body=update_request,
