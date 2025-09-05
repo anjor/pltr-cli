@@ -261,6 +261,168 @@ fi
 echo "Job monitoring complete"
 ```
 
+## 🏗️ Filesystem Management Workflows
+
+### Space and Project Setup Workflow
+
+Set up a complete workspace for a new team or project:
+
+```bash
+# 1. First, understand available organizations
+pltr admin org get my-organization --format table
+
+# 2. Create a new space for the team
+SPACE_RID=$(pltr space create "Data Analytics Team" ri.compass.main.organization.abc123 \
+  --description "Space for analytics and reporting work" \
+  --default-roles "viewer" \
+  --format json | jq -r '.rid')
+
+echo "Created space: $SPACE_RID"
+
+# 3. Create projects within the space
+PROJECT_RID=$(pltr project create "Customer Analytics" $SPACE_RID \
+  --description "Customer behavior and segmentation analysis" \
+  --format json | jq -r '.rid')
+
+echo "Created project: $PROJECT_RID"
+
+# 4. Add team members to the space
+pltr space add-member $SPACE_RID john.doe User editor
+pltr space add-member $SPACE_RID jane.smith User editor
+pltr space add-member $SPACE_RID data-team Group viewer
+
+# 5. Create folder structure within the project
+ROOT_FOLDER=$(pltr folder create "Analytics Work" --format json | jq -r '.rid')
+pltr folder create "Raw Data" --parent-folder $ROOT_FOLDER
+pltr folder create "Processed Data" --parent-folder $ROOT_FOLDER
+pltr folder create "Reports" --parent-folder $ROOT_FOLDER
+
+echo "Workspace setup complete!"
+```
+
+### Resource Organization Workflow
+
+Organize existing resources into a structured hierarchy:
+
+```bash
+#!/bin/bash
+# organize_resources.sh
+
+# 1. Search for datasets that need organization
+pltr resource search "sales" --resource-type dataset \
+  --format json --output sales_datasets.json
+
+# 2. Create organizational structure
+SALES_FOLDER=$(pltr folder create "Sales Analytics" --format json | jq -r '.rid')
+RAW_DATA_FOLDER=$(pltr folder create "Raw Sales Data" --parent-folder $SALES_FOLDER --format json | jq -r '.rid')
+PROCESSED_FOLDER=$(pltr folder create "Processed Sales Data" --parent-folder $SALES_FOLDER --format json | jq -r '.rid')
+
+# 3. Move datasets to appropriate folders (example with specific RIDs)
+# Move raw datasets
+pltr resource move ri.foundry.main.dataset.sales-raw-2024 $RAW_DATA_FOLDER
+pltr resource move ri.foundry.main.dataset.sales-raw-2025 $RAW_DATA_FOLDER
+
+# Move processed datasets
+pltr resource move ri.foundry.main.dataset.sales-clean-2024 $PROCESSED_FOLDER
+pltr resource move ri.foundry.main.dataset.sales-analytics $PROCESSED_FOLDER
+
+# 4. Set metadata for better discoverability
+pltr resource metadata set ri.foundry.main.dataset.sales-analytics '{
+  "category": "analytics",
+  "team": "sales-team",
+  "update_frequency": "daily",
+  "data_classification": "internal"
+}'
+
+echo "Resource organization complete!"
+```
+
+### Permission Management Workflow
+
+Set up and manage resource permissions systematically:
+
+```bash
+#!/bin/bash
+# manage_permissions.sh
+
+# Dataset RID to manage
+DATASET_RID="ri.foundry.main.dataset.customer-data"
+
+# 1. Check current permissions
+echo "Current permissions for $DATASET_RID:"
+pltr resource-role list $DATASET_RID --format table
+
+# 2. Set up team-based permissions
+echo "Setting up team permissions..."
+
+# Grant data team full access
+pltr resource-role grant $DATASET_RID data-team Group owner
+pltr resource-role grant $DATASET_RID analytics-team Group editor
+
+# Grant individual analysts viewer access
+pltr resource-role grant $DATASET_RID john.analyst User viewer
+pltr resource-role grant $DATASET_RID jane.analyst User viewer
+
+# 3. Bulk permission setup for multiple users
+pltr resource-role bulk-grant $DATASET_RID '[
+  {"principal_id": "trainee1", "principal_type": "User", "role_name": "viewer"},
+  {"principal_id": "trainee2", "principal_type": "User", "role_name": "viewer"},
+  {"principal_id": "external-consultant", "principal_type": "User", "role_name": "viewer"}
+]'
+
+# 4. Review available roles for this resource type
+echo "Available roles for this resource:"
+pltr resource-role available-roles $DATASET_RID --format table
+
+# 5. Audit: Check what permissions a specific user has
+echo "Checking permissions for john.analyst:"
+pltr resource-role get-principal-roles john.analyst User \
+  --resource-rid $DATASET_RID --format table
+
+echo "Permission management complete!"
+```
+
+### Resource Discovery and Cataloging
+
+Create a comprehensive catalog of resources:
+
+```bash
+#!/bin/bash
+# catalog_resources.sh
+
+echo "Building resource catalog..."
+
+# 1. Search and catalog different types of resources
+pltr resource search "customer" --resource-type dataset --format json --output customer_datasets.json
+pltr resource search "sales" --resource-type dataset --format json --output sales_datasets.json
+pltr resource search "analytics" --resource-type folder --format json --output analytics_folders.json
+
+# 2. Get detailed information for all resources in a folder
+ANALYTICS_FOLDER="ri.compass.main.folder.analytics"
+pltr resource list --folder-rid $ANALYTICS_FOLDER --format json --output folder_contents.json
+
+# 3. Batch get detailed info for multiple resources
+RESOURCE_RIDS=$(cat customer_datasets.json | jq -r '.[].rid' | head -10 | tr '\n' ' ')
+pltr resource batch-get $RESOURCE_RIDS --format json --output resource_details.json
+
+# 4. Create metadata inventory
+for dataset_rid in $(cat customer_datasets.json | jq -r '.[].rid'); do
+  echo "Getting metadata for: $dataset_rid"
+  pltr resource metadata get $dataset_rid --format json --output "metadata_${dataset_rid##*.}.json"
+  sleep 1  # Rate limiting
+done
+
+# 5. Generate catalog summary
+echo "Resource Catalog Summary:" > catalog_summary.txt
+echo "=========================" >> catalog_summary.txt
+echo "Customer datasets: $(cat customer_datasets.json | jq length)" >> catalog_summary.txt
+echo "Sales datasets: $(cat sales_datasets.json | jq length)" >> catalog_summary.txt
+echo "Analytics folders: $(cat analytics_folders.json | jq length)" >> catalog_summary.txt
+echo "Generated on: $(date)" >> catalog_summary.txt
+
+echo "Resource cataloging complete!"
+```
+
 ## 🏢 Administrative Workflows
 
 ### User Management Workflow

@@ -10,7 +10,10 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 80+ 
 
 - 🔐 **Secure Authentication**: Token and OAuth2 support with encrypted credential storage
 - 📊 **Dataset Operations**: Complete dataset management with branches, files, transactions, and views (RID-based API)
-- 📁 **Folder Management**: Create, explore, and manage Foundry filesystem structure
+- 📁 **Filesystem Management**: Complete filesystem operations including folders, projects, spaces, and resources
+- 🏗️ **Project Management**: Create, update, and manage Foundry projects within spaces
+- 🌐 **Space Management**: Administer spaces, manage members, and control access
+- 🔐 **Resource Permissions**: Grant, revoke, and manage role-based access to resources
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
 - 🎬 **MediaSets Operations**: Upload, download, and manage media content with transaction support
@@ -84,6 +87,15 @@ pltr folder create "My Project"
 # List root folder contents
 pltr folder list ri.compass.main.folder.0
 
+# Manage spaces and projects
+pltr space list
+pltr project create "My Project" ri.compass.main.space.123
+pltr project list --space-rid ri.compass.main.space.123
+
+# Manage resource permissions
+pltr resource-role grant ri.compass.main.dataset.123 user123 User viewer
+pltr resource-role list ri.compass.main.dataset.123
+
 # Execute a simple SQL query
 pltr sql execute "SELECT 1 as test"
 
@@ -133,6 +145,13 @@ pltr verify                    # Test connection
 pltr sql execute "SELECT * FROM table"  # Run SQL queries
 pltr ontology list             # List ontologies
 pltr dataset get <rid>         # Get dataset info
+
+# Filesystem Management
+pltr folder create "My Project"         # Create folders
+pltr space create "Team Space" <org-rid> # Create spaces
+pltr project create "New Project" <space-rid> # Create projects
+pltr resource search "dataset name"     # Search resources
+pltr resource-role grant <resource-rid> <user-id> User viewer # Grant permissions
 
 # Orchestration
 pltr orchestration builds search       # Search builds
