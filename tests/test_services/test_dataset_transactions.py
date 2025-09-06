@@ -254,7 +254,7 @@ def test_get_transactions_success(mock_dataset_service):
         trans.status = ["OPEN", "COMMITTED", "ABORTED"][i]
         trans.transaction_type = ["APPEND", "UPDATE", "DELETE"][i]
         trans.branch = "master"
-        trans.created_time = f"2024-01-0{i+1}T00:00:00Z"
+        trans.created_time = f"2024-01-0{i + 1}T00:00:00Z"
         trans.created_by = f"user{i}@example.com"
         trans.committed_time = "2024-01-02T00:10:00Z" if i == 1 else None
         trans.aborted_time = "2024-01-03T00:10:00Z" if i == 2 else None
