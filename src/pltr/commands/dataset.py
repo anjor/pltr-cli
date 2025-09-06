@@ -233,6 +233,60 @@ def list_files(
         raise typer.Exit(1)
 
 
+@files_app.command("upload")
+def upload_file(
+    file_path: str = typer.Argument(..., help="Local path to file to upload"),
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    transaction_rid: Optional[str] = typer.Option(
+        None, "--transaction-rid", help="Transaction RID for the upload"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Upload a file to a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Check if file exists
+        from pathlib import Path
+
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            formatter.print_error(f"File not found: {file_path}")
+            raise typer.Exit(1)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Uploading {file_path_obj.name} to {dataset_rid}..."
+        ):
+            result = service.upload_file(
+                dataset_rid, file_path, branch, transaction_rid
+            )
+
+        formatter.print_success("File uploaded successfully")
+        formatter.print_info(f"File: {result.get('file_path', file_path)}")
+        formatter.print_info(f"Dataset: {dataset_rid}")
+        formatter.print_info(f"Branch: {branch}")
+        formatter.print_info(f"Size: {result.get('size_bytes', 'unknown')} bytes")
+
+        if result.get("transaction_rid"):
+            formatter.print_info(f"Transaction: {result['transaction_rid']}")
+            formatter.print_warning(
+                "Remember to commit the transaction to make changes permanent"
+            )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to upload file: {e}")
+        raise typer.Exit(1)
+
+
 @files_app.command("get")
 def get_file(
     dataset_rid: str = typer.Argument(
@@ -267,6 +321,220 @@ def get_file(
 
 
 # Transaction commands
+@transactions_app.command("start")
+def start_transaction(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    transaction_type: str = typer.Option(
+        "APPEND", "--type", help="Transaction type (APPEND, UPDATE, SNAPSHOT, DELETE)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Start a new transaction for a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Validate transaction type
+        valid_types = ["APPEND", "UPDATE", "SNAPSHOT", "DELETE"]
+        if transaction_type not in valid_types:
+            formatter.print_error(
+                f"Invalid transaction type. Must be one of: {', '.join(valid_types)}"
+            )
+            raise typer.Exit(1)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Starting {transaction_type} transaction for {dataset_rid} (branch: {branch})..."
+        ):
+            transaction = service.create_transaction(
+                dataset_rid, branch, transaction_type
+            )
+
+        formatter.print_success("Transaction started successfully")
+        formatter.print_info(
+            f"Transaction RID: {transaction.get('transaction_rid', 'unknown')}"
+        )
+        formatter.print_info(f"Status: {transaction.get('status', 'OPEN')}")
+        formatter.print_info(
+            f"Type: {transaction.get('transaction_type', transaction_type)}"
+        )
+
+        # Show transaction details
+        formatter.format_transaction_detail(transaction, format)
+
+        # Show usage hint
+        transaction_rid = transaction.get("transaction_rid", "unknown")
+        if transaction_rid != "unknown":
+            formatter.print_info("\nNext steps:")
+            formatter.print_info(
+                f"  Upload files: pltr dataset files upload <file-path> {dataset_rid} --transaction-rid {transaction_rid}"
+            )
+            formatter.print_info(
+                f"  Commit: pltr dataset transactions commit {dataset_rid} {transaction_rid}"
+            )
+            formatter.print_info(
+                f"  Abort: pltr dataset transactions abort {dataset_rid} {transaction_rid}"
+            )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to start transaction: {e}")
+        raise typer.Exit(1)
+
+
+@transactions_app.command("commit")
+def commit_transaction(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    transaction_rid: str = typer.Argument(..., help="Transaction Resource Identifier"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Commit an open transaction."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Committing transaction {transaction_rid}..."
+        ):
+            result = service.commit_transaction(dataset_rid, transaction_rid)
+
+        formatter.print_success("Transaction committed successfully")
+        formatter.print_info(f"Transaction RID: {transaction_rid}")
+        formatter.print_info(f"Dataset RID: {dataset_rid}")
+        formatter.print_info(f"Status: {result.get('status', 'COMMITTED')}")
+
+        # Show result details
+        formatter.format_transaction_result(result, format)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to commit transaction: {e}")
+        raise typer.Exit(1)
+
+
+@transactions_app.command("abort")
+def abort_transaction(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    transaction_rid: str = typer.Argument(..., help="Transaction Resource Identifier"),
+    confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Abort an open transaction."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Confirmation prompt
+        if not confirm:
+            confirmed = typer.confirm(
+                f"Are you sure you want to abort transaction {transaction_rid}? "
+                f"This will discard all changes made in this transaction."
+            )
+            if not confirmed:
+                formatter.print_info("Transaction abort cancelled")
+                raise typer.Exit(0)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Aborting transaction {transaction_rid}..."
+        ):
+            result = service.abort_transaction(dataset_rid, transaction_rid)
+
+        formatter.print_success("Transaction aborted successfully")
+        formatter.print_info(f"Transaction RID: {transaction_rid}")
+        formatter.print_info(f"Dataset RID: {dataset_rid}")
+        formatter.print_info(f"Status: {result.get('status', 'ABORTED')}")
+        formatter.print_warning(
+            "All changes made in this transaction have been discarded"
+        )
+
+        # Show result details
+        formatter.format_transaction_result(result, format)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to abort transaction: {e}")
+        raise typer.Exit(1)
+
+
+@transactions_app.command("status")
+def get_transaction_status(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    transaction_rid: str = typer.Argument(..., help="Transaction Resource Identifier"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Get the status of a specific transaction."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching transaction status for {transaction_rid}..."
+        ):
+            transaction = service.get_transaction_status(dataset_rid, transaction_rid)
+
+        formatter.print_success("Transaction status retrieved")
+
+        # Show transaction details
+        formatter.format_transaction_detail(transaction, format)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get transaction status: {e}")
+        raise typer.Exit(1)
+
+
 @transactions_app.command("list")
 def list_transactions(
     dataset_rid: str = typer.Argument(
