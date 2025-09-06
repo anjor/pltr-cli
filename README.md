@@ -104,6 +104,11 @@ pltr dataset get ri.foundry.main.dataset.abc123
 pltr dataset branches list ri.foundry.main.dataset.abc123
 pltr dataset files list ri.foundry.main.dataset.abc123
 
+# Dataset transaction management
+pltr dataset transactions start ri.foundry.main.dataset.abc123
+pltr dataset transactions commit ri.foundry.main.dataset.abc123 <transaction-rid>
+pltr dataset files upload myfile.csv ri.foundry.main.dataset.abc123 --transaction-rid <rid>
+
 # Start interactive mode for exploration
 pltr shell
 ```
@@ -282,6 +287,74 @@ pltr media-sets download ri.mediasets.main.media-set.abc \
 - Profile selection (`--profile production`)
 - Preview mode (`--preview`)
 - Transaction-based upload workflow
+
+### 📊 Dataset Transaction Management
+
+pltr-cli provides comprehensive transaction management for datasets, allowing atomic operations with rollback capability:
+
+#### Transaction Lifecycle
+```bash
+# Start a new transaction
+pltr dataset transactions start ri.foundry.main.dataset.abc123 --branch master --type APPEND
+# Returns transaction RID for use in subsequent operations
+
+# Check transaction status
+pltr dataset transactions status ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
+
+# List all transactions for a dataset
+pltr dataset transactions list ri.foundry.main.dataset.abc123 --branch master
+
+# Commit a transaction (make changes permanent)
+pltr dataset transactions commit ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
+
+# Abort a transaction (discard all changes)
+pltr dataset transactions abort ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz --yes
+```
+
+#### File Operations with Transactions
+```bash
+# Upload files within a transaction
+pltr dataset files upload data.csv ri.foundry.main.dataset.abc123 \
+  --transaction-rid ri.foundry.main.transaction.xyz
+
+# Multiple file uploads in same transaction
+pltr dataset files upload file1.csv ri.foundry.main.dataset.abc123 \
+  --transaction-rid ri.foundry.main.transaction.xyz
+pltr dataset files upload file2.csv ri.foundry.main.dataset.abc123 \
+  --transaction-rid ri.foundry.main.transaction.xyz
+
+# Commit when ready
+pltr dataset transactions commit ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
+```
+
+#### Transaction Types
+- **APPEND**: Add new files to dataset
+- **UPDATE**: Add new files and overwrite existing ones
+- **SNAPSHOT**: Replace entire dataset with new files
+- **DELETE**: Remove files from dataset
+
+#### Example Workflow
+```bash
+# Start a transaction for bulk data update
+TRANSACTION=$(pltr dataset transactions start ri.foundry.main.dataset.abc123 \
+  --type UPDATE --format json | jq -r '.transaction_rid')
+
+# Upload multiple files
+pltr dataset files upload data1.csv ri.foundry.main.dataset.abc123 --transaction-rid $TRANSACTION
+pltr dataset files upload data2.csv ri.foundry.main.dataset.abc123 --transaction-rid $TRANSACTION
+
+# Check status before committing
+pltr dataset transactions status ri.foundry.main.dataset.abc123 $TRANSACTION
+
+# Commit if everything looks good
+pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
+```
+
+**Benefits:**
+- **Data Integrity**: Atomic operations with rollback capability
+- **Error Recovery**: Clean rollback from failed operations
+- **Collaboration**: Better concurrent modification handling
+- **Automation**: Reliable data pipeline operations
 
 ## ⚙️ Configuration
 

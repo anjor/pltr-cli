@@ -307,6 +307,211 @@ class DatasetService(BaseService):
                 f"Failed to create branch '{branch_name}' for dataset {dataset_rid}: {e}"
             )
 
+    def create_transaction(
+        self, dataset_rid: str, branch: str = "master", transaction_type: str = "APPEND"
+    ) -> Dict[str, Any]:
+        """
+        Create a new transaction for a dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch: Dataset branch name
+            transaction_type: Transaction type (APPEND, UPDATE, SNAPSHOT, DELETE)
+
+        Returns:
+            Transaction information dictionary
+        """
+        try:
+            # Try to use the v2 API's Dataset.create_transaction method
+            transaction = self.service.Dataset.create_transaction(
+                dataset_rid=dataset_rid,
+                branch=branch,
+                transaction_type=transaction_type,
+            )
+
+            return {
+                "transaction_rid": getattr(transaction, "rid", None),
+                "dataset_rid": dataset_rid,
+                "branch": branch,
+                "transaction_type": transaction_type,
+                "status": getattr(transaction, "status", "OPEN"),
+                "created_time": getattr(transaction, "created_time", None),
+                "created_by": getattr(transaction, "created_by", None),
+            }
+        except AttributeError:
+            # Fallback to service.create_transaction if available
+            try:
+                transaction = self.service.create_transaction(
+                    dataset_rid=dataset_rid,
+                    branch=branch,
+                    transaction_type=transaction_type,
+                )
+                return {
+                    "transaction_rid": getattr(transaction, "rid", None),
+                    "dataset_rid": dataset_rid,
+                    "branch": branch,
+                    "transaction_type": transaction_type,
+                    "status": getattr(transaction, "status", "OPEN"),
+                    "created_time": getattr(transaction, "created_time", None),
+                    "created_by": getattr(transaction, "created_by", None),
+                }
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create transaction for dataset {dataset_rid}: {e}"
+                )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to create transaction for dataset {dataset_rid}: {e}"
+            )
+
+    def commit_transaction(
+        self, dataset_rid: str, transaction_rid: str
+    ) -> Dict[str, Any]:
+        """
+        Commit an open transaction.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            transaction_rid: Transaction Resource Identifier
+
+        Returns:
+            Transaction commit result
+        """
+        try:
+            # Try the v2 API first (Dataset.commit_transaction)
+            self.service.Dataset.commit_transaction(
+                dataset_rid=dataset_rid, transaction_rid=transaction_rid
+            )
+
+            return {
+                "transaction_rid": transaction_rid,
+                "dataset_rid": dataset_rid,
+                "status": "COMMITTED",
+                "committed_time": None,  # Would need to get this from a status call
+                "success": True,
+            }
+        except AttributeError:
+            # Fallback to service.commit_transaction
+            try:
+                self.service.commit_transaction(
+                    dataset_rid=dataset_rid, transaction_rid=transaction_rid
+                )
+                return {
+                    "transaction_rid": transaction_rid,
+                    "dataset_rid": dataset_rid,
+                    "status": "COMMITTED",
+                    "committed_time": None,
+                    "success": True,
+                }
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to commit transaction {transaction_rid}: {e}"
+                )
+        except Exception as e:
+            raise RuntimeError(f"Failed to commit transaction {transaction_rid}: {e}")
+
+    def abort_transaction(
+        self, dataset_rid: str, transaction_rid: str
+    ) -> Dict[str, Any]:
+        """
+        Abort an open transaction.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            transaction_rid: Transaction Resource Identifier
+
+        Returns:
+            Transaction abort result
+        """
+        try:
+            # Try the v2 API first (Dataset.abort_transaction)
+            self.service.Dataset.abort_transaction(
+                dataset_rid=dataset_rid, transaction_rid=transaction_rid
+            )
+
+            return {
+                "transaction_rid": transaction_rid,
+                "dataset_rid": dataset_rid,
+                "status": "ABORTED",
+                "aborted_time": None,  # Would need to get this from a status call
+                "success": True,
+            }
+        except AttributeError:
+            # Fallback to service.abort_transaction
+            try:
+                self.service.abort_transaction(
+                    dataset_rid=dataset_rid, transaction_rid=transaction_rid
+                )
+                return {
+                    "transaction_rid": transaction_rid,
+                    "dataset_rid": dataset_rid,
+                    "status": "ABORTED",
+                    "aborted_time": None,
+                    "success": True,
+                }
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to abort transaction {transaction_rid}: {e}"
+                )
+        except Exception as e:
+            raise RuntimeError(f"Failed to abort transaction {transaction_rid}: {e}")
+
+    def get_transaction_status(
+        self, dataset_rid: str, transaction_rid: str
+    ) -> Dict[str, Any]:
+        """
+        Get the status of a specific transaction.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            transaction_rid: Transaction Resource Identifier
+
+        Returns:
+            Transaction status information
+        """
+        try:
+            # Try the v2 API first (Dataset.get_transaction)
+            transaction = self.service.Dataset.get_transaction(
+                dataset_rid=dataset_rid, transaction_rid=transaction_rid
+            )
+
+            return {
+                "transaction_rid": transaction_rid,
+                "dataset_rid": dataset_rid,
+                "status": getattr(transaction, "status", None),
+                "transaction_type": getattr(transaction, "transaction_type", None),
+                "branch": getattr(transaction, "branch", None),
+                "created_time": getattr(transaction, "created_time", None),
+                "created_by": getattr(transaction, "created_by", None),
+                "committed_time": getattr(transaction, "committed_time", None),
+                "aborted_time": getattr(transaction, "aborted_time", None),
+            }
+        except AttributeError:
+            # Fallback to service.get_transaction
+            try:
+                transaction = self.service.get_transaction(
+                    dataset_rid=dataset_rid, transaction_rid=transaction_rid
+                )
+                return {
+                    "transaction_rid": transaction_rid,
+                    "dataset_rid": dataset_rid,
+                    "status": getattr(transaction, "status", None),
+                    "transaction_type": getattr(transaction, "transaction_type", None),
+                    "branch": getattr(transaction, "branch", None),
+                    "created_time": getattr(transaction, "created_time", None),
+                    "created_by": getattr(transaction, "created_by", None),
+                    "committed_time": getattr(transaction, "committed_time", None),
+                    "aborted_time": getattr(transaction, "aborted_time", None),
+                }
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to get transaction status {transaction_rid}: {e}"
+                )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get transaction status {transaction_rid}: {e}"
+            )
+
     def get_transactions(
         self, dataset_rid: str, branch: str = "master"
     ) -> List[Dict[str, Any]]:
@@ -321,26 +526,56 @@ class DatasetService(BaseService):
             List of transaction information dictionaries
         """
         try:
-            # Note: This method may not be available in all SDK versions
-            transactions = self.service.list_transactions(
+            # Try the v2 API first (Dataset.list_transactions)
+            transactions = self.service.Dataset.list_transactions(
                 dataset_rid=dataset_rid, branch=branch
             )
 
             return [
                 {
                     "transaction_rid": getattr(transaction, "rid", None),
+                    "status": getattr(transaction, "status", None),
+                    "transaction_type": getattr(transaction, "transaction_type", None),
+                    "branch": getattr(transaction, "branch", branch),
                     "created_time": getattr(transaction, "created_time", None),
                     "created_by": getattr(transaction, "created_by", None),
-                    "status": getattr(transaction, "status", None),
+                    "committed_time": getattr(transaction, "committed_time", None),
+                    "aborted_time": getattr(transaction, "aborted_time", None),
                 }
                 for transaction in transactions
             ]
         except AttributeError:
-            # Method not available in this SDK version
-            raise NotImplementedError(
-                "Transaction listing is not supported by this SDK version. "
-                "This feature may require a newer version of foundry-platform-python."
-            )
+            # Fallback to service.list_transactions
+            try:
+                transactions = self.service.list_transactions(
+                    dataset_rid=dataset_rid, branch=branch
+                )
+
+                return [
+                    {
+                        "transaction_rid": getattr(transaction, "rid", None),
+                        "created_time": getattr(transaction, "created_time", None),
+                        "created_by": getattr(transaction, "created_by", None),
+                        "status": getattr(transaction, "status", None),
+                        "transaction_type": getattr(
+                            transaction, "transaction_type", None
+                        ),
+                        "branch": getattr(transaction, "branch", branch),
+                        "committed_time": getattr(transaction, "committed_time", None),
+                        "aborted_time": getattr(transaction, "aborted_time", None),
+                    }
+                    for transaction in transactions
+                ]
+            except AttributeError:
+                # Method not available in this SDK version
+                raise NotImplementedError(
+                    "Transaction listing is not supported by this SDK version. "
+                    "This feature may require a newer version of foundry-platform-python."
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to get transactions for dataset {dataset_rid}: {e}"
+                )
         except Exception as e:
             raise RuntimeError(
                 f"Failed to get transactions for dataset {dataset_rid}: {e}"

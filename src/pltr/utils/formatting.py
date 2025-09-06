@@ -1084,13 +1084,120 @@ class OutputFormatter:
                 "Transaction RID": transaction.get("transaction_rid", "")[:12] + "..."
                 if transaction.get("transaction_rid")
                 else "",
+                "Status": transaction.get("status", ""),
+                "Type": transaction.get("transaction_type", ""),
+                "Branch": transaction.get("branch", ""),
                 "Created": self._format_datetime(transaction.get("created_time")),
                 "Created By": transaction.get("created_by", ""),
-                "Status": transaction.get("status", ""),
             }
             formatted_transactions.append(formatted_transaction)
 
         return self.format_output(formatted_transactions, format_type, output_file)
+
+    def format_transaction_detail(
+        self,
+        transaction: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format detailed transaction information.
+
+        Args:
+            transaction: Transaction dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("transaction_rid", "Transaction RID"),
+                ("dataset_rid", "Dataset RID"),
+                ("status", "Status"),
+                ("transaction_type", "Type"),
+                ("branch", "Branch"),
+                ("created_time", "Created"),
+                ("created_by", "Created By"),
+                ("committed_time", "Committed"),
+                ("aborted_time", "Aborted"),
+            ]
+
+            for key, label in property_order:
+                if transaction.get(key) is not None:
+                    value = transaction[key]
+                    if "time" in key:
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in transaction.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(transaction, format_type, output_file)
+
+    def format_transaction_result(
+        self,
+        result: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format transaction operation result.
+
+        Args:
+            result: Transaction operation result dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("transaction_rid", "Transaction RID"),
+                ("dataset_rid", "Dataset RID"),
+                ("status", "Status"),
+                ("success", "Success"),
+                ("committed_time", "Committed Time"),
+                ("aborted_time", "Aborted Time"),
+            ]
+
+            for key, label in property_order:
+                if result.get(key) is not None:
+                    value = result[key]
+                    if "time" in key:
+                        value = self._format_datetime(value)
+                    elif key == "success":
+                        value = "Yes" if value else "No"
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in result.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(result, format_type, output_file)
 
     def format_views(
         self,
