@@ -14,6 +14,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 80+ 
 - 🏗️ **Project Management**: Create, update, and manage Foundry projects within spaces
 - 🌐 **Space Management**: Administer spaces, manage members, and control access
 - 🔐 **Resource Permissions**: Grant, revoke, and manage role-based access to resources
+- 🔗 **Connectivity & Imports**: Manage external connections and import files/tables from various data sources
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
 - 🎬 **MediaSets Operations**: Upload, download, and manage media content with transaction support
@@ -167,6 +168,12 @@ pltr orchestration schedules create   # Create schedule
 pltr media-sets get <set-rid> <item-rid>  # Get media item info
 pltr media-sets upload <set-rid> file.jpg "/path/file.jpg" <txn-id>  # Upload media
 pltr media-sets download <set-rid> <item-rid> output.jpg  # Download media
+
+# Connectivity & Data Imports
+pltr connectivity connection list              # List available connections
+pltr connectivity connection get <conn-rid>    # Get connection details
+pltr connectivity import file <conn-rid> <source-path> <dataset-rid> --execute  # Import file
+pltr connectivity import table <conn-rid> <table-name> <dataset-rid> --execute  # Import table
 
 # Administrative
 pltr admin user current        # Current user info
