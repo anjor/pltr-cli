@@ -1046,6 +1046,206 @@ pltr sql wait abc-123-def --format table
 
 ---
 
+## 🔗 Connectivity Commands
+
+Manage connections and data imports from external systems. The connectivity module provides comprehensive support for connecting to external data sources and importing files or tables into Foundry datasets.
+
+### Connection Management
+
+#### `pltr connectivity connection list [OPTIONS]`
+List all available connections.
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr connectivity connection list
+pltr connectivity connection list --format json --output connections.json
+```
+
+#### `pltr connectivity connection get [OPTIONS] CONNECTION_RID`
+Get detailed information about a specific connection.
+
+**Arguments:**
+- `CONNECTION_RID` (required): Connection Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr connectivity connection get ri.conn.main.connection.12345
+```
+
+### Data Import Management
+
+#### `pltr connectivity import file [OPTIONS] CONNECTION_RID SOURCE_PATH TARGET_DATASET_RID`
+Create and optionally execute a file import via connection.
+
+**Arguments:**
+- `CONNECTION_RID` (required): Connection Resource Identifier
+- `SOURCE_PATH` (required): Source file path in the connection
+- `TARGET_DATASET_RID` (required): Target dataset RID
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--config`, `-c` TEXT: Import configuration in JSON format
+- `--execute`: Execute the import immediately after creation
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Create a file import
+pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456
+
+# Create and execute with custom configuration
+pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456 \
+  --config '{"format": "CSV", "delimiter": ",", "header": true}' \
+  --execute
+
+# Import with custom profile
+pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456 \
+  --profile production --execute
+```
+
+#### `pltr connectivity import table [OPTIONS] CONNECTION_RID SOURCE_TABLE TARGET_DATASET_RID`
+Create and optionally execute a table import via connection.
+
+**Arguments:**
+- `CONNECTION_RID` (required): Connection Resource Identifier
+- `SOURCE_TABLE` (required): Source table name in the connection
+- `TARGET_DATASET_RID` (required): Target dataset RID
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--config`, `-c` TEXT: Import configuration in JSON format
+- `--execute`: Execute the import immediately after creation
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Create a table import
+pltr connectivity import table ri.conn.main.connection.123 "sales_data" ri.foundry.main.dataset.456
+
+# Create and execute with incremental sync
+pltr connectivity import table ri.conn.main.connection.123 "sales_data" ri.foundry.main.dataset.456 \
+  --config '{"sync_mode": "incremental", "primary_key": "id"}' \
+  --execute
+
+# Import with JDBC connection
+pltr connectivity import table ri.conn.main.connection.123 "public.customer_data" ri.foundry.main.dataset.789 \
+  --execute --format json
+```
+
+### Import Listing and Management
+
+#### `pltr connectivity import list-file [OPTIONS]`
+List file imports, optionally filtered by connection.
+
+**Options:**
+- `--connection`, `-c` TEXT: Filter by connection RID
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List all file imports
+pltr connectivity import list-file
+
+# List file imports for specific connection
+pltr connectivity import list-file --connection ri.conn.main.connection.123
+```
+
+#### `pltr connectivity import list-table [OPTIONS]`
+List table imports, optionally filtered by connection.
+
+**Options:**
+- `--connection`, `-c` TEXT: Filter by connection RID
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# List all table imports
+pltr connectivity import list-table
+
+# List table imports for specific connection
+pltr connectivity import list-table --connection ri.conn.main.connection.123
+```
+
+#### `pltr connectivity import get-file [OPTIONS] IMPORT_RID`
+Get detailed information about a specific file import.
+
+**Arguments:**
+- `IMPORT_RID` (required): File import Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr connectivity import get-file ri.import.main.file.12345
+```
+
+#### `pltr connectivity import get-table [OPTIONS] IMPORT_RID`
+Get detailed information about a specific table import.
+
+**Arguments:**
+- `IMPORT_RID` (required): Table import Resource Identifier
+
+**Options:**
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Example:**
+```bash
+pltr connectivity import get-table ri.import.main.table.12345
+```
+
+### Common Use Cases
+
+#### Setting up a Daily Data Import
+```bash
+# 1. List available connections
+pltr connectivity connection list
+
+# 2. Create a table import with configuration
+pltr connectivity import table ri.conn.main.connection.123 "daily_sales" ri.foundry.main.dataset.456 \
+  --config '{"sync_mode": "incremental", "primary_key": "transaction_id", "updated_at_column": "last_modified"}'
+
+# 3. Execute the import
+pltr connectivity import table ri.conn.main.connection.123 "daily_sales" ri.foundry.main.dataset.456 --execute
+```
+
+#### Bulk File Import from S3
+```bash
+# Import multiple files with custom S3 configuration
+pltr connectivity import file ri.conn.main.s3.123 "/data/2024/sales/*.csv" ri.foundry.main.dataset.456 \
+  --config '{"format": "CSV", "delimiter": ",", "compression": "gzip", "multiline": true}' \
+  --execute --format json --output import_results.json
+```
+
+**All connectivity commands support:**
+- Multiple output formats (table, JSON, CSV)
+- File output (`--output filename`)
+- Profile selection (`--profile production`)
+- Import configuration via JSON (`--config '{"key": "value"}'`)
+- Immediate execution (`--execute` for import commands)
+
+---
+
 ## 👥 Admin Commands
 
 Administrative operations for user, group, role, and organization management. **Note**: Requires admin permissions.

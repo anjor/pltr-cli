@@ -23,6 +23,7 @@ from pltr.commands import (
     completion,
     alias,
     mediasets,
+    connectivity,
 )
 
 app = typer.Typer(
@@ -49,6 +50,9 @@ app.add_typer(
 app.add_typer(sql.app, name="sql", help="Execute SQL queries")
 app.add_typer(
     mediasets.app, name="media-sets", help="Manage media sets and media content"
+)
+app.add_typer(
+    connectivity.app, name="connectivity", help="Manage connections and data imports"
 )
 app.add_typer(
     admin.app,
