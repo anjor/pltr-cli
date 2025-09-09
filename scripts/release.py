@@ -58,6 +58,33 @@ def update_version_in_pyproject(new_version):
     print(f"Updated pyproject.toml version to {new_version}")
 
 
+def update_version_in_init_py(new_version):
+    """Update __version__ in src/pltr/__init__.py"""
+    init_py_path = Path("src/pltr/__init__.py")
+
+    if not init_py_path.exists():
+        print("Error: src/pltr/__init__.py not found")
+        sys.exit(1)
+
+    # Read the current content
+    content = init_py_path.read_text()
+
+    # Update the version using regex
+    import re
+
+    pattern = r'__version__ = "[^"]+"'
+    replacement = f'__version__ = "{new_version}"'
+
+    if not re.search(pattern, content):
+        print("Error: Could not find __version__ in src/pltr/__init__.py")
+        sys.exit(1)
+
+    updated_content = re.sub(pattern, replacement, content)
+    init_py_path.write_text(updated_content)
+
+    print(f"Updated src/pltr/__init__.py __version__ to {new_version}")
+
+
 def validate_version(version):
     """Validate semantic version format"""
     pattern = r"^\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)?$"
@@ -127,8 +154,8 @@ def check_tag_exists(version):
 
 def create_release_commit_and_tag(version, release_type, push_mode="ask"):
     """Create release commit and tag"""
-    # Stage the pyproject.toml changes
-    run_git_command("git add pyproject.toml")
+    # Stage the version file changes
+    run_git_command("git add pyproject.toml src/pltr/__init__.py")
 
     # Create release commit
     commit_message = f"{release_type}: Release version {version}"
@@ -280,9 +307,10 @@ def main():
     if args.dry_run:
         print("\nDry run mode - would perform these actions:")
         print(f"1. Update pyproject.toml version to {new_version}")
-        print(f"2. Create git commit: '{release_type}: Release version {new_version}'")
-        print(f"3. Create git tag: v{new_version}")
-        print("4. Optionally push to origin")
+        print(f"2. Update src/pltr/__init__.py __version__ to {new_version}")
+        print(f"3. Create git commit: '{release_type}: Release version {new_version}'")
+        print(f"4. Create git tag: v{new_version}")
+        print("5. Optionally push to origin")
         return
 
     # Check git status
@@ -306,13 +334,14 @@ def main():
     print(f"\nAbout to create release {new_version}")
     print("This will:")
     print(f"1. Update pyproject.toml version to {new_version}")
-    print(f"2. Create git commit and tag v{new_version}")
+    print(f"2. Update src/pltr/__init__.py __version__ to {new_version}")
+    print(f"3. Create git commit and tag v{new_version}")
     if args.push:
-        print("3. Push to origin to trigger GitHub Actions publishing")
+        print("4. Push to origin to trigger GitHub Actions publishing")
     elif args.no_push:
-        print("3. NOT push to origin (--no-push specified)")
+        print("4. NOT push to origin (--no-push specified)")
     else:
-        print("3. Optionally push to trigger GitHub Actions publishing")
+        print("4. Optionally push to trigger GitHub Actions publishing")
 
     if not args.yes:
         confirm = input("\nProceed with release? (y/N): ").strip().lower()
@@ -332,6 +361,7 @@ def main():
 
     # Perform release
     update_version_in_pyproject(new_version)
+    update_version_in_init_py(new_version)
     create_release_commit_and_tag(new_version, release_type, push_mode)
 
     print(f"\n✅ Release {new_version} created successfully!")
