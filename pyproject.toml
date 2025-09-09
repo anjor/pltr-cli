@@ -1,6 +1,6 @@
 [project]
 name = "pltr-cli"
-version = "0.5.2"
+version = "0.6.0"
 description = "Command-line interface for Palantir Foundry APIs"
 authors = [
     { name = "anjor", email = "anjor@umd.edu" },
