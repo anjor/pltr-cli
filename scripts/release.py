@@ -3,9 +3,22 @@
 Release script for pltr-cli
 
 Usage:
-    python scripts/release.py --version 0.1.1 --type patch
-    python scripts/release.py --version 0.2.0 --type minor
-    python scripts/release.py --version 1.0.0 --type major
+    # Interactive mode (for humans)
+    python scripts/release.py --version 0.1.1
+    python scripts/release.py --type patch
+
+    # Non-interactive mode (for AI agents/automation)
+    python scripts/release.py --version 0.1.1 --yes --no-push
+    python scripts/release.py --type patch --yes --push
+
+    # Dry run to see what would happen
+    python scripts/release.py --version 0.1.1 --dry-run
+
+Flags:
+    --yes, -y         Skip all confirmation prompts (non-interactive mode)
+    --push            Push to origin without asking (requires --yes)
+    --no-push         Don't push to origin (useful for testing)
+    --dry-run         Show what would be done without making changes
 """
 
 import argparse
@@ -80,7 +93,39 @@ def check_git_status():
         sys.exit(1)
 
 
-def create_release_commit_and_tag(version, release_type):
+def check_tag_exists(version):
+    """Check if a git tag already exists for this version"""
+    tag_name = f"v{version}"
+    try:
+        # Check if tag exists locally
+        result = subprocess.run(
+            ["git", "tag", "-l", tag_name], capture_output=True, text=True, check=True
+        )
+        if result.stdout.strip():
+            print(f"Warning: Tag {tag_name} already exists locally.")
+            return True
+    except subprocess.CalledProcessError:
+        pass
+
+    try:
+        # Check if tag exists on remote
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", "origin", tag_name],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        if result.stdout.strip():
+            print(f"Warning: Tag {tag_name} already exists on remote.")
+            return True
+    except subprocess.CalledProcessError:
+        # Remote might not exist or be accessible, continue
+        pass
+
+    return False
+
+
+def create_release_commit_and_tag(version, release_type, push_mode="ask"):
     """Create release commit and tag"""
     # Stage the pyproject.toml changes
     run_git_command("git add pyproject.toml")
@@ -92,23 +137,43 @@ def create_release_commit_and_tag(version, release_type):
 
     # Create and push tag
     tag_name = f"v{version}"
-    run_git_command(f'git tag -a {tag_name} -m "Release {version}"')
-    print(f"Created tag: {tag_name}")
+    try:
+        run_git_command(f'git tag -a {tag_name} -m "Release {version}"')
+        print(f"Created tag: {tag_name}")
+    except SystemExit:
+        print(f"Error: Failed to create tag {tag_name}. It may already exist.")
+        print(f"To delete the existing tag: git tag -d {tag_name}")
+        print(f"To delete from remote: git push origin :refs/tags/{tag_name}")
+        raise
 
-    # Ask user if they want to push
-    push_choice = (
-        input(f"Push commit and tag '{tag_name}' to origin? (y/N): ").strip().lower()
-    )
-    if push_choice in ["y", "yes"]:
+    # Handle push based on mode
+    if push_mode == "force":
         run_git_command("git push origin HEAD")
         run_git_command(f"git push origin {tag_name}")
         print("Pushed commit and tag to origin")
         print("GitHub Actions will now build and publish the release automatically")
         print("Monitor the workflow at: https://github.com/anjor/pltr-cli/actions")
-    else:
-        print("Not pushing to origin. You can push manually later with:")
+    elif push_mode == "no":
+        print("Not pushing to origin (--no-push specified).")
+        print("You can push manually later with:")
         print("  git push origin HEAD")
         print(f"  git push origin {tag_name}")
+    else:  # push_mode == "ask"
+        push_choice = (
+            input(f"Push commit and tag '{tag_name}' to origin? (y/N): ")
+            .strip()
+            .lower()
+        )
+        if push_choice in ["y", "yes"]:
+            run_git_command("git push origin HEAD")
+            run_git_command(f"git push origin {tag_name}")
+            print("Pushed commit and tag to origin")
+            print("GitHub Actions will now build and publish the release automatically")
+            print("Monitor the workflow at: https://github.com/anjor/pltr-cli/actions")
+        else:
+            print("Not pushing to origin. You can push manually later with:")
+            print("  git push origin HEAD")
+            print(f"  git push origin {tag_name}")
 
 
 def bump_version(current_version, bump_type):
@@ -146,8 +211,33 @@ def main():
         action="store_true",
         help="Show what would be done without making changes",
     )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip all confirmation prompts (non-interactive mode)",
+    )
+    parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Push to origin without asking (requires --yes)",
+    )
+    parser.add_argument(
+        "--no-push",
+        action="store_true",
+        help="Don't push to origin (useful for testing)",
+    )
 
     args = parser.parse_args()
+
+    # Validate argument combinations
+    if args.push and args.no_push:
+        print("Error: Cannot specify both --push and --no-push")
+        sys.exit(1)
+
+    if args.push and not args.yes:
+        print("Error: --push requires --yes (non-interactive mode)")
+        sys.exit(1)
 
     # Ensure we're in a git repository
     try:
@@ -177,6 +267,16 @@ def main():
 
     print(f"New version: {new_version}")
 
+    # Check if we're trying to release the same version
+    if new_version == current_version:
+        print(f"\nWarning: Version {new_version} is the same as current version.")
+        print("This will create a new commit and tag for the same version.")
+        if not args.yes:
+            confirm_same = input("Continue anyway? (y/N): ").strip().lower()
+            if confirm_same not in ["y", "yes"]:
+                print("Release cancelled")
+                sys.exit(0)
+
     if args.dry_run:
         print("\nDry run mode - would perform these actions:")
         print(f"1. Update pyproject.toml version to {new_version}")
@@ -188,21 +288,51 @@ def main():
     # Check git status
     check_git_status()
 
+    # Check if tag already exists
+    if check_tag_exists(new_version):
+        if not args.yes:
+            confirm_tag = (
+                input(f"Tag v{new_version} already exists. Continue anyway? (y/N): ")
+                .strip()
+                .lower()
+            )
+            if confirm_tag not in ["y", "yes"]:
+                print("Release cancelled")
+                sys.exit(0)
+        else:
+            print(f"Continuing despite existing tag v{new_version} (--yes specified)")
+
     # Confirm release
     print(f"\nAbout to create release {new_version}")
     print("This will:")
     print(f"1. Update pyproject.toml version to {new_version}")
     print(f"2. Create git commit and tag v{new_version}")
-    print("3. Optionally push to trigger GitHub Actions publishing")
+    if args.push:
+        print("3. Push to origin to trigger GitHub Actions publishing")
+    elif args.no_push:
+        print("3. NOT push to origin (--no-push specified)")
+    else:
+        print("3. Optionally push to trigger GitHub Actions publishing")
 
-    confirm = input("\nProceed with release? (y/N): ").strip().lower()
-    if confirm not in ["y", "yes"]:
-        print("Release cancelled")
-        sys.exit(0)
+    if not args.yes:
+        confirm = input("\nProceed with release? (y/N): ").strip().lower()
+        if confirm not in ["y", "yes"]:
+            print("Release cancelled")
+            sys.exit(0)
+    else:
+        print("\nProceeding with release (--yes specified)...")
+
+    # Determine push mode
+    if args.push:
+        push_mode = "force"
+    elif args.no_push:
+        push_mode = "no"
+    else:
+        push_mode = "ask"
 
     # Perform release
     update_version_in_pyproject(new_version)
-    create_release_commit_and_tag(new_version, release_type)
+    create_release_commit_and_tag(new_version, release_type, push_mode)
 
     print(f"\n✅ Release {new_version} created successfully!")
 
