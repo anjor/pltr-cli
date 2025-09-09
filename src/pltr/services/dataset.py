@@ -149,9 +149,15 @@ class DatasetService(BaseService):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         try:
+            # Read file content as bytes
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+
+            # Use the correct method signature with body parameter
             result = self.service.Dataset.File.upload(
                 dataset_rid=dataset_rid,
-                file_path=str(file_path),
+                file_path=file_path.name,  # Just the filename, not full path
+                body=file_content,
                 branch_name=branch,
                 transaction_rid=transaction_rid,
             )
