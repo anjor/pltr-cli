@@ -1,12 +1,11 @@
 [project]
 name = "pltr-cli"
-version = "0.5.1"
+version = "0.5.2"
 description = "Command-line interface for Palantir Foundry APIs"
 authors = [
-    { name = "anjor", email = "anjor@umd.edu" }
+    { name = "anjor", email = "anjor@umd.edu" },
 ]
 readme = "README.md"
-license = { text = "MIT" }
 requires-python = ">=3.9"
 dependencies = [
     "click-repl>=0.3.0",
@@ -17,7 +16,14 @@ dependencies = [
     "rich>=14.1.0",
     "typer>=0.16.0",
 ]
-keywords = ["palantir", "foundry", "cli", "api", "data", "ontology"]
+keywords = [
+    "palantir",
+    "foundry",
+    "cli",
+    "api",
+    "data",
+    "ontology",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -35,6 +41,9 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
+[project.license]
+text = "MIT"
+
 [project.urls]
 Homepage = "https://github.com/anjor/pltr-cli"
 Repository = "https://github.com/anjor/pltr-cli"
@@ -46,11 +55,15 @@ Documentation = "https://github.com/anjor/pltr-cli/blob/main/README.md"
 pltr = "pltr.cli:app"
 
 [build-system]
-requires = ["hatchling"]
+requires = [
+    "hatchling",
+]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pltr"]
+packages = [
+    "src/pltr",
+]
 
 [dependency-groups]
 dev = [
