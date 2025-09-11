@@ -708,6 +708,395 @@ class DatasetService(BaseService):
                 f"Failed to create view '{view_name}' for dataset {dataset_rid}: {e}"
             )
 
+    def get_schedules(self, dataset_rid: str) -> List[Dict[str, Any]]:
+        """
+        Get schedules that target a specific dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+
+        Returns:
+            List of schedule information dictionaries
+        """
+        try:
+            schedules = self.service.Dataset.get_schedules(dataset_rid=dataset_rid)
+
+            return [
+                {
+                    "schedule_rid": getattr(schedule, "rid", None),
+                    "name": getattr(schedule, "name", None),
+                    "description": getattr(schedule, "description", None),
+                    "enabled": getattr(schedule, "enabled", None),
+                    "created_time": getattr(schedule, "created_time", None),
+                }
+                for schedule in schedules
+            ]
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get schedules for dataset {dataset_rid}: {e}"
+            )
+
+    def get_jobs(
+        self, dataset_rid: str, branch: str = "master"
+    ) -> List[Dict[str, Any]]:
+        """
+        Get jobs for a specific dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch: Dataset branch name
+
+        Returns:
+            List of job information dictionaries
+        """
+        try:
+            jobs = self.service.Dataset.jobs(
+                dataset_rid=dataset_rid, branch_name=branch
+            )
+
+            return [
+                {
+                    "job_rid": getattr(job, "rid", None),
+                    "name": getattr(job, "name", None),
+                    "status": getattr(job, "status", None),
+                    "created_time": getattr(job, "created_time", None),
+                    "started_time": getattr(job, "started_time", None),
+                    "completed_time": getattr(job, "completed_time", None),
+                }
+                for job in jobs
+            ]
+        except Exception as e:
+            raise RuntimeError(f"Failed to get jobs for dataset {dataset_rid}: {e}")
+
+    def delete_branch(self, dataset_rid: str, branch_name: str) -> Dict[str, Any]:
+        """
+        Delete a branch from a dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch_name: Branch name to delete
+
+        Returns:
+            Deletion result information
+        """
+        try:
+            self.service.Dataset.Branch.delete(
+                dataset_rid=dataset_rid, branch_name=branch_name
+            )
+
+            return {
+                "dataset_rid": dataset_rid,
+                "branch_name": branch_name,
+                "status": "deleted",
+                "success": True,
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to delete branch '{branch_name}' from dataset {dataset_rid}: {e}"
+            )
+
+    def get_branch(self, dataset_rid: str, branch_name: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a specific branch.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch_name: Branch name
+
+        Returns:
+            Branch information dictionary
+        """
+        try:
+            branch = self.service.Dataset.Branch.get(
+                dataset_rid=dataset_rid, branch_name=branch_name
+            )
+
+            return {
+                "name": branch_name,
+                "dataset_rid": dataset_rid,
+                "transaction_rid": getattr(branch, "transaction_rid", None),
+                "created_time": getattr(branch, "created_time", None),
+                "created_by": getattr(branch, "created_by", None),
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get branch '{branch_name}' from dataset {dataset_rid}: {e}"
+            )
+
+    def get_branch_transactions(
+        self, dataset_rid: str, branch_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get transaction history for a specific branch.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch_name: Branch name
+
+        Returns:
+            List of transaction information dictionaries
+        """
+        try:
+            transactions = self.service.Dataset.Branch.transactions(
+                dataset_rid=dataset_rid, branch_name=branch_name
+            )
+
+            return [
+                {
+                    "transaction_rid": getattr(transaction, "rid", None),
+                    "status": getattr(transaction, "status", None),
+                    "transaction_type": getattr(transaction, "transaction_type", None),
+                    "branch": branch_name,
+                    "created_time": getattr(transaction, "created_time", None),
+                    "created_by": getattr(transaction, "created_by", None),
+                    "committed_time": getattr(transaction, "committed_time", None),
+                    "aborted_time": getattr(transaction, "aborted_time", None),
+                }
+                for transaction in transactions
+            ]
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get transaction history for branch '{branch_name}' in dataset {dataset_rid}: {e}"
+            )
+
+    def delete_file(
+        self, dataset_rid: str, file_path: str, branch: str = "master"
+    ) -> Dict[str, Any]:
+        """
+        Delete a file from a dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            file_path: Path of file within dataset to delete
+            branch: Dataset branch name
+
+        Returns:
+            Deletion result information
+        """
+        try:
+            self.service.Dataset.File.delete(
+                dataset_rid=dataset_rid, file_path=file_path, branch_name=branch
+            )
+
+            return {
+                "dataset_rid": dataset_rid,
+                "file_path": file_path,
+                "branch": branch,
+                "status": "deleted",
+                "success": True,
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to delete file {file_path} from dataset {dataset_rid}: {e}"
+            )
+
+    def get_file_info(
+        self, dataset_rid: str, file_path: str, branch: str = "master"
+    ) -> Dict[str, Any]:
+        """
+        Get metadata about a file in a dataset.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            file_path: Path of file within dataset
+            branch: Dataset branch name
+
+        Returns:
+            File metadata information
+        """
+        try:
+            file_info = self.service.Dataset.File.get(
+                dataset_rid=dataset_rid, file_path=file_path, branch_name=branch
+            )
+
+            return {
+                "path": file_path,
+                "dataset_rid": dataset_rid,
+                "branch": branch,
+                "size_bytes": getattr(file_info, "size_bytes", None),
+                "last_modified": getattr(file_info, "last_modified", None),
+                "transaction_rid": getattr(file_info, "transaction_rid", None),
+                "created_time": getattr(file_info, "created_time", None),
+                "content_type": getattr(file_info, "content_type", None),
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get file info for {file_path} in dataset {dataset_rid}: {e}"
+            )
+
+    def get_transaction_build(
+        self, dataset_rid: str, transaction_rid: str
+    ) -> Dict[str, Any]:
+        """
+        Get build information for a transaction.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            transaction_rid: Transaction Resource Identifier
+
+        Returns:
+            Build information dictionary
+        """
+        try:
+            build = self.service.Dataset.Transaction.build(
+                dataset_rid=dataset_rid, transaction_rid=transaction_rid
+            )
+
+            return {
+                "transaction_rid": transaction_rid,
+                "dataset_rid": dataset_rid,
+                "build_rid": getattr(build, "rid", None),
+                "status": getattr(build, "status", None),
+                "started_time": getattr(build, "started_time", None),
+                "completed_time": getattr(build, "completed_time", None),
+                "duration_ms": getattr(build, "duration_ms", None),
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get build for transaction {transaction_rid}: {e}"
+            )
+
+    def get_view(self, view_rid: str, branch: str = "master") -> Dict[str, Any]:
+        """
+        Get detailed information about a view.
+
+        Args:
+            view_rid: View Resource Identifier
+            branch: Branch name
+
+        Returns:
+            View information dictionary
+        """
+        try:
+            view = self.service.Dataset.View.get(
+                dataset_rid=view_rid, branch_name=branch
+            )
+
+            return {
+                "view_rid": view_rid,
+                "name": getattr(view, "name", None),
+                "description": getattr(view, "description", None),
+                "branch": branch,
+                "created_time": getattr(view, "created_time", None),
+                "created_by": getattr(view, "created_by", None),
+                "backing_datasets": getattr(view, "backing_datasets", []),
+                "primary_key": getattr(view, "primary_key", None),
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to get view {view_rid}: {e}")
+
+    def add_backing_datasets(
+        self, view_rid: str, dataset_rids: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Add backing datasets to a view.
+
+        Args:
+            view_rid: View Resource Identifier
+            dataset_rids: List of dataset RIDs to add as backing datasets
+
+        Returns:
+            Operation result
+        """
+        try:
+            result = self.service.Dataset.View.add_backing_datasets(
+                dataset_rid=view_rid, backing_datasets=dataset_rids
+            )
+
+            return {
+                "view_rid": view_rid,
+                "added_datasets": dataset_rids,
+                "success": True,
+                "result": result,
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to add backing datasets to view {view_rid}: {e}"
+            )
+
+    def remove_backing_datasets(
+        self, view_rid: str, dataset_rids: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Remove backing datasets from a view.
+
+        Args:
+            view_rid: View Resource Identifier
+            dataset_rids: List of dataset RIDs to remove as backing datasets
+
+        Returns:
+            Operation result
+        """
+        try:
+            result = self.service.Dataset.View.remove_backing_datasets(
+                dataset_rid=view_rid, backing_datasets=dataset_rids
+            )
+
+            return {
+                "view_rid": view_rid,
+                "removed_datasets": dataset_rids,
+                "success": True,
+                "result": result,
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to remove backing datasets from view {view_rid}: {e}"
+            )
+
+    def replace_backing_datasets(
+        self, view_rid: str, dataset_rids: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Replace all backing datasets in a view.
+
+        Args:
+            view_rid: View Resource Identifier
+            dataset_rids: List of dataset RIDs to set as backing datasets
+
+        Returns:
+            Operation result
+        """
+        try:
+            result = self.service.Dataset.View.replace_backing_datasets(
+                dataset_rid=view_rid, backing_datasets=dataset_rids
+            )
+
+            return {
+                "view_rid": view_rid,
+                "new_datasets": dataset_rids,
+                "success": True,
+                "result": result,
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to replace backing datasets in view {view_rid}: {e}"
+            )
+
+    def add_primary_key(self, view_rid: str, key_fields: List[str]) -> Dict[str, Any]:
+        """
+        Add a primary key to a view.
+
+        Args:
+            view_rid: View Resource Identifier
+            key_fields: List of field names to use as primary key
+
+        Returns:
+            Operation result
+        """
+        try:
+            result = self.service.Dataset.View.add_primary_key(
+                dataset_rid=view_rid, primary_key=key_fields
+            )
+
+            return {
+                "view_rid": view_rid,
+                "primary_key_fields": key_fields,
+                "success": True,
+                "result": result,
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to add primary key to view {view_rid}: {e}")
+
     def _format_dataset_info(self, dataset: Any) -> Dict[str, Any]:
         """
         Format dataset information for consistent output.

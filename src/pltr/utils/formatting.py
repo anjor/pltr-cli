@@ -1282,3 +1282,173 @@ class OutputFormatter:
             return self.format_output(details, format_type, output_file)
         else:
             return self.format_output(view, format_type, output_file)
+
+    def format_file_info(
+        self,
+        file_info: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format file metadata information.
+
+        Args:
+            file_info: File info dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("path", "File Path"),
+                ("dataset_rid", "Dataset RID"),
+                ("branch", "Branch"),
+                ("size_bytes", "Size (bytes)"),
+                ("content_type", "Content Type"),
+                ("last_modified", "Last Modified"),
+                ("created_time", "Created"),
+                ("transaction_rid", "Transaction RID"),
+            ]
+
+            for key, label in property_order:
+                if file_info.get(key) is not None:
+                    value = file_info[key]
+                    if key in ["last_modified", "created_time"]:
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in file_info.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(file_info, format_type, output_file)
+
+    def format_schedules(
+        self,
+        schedules: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset schedules for display.
+
+        Args:
+            schedules: List of schedule dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_schedules = []
+        for schedule in schedules:
+            formatted_schedule = {
+                "Schedule RID": schedule.get("schedule_rid", "")[:12] + "..."
+                if schedule.get("schedule_rid")
+                else "",
+                "Name": schedule.get("name", ""),
+                "Description": schedule.get("description", "")[:50] + "..."
+                if schedule.get("description", "")
+                else "",
+                "Enabled": schedule.get("enabled", ""),
+                "Created": self._format_datetime(schedule.get("created_time")),
+            }
+            formatted_schedules.append(formatted_schedule)
+
+        return self.format_output(formatted_schedules, format_type, output_file)
+
+    def format_jobs(
+        self,
+        jobs: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format dataset jobs for display.
+
+        Args:
+            jobs: List of job dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_jobs = []
+        for job in jobs:
+            formatted_job = {
+                "Job RID": job.get("job_rid", "")[:12] + "..."
+                if job.get("job_rid")
+                else "",
+                "Name": job.get("name", ""),
+                "Status": job.get("status", ""),
+                "Created": self._format_datetime(job.get("created_time")),
+                "Started": self._format_datetime(job.get("started_time")),
+                "Completed": self._format_datetime(job.get("completed_time")),
+            }
+            formatted_jobs.append(formatted_job)
+
+        return self.format_output(formatted_jobs, format_type, output_file)
+
+    def format_transaction_build(
+        self,
+        build_info: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format transaction build information.
+
+        Args:
+            build_info: Build info dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("transaction_rid", "Transaction RID"),
+                ("dataset_rid", "Dataset RID"),
+                ("build_rid", "Build RID"),
+                ("status", "Status"),
+                ("started_time", "Started"),
+                ("completed_time", "Completed"),
+                ("duration_ms", "Duration (ms)"),
+            ]
+
+            for key, label in property_order:
+                if build_info.get(key) is not None:
+                    value = build_info[key]
+                    if key in ["started_time", "completed_time"]:
+                        value = self._format_datetime(value)
+                    details.append({"Property": label, "Value": str(value)})
+
+            # Add any remaining properties
+            for key, value in build_info.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(build_info, format_type, output_file)

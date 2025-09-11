@@ -245,3 +245,212 @@ def test_format_dataset_info_with_parent(mock_dataset_service):
     assert result["name"] == "Test Dataset"
     assert result["parent_folder_rid"] == "ri.foundry.main.folder.specific"
     # The v2 API only returns these three fields
+
+
+def test_get_schedules_success(mock_dataset_service):
+    """Test successful dataset schedules retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock schedules response
+    mock_schedule = Mock()
+    mock_schedule.rid = "ri.foundry.main.schedule.test"
+    mock_schedule.name = "Test Schedule"
+    mock_schedule.description = "Test schedule description"
+    mock_schedule.enabled = True
+    mock_schedule.created_time = "2023-01-01T00:00:00Z"
+
+    mock_dataset_class.get_schedules.return_value = [mock_schedule]
+
+    result = service.get_schedules("ri.foundry.main.dataset.test-dataset")
+
+    assert len(result) == 1
+    assert result[0]["schedule_rid"] == "ri.foundry.main.schedule.test"
+    assert result[0]["name"] == "Test Schedule"
+    assert result[0]["enabled"] is True
+
+
+def test_get_jobs_success(mock_dataset_service):
+    """Test successful dataset jobs retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock jobs response
+    mock_job = Mock()
+    mock_job.rid = "ri.foundry.main.job.test"
+    mock_job.name = "Test Job"
+    mock_job.status = "SUCCEEDED"
+    mock_job.created_time = "2023-01-01T00:00:00Z"
+    mock_job.started_time = "2023-01-01T01:00:00Z"
+    mock_job.completed_time = "2023-01-01T02:00:00Z"
+
+    mock_dataset_class.jobs.return_value = [mock_job]
+
+    result = service.get_jobs("ri.foundry.main.dataset.test-dataset", "master")
+
+    assert len(result) == 1
+    assert result[0]["job_rid"] == "ri.foundry.main.job.test"
+    assert result[0]["name"] == "Test Job"
+    assert result[0]["status"] == "SUCCEEDED"
+
+
+def test_delete_branch_success(mock_dataset_service):
+    """Test successful branch deletion."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the Branch.delete method
+    mock_dataset_class.Branch = Mock()
+    mock_dataset_class.Branch.delete = Mock()
+
+    result = service.delete_branch(
+        "ri.foundry.main.dataset.test-dataset", "test-branch"
+    )
+
+    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
+    assert result["branch_name"] == "test-branch"
+    assert result["status"] == "deleted"
+    assert result["success"] is True
+
+    mock_dataset_class.Branch.delete.assert_called_once_with(
+        dataset_rid="ri.foundry.main.dataset.test-dataset", branch_name="test-branch"
+    )
+
+
+def test_get_branch_success(mock_dataset_service):
+    """Test successful branch retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the Branch.get method
+    mock_branch = Mock()
+    mock_branch.transaction_rid = "ri.foundry.main.transaction.test"
+    mock_branch.created_time = "2023-01-01T00:00:00Z"
+    mock_branch.created_by = "test-user"
+
+    mock_dataset_class.Branch = Mock()
+    mock_dataset_class.Branch.get = Mock(return_value=mock_branch)
+
+    result = service.get_branch("ri.foundry.main.dataset.test-dataset", "test-branch")
+
+    assert result["name"] == "test-branch"
+    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
+    assert result["transaction_rid"] == "ri.foundry.main.transaction.test"
+    assert result["created_by"] == "test-user"
+
+
+def test_delete_file_success(mock_dataset_service):
+    """Test successful file deletion."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the File.delete method
+    mock_dataset_class.File = Mock()
+    mock_dataset_class.File.delete = Mock()
+
+    result = service.delete_file(
+        "ri.foundry.main.dataset.test-dataset", "test-file.csv", "master"
+    )
+
+    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
+    assert result["file_path"] == "test-file.csv"
+    assert result["branch"] == "master"
+    assert result["status"] == "deleted"
+    assert result["success"] is True
+
+
+def test_get_file_info_success(mock_dataset_service):
+    """Test successful file info retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the File.get method
+    mock_file = Mock()
+    mock_file.size_bytes = 1024
+    mock_file.last_modified = "2023-01-01T00:00:00Z"
+    mock_file.transaction_rid = "ri.foundry.main.transaction.test"
+    mock_file.created_time = "2023-01-01T00:00:00Z"
+    mock_file.content_type = "text/csv"
+
+    mock_dataset_class.File = Mock()
+    mock_dataset_class.File.get = Mock(return_value=mock_file)
+
+    result = service.get_file_info(
+        "ri.foundry.main.dataset.test-dataset", "test-file.csv", "master"
+    )
+
+    assert result["path"] == "test-file.csv"
+    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
+    assert result["branch"] == "master"
+    assert result["size_bytes"] == 1024
+    assert result["content_type"] == "text/csv"
+
+
+def test_get_transaction_build_success(mock_dataset_service):
+    """Test successful transaction build retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the Transaction.build method
+    mock_build = Mock()
+    mock_build.rid = "ri.foundry.main.build.test"
+    mock_build.status = "SUCCEEDED"
+    mock_build.started_time = "2023-01-01T00:00:00Z"
+    mock_build.completed_time = "2023-01-01T01:00:00Z"
+    mock_build.duration_ms = 3600000
+
+    mock_transaction = Mock()
+    mock_transaction.build = Mock(return_value=mock_build)
+    mock_dataset_class.Transaction = mock_transaction
+
+    result = service.get_transaction_build(
+        "ri.foundry.main.dataset.test-dataset", "ri.foundry.main.transaction.test"
+    )
+
+    assert result["transaction_rid"] == "ri.foundry.main.transaction.test"
+    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
+    assert result["build_rid"] == "ri.foundry.main.build.test"
+    assert result["status"] == "SUCCEEDED"
+    assert result["duration_ms"] == 3600000
+
+
+def test_get_view_success(mock_dataset_service):
+    """Test successful view retrieval."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the View.get method
+    mock_view = Mock()
+    mock_view.name = "Test View"
+    mock_view.description = "Test view description"
+    mock_view.created_time = "2023-01-01T00:00:00Z"
+    mock_view.created_by = "test-user"
+    mock_view.backing_datasets = ["ri.foundry.main.dataset.backing"]
+    mock_view.primary_key = ["id", "name"]
+
+    mock_view_class = Mock()
+    mock_view_class.get = Mock(return_value=mock_view)
+    mock_dataset_class.View = mock_view_class
+
+    result = service.get_view("ri.foundry.main.view.test", "master")
+
+    assert result["view_rid"] == "ri.foundry.main.view.test"
+    assert result["name"] == "Test View"
+    assert result["description"] == "Test view description"
+    assert result["branch"] == "master"
+    assert result["backing_datasets"] == ["ri.foundry.main.dataset.backing"]
+    assert result["primary_key"] == ["id", "name"]
+
+
+def test_add_backing_datasets_success(mock_dataset_service):
+    """Test successful addition of backing datasets to view."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock the View.add_backing_datasets method
+    mock_result = Mock()
+    mock_view_class = Mock()
+    mock_view_class.add_backing_datasets = Mock(return_value=mock_result)
+    mock_dataset_class.View = mock_view_class
+
+    dataset_rids = ["ri.foundry.main.dataset.new1", "ri.foundry.main.dataset.new2"]
+    result = service.add_backing_datasets("ri.foundry.main.view.test", dataset_rids)
+
+    assert result["view_rid"] == "ri.foundry.main.view.test"
+    assert result["added_datasets"] == dataset_rids
+    assert result["success"] is True
+
+    mock_view_class.add_backing_datasets.assert_called_once_with(
+        dataset_rid="ri.foundry.main.view.test", backing_datasets=dataset_rids
+    )
