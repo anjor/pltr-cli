@@ -22,6 +22,7 @@ branches_app = typer.Typer()
 files_app = typer.Typer()
 transactions_app = typer.Typer()
 views_app = typer.Typer()
+schema_app = typer.Typer()
 console = Console()
 formatter = OutputFormatter(console)
 
@@ -70,7 +71,175 @@ def get_dataset(
         raise typer.Exit(1)
 
 
-# schema command removed - uses preview-only API that returns INVALID_ARGUMENT
+# Schema commands
+@schema_app.command("get")
+def get_schema(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get the schema of a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching schema for {dataset_rid}..."
+        ):
+            schema = service.get_schema(dataset_rid)
+
+        # Format schema for display
+        if format == "json":
+            formatter._format_json(schema, output)
+        else:
+            formatter.print_info(f"Dataset: {dataset_rid}")
+            formatter.print_info(f"Status: {schema.get('status', 'Unknown')}")
+            if schema.get("schema"):
+                formatter.print_info("\nSchema:")
+                formatter._format_json(schema.get("schema"))
+
+        if output:
+            formatter.print_success(f"Schema saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get schema: {e}")
+        raise typer.Exit(1)
+
+
+@schema_app.command("set")
+def set_schema(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    from_csv: Optional[str] = typer.Option(
+        None, "--from-csv", help="Infer schema from CSV file"
+    ),
+    json_schema: Optional[str] = typer.Option(
+        None, "--json", help="JSON string defining the schema"
+    ),
+    json_file: Optional[str] = typer.Option(
+        None, "--json-file", help="Path to JSON file containing schema definition"
+    ),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    transaction_rid: Optional[str] = typer.Option(
+        None, "--transaction-rid", help="Transaction RID to use"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Set or update the schema of a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Validate that exactly one input method is provided
+        input_methods = [from_csv, json_schema, json_file]
+        if sum(x is not None for x in input_methods) != 1:
+            formatter.print_error(
+                "Exactly one of --from-csv, --json, or --json-file must be provided"
+            )
+            raise typer.Exit(1)
+
+        schema = None
+
+        # Infer schema from CSV
+        if from_csv:
+            with SpinnerProgressTracker().track_spinner(
+                f"Inferring schema from {from_csv}..."
+            ):
+                schema = service.infer_schema_from_csv(from_csv)
+                formatter.print_info(
+                    f"Inferred schema from CSV with {len(schema.field_schema_list)} fields"
+                )
+                for field in schema.field_schema_list:
+                    formatter.print_info(
+                        f"  - {field.name}: {field.type} (nullable={field.nullable})"
+                    )
+
+        # Parse schema from JSON string
+        elif json_schema:
+            import json
+            from foundry_sdk.v2.core.models import DatasetSchema, DatasetFieldSchema
+
+            try:
+                schema_data = json.loads(json_schema)
+                fields = []
+                for field_data in schema_data.get("fields", []):
+                    fields.append(
+                        DatasetFieldSchema(
+                            name=field_data["name"],
+                            type=field_data["type"],
+                            nullable=field_data.get("nullable", True),
+                        )
+                    )
+                schema = DatasetSchema(field_schema_list=fields)
+            except (json.JSONDecodeError, KeyError) as e:
+                formatter.print_error(f"Invalid JSON schema: {e}")
+                raise typer.Exit(1)
+
+        # Load schema from JSON file
+        elif json_file:
+            import json
+            from foundry_sdk.v2.core.models import DatasetSchema, DatasetFieldSchema
+
+            try:
+                with open(json_file, "r") as f:
+                    schema_data = json.load(f)
+                fields = []
+                for field_data in schema_data.get("fields", []):
+                    fields.append(
+                        DatasetFieldSchema(
+                            name=field_data["name"],
+                            type=field_data["type"],
+                            nullable=field_data.get("nullable", True),
+                        )
+                    )
+                schema = DatasetSchema(field_schema_list=fields)
+            except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+                formatter.print_error(f"Failed to load schema from file: {e}")
+                raise typer.Exit(1)
+
+        # Apply the schema
+        with SpinnerProgressTracker().track_spinner(
+            f"Setting schema on dataset {dataset_rid}..."
+        ):
+            service.put_schema(
+                dataset_rid=dataset_rid,
+                schema=schema,
+                branch=branch,
+                transaction_rid=transaction_rid,
+            )
+
+        formatter.print_success(f"Successfully set schema on dataset {dataset_rid}")
+        if transaction_rid:
+            formatter.print_info(f"Transaction RID: {transaction_rid}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except FileNotFoundError as e:
+        formatter.print_error(f"File not found: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to set schema: {e}")
+        raise typer.Exit(1)
 
 
 @app.command("create")
@@ -676,6 +845,7 @@ app.add_typer(branches_app, name="branches")
 app.add_typer(files_app, name="files")
 app.add_typer(transactions_app, name="transactions")
 app.add_typer(views_app, name="views")
+app.add_typer(schema_app, name="schema")
 
 
 @app.callback()
