@@ -319,9 +319,93 @@ class DatasetService(BaseService):
                 "transaction_rid": getattr(result, "transaction_rid", transaction_rid),
             }
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to upload file {file_path} to dataset {dataset_rid}: {e}"
-            )
+            # Try to extract more detailed error information
+            error_msg = str(e).strip()
+            error_type = type(e).__name__
+
+            # Check for common HTTP/API errors
+            if hasattr(e, "response") and hasattr(e.response, "status_code"):
+                status_code = e.response.status_code
+                if hasattr(e.response, "text"):
+                    response_text = e.response.text[:500]  # Limit to 500 chars
+                    error_details = f"HTTP {status_code}: {response_text}"
+                else:
+                    error_details = f"HTTP {status_code}"
+                error_msg = f"{error_details} ({error_type}: {error_msg})"
+            elif hasattr(e, "status_code"):
+                error_msg = f"HTTP {e.status_code}: {error_msg}"
+            elif hasattr(e, "message"):
+                error_msg = f"{error_type}: {e.message}"
+            else:
+                if error_msg:
+                    error_msg = f"{error_type}: {error_msg}"
+                else:
+                    error_msg = f"{error_type} (no additional details available)"
+
+            # Add context about what might have gone wrong
+            context_hints = []
+            error_lower = error_msg.lower()
+
+            if (
+                "permission" in error_lower
+                or "forbidden" in error_lower
+                or "401" in error_msg
+                or "403" in error_msg
+            ):
+                context_hints.append(
+                    "Check your authentication credentials and dataset permissions"
+                )
+            if "not found" in error_lower or "404" in error_msg:
+                context_hints.append(
+                    "Verify the dataset RID and transaction RID are correct"
+                )
+            if "transaction" in error_lower:
+                context_hints.append(
+                    "Check if the transaction is still open and not expired"
+                )
+            if "schema" in error_lower or "validation" in error_lower:
+                context_hints.append(
+                    "The file might not match the expected dataset schema"
+                )
+            if (
+                "invalidparametercombination" in error_lower
+                or "invalid parameter" in error_lower
+            ):
+                context_hints.append(
+                    "The combination of parameters (dataset RID, transaction RID, branch) may be invalid"
+                )
+                context_hints.append(
+                    "Try without --transaction-rid, or verify the transaction belongs to this dataset"
+                )
+            if (
+                "opentransactionalreadyexists" in error_lower
+                or "transaction already exists" in error_lower
+            ):
+                context_hints.append(
+                    "There's already an open transaction for this dataset"
+                )
+                context_hints.append(
+                    "Use the existing transaction with --transaction-rid, or commit/abort it first"
+                )
+                context_hints.append(
+                    "List transactions with: pltr dataset transactions list "
+                    + dataset_rid
+                )
+
+            # Try to get more detailed error information from the exception
+            if hasattr(e, "__dict__"):
+                for attr in ["detail", "details", "error_message", "description"]:
+                    if hasattr(e, attr):
+                        detail = getattr(e, attr)
+                        if detail and str(detail).strip():
+                            error_msg += f" - {detail}"
+                            break
+
+            full_error = f"Failed to upload file {file_path.name} to dataset {dataset_rid}: {error_msg}"
+            if context_hints:
+                full_error += f". Suggestions: {'; '.join(context_hints)}"
+
+            raise RuntimeError(full_error)
 
     def download_file(
         self,
