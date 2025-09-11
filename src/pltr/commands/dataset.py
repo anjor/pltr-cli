@@ -23,6 +23,8 @@ files_app = typer.Typer()
 transactions_app = typer.Typer()
 views_app = typer.Typer()
 schema_app = typer.Typer()
+schedules_app = typer.Typer()
+jobs_app = typer.Typer()
 console = Console()
 formatter = OutputFormatter(console)
 
@@ -358,6 +360,139 @@ def create_branch(
         raise typer.Exit(1)
 
 
+@branches_app.command("delete")
+def delete_branch(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch_name: str = typer.Argument(..., help="Branch name to delete"),
+    confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Delete a branch from a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Prevent deleting master branch
+        if branch_name.lower() == "master":
+            formatter.print_error("Cannot delete the master branch")
+            raise typer.Exit(1)
+
+        # Confirmation prompt
+        if not confirm:
+            confirmed = typer.confirm(
+                f"Are you sure you want to delete branch '{branch_name}' from dataset {dataset_rid}? "
+                f"This action cannot be undone."
+            )
+            if not confirmed:
+                formatter.print_info("Branch deletion cancelled")
+                raise typer.Exit(0)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Deleting branch '{branch_name}' from {dataset_rid}..."
+        ):
+            service.delete_branch(dataset_rid, branch_name)
+
+        formatter.print_success(f"Branch '{branch_name}' deleted successfully")
+        formatter.print_info(f"Dataset: {dataset_rid}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to delete branch: {e}")
+        raise typer.Exit(1)
+
+
+@branches_app.command("get")
+def get_branch(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch_name: str = typer.Argument(..., help="Branch name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get detailed information about a specific branch."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching branch '{branch_name}' from {dataset_rid}..."
+        ):
+            branch = service.get_branch(dataset_rid, branch_name)
+
+        formatter.format_branch_detail(branch, format, output)
+
+        if output:
+            formatter.print_success(f"Branch information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get branch: {e}")
+        raise typer.Exit(1)
+
+
+@branches_app.command("transactions")
+def list_branch_transactions(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch_name: str = typer.Argument(..., help="Branch name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get transaction history for a specific branch."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching transaction history for branch '{branch_name}' in {dataset_rid}..."
+        ):
+            transactions = service.get_branch_transactions(dataset_rid, branch_name)
+
+        formatter.format_transactions(transactions, format, output)
+
+        if output:
+            formatter.print_success(f"Branch transactions saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get branch transactions: {e}")
+        raise typer.Exit(1)
+
+
 # Files commands
 @files_app.command("list")
 def list_files(
@@ -486,6 +621,93 @@ def get_file(
         raise typer.Exit(1)
     except Exception as e:
         formatter.print_error(f"Failed to download file: {e}")
+        raise typer.Exit(1)
+
+
+@files_app.command("delete")
+def delete_file(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    file_path: str = typer.Argument(..., help="Path of file within dataset to delete"),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Delete a file from a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        # Confirmation prompt
+        if not confirm:
+            confirmed = typer.confirm(
+                f"Are you sure you want to delete '{file_path}' from dataset {dataset_rid}?"
+            )
+            if not confirmed:
+                formatter.print_info("File deletion cancelled")
+                raise typer.Exit(0)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Deleting {file_path} from {dataset_rid}..."
+        ):
+            service.delete_file(dataset_rid, file_path, branch)
+
+        formatter.print_success(f"File '{file_path}' deleted successfully")
+        formatter.print_info(f"Dataset: {dataset_rid}")
+        formatter.print_info(f"Branch: {branch}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to delete file: {e}")
+        raise typer.Exit(1)
+
+
+@files_app.command("info")
+def get_file_info(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    file_path: str = typer.Argument(..., help="Path of file within dataset"),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get metadata information about a file in a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Getting file info for {file_path} in {dataset_rid}..."
+        ):
+            file_info = service.get_file_info(dataset_rid, file_path, branch)
+
+        formatter.format_file_info(file_info, format, output)
+
+        if output:
+            formatter.print_success(f"File information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get file info: {e}")
         raise typer.Exit(1)
 
 
@@ -750,6 +972,49 @@ def list_transactions(
         raise typer.Exit(1)
 
 
+@transactions_app.command("build")
+def get_transaction_build(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    transaction_rid: str = typer.Argument(..., help="Transaction Resource Identifier"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get build information for a transaction."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching build information for transaction {transaction_rid}..."
+        ):
+            build_info = service.get_transaction_build(dataset_rid, transaction_rid)
+
+        formatter.format_transaction_build(build_info, format, output)
+
+        if output:
+            formatter.print_success(f"Build information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get transaction build: {e}")
+        raise typer.Exit(1)
+
+
 # Views commands
 @views_app.command("list")
 def list_views(
@@ -793,6 +1058,223 @@ def list_views(
         raise typer.Exit(1)
     except Exception as e:
         formatter.print_error(f"Failed to list views: {e}")
+        raise typer.Exit(1)
+
+
+@views_app.command("get")
+def get_view(
+    view_rid: str = typer.Argument(
+        ..., help="View Resource Identifier", autocompletion=complete_rid
+    ),
+    branch: str = typer.Option("master", "--branch", help="Branch name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get detailed information about a view."""
+    try:
+        cache_rid(view_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(f"Fetching view {view_rid}..."):
+            view = service.get_view(view_rid, branch)
+
+        formatter.format_view_detail(view, format, output)
+
+        if output:
+            formatter.print_success(f"View information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get view: {e}")
+        raise typer.Exit(1)
+
+
+@views_app.command("add-datasets")
+def add_backing_datasets(
+    view_rid: str = typer.Argument(
+        ..., help="View Resource Identifier", autocompletion=complete_rid
+    ),
+    dataset_rids: list[str] = typer.Argument(
+        ..., help="Dataset RIDs to add as backing datasets"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Add backing datasets to a view."""
+    try:
+        cache_rid(view_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Adding {len(dataset_rids)} backing datasets to view {view_rid}..."
+        ):
+            result = service.add_backing_datasets(view_rid, dataset_rids)
+
+        formatter.print_success("Successfully added backing datasets to view")
+        formatter.print_info(f"View RID: {view_rid}")
+        formatter.print_info(f"Added datasets: {', '.join(dataset_rids)}")
+
+        if format == "json":
+            formatter._format_json(result)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to add backing datasets: {e}")
+        raise typer.Exit(1)
+
+
+@views_app.command("remove-datasets")
+def remove_backing_datasets(
+    view_rid: str = typer.Argument(
+        ..., help="View Resource Identifier", autocompletion=complete_rid
+    ),
+    dataset_rids: list[str] = typer.Argument(
+        ..., help="Dataset RIDs to remove as backing datasets"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Remove backing datasets from a view."""
+    try:
+        cache_rid(view_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Removing {len(dataset_rids)} backing datasets from view {view_rid}..."
+        ):
+            result = service.remove_backing_datasets(view_rid, dataset_rids)
+
+        formatter.print_success("Successfully removed backing datasets from view")
+        formatter.print_info(f"View RID: {view_rid}")
+        formatter.print_info(f"Removed datasets: {', '.join(dataset_rids)}")
+
+        if format == "json":
+            formatter._format_json(result)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to remove backing datasets: {e}")
+        raise typer.Exit(1)
+
+
+@views_app.command("replace-datasets")
+def replace_backing_datasets(
+    view_rid: str = typer.Argument(
+        ..., help="View Resource Identifier", autocompletion=complete_rid
+    ),
+    dataset_rids: list[str] = typer.Argument(
+        ..., help="Dataset RIDs to set as backing datasets"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Replace all backing datasets in a view."""
+    try:
+        cache_rid(view_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Replacing backing datasets in view {view_rid} with {len(dataset_rids)} new datasets..."
+        ):
+            result = service.replace_backing_datasets(view_rid, dataset_rids)
+
+        formatter.print_success("Successfully replaced backing datasets in view")
+        formatter.print_info(f"View RID: {view_rid}")
+        formatter.print_info(f"New datasets: {', '.join(dataset_rids)}")
+
+        if format == "json":
+            formatter._format_json(result)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to replace backing datasets: {e}")
+        raise typer.Exit(1)
+
+
+@views_app.command("add-primary-key")
+def add_primary_key(
+    view_rid: str = typer.Argument(
+        ..., help="View Resource Identifier", autocompletion=complete_rid
+    ),
+    key_fields: list[str] = typer.Argument(
+        ..., help="Field names to use as primary key"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Add a primary key to a view."""
+    try:
+        cache_rid(view_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Adding primary key to view {view_rid}..."
+        ):
+            result = service.add_primary_key(view_rid, key_fields)
+
+        formatter.print_success("Successfully added primary key to view")
+        formatter.print_info(f"View RID: {view_rid}")
+        formatter.print_info(f"Primary key fields: {', '.join(key_fields)}")
+
+        if format == "json":
+            formatter._format_json(result)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to add primary key: {e}")
         raise typer.Exit(1)
 
 
@@ -840,12 +1322,101 @@ def create_view(
         raise typer.Exit(1)
 
 
+# Schedules commands
+@schedules_app.command("list")
+def list_schedules(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """List schedules that target a specific dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching schedules for dataset {dataset_rid}..."
+        ):
+            schedules = service.get_schedules(dataset_rid)
+
+        formatter.format_schedules(schedules, format, output)
+
+        if output:
+            formatter.print_success(f"Schedules information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get schedules: {e}")
+        raise typer.Exit(1)
+
+
+# Jobs commands
+@jobs_app.command("list")
+def list_jobs(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch: str = typer.Option("master", "--branch", help="Dataset branch"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """List jobs for a specific dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching jobs for dataset {dataset_rid} (branch: {branch})..."
+        ):
+            jobs = service.get_jobs(dataset_rid, branch)
+
+        formatter.format_jobs(jobs, format, output)
+
+        if output:
+            formatter.print_success(f"Jobs information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get jobs: {e}")
+        raise typer.Exit(1)
+
+
 # Add subcommands to main app
 app.add_typer(branches_app, name="branches")
 app.add_typer(files_app, name="files")
 app.add_typer(transactions_app, name="transactions")
 app.add_typer(views_app, name="views")
 app.add_typer(schema_app, name="schema")
+app.add_typer(schedules_app, name="schedules")
+app.add_typer(jobs_app, name="jobs")
 
 
 @app.callback()
