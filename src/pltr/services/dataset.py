@@ -4,6 +4,7 @@ Dataset service wrapper for Foundry SDK.
 
 from typing import Any, Optional, List, Dict, Union
 from pathlib import Path
+import csv
 
 from .base import BaseService
 
@@ -54,6 +55,153 @@ class DatasetService(BaseService):
             }
         except Exception as e:
             raise RuntimeError(f"Failed to get schema for dataset {dataset_rid}: {e}")
+
+    def put_schema(
+        self,
+        dataset_rid: str,
+        schema: Any,
+        branch: str = "master",
+        transaction_rid: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Set or update dataset schema.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            schema: DatasetSchema object with field definitions
+            branch: Dataset branch name
+            transaction_rid: Optional transaction RID
+
+        Returns:
+            Schema update result
+        """
+        try:
+            from foundry_sdk.v2.core.models import DatasetSchema
+
+            # Ensure schema is a DatasetSchema object
+            if not isinstance(schema, DatasetSchema):
+                raise ValueError("Schema must be a DatasetSchema object")
+
+            result = self.service.Dataset.put_schema(
+                dataset_rid=dataset_rid,
+                schema=schema,
+                branch_name=branch,
+                end_transaction_rid=transaction_rid,
+            )
+
+            return {
+                "dataset_rid": dataset_rid,
+                "branch": branch,
+                "transaction_rid": transaction_rid,
+                "status": "Schema updated successfully",
+                "schema": result,
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to set schema for dataset {dataset_rid}: {e}")
+
+    def infer_schema_from_csv(
+        self, csv_path: Union[str, Path], sample_rows: int = 100
+    ) -> Any:
+        """
+        Infer schema from a CSV file by analyzing headers and sample data.
+
+        Args:
+            csv_path: Path to CSV file
+            sample_rows: Number of rows to sample for type inference
+
+        Returns:
+            DatasetSchema object with inferred field types
+        """
+        from foundry_sdk.v2.core.models import DatasetSchema, DatasetFieldSchema
+
+        csv_path = Path(csv_path)
+        if not csv_path.exists():
+            raise FileNotFoundError(f"CSV file not found: {csv_path}")
+
+        def infer_type(values: List[str]) -> tuple[str, bool]:
+            """
+            Infer type from a list of values.
+            Returns (type_name, nullable)
+            """
+            # Remove empty strings and track if nullable
+            non_empty = [v for v in values if v.strip()]
+            nullable = len(non_empty) < len(values) or len(non_empty) == 0
+
+            if not non_empty:
+                return ("STRING", True)
+
+            # Check for boolean
+            bool_values = {"true", "false", "yes", "no", "1", "0"}
+            if all(v.lower() in bool_values for v in non_empty):
+                return ("BOOLEAN", nullable)
+
+            # Check for integer
+            try:
+                for v in non_empty:
+                    int(v)
+                return ("INTEGER", nullable)
+            except ValueError:
+                pass
+
+            # Check for double
+            try:
+                for v in non_empty:
+                    float(v)
+                return ("DOUBLE", nullable)
+            except ValueError:
+                pass
+
+            # Check for date patterns
+            date_patterns = [
+                r"^\d{4}-\d{2}-\d{2}$",  # YYYY-MM-DD
+                r"^\d{2}/\d{2}/\d{4}$",  # MM/DD/YYYY
+                r"^\d{2}-\d{2}-\d{4}$",  # DD-MM-YYYY
+            ]
+            import re
+
+            for pattern in date_patterns:
+                if all(re.match(pattern, v) for v in non_empty[:10]):  # Check first 10
+                    return ("DATE", nullable)
+
+            # Check for timestamp patterns
+            if all(
+                "-" in v and ":" in v and len(v) > 10 for v in non_empty[:10]
+            ):  # Basic timestamp check
+                return ("TIMESTAMP", nullable)
+
+            # Default to string
+            return ("STRING", nullable)
+
+        # Read CSV and analyze
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            headers = reader.fieldnames
+
+            if not headers:
+                raise ValueError("CSV file has no headers")
+
+            # Collect sample values for each column
+            column_values: Dict[str, List[str]] = {col: [] for col in headers}
+            for i, row in enumerate(reader):
+                if i >= sample_rows:
+                    break
+                for col in headers:
+                    column_values[col].append(row.get(col, ""))
+
+        # Infer types for each column
+        fields = []
+        for col in headers:
+            values = column_values[col]
+            field_type, nullable = infer_type(values)
+
+            # Clean column name (remove special characters for field name)
+            clean_name = col.strip().replace(" ", "_").replace("-", "_")
+
+            fields.append(
+                DatasetFieldSchema(name=clean_name, type=field_type, nullable=nullable)
+            )
+
+        return DatasetSchema(field_schema_list=fields)
 
     def create_dataset(
         self, name: str, parent_folder_rid: Optional[str] = None

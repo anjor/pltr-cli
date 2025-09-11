@@ -46,6 +46,12 @@ echo "Committing transaction..."
 pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
 
 echo "✅ CSV uploaded successfully to dataset: $DATASET_RID"
+
+# Set the schema based on CSV headers (NEW!)
+echo "Setting dataset schema from CSV..."
+pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+
+echo "✅ Schema set successfully"
 ```
 
 ### Step 2: Verify Upload
@@ -57,7 +63,10 @@ pltr dataset get "$DATASET_RID"
 # List files in dataset
 pltr dataset files list "$DATASET_RID"
 
-# Query the data (if it's queryable)
+# Check the schema (NEW!)
+pltr dataset schema get "$DATASET_RID"
+
+# Query the data (now with proper types!)
 pltr sql execute "SELECT COUNT(*) as row_count FROM \`$DATASET_RID\`"
 ```
 
@@ -138,6 +147,114 @@ pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID" \
   --message "Updated dataset with new CSV data"
 
 echo "✅ Dataset updated successfully"
+```
+
+## 🔧 Schema Management for CSV Datasets
+
+### Automatic Schema Inference
+
+When uploading CSV files, pltr-cli can automatically infer the schema from your CSV headers and data:
+
+```bash
+#!/bin/bash
+# infer_schema.sh - Automatically set schema from CSV
+
+CSV_FILE="sales_data.csv"
+DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
+
+# Infer and set schema from CSV
+pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+
+# View the inferred schema
+pltr dataset schema get "$DATASET_RID" --format json
+```
+
+The schema inference will:
+- Detect column names from CSV headers
+- Analyze sample rows to determine data types
+- Support types: STRING, INTEGER, DOUBLE, DATE, BOOLEAN, TIMESTAMP
+- Mark columns as nullable if empty values are found
+
+### Manual Schema Definition
+
+For precise control, you can define the schema manually:
+
+```bash
+# Define schema using JSON
+SCHEMA_JSON='{
+  "fields": [
+    {"name": "id", "type": "INTEGER", "nullable": false},
+    {"name": "name", "type": "STRING", "nullable": false},
+    {"name": "email", "type": "STRING", "nullable": true},
+    {"name": "amount", "type": "DOUBLE", "nullable": false},
+    {"name": "created_date", "type": "DATE", "nullable": false},
+    {"name": "is_active", "type": "BOOLEAN", "nullable": false}
+  ]
+}'
+
+pltr dataset schema set "$DATASET_RID" --json "$SCHEMA_JSON"
+```
+
+Or load from a JSON file:
+
+```bash
+# schema.json
+cat > schema.json << 'EOF'
+{
+  "fields": [
+    {"name": "product_id", "type": "INTEGER", "nullable": false},
+    {"name": "product_name", "type": "STRING", "nullable": false},
+    {"name": "price", "type": "DOUBLE", "nullable": false},
+    {"name": "in_stock", "type": "BOOLEAN", "nullable": false},
+    {"name": "last_updated", "type": "TIMESTAMP", "nullable": true}
+  ]
+}
+EOF
+
+pltr dataset schema set "$DATASET_RID" --json-file schema.json
+```
+
+### Schema-Aware CSV Upload Workflow
+
+Here's the complete workflow for uploading CSV with proper schema:
+
+```bash
+#!/bin/bash
+# complete_csv_upload.sh - Upload CSV with schema
+
+CSV_FILE="data.csv"
+DATASET_NAME="typed_dataset_$(date +%Y%m%d)"
+PARENT_FOLDER="ri.foundry.main.folder.your-folder-rid"
+
+# 1. Create dataset
+DATASET_RID=$(pltr dataset create "$DATASET_NAME" \
+  --parent-folder "$PARENT_FOLDER" \
+  --format json | jq -r '.rid')
+
+# 2. Upload CSV file
+TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
+  --format json | jq -r '.rid')
+
+pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
+  --transaction-rid "$TRANSACTION_RID"
+
+pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
+
+# 3. Set schema from CSV
+pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+
+# 4. Verify schema
+echo "Dataset schema:"
+pltr dataset schema get "$DATASET_RID"
+
+# 5. Query with proper types
+pltr sql execute "
+  SELECT
+    COUNT(*) as total_rows,
+    AVG(amount) as avg_amount,
+    MAX(created_date) as latest_date
+  FROM \`$DATASET_RID\`
+"
 ```
 
 ## 📝 CSV with Schema Validation
@@ -568,6 +685,24 @@ fi
    - Increase timeout in configuration
    - Use retry logic for uploads
    - Consider uploading during off-peak hours
+
+6. **Schema Issues**
+   - **Schema not taking effect**: Ensure the dataset has been created and files uploaded before setting schema
+   - **Type inference errors**: Review the first 100 rows of your CSV for inconsistent data
+   - **Column name issues**: Schema field names must be valid identifiers (no spaces, special chars)
+   - **Query errors after schema**: The schema applies to new data; existing data may need reprocessing
+
+   ```bash
+   # Debug schema issues
+   # 1. Check current schema
+   pltr dataset schema get <dataset_rid>
+
+   # 2. Test inference without applying
+   pltr dataset schema set <dataset_rid> --from-csv data.csv --dry-run
+
+   # 3. Verify CSV headers match schema
+   head -1 data.csv
+   ```
 
 ## 📚 Related Documentation
 
