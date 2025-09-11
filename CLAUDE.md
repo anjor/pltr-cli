@@ -1,10 +1,13 @@
 ## Development tips
 
-The basis of the SDK is https://github.com/palantir/foundry-platform-python . This is a
-CLI that wraps around the SDK to give a CLI interface.
+The basis of the SDK is https://github.com/palantir/foundry-platform-python. Their main
+branch is develop and not main.
+This project is a CLI that wraps around the SDK to give a CLI interface.
 
-Use uv for dependency management.
-Use uv to run python scripts.
+## Python guidance
+
+- ALWAYS Use uv for dependency management.
+- ALWAYS Use uv to run python scripts.
 
 ## General Guidance
 
