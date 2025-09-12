@@ -93,10 +93,16 @@ def get_schema(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Get the schema of a dataset."""
+    """Get the schema of a dataset (requires API preview access)."""
     try:
         cache_rid(dataset_rid)
         service = DatasetService(profile=profile)
+
+        formatter.print_warning(
+            "Note: This command requires API preview access. "
+            "If you encounter an 'ApiFeaturePreviewUsageOnly' error, "
+            "use 'pltr dataset schema apply' instead to infer/apply schema."
+        )
 
         with SpinnerProgressTracker().track_spinner(
             f"Fetching schema for {dataset_rid}..."
@@ -120,7 +126,54 @@ def get_schema(
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
     except Exception as e:
-        formatter.print_error(f"Failed to get schema: {e}")
+        if "ApiFeaturePreviewUsageOnly" in str(e):
+            formatter.print_error(
+                "This command requires API preview access. "
+                "Please use 'pltr dataset schema apply' instead."
+            )
+        else:
+            formatter.print_error(f"Failed to get schema: {e}")
+        raise typer.Exit(1)
+
+
+@schema_app.command("apply")
+def apply_schema(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    branch: str = typer.Option("master", "--branch", "-b", help="Dataset branch name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Apply/infer schema for a dataset."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Applying schema to dataset {dataset_rid} on branch '{branch}'..."
+        ):
+            result = service.apply_schema(dataset_rid, branch)
+
+        formatter.print_success(f"Schema applied successfully to branch '{branch}'")
+
+        # Display result if available
+        if result.get("result"):
+            formatter._format_json(result.get("result"))
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to apply schema: {e}")
         raise typer.Exit(1)
 
 

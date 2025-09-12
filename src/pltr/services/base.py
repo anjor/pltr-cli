@@ -2,10 +2,13 @@
 Base service class for Foundry API wrappers.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 from abc import ABC, abstractmethod
+import requests
 
 from ..auth.manager import AuthManager
+from ..auth.storage import CredentialStorage
+from ..config.profiles import ProfileManager
 
 
 class BaseService(ABC):
@@ -60,3 +63,67 @@ class BaseService(ABC):
             Configured service instance
         """
         return self._get_service()
+
+    def _make_request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict] = None,
+        json_data: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+    ) -> requests.Response:
+        """
+        Make a direct HTTP request to Foundry API.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint path (e.g., '/foundry-schema-inference/api/...')
+            data: Form data to send
+            json_data: JSON data to send
+            headers: Additional headers
+
+        Returns:
+            Response object
+
+        Raises:
+            requests.HTTPError: If request fails
+        """
+        # Get credentials for authentication
+        storage = CredentialStorage()
+        profile_manager = ProfileManager()
+        profile_name = self.profile or profile_manager.get_active_profile()
+        if not profile_name:
+            from ..auth.base import ProfileNotFoundError
+
+            raise ProfileNotFoundError(
+                "No profile specified and no default profile configured. "
+                "Run 'pltr configure configure' to set up authentication."
+            )
+        credentials = storage.get_profile(profile_name)
+
+        # Build full URL
+        host = credentials.get("host", "").rstrip("/")
+        url = f"{host}{endpoint}"
+
+        # Set up headers with authentication
+        request_headers = {
+            "Authorization": f"Bearer {credentials.get('token')}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if headers:
+            request_headers.update(headers)
+
+        # Make the request
+        response = requests.request(
+            method=method,
+            url=url,
+            data=data,
+            json=json_data,
+            headers=request_headers,
+        )
+
+        # Raise an error for bad status codes
+        response.raise_for_status()
+
+        return response
