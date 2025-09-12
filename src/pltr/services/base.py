@@ -92,6 +92,13 @@ class BaseService(ABC):
         storage = CredentialStorage()
         profile_manager = ProfileManager()
         profile_name = self.profile or profile_manager.get_active_profile()
+        if not profile_name:
+            from ..auth.base import ProfileNotFoundError
+
+            raise ProfileNotFoundError(
+                "No profile specified and no default profile configured. "
+                "Run 'pltr configure configure' to set up authentication."
+            )
         credentials = storage.get_profile(profile_name)
 
         # Build full URL
