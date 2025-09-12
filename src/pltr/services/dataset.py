@@ -58,27 +58,55 @@ class DatasetService(BaseService):
 
     def apply_schema(self, dataset_rid: str, branch: str = "master") -> Dict[str, Any]:
         """
-        Apply/infer schema for a dataset using the schema inference API.
+        Apply/infer schema for a dataset using both schema inference and metadata APIs.
+
+        This method performs two sequential API calls:
+        1. Schema inference to infer the dataset schema
+        2. Schema application to apply the inferred schema to the dataset
 
         Args:
             dataset_rid: Dataset Resource Identifier
             branch: Dataset branch name (default: "master")
 
         Returns:
-            Schema inference result
+            Schema application result including transaction and version information
         """
         try:
-            endpoint = f"/foundry-schema-inference/api/datasets/{dataset_rid}/branches/{branch}/schema"
-            response = self._make_request("POST", endpoint, json_data={})
+            # Step 1: Call schema inference API to infer the schema
+            inference_endpoint = f"/foundry-schema-inference/api/datasets/{dataset_rid}/branches/{branch}/schema"
+            inference_response = self._make_request(
+                "POST", inference_endpoint, json_data={}
+            )
 
-            # Parse the response
-            result = response.json() if response.text else {}
+            # Parse the inference response
+            inference_result = (
+                inference_response.json() if inference_response.text else {}
+            )
+
+            # Extract the foundry schema from the inference result
+            foundry_schema = inference_result.get("data", {}).get("foundrySchema")
+            if not foundry_schema:
+                raise RuntimeError(
+                    "Schema inference failed: No foundrySchema found in response"
+                )
+
+            # Step 2: Call foundry-metadata API to apply the schema
+            metadata_endpoint = f"/foundry-metadata/api/schemas/datasets/{dataset_rid}/branches/{branch}"
+            metadata_response = self._make_request(
+                "POST", metadata_endpoint, json_data=foundry_schema
+            )
+
+            # Parse the metadata response
+            metadata_result = metadata_response.json() if metadata_response.text else {}
 
             return {
                 "dataset_rid": dataset_rid,
                 "branch": branch,
                 "status": "Schema applied successfully",
-                "result": result,
+                "inference_result": inference_result,
+                "application_result": metadata_result,
+                "transaction_rid": metadata_result.get("transactionRid"),
+                "version_id": metadata_result.get("versionId"),
             }
         except Exception as e:
             raise RuntimeError(f"Failed to apply schema for dataset {dataset_rid}: {e}")
