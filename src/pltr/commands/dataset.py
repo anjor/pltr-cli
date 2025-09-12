@@ -586,8 +586,29 @@ def upload_file(
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
+    except FileNotFoundError as e:
+        formatter.print_error(f"File error: {e}")
+        raise typer.Exit(1)
+    except RuntimeError as e:
+        # RuntimeError from our service layer contains detailed error info
+        error_msg = str(e)
+        formatter.print_error(f"Upload failed: {error_msg}")
+
+        # If it looks like our enhanced error message, extract the suggestion part
+        if ". Suggestions: " in error_msg:
+            main_error, suggestions = error_msg.split(". Suggestions: ", 1)
+            formatter.print_error(main_error)
+            formatter.print_info(f"💡 Suggestions: {suggestions}")
+
+        raise typer.Exit(1)
     except Exception as e:
-        formatter.print_error(f"Failed to upload file: {e}")
+        # Fallback for any other exceptions
+        formatter.print_error(
+            f"Unexpected error during file upload: {type(e).__name__}: {e}"
+        )
+        formatter.print_info(
+            "💡 Try running the command again or check your connection"
+        )
         raise typer.Exit(1)
 
 
