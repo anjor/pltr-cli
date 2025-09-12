@@ -152,10 +152,25 @@ def check_tag_exists(version):
     return False
 
 
+def update_uv_lock():
+    """Update uv.lock file after version change"""
+    try:
+        subprocess.run(["uv", "lock"], check=True, capture_output=True, text=True)
+        print("Updated uv.lock file")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error updating uv.lock: {e.stderr}")
+        return False
+    except FileNotFoundError:
+        print("Warning: uv command not found. Skipping uv.lock update.")
+        print("Please ensure uv is installed to keep lock file in sync.")
+        return False
+
+
 def create_release_commit_and_tag(version, release_type, push_mode="ask"):
     """Create release commit and tag"""
     # Stage the version file changes
-    run_git_command("git add pyproject.toml src/pltr/__init__.py")
+    run_git_command("git add pyproject.toml src/pltr/__init__.py uv.lock")
 
     # Create release commit
     commit_message = f"{release_type}: Release version {version}"
@@ -308,9 +323,10 @@ def main():
         print("\nDry run mode - would perform these actions:")
         print(f"1. Update pyproject.toml version to {new_version}")
         print(f"2. Update src/pltr/__init__.py __version__ to {new_version}")
-        print(f"3. Create git commit: '{release_type}: Release version {new_version}'")
-        print(f"4. Create git tag: v{new_version}")
-        print("5. Optionally push to origin")
+        print("3. Update uv.lock file")
+        print(f"4. Create git commit: '{release_type}: Release version {new_version}'")
+        print(f"5. Create git tag: v{new_version}")
+        print("6. Optionally push to origin")
         return
 
     # Check git status
@@ -335,13 +351,14 @@ def main():
     print("This will:")
     print(f"1. Update pyproject.toml version to {new_version}")
     print(f"2. Update src/pltr/__init__.py __version__ to {new_version}")
-    print(f"3. Create git commit and tag v{new_version}")
+    print("3. Update uv.lock file")
+    print(f"4. Create git commit and tag v{new_version}")
     if args.push:
-        print("4. Push to origin to trigger GitHub Actions publishing")
+        print("5. Push to origin to trigger GitHub Actions publishing")
     elif args.no_push:
-        print("4. NOT push to origin (--no-push specified)")
+        print("5. NOT push to origin (--no-push specified)")
     else:
-        print("4. Optionally push to trigger GitHub Actions publishing")
+        print("5. Optionally push to trigger GitHub Actions publishing")
 
     if not args.yes:
         confirm = input("\nProceed with release? (y/N): ").strip().lower()
@@ -362,6 +379,7 @@ def main():
     # Perform release
     update_version_in_pyproject(new_version)
     update_version_in_init_py(new_version)
+    update_uv_lock()  # Update uv.lock with new version
     create_release_commit_and_tag(new_version, release_type, push_mode)
 
     print(f"\n✅ Release {new_version} created successfully!")
