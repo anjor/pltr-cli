@@ -56,6 +56,33 @@ class DatasetService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to get schema for dataset {dataset_rid}: {e}")
 
+    def apply_schema(self, dataset_rid: str, branch: str = "master") -> Dict[str, Any]:
+        """
+        Apply/infer schema for a dataset using the schema inference API.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch: Dataset branch name (default: "master")
+
+        Returns:
+            Schema inference result
+        """
+        try:
+            endpoint = f"/foundry-schema-inference/api/datasets/{dataset_rid}/branches/{branch}/schema"
+            response = self._make_request("POST", endpoint, json_data={})
+
+            # Parse the response
+            result = response.json() if response.text else {}
+
+            return {
+                "dataset_rid": dataset_rid,
+                "branch": branch,
+                "status": "Schema applied successfully",
+                "result": result,
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to apply schema for dataset {dataset_rid}: {e}")
+
     def put_schema(
         self,
         dataset_rid: str,
