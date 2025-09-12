@@ -47,11 +47,11 @@ pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
 
 echo "✅ CSV uploaded successfully to dataset: $DATASET_RID"
 
-# Set the schema based on CSV headers (NEW!)
-echo "Setting dataset schema from CSV..."
-pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+# Apply/infer the schema automatically (NEW!)
+echo "Applying schema to dataset..."
+pltr dataset schema apply "$DATASET_RID"
 
-echo "✅ Schema set successfully"
+echo "✅ Schema applied successfully"
 ```
 
 ### Step 2: Verify Upload
@@ -63,7 +63,7 @@ pltr dataset get "$DATASET_RID"
 # List files in dataset
 pltr dataset files list "$DATASET_RID"
 
-# Check the schema (NEW!)
+# Check the applied schema (NEW!)
 pltr dataset schema get "$DATASET_RID"
 
 # Query the data (now with proper types!)
@@ -214,13 +214,13 @@ EOF
 pltr dataset schema set "$DATASET_RID" --json-file schema.json
 ```
 
-### Schema-Aware CSV Upload Workflow
+### Recommended Schema-Aware CSV Upload Workflow
 
-Here's the complete workflow for uploading CSV with proper schema:
+Here's the recommended workflow for uploading CSV with automatic schema application:
 
 ```bash
 #!/bin/bash
-# complete_csv_upload.sh - Upload CSV with schema
+# complete_csv_upload.sh - Upload CSV with automatic schema
 
 CSV_FILE="data.csv"
 DATASET_NAME="typed_dataset_$(date +%Y%m%d)"
@@ -240,10 +240,10 @@ pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
 
 pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
 
-# 3. Set schema from CSV
-pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+# 3. Apply schema automatically
+pltr dataset schema apply "$DATASET_RID"
 
-# 4. Verify schema
+# 4. Verify applied schema
 echo "Dataset schema:"
 pltr dataset schema get "$DATASET_RID"
 
@@ -687,22 +687,30 @@ fi
    - Consider uploading during off-peak hours
 
 6. **Schema Issues**
-   - **Schema not taking effect**: Ensure the dataset has been created and files uploaded before setting schema
+   - **Schema not taking effect**: Ensure the dataset has been created and files uploaded before applying schema
    - **Type inference errors**: Review the first 100 rows of your CSV for inconsistent data
    - **Column name issues**: Schema field names must be valid identifiers (no spaces, special chars)
    - **Query errors after schema**: The schema applies to new data; existing data may need reprocessing
+   - **Apply vs Set commands**: Use `schema apply` for uploaded data, `schema set --from-csv` for local files
 
    ```bash
    # Debug schema issues
    # 1. Check current schema
    pltr dataset schema get <dataset_rid>
 
-   # 2. Test inference without applying
-   pltr dataset schema set <dataset_rid> --from-csv data.csv --dry-run
+   # 2. Apply schema from uploaded data (recommended)
+   pltr dataset schema apply <dataset_rid>
 
-   # 3. Verify CSV headers match schema
+   # 3. Or set schema from local CSV file (requires preview API)
+   pltr dataset schema set <dataset_rid> --from-csv data.csv
+
+   # 4. Verify CSV headers match schema
    head -1 data.csv
    ```
+
+   **When to use which schema command:**
+   - **`pltr dataset schema apply`**: Use after uploading files to the dataset. Analyzes uploaded data directly and doesn't require preview API access. This is the **recommended approach**.
+   - **`pltr dataset schema set --from-csv`**: Use when you want to infer schema from a local CSV file before uploading. Requires preview API access and may not reflect the exact uploaded data.
 
 ## 📚 Related Documentation
 

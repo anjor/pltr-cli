@@ -6,9 +6,10 @@ Real-world examples and use cases for pltr-cli. Copy, adapt, and use these examp
 
 ### CSV Upload to Foundry
 Complete examples for uploading CSV files to Foundry datasets. See [CSV Upload Examples](csv-upload.md) for:
-- Simple CSV upload to new dataset
+- Simple CSV upload to new dataset with automatic schema application
 - Batch CSV processing
 - Transaction management for safe uploads
+- Schema inference and management (using `pltr dataset schema apply`)
 - Large file handling with progress tracking
 - Error handling and retry logic
 - Python scripts for programmatic uploads
