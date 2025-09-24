@@ -62,7 +62,7 @@ class OrchestrationService(BaseService):
         try:
             kwargs: Dict[str, Any] = {
                 "target": target,
-                "fallback_branches": fallback_branches or {},
+                "fallback_branches": fallback_branches or [],
             }
 
             # Add optional parameters if provided
