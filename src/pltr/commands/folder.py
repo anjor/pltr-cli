@@ -279,7 +279,7 @@ def _format_children_table(children: List[dict]):
     table = Table(title="Folder Children", show_header=True, header_style="bold cyan")
     table.add_column("Type", style="cyan")
     table.add_column("Display Name")
-    table.add_column("RID")
+    table.add_column("RID", no_wrap=True)
 
     for child in children:
         table.add_row(
@@ -296,8 +296,8 @@ def _format_folders_batch_table(folders: List[dict]):
     """Format multiple folders as a table."""
     table = Table(title="Folders", show_header=True, header_style="bold cyan")
     table.add_column("Display Name")
-    table.add_column("RID")
-    table.add_column("Parent Folder")
+    table.add_column("RID", no_wrap=True)
+    table.add_column("Parent Folder", no_wrap=True)
     table.add_column("Description")
 
     for folder in folders:
