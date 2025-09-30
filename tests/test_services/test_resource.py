@@ -66,6 +66,42 @@ class TestResourceService:
         ):
             resource_service.get_resource("ri.compass.main.dataset.123")
 
+    def test_get_resource_by_path(self, resource_service, mock_client):
+        """Test getting a resource by path."""
+        mock_resource = Mock()
+        mock_resource.rid = "ri.compass.main.dataset.123"
+        mock_resource.display_name = "Test Dataset"
+        mock_resource.type = "dataset"
+        mock_resource.path = "/My Organization/Project/Test Dataset"
+
+        mock_client.filesystem.Resource.get_by_path.return_value = mock_resource
+        resource_service._client = mock_client
+
+        result = resource_service.get_resource_by_path(
+            "/My Organization/Project/Test Dataset"
+        )
+
+        mock_client.filesystem.Resource.get_by_path.assert_called_once_with(
+            path="/My Organization/Project/Test Dataset", preview=True
+        )
+        assert result["rid"] == "ri.compass.main.dataset.123"
+        assert result["display_name"] == "Test Dataset"
+        assert result["type"] == "dataset"
+        assert result["path"] == "/My Organization/Project/Test Dataset"
+
+    def test_get_resource_by_path_failure(self, resource_service, mock_client):
+        """Test handling resource get by path failure."""
+        mock_client.filesystem.Resource.get_by_path.side_effect = Exception(
+            "Path not found"
+        )
+        resource_service._client = mock_client
+
+        with pytest.raises(
+            RuntimeError,
+            match="Failed to get resource at path '/Invalid/Path': Path not found",
+        ):
+            resource_service.get_resource_by_path("/Invalid/Path")
+
     def test_list_resources(self, resource_service, mock_client):
         """Test listing resources."""
         mock_resources = [Mock(), Mock()]

@@ -79,6 +79,64 @@ def get_resource(
         raise typer.Exit(1)
 
 
+@app.command("get-by-path")
+def get_resource_by_path(
+    path: str = typer.Argument(
+        ...,
+        help="Absolute path to the resource (e.g., '/My Organization/Project/Dataset')",
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get detailed information about a specific resource by its path."""
+    try:
+        service = ResourceService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching resource at path '{path}'..."
+        ):
+            resource = service.get_resource_by_path(path)
+
+        # Cache the RID for future completions
+        if resource.get("rid"):
+            cache_rid(resource["rid"])
+
+        # Format output
+        if format == "json":
+            if output:
+                formatter.save_to_file(resource, output, "json")
+            else:
+                formatter.format_dict(resource)
+        elif format == "csv":
+            if output:
+                formatter.save_to_file([resource], output, "csv")
+            else:
+                formatter.format_list([resource])
+        else:
+            _format_resource_table(resource)
+
+        if output:
+            formatter.print_success(f"Resource information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get resource: {e}")
+        raise typer.Exit(1)
+
+
 @app.command("list")
 def list_resources(
     folder_rid: Optional[str] = typer.Option(
@@ -469,11 +527,14 @@ def main():
 
     Manage resources in the Foundry filesystem. Get resource information,
     search resources, manage metadata, and perform operations using Resource
-    Identifiers (RIDs).
+    Identifiers (RIDs) or paths.
 
     Examples:
-        # Get resource information
+        # Get resource information by RID
         pltr resource get ri.compass.main.dataset.xyz123
+
+        # Get resource information by path
+        pltr resource get-by-path "/My Organization/Project/Dataset Name"
 
         # List all resources
         pltr resource list
