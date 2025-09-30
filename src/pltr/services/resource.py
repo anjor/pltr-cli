@@ -30,6 +30,22 @@ class ResourceService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to get resource {resource_rid}: {e}")
 
+    def get_resource_by_path(self, path: str) -> Dict[str, Any]:
+        """
+        Get information about a specific resource by its path.
+
+        Args:
+            path: Absolute path to the resource (e.g., "/My Organization/Project/Dataset")
+
+        Returns:
+            Resource information dictionary
+        """
+        try:
+            resource = self.service.Resource.get_by_path(path=path, preview=True)
+            return self._format_resource_info(resource)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get resource at path '{path}': {e}")
+
     def list_resources(
         self,
         folder_rid: Optional[str] = None,
