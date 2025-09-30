@@ -64,7 +64,8 @@ class OutputFormatter:
                 f.write(json_str)
             return None
         else:
-            rich_print(json_str)
+            # Use plain print to ensure valid JSON output without ANSI codes
+            print(json_str)
             return json_str
 
     def _format_csv(
@@ -141,7 +142,11 @@ class OutputFormatter:
 
         # Add columns to table
         for column in columns:
-            table.add_column(column, overflow="fold")
+            # Don't truncate RID columns - they need full visibility
+            if "rid" in column.lower():
+                table.add_column(column, no_wrap=True, overflow="fold")
+            else:
+                table.add_column(column, overflow="fold")
 
         # Add rows
         for item in data:
@@ -424,7 +429,8 @@ class OutputFormatter:
         else:
             # For simple values, just print them
             if format_type == "json":
-                rich_print(json.dumps(data, indent=2, default=str))
+                # Use plain print to ensure valid JSON output without ANSI codes
+                print(json.dumps(data, indent=2, default=str))
             else:
                 rich_print(str(data))
 

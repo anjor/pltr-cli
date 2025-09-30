@@ -92,7 +92,46 @@ def create_build(
         "table", "--format", "-f", help="Output format (table, json, csv)"
     ),
 ):
-    """Create a new build."""
+    """
+    Create a new build with specified target datasets.
+
+    The target parameter must be a JSON object with a 'type' field that specifies
+    the build strategy. Three types are supported:
+
+    \b
+    1. Manual Build - Explicitly specify datasets to build:
+       {
+         "type": "manual",
+         "targetRids": ["ri.foundry.main.dataset.abc123..."]
+       }
+
+    \b
+    2. Upstream Build - Build target datasets and all their upstream dependencies:
+       {
+         "type": "upstream",
+         "targetRids": ["ri.foundry.main.dataset.abc123..."],
+         "ignoredRids": []
+       }
+
+    \b
+    3. Connecting Build - Build datasets between input and target datasets:
+       {
+         "type": "connecting",
+         "inputRids": ["ri.foundry.main.dataset.input123..."],
+         "targetRids": ["ri.foundry.main.dataset.target123..."],
+         "ignoredRids": []
+       }
+
+    Examples:
+
+    \b
+      # Build specific datasets manually
+      pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc123"]}' --branch master
+
+    \b
+      # Build dataset and all upstream dependencies
+      pltr orchestration builds create '{"type": "upstream", "targetRids": ["ri.foundry.main.dataset.abc123"], "ignoredRids": []}' --branch master --force
+    """
     try:
         service = OrchestrationService(profile=profile)
 
