@@ -366,6 +366,99 @@ def list_linked_objects(
         raise typer.Exit(1)
 
 
+@app.command("object-count")
+def count_objects(
+    ontology_rid: str = typer.Argument(..., help="Ontology Resource Identifier"),
+    object_type: str = typer.Argument(..., help="Object type API name"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format (table, json, csv)"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Branch name"),
+):
+    """Count objects of a specific type."""
+    try:
+        service = OntologyObjectService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Counting {object_type} objects..."
+        ):
+            result = service.count_objects(ontology_rid, object_type, branch=branch)
+
+        formatter.format_dict(result, format=format, output=output)
+
+        if output:
+            formatter.print_success(f"Count result saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to count objects: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("object-search")
+def search_objects(
+    ontology_rid: str = typer.Argument(..., help="Ontology Resource Identifier"),
+    object_type: str = typer.Argument(..., help="Object type API name"),
+    query: str = typer.Option(..., "--query", "-q", help="Search query string"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format (table, json, csv)"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of results per page"
+    ),
+    properties: Optional[str] = typer.Option(
+        None, "--properties", help="Comma-separated list of properties to include"
+    ),
+    branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Branch name"),
+):
+    """Search objects by query."""
+    try:
+        service = OntologyObjectService(profile=profile)
+
+        prop_list = properties.split(",") if properties else None
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Searching {object_type} objects..."
+        ):
+            objects = service.search_objects(
+                ontology_rid,
+                object_type,
+                query,
+                page_size=page_size,
+                properties=prop_list,
+                branch=branch,
+            )
+
+        if format == "table" and objects:
+            # Use first object's keys as columns
+            columns = list(objects[0].keys()) if objects else []
+            formatter.format_table(
+                objects, columns=columns, format=format, output=output
+            )
+        else:
+            formatter.format_list(objects, format=format, output=output)
+
+        if output:
+            formatter.print_success(f"Search results saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to search objects: {e}")
+        raise typer.Exit(1)
+
+
 # Action commands
 @app.command("action-apply")
 def apply_action(

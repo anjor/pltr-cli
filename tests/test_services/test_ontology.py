@@ -335,6 +335,85 @@ def test_list_linked_objects(mock_ontology_object_service, sample_object):
     mock_ontology_object_class.list_linked_objects.assert_called_once()
 
 
+def test_count_objects(mock_ontology_object_service):
+    """Test counting objects."""
+    service, mock_ontology_object_class = mock_ontology_object_service
+    mock_ontology_object_class.count.return_value = 42
+
+    result = service.count_objects("ri.ontology.main.ontology.test", "Employee")
+
+    assert result["count"] == 42
+    assert result["ontology_rid"] == "ri.ontology.main.ontology.test"
+    assert result["object_type"] == "Employee"
+    assert result["branch"] is None
+    mock_ontology_object_class.count.assert_called_once_with(
+        "ri.ontology.main.ontology.test", "Employee", branch_name=None
+    )
+
+
+def test_count_objects_with_branch(mock_ontology_object_service):
+    """Test counting objects with branch specified."""
+    service, mock_ontology_object_class = mock_ontology_object_service
+    mock_ontology_object_class.count.return_value = 24
+
+    result = service.count_objects(
+        "ri.ontology.main.ontology.test", "Employee", branch="master"
+    )
+
+    assert result["count"] == 24
+    assert result["branch"] == "master"
+    mock_ontology_object_class.count.assert_called_once_with(
+        "ri.ontology.main.ontology.test", "Employee", branch_name="master"
+    )
+
+
+def test_search_objects(mock_ontology_object_service, sample_object):
+    """Test searching objects."""
+    service, mock_ontology_object_class = mock_ontology_object_service
+    mock_ontology_object_class.search.return_value = [sample_object]
+
+    result = service.search_objects(
+        "ri.ontology.main.ontology.test", "Employee", "John"
+    )
+
+    assert len(result) == 1
+    assert result[0]["employee_id"] == "EMP001"
+    assert result[0]["name"] == "John Doe"
+    mock_ontology_object_class.search.assert_called_once_with(
+        "ri.ontology.main.ontology.test",
+        "Employee",
+        query="John",
+        page_size=None,
+        properties=None,
+        branch_name=None,
+    )
+
+
+def test_search_objects_with_options(mock_ontology_object_service, sample_object):
+    """Test searching objects with all options."""
+    service, mock_ontology_object_class = mock_ontology_object_service
+    mock_ontology_object_class.search.return_value = [sample_object]
+
+    result = service.search_objects(
+        "ri.ontology.main.ontology.test",
+        "Employee",
+        "Jane",
+        page_size=10,
+        properties=["name", "department"],
+        branch="master",
+    )
+
+    assert len(result) == 1
+    mock_ontology_object_class.search.assert_called_once_with(
+        "ri.ontology.main.ontology.test",
+        "Employee",
+        query="Jane",
+        page_size=10,
+        properties=["name", "department"],
+        branch_name="master",
+    )
+
+
 # ActionService Tests
 def test_apply_action(mock_action_service, sample_action_result):
     """Test applying an action."""
