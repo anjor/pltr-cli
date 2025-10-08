@@ -487,18 +487,15 @@ class DatasetService(BaseService):
             # Ensure output directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            file_content = self.service.Dataset.File.read(
+            # Use Dataset.File.content() which returns bytes directly
+            # Note: In SDK v1.27.0, the method is 'content' not 'read'
+            file_content = self.service.Dataset.File.content(
                 dataset_rid=dataset_rid, file_path=file_path, branch_name=branch
             )
 
-            # Write file content to disk
+            # Write file content to disk (file_content is bytes)
             with open(output_path, "wb") as f:
-                if hasattr(file_content, "read"):
-                    # If it's a stream
-                    f.write(file_content.read())
-                else:
-                    # If it's bytes
-                    f.write(file_content)
+                f.write(file_content)
 
             return {
                 "dataset_rid": dataset_rid,
