@@ -287,6 +287,77 @@ class OntologyObjectService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to list linked objects: {e}")
 
+    def count_objects(
+        self,
+        ontology_rid: str,
+        object_type: str,
+        branch: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Count objects of a specific type.
+
+        Args:
+            ontology_rid: Ontology Resource Identifier
+            object_type: Object type API name
+            branch: Branch name (optional)
+
+        Returns:
+            Dictionary containing count information
+        """
+        try:
+            count = self.service.OntologyObject.count(
+                ontology_rid,
+                object_type,
+                branch_name=branch,
+            )
+            return {
+                "ontology_rid": ontology_rid,
+                "object_type": object_type,
+                "count": count,
+                "branch": branch,
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to count objects: {e}")
+
+    def search_objects(
+        self,
+        ontology_rid: str,
+        object_type: str,
+        query: str,
+        page_size: Optional[int] = None,
+        properties: Optional[List[str]] = None,
+        branch: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search objects by query.
+
+        Args:
+            ontology_rid: Ontology Resource Identifier
+            object_type: Object type API name
+            query: Search query string
+            page_size: Number of results per page
+            properties: List of properties to include
+            branch: Branch name (optional)
+
+        Returns:
+            List of matching object dictionaries
+        """
+        try:
+            result = self.service.OntologyObject.search(
+                ontology_rid,
+                object_type,
+                query=query,
+                page_size=page_size,
+                properties=properties,
+                branch_name=branch,
+            )
+            objects = []
+            for obj in result:
+                objects.append(self._format_object(obj))
+            return objects
+        except Exception as e:
+            raise RuntimeError(f"Failed to search objects: {e}")
+
     def _format_object(self, obj: Any) -> Dict[str, Any]:
         """Format object for consistent output."""
         # Objects may have various properties - extract them dynamically

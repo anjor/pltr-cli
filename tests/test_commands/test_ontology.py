@@ -220,6 +220,111 @@ def test_list_linked_objects_command(mock_services):
     mock_instance.list_linked_objects.assert_called_once()
 
 
+def test_count_objects_command(mock_services):
+    """Test count objects command."""
+    mock_instance = Mock()
+    mock_instance.count_objects.return_value = {
+        "ontology_rid": "ri.ontology.main.ontology.test",
+        "object_type": "Employee",
+        "count": 42,
+        "branch": None,
+    }
+    mock_services["object"].return_value = mock_instance
+
+    result = runner.invoke(
+        app, ["object-count", "ri.ontology.main.ontology.test", "Employee"]
+    )
+
+    assert result.exit_code == 0
+    mock_instance.count_objects.assert_called_once_with(
+        "ri.ontology.main.ontology.test", "Employee", branch=None
+    )
+
+
+def test_count_objects_with_branch(mock_services):
+    """Test count objects with branch specified."""
+    mock_instance = Mock()
+    mock_instance.count_objects.return_value = {
+        "ontology_rid": "ri.ontology.main.ontology.test",
+        "object_type": "Employee",
+        "count": 24,
+        "branch": "master",
+    }
+    mock_services["object"].return_value = mock_instance
+
+    result = runner.invoke(
+        app,
+        [
+            "object-count",
+            "ri.ontology.main.ontology.test",
+            "Employee",
+            "--branch",
+            "master",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_instance.count_objects.assert_called_once_with(
+        "ri.ontology.main.ontology.test", "Employee", branch="master"
+    )
+
+
+def test_search_objects_command(mock_services):
+    """Test search objects command."""
+    mock_instance = Mock()
+    mock_instance.search_objects.return_value = [
+        {"employee_id": "EMP001", "name": "John Doe"}
+    ]
+    mock_services["object"].return_value = mock_instance
+
+    result = runner.invoke(
+        app,
+        [
+            "object-search",
+            "ri.ontology.main.ontology.test",
+            "Employee",
+            "--query",
+            "John",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_instance.search_objects.assert_called_once()
+
+
+def test_search_objects_with_options(mock_services):
+    """Test search objects with all options."""
+    mock_instance = Mock()
+    mock_instance.search_objects.return_value = [
+        {"employee_id": "EMP001", "name": "John Doe"}
+    ]
+    mock_services["object"].return_value = mock_instance
+
+    result = runner.invoke(
+        app,
+        [
+            "object-search",
+            "ri.ontology.main.ontology.test",
+            "Employee",
+            "--query",
+            "Jane",
+            "--page-size",
+            "10",
+            "--properties",
+            "name,department",
+            "--branch",
+            "master",
+        ],
+    )
+
+    assert result.exit_code == 0
+    call_args = mock_instance.search_objects.call_args
+    assert call_args[0] == ("ri.ontology.main.ontology.test", "Employee", "Jane")
+    assert call_args[1]["page_size"] == 10
+    assert call_args[1]["properties"] == ["name", "department"]
+    assert call_args[1]["branch"] == "master"
+
+
 # Action command tests
 def test_apply_action_command(mock_services):
     """Test apply action command."""
