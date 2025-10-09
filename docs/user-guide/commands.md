@@ -967,6 +967,8 @@ pltr ontology query-execute ri.ontology.main.ontology.abc123 getEmployeesByDepar
 
 Execute SQL queries against Foundry datasets with comprehensive query lifecycle management.
 
+**⚠️ Preview Feature:** SQL query functionality is currently in preview and may be modified or removed at any time. All SQL commands default to `--preview` mode, which is required by the Foundry API.
+
 ### `pltr sql execute [OPTIONS] QUERY`
 Execute a SQL query and display results.
 
@@ -976,6 +978,7 @@ Execute a SQL query and display results.
 **Options:**
 - `--timeout` INTEGER: Query timeout in seconds [default: 300]
 - `--fallback-branches` TEXT: Comma-separated list of fallback branch IDs
+- `--preview/--no-preview`: Enable preview mode (required for SQL API) [default: True]
 
 **Examples:**
 ```bash
