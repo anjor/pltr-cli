@@ -30,6 +30,7 @@ class SqlService(BaseService):
         fallback_branch_ids: Optional[List[str]] = None,
         timeout: int = 300,
         format: str = "table",
+        preview: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute a SQL query and wait for completion.
@@ -39,6 +40,7 @@ class SqlService(BaseService):
             fallback_branch_ids: Optional list of branch IDs for fallback
             timeout: Maximum time to wait for query completion (seconds)
             format: Output format for results ('table', 'json', 'raw')
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing query results and metadata
@@ -49,19 +51,23 @@ class SqlService(BaseService):
         try:
             # Submit the query
             status = self.service.execute(
-                query=query, fallback_branch_ids=fallback_branch_ids
+                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
             )
 
             # If the query completed immediately
             if isinstance(status, SucceededQueryStatus):
-                return self._format_completed_query(status.query_id, format)
+                return self._format_completed_query(
+                    status.query_id, format, preview=preview
+                )
             elif isinstance(status, FailedQueryStatus):
                 raise RuntimeError(f"Query failed: {status.error_message}")
             elif isinstance(status, CanceledQueryStatus):
                 raise RuntimeError("Query was canceled")
             elif isinstance(status, RunningQueryStatus):
                 # Wait for completion
-                return self._wait_for_query_completion(status.query_id, timeout, format)
+                return self._wait_for_query_completion(
+                    status.query_id, timeout, format, preview=preview
+                )
             else:
                 raise RuntimeError(f"Unknown query status type: {type(status)}")
 
@@ -71,7 +77,10 @@ class SqlService(BaseService):
             raise RuntimeError(f"Failed to execute query: {e}")
 
     def submit_query(
-        self, query: str, fallback_branch_ids: Optional[List[str]] = None
+        self,
+        query: str,
+        fallback_branch_ids: Optional[List[str]] = None,
+        preview: bool = True,
     ) -> Dict[str, Any]:
         """
         Submit a SQL query without waiting for completion.
@@ -79,6 +88,7 @@ class SqlService(BaseService):
         Args:
             query: SQL query string
             fallback_branch_ids: Optional list of branch IDs for fallback
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing query ID and initial status
@@ -88,18 +98,19 @@ class SqlService(BaseService):
         """
         try:
             status = self.service.execute(
-                query=query, fallback_branch_ids=fallback_branch_ids
+                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
             )
             return self._format_query_status(status)
         except Exception as e:
             raise RuntimeError(f"Failed to submit query: {e}")
 
-    def get_query_status(self, query_id: str) -> Dict[str, Any]:
+    def get_query_status(self, query_id: str, preview: bool = True) -> Dict[str, Any]:
         """
         Get the status of a submitted query.
 
         Args:
             query_id: Query identifier
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing query status information
@@ -108,18 +119,21 @@ class SqlService(BaseService):
             RuntimeError: If status check fails
         """
         try:
-            status = self.service.get_status(query_id)
+            status = self.service.get_status(query_id, preview=preview)
             return self._format_query_status(status)
         except Exception as e:
             raise RuntimeError(f"Failed to get query status: {e}")
 
-    def get_query_results(self, query_id: str, format: str = "table") -> Dict[str, Any]:
+    def get_query_results(
+        self, query_id: str, format: str = "table", preview: bool = True
+    ) -> Dict[str, Any]:
         """
         Get the results of a completed query.
 
         Args:
             query_id: Query identifier
             format: Output format ('table', 'json', 'raw')
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing query results
@@ -129,7 +143,7 @@ class SqlService(BaseService):
         """
         try:
             # First check if the query has completed successfully
-            status = self.service.get_status(query_id)
+            status = self.service.get_status(query_id, preview=preview)
             if not isinstance(status, SucceededQueryStatus):
                 status_info = self._format_query_status(status)
                 if isinstance(status, FailedQueryStatus):
@@ -142,7 +156,7 @@ class SqlService(BaseService):
                     raise RuntimeError(f"Query status: {status_info['status']}")
 
             # Get the results
-            results_bytes = self.service.get_results(query_id)
+            results_bytes = self.service.get_results(query_id, preview=preview)
             return self._format_query_results(results_bytes, format)
 
         except Exception as e:
@@ -150,12 +164,13 @@ class SqlService(BaseService):
                 raise
             raise RuntimeError(f"Failed to get query results: {e}")
 
-    def cancel_query(self, query_id: str) -> Dict[str, Any]:
+    def cancel_query(self, query_id: str, preview: bool = True) -> Dict[str, Any]:
         """
         Cancel a running query.
 
         Args:
             query_id: Query identifier
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing cancellation status
@@ -164,15 +179,19 @@ class SqlService(BaseService):
             RuntimeError: If cancellation fails
         """
         try:
-            self.service.cancel(query_id)
+            self.service.cancel(query_id, preview=preview)
             # Get updated status after cancellation
-            status = self.service.get_status(query_id)
+            status = self.service.get_status(query_id, preview=preview)
             return self._format_query_status(status)
         except Exception as e:
             raise RuntimeError(f"Failed to cancel query: {e}")
 
     def wait_for_completion(
-        self, query_id: str, timeout: int = 300, poll_interval: int = 2
+        self,
+        query_id: str,
+        timeout: int = 300,
+        poll_interval: int = 2,
+        preview: bool = True,
     ) -> Dict[str, Any]:
         """
         Wait for a query to complete.
@@ -181,6 +200,7 @@ class SqlService(BaseService):
             query_id: Query identifier
             timeout: Maximum time to wait (seconds)
             poll_interval: Time between status checks (seconds)
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary containing final query status
@@ -192,7 +212,7 @@ class SqlService(BaseService):
 
         while time.time() - start_time < timeout:
             try:
-                status = self.service.get_status(query_id)
+                status = self.service.get_status(query_id, preview=preview)
 
                 if isinstance(status, SucceededQueryStatus):
                     return self._format_query_status(status)
@@ -216,7 +236,7 @@ class SqlService(BaseService):
         raise RuntimeError(f"Query timed out after {timeout} seconds")
 
     def _wait_for_query_completion(
-        self, query_id: str, timeout: int, format: str
+        self, query_id: str, timeout: int, format: str, preview: bool = True
     ) -> Dict[str, Any]:
         """
         Wait for query completion and return formatted results.
@@ -225,28 +245,32 @@ class SqlService(BaseService):
             query_id: Query identifier
             timeout: Maximum wait time
             format: Result format
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Dictionary with query results
         """
         # Wait for completion
-        self.wait_for_completion(query_id, timeout)
+        self.wait_for_completion(query_id, timeout, preview=preview)
 
         # Get results
-        return self._format_completed_query(query_id, format)
+        return self._format_completed_query(query_id, format, preview=preview)
 
-    def _format_completed_query(self, query_id: str, format: str) -> Dict[str, Any]:
+    def _format_completed_query(
+        self, query_id: str, format: str, preview: bool = True
+    ) -> Dict[str, Any]:
         """
         Format a completed query's results.
 
         Args:
             query_id: Query identifier
             format: Result format
+            preview: Enable preview mode (required for SQL API, defaults to True)
 
         Returns:
             Formatted query results
         """
-        results_bytes = self.service.get_results(query_id)
+        results_bytes = self.service.get_results(query_id, preview=preview)
         results = self._format_query_results(results_bytes, format)
 
         return {

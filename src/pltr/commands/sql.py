@@ -42,8 +42,15 @@ def execute_query(
     fallback_branches: Optional[str] = typer.Option(
         None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
-    """Execute a SQL query and display results."""
+    """Execute a SQL query and display results.
+
+    Note: SQL queries are currently in preview and may be modified or removed at any time."""
     console = Console()
     formatter = OutputFormatter()
 
@@ -62,6 +69,7 @@ def execute_query(
                 fallback_branch_ids=fallback_branch_ids,
                 timeout=timeout,
                 format="table" if output_format in ["table", "csv"] else "json",
+                preview=preview,
             )
 
         # Extract results
@@ -92,8 +100,15 @@ def submit_query(
     fallback_branches: Optional[str] = typer.Option(
         None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
-    """Submit a SQL query without waiting for completion."""
+    """Submit a SQL query without waiting for completion.
+
+    Note: SQL queries are currently in preview and may be modified or removed at any time."""
     console = Console()
     formatter = OutputFormatter()
 
@@ -108,7 +123,7 @@ def submit_query(
 
         with SpinnerProgressTracker().track_spinner("Submitting SQL query..."):
             result = service.submit_query(
-                query=query, fallback_branch_ids=fallback_branch_ids
+                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
             )
 
         console.print("[green]Query submitted successfully[/green]")
@@ -136,6 +151,11 @@ def get_query_status(
     profile: Optional[str] = typer.Option(
         None, "--profile", help="Auth profile to use"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
     """Get the status of a submitted query."""
     console = Console()
@@ -145,7 +165,7 @@ def get_query_status(
         service = SqlService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Checking query status..."):
-            result = service.get_query_status(query_id)
+            result = service.get_query_status(query_id, preview=preview)
 
         console.print(f"Query ID: [bold]{query_id}[/bold]")
 
@@ -183,6 +203,11 @@ def get_query_results(
     output_file: Optional[Path] = typer.Option(
         None, "--output", help="Save results to file"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
     """Get the results of a completed query."""
     console = Console()
@@ -195,6 +220,7 @@ def get_query_results(
             result = service.get_query_results(
                 query_id,
                 format="table" if output_format in ["table", "csv"] else "json",
+                preview=preview,
             )
 
         # Display or save results
@@ -217,6 +243,11 @@ def cancel_query(
     profile: Optional[str] = typer.Option(
         None, "--profile", help="Auth profile to use"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
     """Cancel a running query."""
     console = Console()
@@ -226,7 +257,7 @@ def cancel_query(
         service = SqlService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Canceling query..."):
-            result = service.cancel_query(query_id)
+            result = service.cancel_query(query_id, preview=preview)
 
         console.print(f"Query ID: [bold]{query_id}[/bold]")
 
@@ -259,8 +290,15 @@ def export_query_results(
     fallback_branches: Optional[str] = typer.Option(
         None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
-    """Execute a SQL query and export results to a file."""
+    """Execute a SQL query and export results to a file.
+
+    Note: SQL queries are currently in preview and may be modified or removed at any time."""
     console = Console()
     formatter = OutputFormatter()
 
@@ -289,6 +327,7 @@ def export_query_results(
                 fallback_branch_ids=fallback_branch_ids,
                 timeout=timeout,
                 format="table" if output_format in ["table", "csv"] else "json",
+                preview=preview,
             )
 
         # Save results to file
@@ -321,6 +360,11 @@ def wait_for_query(
     output_file: Optional[Path] = typer.Option(
         None, "--output", help="Save results to file when completed"
     ),
+    preview: bool = typer.Option(
+        True,
+        "--preview/--no-preview",
+        help="Enable preview mode (required for SQL API)",
+    ),
 ) -> None:
     """Wait for a query to complete and optionally display results."""
     console = Console()
@@ -330,7 +374,9 @@ def wait_for_query(
         service = SqlService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Waiting for query to complete..."):
-            status_result = service.wait_for_completion(query_id, timeout)
+            status_result = service.wait_for_completion(
+                query_id, timeout, preview=preview
+            )
 
         console.print(f"Query ID: [bold]{query_id}[/bold]")
         console.print(
@@ -343,6 +389,7 @@ def wait_for_query(
                 result = service.get_query_results(
                     query_id,
                     format="table" if output_format in ["table", "csv"] else "json",
+                    preview=preview,
                 )
 
             if output_file:
