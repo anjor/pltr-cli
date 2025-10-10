@@ -167,6 +167,21 @@ pltr ontology list
 
 **Common SQL Issues:**
 
+#### 0. ApiFeaturePreviewUsageOnly Error
+```bash
+# Error: ApiFeaturePreviewUsageOnly when executing SQL queries
+# This indicates preview mode is not enabled
+
+# Solution: SQL commands default to --preview mode (required)
+pltr sql execute "SELECT * FROM dataset" --preview
+
+# Preview mode is enabled by default, but you can explicitly disable it
+# (not recommended as it will cause errors):
+# pltr sql execute "SELECT * FROM dataset" --no-preview
+
+# Note: SQL query functionality is in preview and may change
+```
+
 #### 1. Syntax Errors
 ```bash
 # Error: Invalid SQL syntax

@@ -47,6 +47,7 @@ class TestSqlCommands:
             fallback_branch_ids=None,
             timeout=300,
             format="json",
+            preview=True,
         )
 
     def test_execute_command_with_options(self, runner, mock_service):
@@ -86,6 +87,7 @@ class TestSqlCommands:
             fallback_branch_ids=["branch1", "branch2"],
             timeout=600,
             format="table",
+            preview=True,
         )
 
     def test_execute_command_with_output_file(self, runner, mock_service):
@@ -152,7 +154,7 @@ class TestSqlCommands:
         assert "Query submitted successfully" in result.stdout
         assert "submitted-123" in result.stdout
         mock_service.submit_query.assert_called_once_with(
-            query="SELECT * FROM large_table", fallback_branch_ids=None
+            query="SELECT * FROM large_table", fallback_branch_ids=None, preview=True
         )
 
     def test_submit_command_immediate_success(self, runner, mock_service):
@@ -238,7 +240,7 @@ class TestSqlCommands:
         # Assert
         assert result.exit_code == 0
         mock_service.get_query_results.assert_called_once_with(
-            "completed-303", format="json"
+            "completed-303", format="json", preview=True
         )
 
     def test_results_command_with_file_output(self, runner, mock_service):
@@ -285,7 +287,7 @@ class TestSqlCommands:
         # Assert
         assert result.exit_code == 0
         assert "Query has been canceled successfully" in result.stdout
-        mock_service.cancel_query.assert_called_once_with("cancel-505")
+        mock_service.cancel_query.assert_called_once_with("cancel-505", preview=True)
 
     def test_export_command_success(self, runner, mock_service):
         """Test export command success."""
@@ -370,7 +372,9 @@ class TestSqlCommands:
         # Assert
         assert result.exit_code == 0
         assert "Status: succeeded" in result.stdout
-        mock_service.wait_for_completion.assert_called_once_with("wait-808", 120)
+        mock_service.wait_for_completion.assert_called_once_with(
+            "wait-808", 120, preview=True
+        )
         mock_service.get_query_results.assert_called_once()
 
     def test_wait_command_no_results(self, runner, mock_service):
@@ -456,6 +460,7 @@ class TestSqlCommands:
         mock_service.submit_query.assert_called_once_with(
             query="SELECT * FROM versioned_table",
             fallback_branch_ids=["main", "feature/new-data", "hotfix"],
+            preview=True,
         )
 
     def test_help_commands(self, runner):

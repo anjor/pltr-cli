@@ -52,9 +52,11 @@ class TestSqlService:
         assert result["results"] == [{"name": "John", "age": 30}]
 
         mock_client.sql_queries.SqlQuery.execute.assert_called_once_with(
-            query="SELECT * FROM users", fallback_branch_ids=None
+            query="SELECT * FROM users", fallback_branch_ids=None, preview=True
         )
-        mock_client.sql_queries.SqlQuery.get_results.assert_called_once_with(query_id)
+        mock_client.sql_queries.SqlQuery.get_results.assert_called_once_with(
+            query_id, preview=True
+        )
 
     def test_execute_query_immediate_failure(self, service, mock_client):
         """Test executing query that fails immediately."""
@@ -206,7 +208,9 @@ class TestSqlService:
 
         # Assert
         assert result["status"] == "canceled"
-        mock_client.sql_queries.SqlQuery.cancel.assert_called_once_with(query_id)
+        mock_client.sql_queries.SqlQuery.cancel.assert_called_once_with(
+            query_id, preview=True
+        )
 
     def test_wait_for_completion_success(self, service, mock_client):
         """Test waiting for query completion."""
@@ -313,7 +317,9 @@ class TestSqlService:
 
         # Assert
         mock_client.sql_queries.SqlQuery.execute.assert_called_once_with(
-            query="SELECT * FROM table", fallback_branch_ids=fallback_branches
+            query="SELECT * FROM table",
+            fallback_branch_ids=fallback_branches,
+            preview=True,
         )
         assert result["results"] == {"result": "success"}
 
