@@ -104,6 +104,254 @@ def get_connection(
         raise typer.Exit(1)
 
 
+@connection_app.command("create")
+def create_connection(
+    display_name: str = typer.Argument(..., help="Display name for the connection"),
+    connection_type: str = typer.Argument(
+        ..., help="Connection type (e.g., jdbc, s3, postgres)"
+    ),
+    config: str = typer.Argument(..., help="Connection configuration in JSON format"),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="Connection description"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Create a new connection."""
+    try:
+        # Parse configuration JSON
+        try:
+            configuration = json.loads(config)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON configuration: {e}[/red]")
+            raise typer.Exit(1)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Creating connection '{display_name}'..."
+        ):
+            service = ConnectivityService(profile=profile)
+            connection = service.create_connection(
+                display_name=display_name,
+                connection_type=connection_type,
+                configuration=configuration,
+                description=description,
+            )
+
+        console.print(f"[green]Connection created: {connection.get('rid')}[/green]")
+        formatter.format_output([connection], format, output)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error creating connection: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@connection_app.command("get-config")
+def get_connection_config(
+    connection_rid: str = typer.Argument(
+        ..., help="Connection Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "json",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get connection configuration."""
+    try:
+        cache_rid(connection_rid)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching configuration for {connection_rid}..."
+        ):
+            service = ConnectivityService(profile=profile)
+            config = service.get_connection_configuration(connection_rid)
+
+        formatter.format_output([config], format, output)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error getting connection configuration: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@connection_app.command("update-secrets")
+def update_connection_secrets(
+    connection_rid: str = typer.Argument(
+        ..., help="Connection Resource Identifier", autocompletion=complete_rid
+    ),
+    secrets: str = typer.Argument(
+        ..., help="Secrets in JSON format (key-value pairs)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Update connection secrets."""
+    try:
+        cache_rid(connection_rid)
+
+        # Parse secrets JSON
+        try:
+            secrets_dict = json.loads(secrets)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON secrets: {e}[/red]")
+            raise typer.Exit(1)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Updating secrets for {connection_rid}..."
+        ):
+            service = ConnectivityService(profile=profile)
+            result = service.update_secrets(connection_rid, secrets_dict)
+
+        console.print(f"[green]Secrets updated for connection: {connection_rid}[/green]")
+        formatter.format_output([result], format, output)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error updating secrets: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@connection_app.command("update-export-settings")
+def update_connection_export_settings(
+    connection_rid: str = typer.Argument(
+        ..., help="Connection Resource Identifier", autocompletion=complete_rid
+    ),
+    settings: str = typer.Argument(..., help="Export settings in JSON format"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Update connection export settings."""
+    try:
+        cache_rid(connection_rid)
+
+        # Parse settings JSON
+        try:
+            settings_dict = json.loads(settings)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON settings: {e}[/red]")
+            raise typer.Exit(1)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Updating export settings for {connection_rid}..."
+        ):
+            service = ConnectivityService(profile=profile)
+            result = service.update_export_settings(connection_rid, settings_dict)
+
+        console.print(
+            f"[green]Export settings updated for connection: {connection_rid}[/green]"
+        )
+        formatter.format_output([result], format, output)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error updating export settings: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@connection_app.command("upload-jdbc-drivers")
+def upload_jdbc_drivers(
+    connection_rid: str = typer.Argument(
+        ..., help="Connection Resource Identifier", autocompletion=complete_rid
+    ),
+    driver_files: str = typer.Argument(
+        ..., help="Comma-separated list of JDBC driver JAR file paths"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Upload custom JDBC drivers for a connection."""
+    try:
+        cache_rid(connection_rid)
+
+        # Parse file paths
+        file_paths = [f.strip() for f in driver_files.split(",")]
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Uploading JDBC drivers for {connection_rid}..."
+        ):
+            service = ConnectivityService(profile=profile)
+            result = service.upload_custom_jdbc_drivers(connection_rid, file_paths)
+
+        console.print(
+            f"[green]JDBC drivers uploaded for connection: {connection_rid}[/green]"
+        )
+        formatter.format_output([result], format, output)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+    except FileNotFoundError as e:
+        console.print(f"[red]File error: {e}[/red]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Validation error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error uploading JDBC drivers: {e}[/red]")
+        raise typer.Exit(1)
+
+
 @import_app.command("file")
 def import_file(
     connection_rid: str = typer.Argument(
