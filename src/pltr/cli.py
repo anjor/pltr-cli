@@ -25,6 +25,7 @@ from pltr.commands import (
     mediasets,
     connectivity,
 )
+from pltr.commands.cp import cp_command
 
 app = typer.Typer(
     name="pltr",
@@ -62,6 +63,9 @@ app.add_typer(
 app.add_typer(shell.shell_app, name="shell", help="Interactive shell mode")
 app.add_typer(completion.app, name="completion", help="Manage shell completions")
 app.add_typer(alias.app, name="alias", help="Manage command aliases")
+app.command("cp", help="Copy datasets or folders into another Compass folder")(
+    cp_command
+)
 
 
 def version_callback(value: bool):

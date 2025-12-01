@@ -411,6 +411,41 @@ pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def45
 
 **Root Folder RID**: `ri.compass.main.folder.0` - Use this as the parent folder RID to create folders in the root directory.
 
+### `pltr cp [OPTIONS] SOURCE_RID TARGET_FOLDER_RID`
+Copy a dataset or folder (and its children) into another Compass folder.
+
+**Arguments:**
+- `SOURCE_RID` (required): Dataset or folder RID to copy
+- `TARGET_FOLDER_RID` (required): Destination folder RID
+
+**Options:**
+- `--profile` TEXT: Profile name
+- `--branch`, `-b` TEXT: Dataset branch used when reading files [default: master]
+- `--recursive`, `-r`: Required when copying folders (recursively copies children)
+- `--name-suffix` TEXT: Suffix appended to cloned names [default: -copy]
+- `--schema / --no-schema`: Copy dataset schemas when available [default: true]
+- `--dry-run`: Log the planned copy without writing to Foundry
+- `--debug`: Print stack traces when an error occurs
+
+**Examples:**
+```bash
+# Copy a dataset into another folder
+pltr cp ri.foundry.main.dataset.abc123 ri.compass.main.folder.dest456
+
+# Copy a folder (and all children) into another folder
+pltr cp ri.compass.main.folder.source789 ri.compass.main.folder.dest456 --recursive
+
+# Mirror all datasets from one folder into another using shell composition
+for rid in $(pltr folder list ri.compass.main.folder.source789 --format json | jq -r '.[] | select(.type=="dataset") | .rid'); do
+  pltr cp "$rid" ri.compass.main.folder.dest456
+done
+```
+
+**Notes:**
+- Dataset copies stream each file by downloading it locally and re-uploading it to the target dataset. Ensure you have adequate disk space and bandwidth.
+- Schema copying requires preview access to the schema endpoints. When unavailable, a warning is logged and the copy continues with files only.
+- Folder copies always create a new folder inside the destination, applying the name suffix to avoid collisions. Use `--name-suffix ""` if you prefer to keep the original name.
+
 ---
 
 ## 🏗️ Orchestration Commands

@@ -14,6 +14,14 @@ Complete examples for uploading CSV files to Foundry datasets. See [CSV Upload E
 - Error handling and retry logic
 - Python scripts for programmatic uploads
 
+## 📁 Workspace Automation
+
+### Compass Folder Copy
+
+Use the built-in `pltr cp` command to clone datasets or folders by RID (with
+`--recursive` for folders) and place the copies into another Compass folder.
+See the command reference: [pltr cp](../user-guide/commands.md#pltr-cp-options-source_rid-target_folder_rid).
+
 ## 📊 Data Analysis Examples
 
 ### 1. Sales Performance Dashboard
