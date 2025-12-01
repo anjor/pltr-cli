@@ -59,6 +59,11 @@ def cp_command(
         "--dry-run",
         help="Log actions without creating any resources",
     ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast",
+        help="Stop immediately on first error when copying folders recursively",
+    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -76,6 +81,7 @@ def cp_command(
             name_suffix=name_suffix,
             copy_schema=copy_schema,
             dry_run=dry_run,
+            fail_fast=fail_fast,
             debug=debug,
             console=console,
         )

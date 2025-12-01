@@ -425,6 +425,7 @@ Copy a dataset or folder (and its children) into another Compass folder.
 - `--name-suffix` TEXT: Suffix appended to cloned names [default: -copy]
 - `--schema / --no-schema`: Copy dataset schemas when available [default: true]
 - `--dry-run`: Log the planned copy without writing to Foundry
+- `--fail-fast`: Stop immediately on first error when copying folders recursively
 - `--debug`: Print stack traces when an error occurs
 
 **Examples:**
@@ -442,9 +443,12 @@ done
 ```
 
 **Notes:**
-- Dataset copies stream each file by downloading it locally and re-uploading it to the target dataset. Ensure you have adequate disk space and bandwidth.
+- Dataset copies download each file locally and re-upload it to the target dataset. Ensure you have adequate disk space and bandwidth.
+- **Memory usage**: Files are loaded entirely into memory during upload. For very large files (multi-GB), ensure sufficient RAM is available.
 - Schema copying requires preview access to the schema endpoints. When unavailable, a warning is logged and the copy continues with files only.
 - Folder copies always create a new folder inside the destination, applying the name suffix to avoid collisions. Use `--name-suffix ""` if you prefer to keep the original name.
+- By default, folder copies continue on error (logging failures and incrementing the error count). Use `--fail-fast` to stop immediately on any error.
+- If a dataset copy fails after the dataset is created, the partially created dataset is automatically deleted.
 
 ---
 

@@ -53,6 +53,7 @@ class CopyService:
         copy_schema: bool = True,
         dry_run: bool = False,
         debug: bool = False,
+        fail_fast: bool = False,
         console: Optional[Console] = None,
     ):
         self.profile = profile
@@ -61,6 +62,7 @@ class CopyService:
         self.copy_schema = copy_schema
         self.dry_run = dry_run
         self.debug = debug
+        self.fail_fast = fail_fast
         self.console = console or Console()
 
         self.dataset_service = DatasetService(profile=profile)
@@ -141,12 +143,26 @@ class CopyService:
             f"Created dataset '{new_name}' ({new_dataset_rid}) in {target_folder_rid}"
         )
 
-        if self.copy_schema:
-            self._copy_dataset_schema(dataset_rid, new_dataset_rid)
+        try:
+            if self.copy_schema:
+                self._copy_dataset_schema(dataset_rid, new_dataset_rid)
 
-        self._copy_dataset_files(dataset_rid, new_dataset_rid)
-        self.stats.datasets += 1
-        self._log_success(f"Finished copying dataset to {new_dataset_rid}")
+            self._copy_dataset_files(dataset_rid, new_dataset_rid)
+            self.stats.datasets += 1
+            self._log_success(f"Finished copying dataset to {new_dataset_rid}")
+        except Exception as exc:
+            # Clean up partially created dataset on failure
+            self._log_warning(
+                f"  Deleting partially created dataset {new_dataset_rid} due to error"
+            )
+            try:
+                self.dataset_service.delete_dataset(new_dataset_rid)
+                self._log_info(f"  Deleted dataset {new_dataset_rid}")
+            except Exception as delete_exc:
+                self._log_error(
+                    f"  Failed to delete dataset {new_dataset_rid}: {delete_exc}"
+                )
+            raise exc
 
     def _copy_dataset_schema(self, source_rid: str, target_rid: str) -> None:
         """Copy schema metadata, warning if not available."""
@@ -306,6 +322,8 @@ class CopyService:
                 )
                 if self.debug:
                     traceback.print_exc()
+                if self.fail_fast:
+                    raise RuntimeError(f"Stopping due to --fail-fast: {exc}") from exc
 
     # ------------------------------------------------------------------ helpers
     def _get_resource_name(self, resource: Dict[str, str]) -> str:
