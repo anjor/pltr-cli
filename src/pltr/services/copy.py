@@ -92,7 +92,7 @@ class CopyService:
 
         if resource_type in DATASET_TYPES:
             self._log_info(
-                f"Copying dataset '{resource.get('display_name') or resource.get('name') or source_rid}' "
+                f"Copying dataset '{self._get_resource_name(resource)}' "
                 f"({source_rid}) → folder {target_folder_rid}"
             )
             try:
@@ -124,9 +124,7 @@ class CopyService:
         self, dataset_info: Dict[str, str], target_folder_rid: str
     ) -> None:
         dataset_rid = dataset_info["rid"]
-        dataset_name = (
-            dataset_info.get("display_name") or dataset_info.get("name") or dataset_rid
-        )
+        dataset_name = self._get_resource_name(dataset_info)
         new_name = self._derive_name(dataset_name)
 
         if self.dry_run:
@@ -176,13 +174,20 @@ class CopyService:
 
         # Wrap transaction creation in try block to ensure cleanup on any failure
         transaction_rid = None
+        transaction_created = False
         try:
             transaction = self.dataset_service.create_transaction(
                 target_rid, branch=self.branch, transaction_type="SNAPSHOT"
             )
-            transaction_rid = transaction.get("transaction_rid")
+            # Check both possible key names for the transaction RID
+            transaction_rid = transaction.get("transaction_rid") or transaction.get(
+                "rid"
+            )
             if not transaction_rid:
-                raise RuntimeError("Could not open transaction on new dataset")
+                raise RuntimeError(
+                    f"Transaction response missing RID: {list(transaction.keys())}"
+                )
+            transaction_created = True
 
             with tempfile.TemporaryDirectory(prefix="pltr-cp-") as tmpdir:
                 temp_dir = Path(tmpdir)
@@ -214,7 +219,7 @@ class CopyService:
             self._log_info(f"  Committed transaction {transaction_rid}")
         except Exception as exc:
             # Only attempt rollback if we successfully created a transaction
-            if transaction_rid:
+            if transaction_created and transaction_rid:
                 try:
                     self.dataset_service.abort_transaction(target_rid, transaction_rid)
                     self._log_warning(f"  Rolled back transaction {transaction_rid}")
@@ -258,7 +263,7 @@ class CopyService:
     # ------------------------------------------------------------------ folders
     def _copy_folder(self, folder_info: Dict[str, str], target_folder_rid: str) -> None:
         folder_rid = folder_info["rid"]
-        folder_name = folder_info.get("display_name") or folder_rid
+        folder_name = self._get_resource_name(folder_info)
         new_name = self._derive_name(folder_name)
 
         if self.dry_run:
@@ -303,15 +308,23 @@ class CopyService:
                     traceback.print_exc()
 
     # ------------------------------------------------------------------ helpers
+    def _get_resource_name(self, resource: Dict[str, str]) -> str:
+        """Extract display name from a resource, with fallbacks."""
+        return (
+            resource.get("display_name")
+            or resource.get("name")
+            or resource.get("rid", "unknown")
+        )
+
     def _sanitize_local_path(self, original_path: str) -> str:
         """Return a safe relative path for storing temporary files."""
         # Check for path traversal BEFORE normalization to prevent attacks
-        # like "/foo/../../../etc/passwd" being normalized
         if ".." in original_path:
-            raise ValueError(
-                f"Dataset file uses unsupported relative path: {original_path}"
-            )
+            raise ValueError(f"Path traversal detected: {original_path}")
         clean = PurePosixPath(original_path.lstrip("/"))
+        # Verify no parent directory references remain after normalization
+        if ".." in clean.parts:
+            raise ValueError(f"Invalid path after normalization: {original_path}")
         return clean.as_posix()
 
     def _derive_name(self, base_name: str) -> str:
