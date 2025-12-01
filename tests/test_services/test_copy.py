@@ -19,7 +19,11 @@ def _setup_service_mocks():
 def test_copy_dataset_dry_run_skips_creation():
     """Dry runs should not call dataset creation but should report stats."""
     dataset_patch, folder_patch, resource_patch = _setup_service_mocks()
-    with dataset_patch as MockDatasetService, folder_patch, resource_patch as MockResourceService:
+    with (
+        dataset_patch as MockDatasetService,
+        folder_patch,
+        resource_patch as MockResourceService,
+    ):
         dataset_instance = MockDatasetService.return_value
         resource_instance = MockResourceService.return_value
         resource_instance.get_resource.return_value = {
@@ -42,9 +46,12 @@ def test_copy_dataset_dry_run_skips_creation():
 def test_copy_dataset_copies_files_and_schema():
     """Copying a dataset should duplicate schema and files."""
     dataset_patch, folder_patch, resource_patch = _setup_service_mocks()
-    with dataset_patch as MockDatasetService, folder_patch, resource_patch as MockResourceService, patch.object(
-        CopyService, "_upload_dataset_file"
-    ) as mock_upload:
+    with (
+        dataset_patch as MockDatasetService,
+        folder_patch,
+        resource_patch as MockResourceService,
+        patch.object(CopyService, "_upload_dataset_file") as mock_upload,
+    ):
         dataset_instance = MockDatasetService.return_value
         resource_instance = MockResourceService.return_value
 

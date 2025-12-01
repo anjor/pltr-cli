@@ -17,6 +17,11 @@ from .folder import FolderService
 from .resource import ResourceService
 
 
+# Known resource types for exact matching (avoids false positives with substring matching)
+DATASET_TYPES = frozenset({"foundry_dataset", "dataset"})
+FOLDER_TYPES = frozenset({"folder", "compass_folder"})
+
+
 @dataclass
 class CopyStats:
     """Summary of a copy operation."""
@@ -85,7 +90,7 @@ class CopyService:
         resource = self.resource_service.get_resource(source_rid)
         resource_type = (resource.get("type") or "").lower()
 
-        if "dataset" in resource_type:
+        if resource_type in DATASET_TYPES:
             self._log_info(
                 f"Copying dataset '{resource.get('display_name') or resource.get('name') or source_rid}' "
                 f"({source_rid}) → folder {target_folder_rid}"
@@ -95,7 +100,7 @@ class CopyService:
             except Exception:
                 self.stats.errors += 1
                 raise
-        elif "folder" in resource_type:
+        elif resource_type in FOLDER_TYPES:
             if not recursive:
                 raise RuntimeError(
                     "Source resource is a folder. Pass --recursive to copy folder contents."
@@ -169,14 +174,16 @@ class CopyService:
             )
             return
 
-        transaction = self.dataset_service.create_transaction(
-            target_rid, branch=self.branch, transaction_type="SNAPSHOT"
-        )
-        transaction_rid = transaction.get("transaction_rid")
-        if not transaction_rid:
-            raise RuntimeError("Could not open transaction on new dataset")
-
+        # Wrap transaction creation in try block to ensure cleanup on any failure
+        transaction_rid = None
         try:
+            transaction = self.dataset_service.create_transaction(
+                target_rid, branch=self.branch, transaction_type="SNAPSHOT"
+            )
+            transaction_rid = transaction.get("transaction_rid")
+            if not transaction_rid:
+                raise RuntimeError("Could not open transaction on new dataset")
+
             with tempfile.TemporaryDirectory(prefix="pltr-cp-") as tmpdir:
                 temp_dir = Path(tmpdir)
                 for file_info in files:
@@ -206,13 +213,15 @@ class CopyService:
             self.dataset_service.commit_transaction(target_rid, transaction_rid)
             self._log_info(f"  Committed transaction {transaction_rid}")
         except Exception as exc:
-            try:
-                self.dataset_service.abort_transaction(target_rid, transaction_rid)
-                self._log_warning(f"  Rolled back transaction {transaction_rid}")
-            except Exception:
-                self._log_warning(
-                    f"  Failed to roll back transaction {transaction_rid}"
-                )
+            # Only attempt rollback if we successfully created a transaction
+            if transaction_rid:
+                try:
+                    self.dataset_service.abort_transaction(target_rid, transaction_rid)
+                    self._log_warning(f"  Rolled back transaction {transaction_rid}")
+                except Exception:
+                    self._log_warning(
+                        f"  Failed to roll back transaction {transaction_rid}"
+                    )
 
             if self.debug:
                 traceback.print_exc()
@@ -277,9 +286,9 @@ class CopyService:
             resource_type = resource_type_raw.lower()
 
             try:
-                if "folder" in resource_type:
+                if resource_type in FOLDER_TYPES:
                     self._copy_folder(child, new_folder_rid)
-                elif "dataset" in resource_type:
+                elif resource_type in DATASET_TYPES:
                     self._copy_dataset(child, new_folder_rid)
                 else:
                     self._report_skip(
@@ -296,11 +305,13 @@ class CopyService:
     # ------------------------------------------------------------------ helpers
     def _sanitize_local_path(self, original_path: str) -> str:
         """Return a safe relative path for storing temporary files."""
-        clean = PurePosixPath(original_path.lstrip("/"))
-        if ".." in clean.parts:
+        # Check for path traversal BEFORE normalization to prevent attacks
+        # like "/foo/../../../etc/passwd" being normalized
+        if ".." in original_path:
             raise ValueError(
                 f"Dataset file uses unsupported relative path: {original_path}"
             )
+        clean = PurePosixPath(original_path.lstrip("/"))
         return clean.as_posix()
 
     def _derive_name(self, base_name: str) -> str:
