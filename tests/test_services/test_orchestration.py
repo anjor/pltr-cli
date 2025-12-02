@@ -225,7 +225,7 @@ def test_get_builds_batch_too_many(mock_orchestration_service):
 
     build_rids = ["rid" + str(i) for i in range(101)]  # 101 builds
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         service.get_builds_batch(build_rids)
 
     assert "Maximum batch size is 100" in str(exc_info.value)

@@ -165,10 +165,11 @@ class OrchestrationService(BaseService):
         Returns:
             Batch response with build information
         """
-        try:
-            if len(build_rids) > 100:
-                raise ValueError("Maximum batch size is 100 builds")
+        if len(build_rids) > 100:
+            raise ValueError("Maximum batch size is 100 builds")
 
+        try:
+            # SDK expects list of {"rid": ...} objects for batch operations
             body = [{"rid": rid} for rid in build_rids]
             response = self.service.Build.get_batch(body)
             return self._format_builds_batch_response(response)

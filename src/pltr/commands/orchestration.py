@@ -226,7 +226,7 @@ def get_build_jobs(
 
         if response.get("next_page_token"):
             formatter.print_info(
-                f"More results available. Next page token: {response['next_page_token']}"
+                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
             )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
@@ -270,7 +270,7 @@ def search_builds(
 
         if response.get("next_page_token"):
             formatter.print_info(
-                f"More results available. Next page token: {response['next_page_token']}"
+                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
             )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
