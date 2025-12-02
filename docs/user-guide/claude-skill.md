@@ -25,7 +25,7 @@ cp -r claude_skill ~/.claude/skills/pltr
 
 Before using the skill, ensure you have:
 
-1. **Claude Code installed** - [Installation instructions](https://docs.anthropic.com/claude-code)
+1. **Claude Code installed** - Install via `npm install -g @anthropic-ai/claude-code` or see [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code)
 2. **pltr-cli installed**:
    ```bash
    pip install pltr-cli
@@ -135,7 +135,7 @@ To improve the skill:
 
 ## Related Documentation
 
-- [Quick Start Guide](quick-start.md)
-- [Command Reference](commands.md)
-- [Common Workflows](workflows.md)
-- [Authentication Guide](authentication.md)
+- [Quick Start Guide](./quick-start.md) - Get started with pltr-cli
+- [Command Reference](./commands.md) - Complete command documentation
+- [Common Workflows](./workflows.md) - Real-world usage patterns
+- [Authentication Guide](./authentication.md) - Setup and security

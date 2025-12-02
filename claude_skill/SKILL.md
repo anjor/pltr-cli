@@ -7,6 +7,13 @@ description: "Helps you work with Palantir Foundry using the pltr CLI. Use this 
 
 This skill helps you use the pltr-cli to interact with Palantir Foundry effectively.
 
+## Compatibility
+
+- **Skill version**: 1.0.0
+- **pltr-cli version**: 0.11.0+
+- **Python**: 3.9, 3.10, 3.11, 3.12
+- **Dependencies**: foundry-platform-sdk >= 1.27.0
+
 ## Overview
 
 pltr-cli is a comprehensive CLI with 80+ commands for:
