@@ -3,7 +3,7 @@ Admin service wrapper for Foundry SDK admin operations.
 Provides a high-level interface for user, group, role, and organization management.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import json
 
 from .base import BaseService
@@ -127,6 +127,43 @@ class AdminService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to revoke tokens for user {user_id}: {str(e)}")
 
+    def delete_user(self, user_id: str) -> Dict[str, Any]:
+        """
+        Delete a specific user.
+
+        Args:
+            user_id: The user ID or RID
+
+        Returns:
+            Dictionary containing operation result
+        """
+        try:
+            self.service.User.delete(user_id)
+            return {
+                "success": True,
+                "message": f"User {user_id} deleted successfully",
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to delete user {user_id}: {str(e)}")
+
+    def get_batch_users(self, user_ids: List[str]) -> Dict[str, Any]:
+        """
+        Batch retrieve multiple users (up to 500).
+
+        Args:
+            user_ids: List of user IDs or RIDs
+
+        Returns:
+            Dictionary containing user information
+        """
+        if len(user_ids) > 500:
+            raise ValueError("Maximum batch size is 500 users")
+        try:
+            response = self.service.User.get_batch(body=user_ids)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get users batch: {str(e)}")
+
     # Group Management Methods
     def list_groups(
         self, page_size: Optional[int] = None, page_token: Optional[str] = None
@@ -239,6 +276,136 @@ class AdminService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to delete group {group_id}: {str(e)}")
 
+    def get_batch_groups(self, group_ids: List[str]) -> Dict[str, Any]:
+        """
+        Batch retrieve multiple groups (up to 500).
+
+        Args:
+            group_ids: List of group IDs or RIDs
+
+        Returns:
+            Dictionary containing group information
+        """
+        if len(group_ids) > 500:
+            raise ValueError("Maximum batch size is 500 groups")
+        try:
+            response = self.service.Group.get_batch(body=group_ids)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get groups batch: {str(e)}")
+
+    # Marking Management Methods
+    def list_markings(
+        self, page_size: Optional[int] = None, page_token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List all markings.
+
+        Args:
+            page_size: Maximum number of markings to return per page
+            page_token: Token for pagination (from previous response)
+
+        Returns:
+            Dictionary containing marking list and pagination info
+        """
+        try:
+            response = self.service.Marking.list(
+                page_size=page_size, page_token=page_token, preview=True
+            )
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to list markings: {str(e)}")
+
+    def get_marking(self, marking_id: str) -> Dict[str, Any]:
+        """
+        Get a specific marking by ID.
+
+        Args:
+            marking_id: The marking ID
+
+        Returns:
+            Dictionary containing marking information
+        """
+        try:
+            response = self.service.Marking.get(marking_id, preview=True)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get marking {marking_id}: {str(e)}")
+
+    def get_batch_markings(self, marking_ids: List[str]) -> Dict[str, Any]:
+        """
+        Batch retrieve multiple markings (up to 500).
+
+        Args:
+            marking_ids: List of marking IDs
+
+        Returns:
+            Dictionary containing marking information
+        """
+        if len(marking_ids) > 500:
+            raise ValueError("Maximum batch size is 500 markings")
+        try:
+            response = self.service.Marking.get_batch(body=marking_ids, preview=True)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get markings batch: {str(e)}")
+
+    def create_marking(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        category_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new marking.
+
+        Args:
+            name: The marking name
+            description: Optional marking description
+            category_id: Optional category ID for the marking
+
+        Returns:
+            Dictionary containing created marking information
+        """
+        try:
+            create_params: Dict[str, Any] = {"name": name, "preview": True}
+            if description:
+                create_params["description"] = description
+            if category_id:
+                create_params["category_id"] = category_id
+
+            response = self.service.Marking.create(**create_params)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create marking '{name}': {str(e)}")
+
+    def replace_marking(
+        self,
+        marking_id: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Replace/update an existing marking.
+
+        Args:
+            marking_id: The marking ID
+            name: The new marking name
+            description: Optional new marking description
+
+        Returns:
+            Dictionary containing updated marking information
+        """
+        try:
+            replace_params: Dict[str, Any] = {"name": name, "preview": True}
+            if description:
+                replace_params["description"] = description
+
+            response = self.service.Marking.replace(marking_id, **replace_params)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to replace marking {marking_id}: {str(e)}")
+
     # Organization Management Methods
     def get_organization(self, organization_id: str) -> Dict[str, Any]:
         """
@@ -258,6 +425,98 @@ class AdminService(BaseService):
                 f"Failed to get organization {organization_id}: {str(e)}"
             )
 
+    def create_organization(
+        self,
+        name: str,
+        enrollment_rid: str,
+        admin_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new organization.
+
+        Args:
+            name: The organization name
+            enrollment_rid: The enrollment RID
+            admin_ids: Optional list of admin user IDs
+
+        Returns:
+            Dictionary containing created organization information
+        """
+        try:
+            create_params: Dict[str, Any] = {
+                "name": name,
+                "enrollment_rid": enrollment_rid,
+                "preview": True,
+            }
+            if admin_ids:
+                create_params["admin_ids"] = admin_ids
+
+            response = self.service.Organization.create(**create_params)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create organization '{name}': {str(e)}")
+
+    def replace_organization(
+        self,
+        organization_rid: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Replace/update an existing organization.
+
+        Args:
+            organization_rid: The organization RID
+            name: The new organization name
+            description: Optional new organization description
+
+        Returns:
+            Dictionary containing updated organization information
+        """
+        try:
+            replace_params: Dict[str, Any] = {"name": name, "preview": True}
+            if description:
+                replace_params["description"] = description
+
+            response = self.service.Organization.replace(
+                organization_rid, **replace_params
+            )
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to replace organization {organization_rid}: {str(e)}"
+            )
+
+    def list_available_roles(
+        self,
+        organization_rid: str,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        List available roles for an organization.
+
+        Args:
+            organization_rid: The organization RID
+            page_size: Maximum number of roles to return per page
+            page_token: Token for pagination (from previous response)
+
+        Returns:
+            Dictionary containing role list and pagination info
+        """
+        try:
+            response = self.service.Organization.list_available_roles(
+                organization_rid,
+                page_size=page_size,
+                page_token=page_token,
+                preview=True,
+            )
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list available roles for organization {organization_rid}: {str(e)}"
+            )
+
     # Role Management Methods
     def get_role(self, role_id: str) -> Dict[str, Any]:
         """
@@ -274,6 +533,24 @@ class AdminService(BaseService):
             return self._serialize_response(response)
         except Exception as e:
             raise RuntimeError(f"Failed to get role {role_id}: {str(e)}")
+
+    def get_batch_roles(self, role_ids: List[str]) -> Dict[str, Any]:
+        """
+        Batch retrieve multiple roles (up to 500).
+
+        Args:
+            role_ids: List of role IDs or RIDs
+
+        Returns:
+            Dictionary containing role information
+        """
+        if len(role_ids) > 500:
+            raise ValueError("Maximum batch size is 500 roles")
+        try:
+            response = self.service.Role.get_batch(body=role_ids, preview=True)
+            return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get roles batch: {str(e)}")
 
     def _serialize_response(self, response: Any) -> Dict[str, Any]:
         """
