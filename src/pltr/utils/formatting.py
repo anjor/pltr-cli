@@ -826,6 +826,38 @@ class OutputFormatter:
 
         return self.format_output(formatted_schedules, format_type, output_file)
 
+    def format_schedule_runs_list(
+        self,
+        runs: List[Dict[str, Any]],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format list of schedule runs.
+
+        Args:
+            runs: List of schedule run dictionaries
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        formatted_runs = []
+        for run in runs:
+            build_rid = run.get("build_rid", "")
+            formatted_run = {
+                "RID": run.get("rid", ""),
+                "Status": run.get("status", ""),
+                "Started": self._format_datetime(run.get("started_time")),
+                "Finished": self._format_datetime(run.get("finished_time")),
+                "Build": build_rid[:40] + "..." if len(build_rid) > 40 else build_rid,
+                "Result": run.get("result", ""),
+            }
+            formatted_runs.append(formatted_run)
+
+        return self.format_output(formatted_runs, format_type, output_file)
+
     # MediaSets formatting methods
 
     def format_media_item_info(
