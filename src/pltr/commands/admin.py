@@ -4,7 +4,7 @@ Provides commands for user, group, role, and organization management.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -23,12 +23,14 @@ user_app = typer.Typer(name="user", help="User management operations")
 group_app = typer.Typer(name="group", help="Group management operations")
 role_app = typer.Typer(name="role", help="Role management operations")
 org_app = typer.Typer(name="org", help="Organization management operations")
+marking_app = typer.Typer(name="marking", help="Marking management operations")
 
 # Add sub-apps to main admin app
 app.add_typer(user_app, name="user")
 app.add_typer(group_app, name="group")
 app.add_typer(role_app, name="role")
 app.add_typer(org_app, name="org")
+app.add_typer(marking_app, name="marking")
 
 
 # User Management Commands
@@ -258,6 +260,78 @@ def revoke_user_tokens(
         raise typer.Exit(code=1)
 
 
+@user_app.command("delete")
+def delete_user(
+    user_id: str = typer.Argument(..., help="User ID or RID"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+) -> None:
+    """Delete a specific user."""
+    console = Console()
+
+    # Confirmation prompt
+    if not confirm:
+        user_confirm = typer.confirm(f"Are you sure you want to delete user {user_id}?")
+        if not user_confirm:
+            console.print("Operation cancelled.")
+            return
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(f"Deleting user {user_id}..."):
+            result = service.delete_user(user_id)
+
+        console.print(f"[green]{result['message']}[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@user_app.command("batch-get")
+def batch_get_users(
+    user_ids: List[str] = typer.Argument(
+        ..., help="User IDs or RIDs (space-separated, max 500)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Batch retrieve multiple users (max 500)."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching {len(user_ids)} users..."
+        ):
+            result = service.get_batch_users(user_ids)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
 # Group Management Commands
 @group_app.command("list")
 def list_groups(
@@ -456,6 +530,47 @@ def delete_group(
         raise typer.Exit(code=1)
 
 
+@group_app.command("batch-get")
+def batch_get_groups(
+    group_ids: List[str] = typer.Argument(
+        ..., help="Group IDs or RIDs (space-separated, max 500)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Batch retrieve multiple groups (max 500)."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching {len(group_ids)} groups..."
+        ):
+            result = service.get_batch_groups(group_ids)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
 # Role Management Commands
 @role_app.command("get")
 def get_role(
@@ -487,6 +602,47 @@ def get_role(
         else:
             formatter.display(result, output_format)
 
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@role_app.command("batch-get")
+def batch_get_roles(
+    role_ids: List[str] = typer.Argument(
+        ..., help="Role IDs or RIDs (space-separated, max 500)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Batch retrieve multiple roles (max 500)."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching {len(role_ids)} roles..."
+        ):
+            result = service.get_batch_roles(role_ids)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(code=1)
@@ -524,6 +680,361 @@ def get_organization(
             console.print(f"Results saved to {output_file}")
         else:
             formatter.display(result, output_format)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@org_app.command("create")
+def create_organization(
+    name: str = typer.Argument(..., help="Organization name"),
+    enrollment_rid: str = typer.Option(..., "--enrollment-rid", help="Enrollment RID"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    admin_ids: Optional[List[str]] = typer.Option(
+        None, "--admin-id", help="Admin user IDs (can specify multiple)"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Create a new organization."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Creating organization '{name}'..."
+        ):
+            result = service.create_organization(
+                name=name, enrollment_rid=enrollment_rid, admin_ids=admin_ids
+            )
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+            console.print(f"[green]Organization '{name}' created successfully[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@org_app.command("replace")
+def replace_organization(
+    organization_rid: str = typer.Argument(..., help="Organization RID"),
+    name: str = typer.Argument(..., help="New organization name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", help="New organization description"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+) -> None:
+    """Replace/update an existing organization."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    if not confirm:
+        user_confirm = typer.confirm(
+            f"Are you sure you want to replace organization {organization_rid}?"
+        )
+        if not user_confirm:
+            console.print("Operation cancelled.")
+            return
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Replacing organization {organization_rid}..."
+        ):
+            result = service.replace_organization(
+                organization_rid=organization_rid, name=name, description=description
+            )
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+            console.print(
+                f"[green]Organization '{organization_rid}' replaced successfully[/green]"
+            )
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@org_app.command("available-roles")
+def list_available_roles(
+    organization_rid: str = typer.Argument(..., help="Organization RID"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of roles per page"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Pagination token from previous response"
+    ),
+) -> None:
+    """List available roles for an organization."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching available roles for organization {organization_rid}..."
+        ):
+            result = service.list_available_roles(
+                organization_rid, page_size=page_size, page_token=page_token
+            )
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+# Marking Management Commands
+@marking_app.command("list")
+def list_markings(
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of markings per page"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Pagination token from previous response"
+    ),
+) -> None:
+    """List all markings."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner("Fetching markings..."):
+            result = service.list_markings(page_size=page_size, page_token=page_token)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@marking_app.command("get")
+def get_marking(
+    marking_id: str = typer.Argument(..., help="Marking ID"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Get information about a specific marking."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching marking {marking_id}..."
+        ):
+            result = service.get_marking(marking_id)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@marking_app.command("batch-get")
+def batch_get_markings(
+    marking_ids: List[str] = typer.Argument(
+        ..., help="Marking IDs (space-separated, max 500)"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Batch retrieve multiple markings (max 500)."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching {len(marking_ids)} markings..."
+        ):
+            result = service.get_batch_markings(marking_ids)
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@marking_app.command("create")
+def create_marking(
+    name: str = typer.Argument(..., help="Marking name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", help="Marking description"
+    ),
+    category_id: Optional[str] = typer.Option(
+        None, "--category-id", help="Category ID for the marking"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+) -> None:
+    """Create a new marking."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(f"Creating marking '{name}'..."):
+            result = service.create_marking(
+                name=name, description=description, category_id=category_id
+            )
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+            console.print(f"[green]Marking '{name}' created successfully[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+
+@marking_app.command("replace")
+def replace_marking(
+    marking_id: str = typer.Argument(..., help="Marking ID"),
+    name: str = typer.Argument(..., help="New marking name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Auth profile to use"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", help="New marking description"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format (table, json, csv)"
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None, "--output", help="Save results to file"
+    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+) -> None:
+    """Replace/update an existing marking."""
+    console = Console()
+    formatter = OutputFormatter()
+
+    if not confirm:
+        user_confirm = typer.confirm(
+            f"Are you sure you want to replace marking {marking_id}?"
+        )
+        if not user_confirm:
+            console.print("Operation cancelled.")
+            return
+
+    try:
+        service = AdminService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Replacing marking {marking_id}..."
+        ):
+            result = service.replace_marking(
+                marking_id=marking_id, name=name, description=description
+            )
+
+        if output_file:
+            formatter.save_to_file(result, output_file, output_format)
+            console.print(f"Results saved to {output_file}")
+        else:
+            formatter.display(result, output_format)
+            console.print(
+                f"[green]Marking '{marking_id}' replaced successfully[/green]"
+            )
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")

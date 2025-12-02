@@ -20,6 +20,7 @@ class TestAdminService:
         client.admin.Group = Mock()
         client.admin.Role = Mock()
         client.admin.Organization = Mock()
+        client.admin.Marking = Mock()
         return client
 
     @pytest.fixture
@@ -412,3 +413,359 @@ class TestAdminService:
         # Assert
         assert "data" in result
         assert isinstance(result["data"], str)
+
+    # New User Management Tests
+    def test_delete_user(self, service, mock_client):
+        """Test deleting a user."""
+        # Setup
+        user_id = "user123"
+        mock_client.admin.User.delete.return_value = None
+
+        # Execute
+        result = service.delete_user(user_id)
+
+        # Assert
+        mock_client.admin.User.delete.assert_called_once_with(user_id)
+        assert result["success"] is True
+        assert "deleted" in result["message"]
+
+    def test_delete_user_error(self, service, mock_client):
+        """Test error handling in delete_user."""
+        # Setup
+        user_id = "user123"
+        mock_client.admin.User.delete.side_effect = Exception("User not found")
+
+        # Execute & Assert
+        with pytest.raises(RuntimeError, match="Failed to delete user"):
+            service.delete_user(user_id)
+
+    def test_get_batch_users(self, service, mock_client):
+        """Test batch getting users."""
+        # Setup
+        user_ids = ["user1", "user2"]
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "user1", "username": "john"},
+                {"id": "user2", "username": "jane"},
+            ]
+        }
+        mock_client.admin.User.get_batch.return_value = mock_response
+
+        # Execute
+        result = service.get_batch_users(user_ids)
+
+        # Assert
+        mock_client.admin.User.get_batch.assert_called_once_with(body=user_ids)
+        assert "data" in result
+
+    def test_get_batch_users_exceeds_limit(self, service, mock_client):
+        """Test batch get users exceeds limit."""
+        # Setup
+        user_ids = [f"user{i}" for i in range(501)]
+
+        # Execute & Assert
+        with pytest.raises(ValueError, match="Maximum batch size is 500"):
+            service.get_batch_users(user_ids)
+
+    # New Group Management Tests
+    def test_get_batch_groups(self, service, mock_client):
+        """Test batch getting groups."""
+        # Setup
+        group_ids = ["group1", "group2"]
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "group1", "name": "Engineering"},
+                {"id": "group2", "name": "Product"},
+            ]
+        }
+        mock_client.admin.Group.get_batch.return_value = mock_response
+
+        # Execute
+        result = service.get_batch_groups(group_ids)
+
+        # Assert
+        mock_client.admin.Group.get_batch.assert_called_once_with(body=group_ids)
+        assert "data" in result
+
+    def test_get_batch_groups_exceeds_limit(self, service, mock_client):
+        """Test batch get groups exceeds limit."""
+        # Setup
+        group_ids = [f"group{i}" for i in range(501)]
+
+        # Execute & Assert
+        with pytest.raises(ValueError, match="Maximum batch size is 500"):
+            service.get_batch_groups(group_ids)
+
+    # Marking Management Tests
+    def test_list_markings(self, service, mock_client):
+        """Test listing markings."""
+        # Setup
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "marking1", "name": "Confidential"},
+                {"id": "marking2", "name": "Public"},
+            ],
+            "nextPageToken": None,
+        }
+        mock_client.admin.Marking.list.return_value = mock_response
+
+        # Execute
+        result = service.list_markings()
+
+        # Assert
+        mock_client.admin.Marking.list.assert_called_once_with(
+            page_size=None, page_token=None, preview=True
+        )
+        assert "data" in result
+
+    def test_get_marking(self, service, mock_client):
+        """Test getting a specific marking."""
+        # Setup
+        marking_id = "marking123"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": marking_id,
+            "name": "Confidential",
+            "description": "Confidential marking",
+        }
+        mock_client.admin.Marking.get.return_value = mock_response
+
+        # Execute
+        result = service.get_marking(marking_id)
+
+        # Assert
+        mock_client.admin.Marking.get.assert_called_once_with(marking_id, preview=True)
+        assert result["id"] == marking_id
+
+    def test_get_batch_markings(self, service, mock_client):
+        """Test batch getting markings."""
+        # Setup
+        marking_ids = ["marking1", "marking2"]
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "marking1", "name": "Confidential"},
+                {"id": "marking2", "name": "Public"},
+            ]
+        }
+        mock_client.admin.Marking.get_batch.return_value = mock_response
+
+        # Execute
+        result = service.get_batch_markings(marking_ids)
+
+        # Assert
+        mock_client.admin.Marking.get_batch.assert_called_once_with(
+            body=marking_ids, preview=True
+        )
+        assert "data" in result
+
+    def test_get_batch_markings_exceeds_limit(self, service, mock_client):
+        """Test batch get markings exceeds limit."""
+        # Setup
+        marking_ids = [f"marking{i}" for i in range(501)]
+
+        # Execute & Assert
+        with pytest.raises(ValueError, match="Maximum batch size is 500"):
+            service.get_batch_markings(marking_ids)
+
+    def test_create_marking(self, service, mock_client):
+        """Test creating a marking."""
+        # Setup
+        marking_name = "New Marking"
+        description = "Test description"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": "new_marking_id",
+            "name": marking_name,
+            "description": description,
+        }
+        mock_client.admin.Marking.create.return_value = mock_response
+
+        # Execute
+        result = service.create_marking(name=marking_name, description=description)
+
+        # Assert
+        mock_client.admin.Marking.create.assert_called_once_with(
+            name=marking_name, description=description, preview=True
+        )
+        assert result["name"] == marking_name
+
+    def test_create_marking_minimal(self, service, mock_client):
+        """Test creating a marking with only name."""
+        # Setup
+        marking_name = "Simple Marking"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": "simple_marking_id",
+            "name": marking_name,
+        }
+        mock_client.admin.Marking.create.return_value = mock_response
+
+        # Execute
+        result = service.create_marking(name=marking_name)
+
+        # Assert
+        mock_client.admin.Marking.create.assert_called_once_with(
+            name=marking_name, preview=True
+        )
+        assert result["name"] == marking_name
+
+    def test_replace_marking(self, service, mock_client):
+        """Test replacing a marking."""
+        # Setup
+        marking_id = "marking123"
+        new_name = "Updated Marking"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": marking_id,
+            "name": new_name,
+        }
+        mock_client.admin.Marking.replace.return_value = mock_response
+
+        # Execute
+        result = service.replace_marking(marking_id=marking_id, name=new_name)
+
+        # Assert
+        mock_client.admin.Marking.replace.assert_called_once_with(
+            marking_id, name=new_name, preview=True
+        )
+        assert result["name"] == new_name
+
+    def test_create_marking_error(self, service, mock_client):
+        """Test error handling in create_marking."""
+        # Setup
+        mock_client.admin.Marking.create.side_effect = Exception("Permission denied")
+
+        # Execute & Assert
+        with pytest.raises(RuntimeError, match="Failed to create marking"):
+            service.create_marking(name="Test Marking")
+
+    # New Organization Management Tests
+    def test_create_organization(self, service, mock_client):
+        """Test creating an organization."""
+        # Setup
+        org_name = "New Org"
+        enrollment_rid = "enrollment123"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": "new_org_id",
+            "name": org_name,
+        }
+        mock_client.admin.Organization.create.return_value = mock_response
+
+        # Execute
+        result = service.create_organization(
+            name=org_name, enrollment_rid=enrollment_rid
+        )
+
+        # Assert
+        mock_client.admin.Organization.create.assert_called_once_with(
+            name=org_name, enrollment_rid=enrollment_rid, preview=True
+        )
+        assert result["name"] == org_name
+
+    def test_create_organization_with_admins(self, service, mock_client):
+        """Test creating an organization with admin IDs."""
+        # Setup
+        org_name = "New Org"
+        enrollment_rid = "enrollment123"
+        admin_ids = ["admin1", "admin2"]
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": "new_org_id",
+            "name": org_name,
+        }
+        mock_client.admin.Organization.create.return_value = mock_response
+
+        # Execute
+        result = service.create_organization(
+            name=org_name, enrollment_rid=enrollment_rid, admin_ids=admin_ids
+        )
+
+        # Assert
+        mock_client.admin.Organization.create.assert_called_once_with(
+            name=org_name,
+            enrollment_rid=enrollment_rid,
+            admin_ids=admin_ids,
+            preview=True,
+        )
+        assert result["name"] == org_name
+
+    def test_replace_organization(self, service, mock_client):
+        """Test replacing an organization."""
+        # Setup
+        org_rid = "org123"
+        new_name = "Updated Org"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "id": org_rid,
+            "name": new_name,
+        }
+        mock_client.admin.Organization.replace.return_value = mock_response
+
+        # Execute
+        result = service.replace_organization(organization_rid=org_rid, name=new_name)
+
+        # Assert
+        mock_client.admin.Organization.replace.assert_called_once_with(
+            org_rid, name=new_name, preview=True
+        )
+        assert result["name"] == new_name
+
+    def test_list_available_roles(self, service, mock_client):
+        """Test listing available roles for an organization."""
+        # Setup
+        org_rid = "org123"
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "role1", "name": "Admin"},
+                {"id": "role2", "name": "Editor"},
+            ],
+            "nextPageToken": None,
+        }
+        mock_client.admin.Organization.list_available_roles.return_value = mock_response
+
+        # Execute
+        result = service.list_available_roles(org_rid)
+
+        # Assert
+        mock_client.admin.Organization.list_available_roles.assert_called_once_with(
+            org_rid, page_size=None, page_token=None, preview=True
+        )
+        assert "data" in result
+
+    # New Role Management Tests
+    def test_get_batch_roles(self, service, mock_client):
+        """Test batch getting roles."""
+        # Setup
+        role_ids = ["role1", "role2"]
+        mock_response = Mock()
+        mock_response.dict.return_value = {
+            "data": [
+                {"id": "role1", "name": "Admin"},
+                {"id": "role2", "name": "Editor"},
+            ]
+        }
+        mock_client.admin.Role.get_batch.return_value = mock_response
+
+        # Execute
+        result = service.get_batch_roles(role_ids)
+
+        # Assert
+        mock_client.admin.Role.get_batch.assert_called_once_with(
+            body=role_ids, preview=True
+        )
+        assert "data" in result
+
+    def test_get_batch_roles_exceeds_limit(self, service, mock_client):
+        """Test batch get roles exceeds limit."""
+        # Setup
+        role_ids = [f"role{i}" for i in range(501)]
+
+        # Execute & Assert
+        with pytest.raises(ValueError, match="Maximum batch size is 500"):
+            service.get_batch_roles(role_ids)
