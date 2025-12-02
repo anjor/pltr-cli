@@ -405,6 +405,180 @@ def get_media_reference(
         raise typer.Exit(1)
 
 
+@app.command("thumbnail-calculate")
+def thumbnail_calculate(
+    media_set_rid: str = typer.Argument(
+        ..., help="Media Set Resource Identifier", autocompletion=complete_rid
+    ),
+    media_item_rid: str = typer.Argument(
+        ..., help="Media Item Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
+):
+    """Initiate thumbnail generation for an image."""
+    try:
+        cache_rid(media_set_rid)
+        cache_rid(media_item_rid)
+        service = MediaSetsService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Initiating thumbnail calculation for {media_item_rid}..."
+        ):
+            status = service.calculate_thumbnail(
+                media_set_rid, media_item_rid, preview=preview
+            )
+
+        formatter.format_thumbnail_status(status, format, output)
+
+        if output:
+            formatter.print_success(f"Thumbnail status saved to {output}")
+        else:
+            formatter.print_info(
+                "Use 'thumbnail-retrieve' to download once calculation completes"
+            )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to calculate thumbnail: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("thumbnail-retrieve")
+def thumbnail_retrieve(
+    media_set_rid: str = typer.Argument(
+        ..., help="Media Set Resource Identifier", autocompletion=complete_rid
+    ),
+    media_item_rid: str = typer.Argument(
+        ..., help="Media Item Resource Identifier", autocompletion=complete_rid
+    ),
+    output_path: str = typer.Argument(
+        ..., help="Local path where thumbnail should be saved"
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
+    overwrite: bool = typer.Option(
+        False, "--overwrite", help="Overwrite existing file"
+    ),
+):
+    """Download a calculated thumbnail from a media set (200px wide webp)."""
+    try:
+        # Check if output file already exists
+        output_path_obj = Path(output_path)
+        if output_path_obj.exists() and not overwrite:
+            formatter.print_error(f"File already exists: {output_path}")
+            formatter.print_info("Use --overwrite to replace existing file")
+            raise typer.Exit(1)
+
+        cache_rid(media_set_rid)
+        cache_rid(media_item_rid)
+        service = MediaSetsService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner("Downloading thumbnail..."):
+            result = service.retrieve_thumbnail(
+                media_set_rid,
+                media_item_rid,
+                output_path,
+                preview=preview,
+            )
+
+        formatter.print_success("Successfully downloaded thumbnail")
+        formatter.print_info(f"Saved to: {result['output_path']}")
+        formatter.print_info(f"File size: {result['file_size']} bytes")
+        formatter.print_info(f"Format: {result['format']}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to retrieve thumbnail: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("upload-temp")
+def upload_temp(
+    file_path: str = typer.Argument(..., help="Local path to the file to upload"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    filename: Optional[str] = typer.Option(
+        None, "--filename", help="Override filename for the upload"
+    ),
+    attribution: Optional[str] = typer.Option(
+        None, "--attribution", help="Attribution string for the media"
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
+):
+    """Upload temporary media (auto-deleted after 1 hour if not persisted)."""
+    try:
+        # Validate file exists
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            formatter.print_error(f"File not found: {file_path}")
+            raise typer.Exit(1)
+
+        service = MediaSetsService(profile=profile)
+
+        file_size = file_path_obj.stat().st_size
+        formatter.print_info(f"Uploading {file_path} ({file_size} bytes)")
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Uploading {file_path_obj.name}..."
+        ):
+            reference = service.upload_temp_media(
+                file_path,
+                filename=filename,
+                attribution=attribution,
+                preview=preview,
+            )
+
+        formatter.print_success("Successfully uploaded temporary media")
+        formatter.format_media_reference(reference, format, output)
+
+        if output:
+            formatter.print_success(f"Media reference saved to {output}")
+        else:
+            formatter.print_warning(
+                "This is a temporary upload. It will be deleted after 1 hour if not persisted."
+            )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except FileNotFoundError as e:
+        formatter.print_error(str(e))
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to upload temporary media: {e}")
+        raise typer.Exit(1)
+
+
 @app.callback()
 def main():
     """
@@ -415,6 +589,8 @@ def main():
     - Create, commit, and abort upload transactions
     - Upload media files to media sets
     - Download media items from media sets
+    - Generate and retrieve image thumbnails
+    - Upload temporary media
 
     All operations require Resource Identifiers (RIDs) like:
     ri.mediasets.main.media-set.12345678-1234-1234-1234-123456789abc
