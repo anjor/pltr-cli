@@ -206,6 +206,54 @@ def test_search_builds_success(mock_orchestration_service, sample_build):
     mock_orchestration_service.search_builds.assert_called_once()
 
 
+def test_get_builds_batch_success(mock_orchestration_service, sample_build):
+    """Test successful batch build retrieval."""
+    mock_orchestration_service.get_builds_batch.return_value = {
+        "builds": [sample_build]
+    }
+
+    result = runner.invoke(app, ["builds", "get-batch", "rid1,rid2,rid3"])
+
+    assert result.exit_code == 0
+    mock_orchestration_service.get_builds_batch.assert_called_once()
+    call_args = mock_orchestration_service.get_builds_batch.call_args[0][0]
+    assert len(call_args) == 3
+    assert "rid1" in call_args
+
+
+def test_get_builds_batch_too_many(mock_orchestration_service):
+    """Test batch build retrieval with too many RIDs."""
+    # Create 101 RIDs
+    rids = ",".join([f"rid{i}" for i in range(101)])
+
+    result = runner.invoke(app, ["builds", "get-batch", rids])
+
+    assert result.exit_code == 1
+    assert "Maximum batch size is 100" in result.output
+
+
+def test_get_builds_batch_empty(mock_orchestration_service):
+    """Test batch build retrieval with no results."""
+    mock_orchestration_service.get_builds_batch.return_value = {"builds": []}
+
+    result = runner.invoke(app, ["builds", "get-batch", "rid1,rid2"])
+
+    assert result.exit_code == 0
+    assert "No builds found" in result.output
+
+
+def test_get_builds_batch_with_format(mock_orchestration_service, sample_build):
+    """Test batch build retrieval with different formats."""
+    mock_orchestration_service.get_builds_batch.return_value = {
+        "builds": [sample_build]
+    }
+
+    result = runner.invoke(
+        app, ["builds", "get-batch", "rid1,rid2", "--format", "json"]
+    )
+    assert result.exit_code == 0
+
+
 # Job Command Tests
 def test_get_job_success(mock_orchestration_service, sample_job):
     """Test successful job retrieval."""
@@ -425,6 +473,106 @@ def test_replace_schedule_success(mock_orchestration_service, sample_schedule):
     call_args = mock_orchestration_service.replace_schedule.call_args[1]
     assert call_args["schedule_rid"] == "ri.orchestration.main.schedule.test"
     assert call_args["display_name"] == "Updated Schedule"
+
+
+@pytest.fixture
+def sample_run():
+    """Sample schedule run for testing."""
+    return {
+        "rid": "ri.orchestration.main.run.test",
+        "schedule_rid": "ri.orchestration.main.schedule.test",
+        "status": "COMPLETED",
+        "created_time": "2024-01-01T00:00:00Z",
+        "started_time": "2024-01-01T00:01:00Z",
+        "finished_time": "2024-01-01T00:10:00Z",
+        "build_rid": "ri.orchestration.main.build.test",
+        "result": "SUCCESS",
+    }
+
+
+def test_get_schedule_runs_success(mock_orchestration_service, sample_run):
+    """Test successful schedule runs retrieval."""
+    mock_orchestration_service.get_schedule_runs.return_value = {
+        "runs": [sample_run],
+        "next_page_token": None,
+    }
+
+    result = runner.invoke(
+        app, ["schedules", "runs", "ri.orchestration.main.schedule.test"]
+    )
+
+    assert result.exit_code == 0
+    mock_orchestration_service.get_schedule_runs.assert_called_once()
+
+
+def test_get_schedule_runs_empty(mock_orchestration_service):
+    """Test schedule runs retrieval with no runs."""
+    mock_orchestration_service.get_schedule_runs.return_value = {
+        "runs": [],
+        "next_page_token": None,
+    }
+
+    result = runner.invoke(
+        app, ["schedules", "runs", "ri.orchestration.main.schedule.test"]
+    )
+
+    assert result.exit_code == 0
+    assert "No runs found" in result.output
+
+
+def test_get_schedule_runs_with_pagination(mock_orchestration_service, sample_run):
+    """Test schedule runs retrieval with pagination."""
+    mock_orchestration_service.get_schedule_runs.return_value = {
+        "runs": [sample_run],
+        "next_page_token": "next-token-123",
+    }
+
+    result = runner.invoke(
+        app,
+        [
+            "schedules",
+            "runs",
+            "ri.orchestration.main.schedule.test",
+            "--page-size",
+            "10",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "More results available" in result.output
+
+
+def test_get_schedule_runs_with_format(mock_orchestration_service, sample_run):
+    """Test schedule runs retrieval with different formats."""
+    mock_orchestration_service.get_schedule_runs.return_value = {
+        "runs": [sample_run],
+        "next_page_token": None,
+    }
+
+    result = runner.invoke(
+        app,
+        [
+            "schedules",
+            "runs",
+            "ri.orchestration.main.schedule.test",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_get_schedule_runs_error(mock_orchestration_service):
+    """Test schedule runs retrieval with error."""
+    mock_orchestration_service.get_schedule_runs.side_effect = Exception("API Error")
+
+    result = runner.invoke(
+        app, ["schedules", "runs", "ri.orchestration.main.schedule.test"]
+    )
+
+    assert result.exit_code == 1
+    assert "Failed to get schedule runs" in result.output
 
 
 # Error handling tests

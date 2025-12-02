@@ -155,6 +155,26 @@ class OrchestrationService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to search builds: {e}")
 
+    def get_builds_batch(self, build_rids: List[str]) -> Dict[str, Any]:
+        """
+        Get multiple builds in batch.
+
+        Args:
+            build_rids: List of Build Resource Identifiers (max 100)
+
+        Returns:
+            Batch response with build information
+        """
+        try:
+            if len(build_rids) > 100:
+                raise ValueError("Maximum batch size is 100 builds")
+
+            body = [{"rid": rid} for rid in build_rids]
+            response = self.service.Build.get_batch(body)
+            return self._format_builds_batch_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get builds batch: {e}")
+
     # Job operations
     def get_job(self, job_rid: str) -> Dict[str, Any]:
         """
@@ -353,6 +373,35 @@ class OrchestrationService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to replace schedule {schedule_rid}: {e}")
 
+    def get_schedule_runs(
+        self,
+        schedule_rid: str,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get recent execution runs for a schedule.
+
+        Args:
+            schedule_rid: Schedule Resource Identifier
+            page_size: Number of results per page
+            page_token: Token for pagination
+
+        Returns:
+            Runs list with pagination info
+        """
+        try:
+            kwargs: Dict[str, Any] = {"schedule_rid": schedule_rid}
+            if page_size is not None:
+                kwargs["page_size"] = page_size
+            if page_token is not None:
+                kwargs["page_token"] = page_token
+
+            response = self.service.Schedule.runs(**kwargs)
+            return self._format_schedule_runs_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get runs for schedule {schedule_rid}: {e}")
+
     # Formatting methods
     def _format_build_info(self, build: Any) -> Dict[str, Any]:
         """Format build information for consistent output."""
@@ -453,5 +502,47 @@ class OrchestrationService(BaseService):
             for item in response.data:
                 if hasattr(item, "data"):
                     result["jobs"].append(self._format_job_info(item.data))
+
+        return result
+
+    def _format_builds_batch_response(self, response: Any) -> Dict[str, Any]:
+        """Format builds batch response."""
+        result: Dict[str, Any] = {"builds": []}
+
+        if hasattr(response, "data"):
+            for item in response.data:
+                if hasattr(item, "data"):
+                    result["builds"].append(self._format_build_info(item.data))
+
+        return result
+
+    def _format_run_info(self, run: Any) -> Dict[str, Any]:
+        """Format schedule run information for consistent output."""
+        info = {}
+
+        for attr in [
+            "rid",
+            "schedule_rid",
+            "status",
+            "created_time",
+            "started_time",
+            "finished_time",
+            "build_rid",
+            "result",
+        ]:
+            if hasattr(run, attr):
+                info[attr] = getattr(run, attr)
+
+        return info
+
+    def _format_schedule_runs_response(self, response: Any) -> Dict[str, Any]:
+        """Format schedule runs response."""
+        result: Dict[str, Any] = {"runs": []}
+
+        if hasattr(response, "data"):
+            result["runs"] = [self._format_run_info(run) for run in response.data]
+
+        if hasattr(response, "next_page_token"):
+            result["next_page_token"] = response.next_page_token
 
         return result

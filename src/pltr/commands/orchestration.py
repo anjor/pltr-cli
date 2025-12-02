@@ -281,6 +281,53 @@ def search_builds(
         raise typer.Exit(1)
 
 
+@builds_app.command("get-batch")
+def get_builds_batch(
+    build_rids: str = typer.Argument(
+        ..., help="Comma-separated list of Build RIDs (max 100)"
+    ),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format (table, json, csv)"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Get multiple builds in batch (max 100)."""
+    try:
+        rids_list = [rid.strip() for rid in build_rids.split(",")]
+
+        if len(rids_list) > 100:
+            formatter.print_error("Maximum batch size is 100 builds")
+            raise typer.Exit(1)
+
+        service = OrchestrationService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching {len(rids_list)} builds..."
+        ):
+            response = service.get_builds_batch(rids_list)
+
+        builds = response.get("builds", [])
+
+        if not builds:
+            formatter.print_warning("No builds found")
+            return
+
+        formatter.format_builds_list(builds, format, output)
+
+        if output:
+            formatter.print_success(f"Builds information saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get builds batch: {e}")
+        raise typer.Exit(1)
+
+
 # ============================================================================
 # Job Commands
 # ============================================================================
@@ -652,6 +699,67 @@ def replace_schedule(
         raise typer.Exit(1)
     except Exception as e:
         formatter.print_error(f"Failed to replace schedule: {e}")
+        raise typer.Exit(1)
+
+
+@schedules_app.command("runs")
+def get_schedule_runs(
+    schedule_rid: str = typer.Argument(
+        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of results per page"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Pagination token for next page"
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """List recent execution runs for a schedule."""
+    try:
+        cache_rid(schedule_rid)
+        service = OrchestrationService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching runs for schedule {schedule_rid}..."
+        ):
+            response = service.get_schedule_runs(
+                schedule_rid, page_size=page_size, page_token=page_token
+            )
+
+        runs = response.get("runs", [])
+
+        if not runs:
+            formatter.print_warning("No runs found for this schedule")
+            return
+
+        formatter.format_schedule_runs_list(runs, format, output)
+
+        if output:
+            formatter.print_success(f"Runs list saved to {output}")
+
+        if response.get("next_page_token"):
+            formatter.print_info(
+                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
+            )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to get schedule runs: {e}")
         raise typer.Exit(1)
 
 

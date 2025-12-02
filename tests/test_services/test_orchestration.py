@@ -195,6 +195,54 @@ def test_search_builds_success(mock_orchestration_service, sample_build):
     assert result["next_page_token"] == "next-token"
 
 
+def test_get_builds_batch_success(mock_orchestration_service, sample_build):
+    """Test successful batch build retrieval."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    # Mock batch response
+    mock_response = Mock()
+    mock_item = Mock()
+    mock_item.data = sample_build
+    mock_response.data = [mock_item]
+    mock_build_class.get_batch.return_value = mock_response
+
+    build_rids = ["rid1", "rid2"]
+    result = service.get_builds_batch(build_rids)
+
+    assert len(result["builds"]) == 1
+    assert result["builds"][0]["rid"] == "ri.orchestration.main.build.test-build"
+
+    # Check that batch request was formatted correctly
+    call_args = mock_build_class.get_batch.call_args[0][0]
+    assert len(call_args) == 2
+    assert call_args[0]["rid"] == "rid1"
+    assert call_args[1]["rid"] == "rid2"
+
+
+def test_get_builds_batch_too_many(mock_orchestration_service):
+    """Test batch build retrieval with too many builds."""
+    service, _, _, _ = mock_orchestration_service
+
+    build_rids = ["rid" + str(i) for i in range(101)]  # 101 builds
+
+    with pytest.raises(RuntimeError) as exc_info:
+        service.get_builds_batch(build_rids)
+
+    assert "Maximum batch size is 100" in str(exc_info.value)
+
+
+def test_get_builds_batch_error(mock_orchestration_service):
+    """Test batch build retrieval with error."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    mock_build_class.get_batch.side_effect = Exception("API Error")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        service.get_builds_batch(["rid1", "rid2"])
+
+    assert "Failed to get builds batch" in str(exc_info.value)
+
+
 # Job tests
 def test_get_job_success(mock_orchestration_service, sample_job):
     """Test successful job retrieval."""
@@ -381,6 +429,91 @@ def test_replace_schedule_success(mock_orchestration_service, sample_schedule):
     assert call_args["schedule_rid"] == "ri.orchestration.main.schedule.test-schedule"
     assert call_args["action"] == action
     assert call_args["display_name"] == "Updated Schedule"
+
+
+@pytest.fixture
+def sample_run():
+    """Create sample schedule run object."""
+    run = Mock()
+    run.rid = "ri.orchestration.main.run.test-run"
+    run.schedule_rid = "ri.orchestration.main.schedule.test-schedule"
+    run.status = "COMPLETED"
+    run.created_time = "2024-01-01T00:00:00Z"
+    run.started_time = "2024-01-01T00:01:00Z"
+    run.finished_time = "2024-01-01T00:10:00Z"
+    run.build_rid = "ri.orchestration.main.build.test-build"
+    run.result = "SUCCESS"
+    return run
+
+
+def test_get_schedule_runs_success(mock_orchestration_service, sample_run):
+    """Test successful schedule runs retrieval."""
+    service, _, _, mock_schedule_class = mock_orchestration_service
+
+    # Mock response with runs
+    mock_response = Mock()
+    mock_response.data = [sample_run]
+    mock_response.next_page_token = "next-token"
+    mock_schedule_class.runs.return_value = mock_response
+
+    result = service.get_schedule_runs(
+        "ri.orchestration.main.schedule.test-schedule", page_size=10
+    )
+
+    assert len(result["runs"]) == 1
+    assert result["runs"][0]["rid"] == "ri.orchestration.main.run.test-run"
+    assert result["runs"][0]["status"] == "COMPLETED"
+    assert result["next_page_token"] == "next-token"
+
+    mock_schedule_class.runs.assert_called_once()
+
+
+def test_get_schedule_runs_with_pagination(mock_orchestration_service, sample_run):
+    """Test schedule runs retrieval with pagination parameters."""
+    service, _, _, mock_schedule_class = mock_orchestration_service
+
+    mock_response = Mock()
+    mock_response.data = [sample_run]
+    mock_response.next_page_token = None
+    mock_schedule_class.runs.return_value = mock_response
+
+    result = service.get_schedule_runs(
+        "ri.orchestration.main.schedule.test-schedule",
+        page_size=20,
+        page_token="prev-token",
+    )
+
+    assert len(result["runs"]) == 1
+
+    # Check pagination parameters were passed
+    call_args = mock_schedule_class.runs.call_args[1]
+    assert call_args["page_size"] == 20
+    assert call_args["page_token"] == "prev-token"
+
+
+def test_get_schedule_runs_error(mock_orchestration_service):
+    """Test schedule runs retrieval with error."""
+    service, _, _, mock_schedule_class = mock_orchestration_service
+
+    mock_schedule_class.runs.side_effect = Exception("API Error")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        service.get_schedule_runs("ri.orchestration.main.schedule.test-schedule")
+
+    assert "Failed to get runs for schedule" in str(exc_info.value)
+
+
+def test_format_run_info(mock_orchestration_service, sample_run):
+    """Test run info formatting."""
+    service, _, _, _ = mock_orchestration_service
+
+    result = service._format_run_info(sample_run)
+
+    assert result["rid"] == "ri.orchestration.main.run.test-run"
+    assert result["schedule_rid"] == "ri.orchestration.main.schedule.test-schedule"
+    assert result["status"] == "COMPLETED"
+    assert result["build_rid"] == "ri.orchestration.main.build.test-build"
+    assert result["result"] == "SUCCESS"
 
 
 # Formatting method tests
