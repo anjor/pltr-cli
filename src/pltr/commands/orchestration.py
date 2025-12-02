@@ -226,7 +226,7 @@ def get_build_jobs(
 
         if response.get("next_page_token"):
             formatter.print_info(
-                "More results available. Use pagination token to fetch next page."
+                f"More results available. Next page token: {response['next_page_token']}"
             )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
@@ -270,7 +270,7 @@ def search_builds(
 
         if response.get("next_page_token"):
             formatter.print_info(
-                "More results available. Use pagination token to fetch next page."
+                f"More results available. Next page token: {response['next_page_token']}"
             )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
@@ -296,7 +296,11 @@ def get_builds_batch(
 ):
     """Get multiple builds in batch (max 100)."""
     try:
-        rids_list = [rid.strip() for rid in build_rids.split(",")]
+        rids_list = [rid.strip() for rid in build_rids.split(",") if rid.strip()]
+
+        if not rids_list:
+            formatter.print_error("No valid RIDs provided")
+            raise typer.Exit(1)
 
         if len(rids_list) > 100:
             formatter.print_error("Maximum batch size is 100 builds")

@@ -232,6 +232,15 @@ def test_get_builds_batch_too_many(mock_orchestration_service):
     assert "Maximum batch size is 100" in result.output
 
 
+def test_get_builds_batch_empty_rids(mock_orchestration_service):
+    """Test batch build retrieval with empty/invalid RIDs."""
+    # Empty strings after splitting
+    result = runner.invoke(app, ["builds", "get-batch", ",,, ,"])
+
+    assert result.exit_code == 1
+    assert "No valid RIDs provided" in result.output
+
+
 def test_get_builds_batch_empty(mock_orchestration_service):
     """Test batch build retrieval with no results."""
     mock_orchestration_service.get_builds_batch.return_value = {"builds": []}
