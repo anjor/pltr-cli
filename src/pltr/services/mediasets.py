@@ -226,15 +226,7 @@ class MediaSetsService(BaseService):
                     preview=preview,
                 )
 
-            with open(output_path_obj, "wb") as file:
-                if hasattr(response, "content"):
-                    file.write(response.content)
-                else:
-                    # Handle streaming response
-                    for chunk in response:
-                        file.write(chunk)
-
-            file_size = output_path_obj.stat().st_size
+            file_size = self._write_response_to_file(response, output_path_obj)
             return {
                 "media_set_rid": media_set_rid,
                 "media_item_rid": media_item_rid,
@@ -292,6 +284,26 @@ class MediaSetsService(BaseService):
             "expires_at": getattr(reference_response, "expires_at", None),
         }
 
+    def _write_response_to_file(self, response: Any, output_path: Path) -> int:
+        """
+        Write response content to file and return file size.
+
+        Args:
+            response: SDK response object (with .content attribute or iterable)
+            output_path: Path object for the output file
+
+        Returns:
+            File size in bytes
+        """
+        with open(output_path, "wb") as file:
+            if hasattr(response, "content"):
+                file.write(response.content)
+            else:
+                # Handle streaming response
+                for chunk in response:
+                    file.write(chunk)
+        return output_path.stat().st_size
+
     def calculate_thumbnail(
         self,
         media_set_rid: str,
@@ -348,15 +360,15 @@ class MediaSetsService(BaseService):
                 preview=preview,
             )
 
-            with open(output_path_obj, "wb") as file:
-                if hasattr(response, "content"):
-                    file.write(response.content)
-                else:
-                    # Handle streaming response
-                    for chunk in response:
-                        file.write(chunk)
+            file_size = self._write_response_to_file(response, output_path_obj)
 
-            file_size = output_path_obj.stat().st_size
+            # Validate that we received actual content
+            if file_size == 0:
+                output_path_obj.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "Downloaded thumbnail is empty - thumbnail may not be ready yet"
+                )
+
             return {
                 "media_set_rid": media_set_rid,
                 "media_item_rid": media_item_rid,
