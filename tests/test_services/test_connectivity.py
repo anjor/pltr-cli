@@ -350,3 +350,211 @@ class TestConnectivityService:
             "errors": [],
         }
         assert result == expected
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_create_connection_success(self, mock_client):
+        """Test successful connection creation."""
+        mock_connection = Mock()
+        mock_connection.rid = "ri.conn.main.connection.123"
+        mock_connection.display_name = "New Connection"
+        mock_connection.description = "Description"
+        mock_connection.connection_type = "JDBC"
+        mock_connection.status = "ACTIVE"
+        mock_connection.created_time = "2023-01-01T00:00:00Z"
+        mock_connection.modified_time = "2023-01-01T00:00:00Z"
+
+        mock_client.connections.Connection.create.return_value = mock_connection
+
+        service = ConnectivityService(profile="test")
+        result = service.create_connection(
+            display_name="New Connection",
+            parent_folder_rid="ri.folder.main.123",
+            configuration={"host": "localhost"},
+            worker={"type": "direct"},
+        )
+
+        assert result["rid"] == "ri.conn.main.connection.123"
+        assert result["display_name"] == "New Connection"
+        mock_client.connections.Connection.create.assert_called_once_with(
+            configuration={"host": "localhost"},
+            display_name="New Connection",
+            parent_folder_rid="ri.folder.main.123",
+            worker={"type": "direct"},
+        )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_create_connection_error(self, mock_client):
+        """Test connection creation error handling."""
+        mock_client.connections.Connection.create.side_effect = Exception(
+            "Creation failed"
+        )
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(RuntimeError, match="Failed to create connection"):
+            service.create_connection(
+                display_name="New Connection",
+                parent_folder_rid="ri.folder.main.123",
+                configuration={"host": "localhost"},
+                worker={"type": "direct"},
+            )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_get_connection_configuration_success(self, mock_client):
+        """Test successful connection configuration retrieval."""
+        mock_config = {"host": "localhost", "port": 5432}
+        mock_client.connections.Connection.get_configuration.return_value = mock_config
+
+        service = ConnectivityService(profile="test")
+        result = service.get_connection_configuration("ri.conn.main.connection.123")
+
+        assert result["connection_rid"] == "ri.conn.main.connection.123"
+        assert result["configuration"] == mock_config
+        mock_client.connections.Connection.get_configuration.assert_called_once_with(
+            "ri.conn.main.connection.123"
+        )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_get_connection_configuration_error(self, mock_client):
+        """Test connection configuration retrieval error handling."""
+        mock_client.connections.Connection.get_configuration.side_effect = Exception(
+            "Not found"
+        )
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(RuntimeError, match="Failed to get configuration"):
+            service.get_connection_configuration("ri.conn.main.connection.123")
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_update_export_settings_success(self, mock_client):
+        """Test successful export settings update."""
+        mock_client.connections.Connection.update_export_settings.return_value = None
+
+        service = ConnectivityService(profile="test")
+        result = service.update_export_settings(
+            "ri.conn.main.connection.123",
+            {"exportsEnabled": True},
+        )
+
+        assert result["connection_rid"] == "ri.conn.main.connection.123"
+        assert result["status"] == "export settings updated"
+        mock_client.connections.Connection.update_export_settings.assert_called_once_with(
+            connection_rid="ri.conn.main.connection.123",
+            export_settings={"exportsEnabled": True},
+        )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_update_export_settings_error(self, mock_client):
+        """Test export settings update error handling."""
+        mock_client.connections.Connection.update_export_settings.side_effect = (
+            Exception("Update failed")
+        )
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(RuntimeError, match="Failed to update export settings"):
+            service.update_export_settings(
+                "ri.conn.main.connection.123",
+                {"exportsEnabled": True},
+            )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_update_secrets_success(self, mock_client):
+        """Test successful secrets update."""
+        mock_client.connections.Connection.update_secrets.return_value = None
+
+        service = ConnectivityService(profile="test")
+        result = service.update_secrets(
+            "ri.conn.main.connection.123",
+            {"password": "newpass"},
+        )
+
+        assert result["connection_rid"] == "ri.conn.main.connection.123"
+        assert result["status"] == "secrets updated"
+        mock_client.connections.Connection.update_secrets.assert_called_once_with(
+            connection_rid="ri.conn.main.connection.123",
+            secrets={"password": "newpass"},
+        )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_update_secrets_error(self, mock_client):
+        """Test secrets update error handling."""
+        mock_client.connections.Connection.update_secrets.side_effect = Exception(
+            "Update failed"
+        )
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(RuntimeError, match="Failed to update secrets"):
+            service.update_secrets(
+                "ri.conn.main.connection.123",
+                {"password": "newpass"},
+            )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_upload_custom_jdbc_drivers_success(self, mock_client, tmp_path):
+        """Test successful JDBC driver upload."""
+        # Create a temporary JAR file
+        jar_file = tmp_path / "driver.jar"
+        jar_file.write_bytes(b"fake jar content")
+
+        mock_connection = Mock()
+        mock_connection.rid = "ri.conn.main.connection.123"
+        mock_connection.display_name = "Test Connection"
+        mock_connection.description = ""
+        mock_connection.connection_type = "JDBC"
+        mock_connection.status = "ACTIVE"
+        mock_connection.created_time = "2023-01-01T00:00:00Z"
+        mock_connection.modified_time = "2023-01-01T00:00:00Z"
+
+        mock_client.connections.Connection.upload_custom_jdbc_drivers.return_value = (
+            mock_connection
+        )
+
+        service = ConnectivityService(profile="test")
+        result = service.upload_custom_jdbc_drivers(
+            "ri.conn.main.connection.123",
+            str(jar_file),
+        )
+
+        assert result["rid"] == "ri.conn.main.connection.123"
+        mock_client.connections.Connection.upload_custom_jdbc_drivers.assert_called_once()
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_upload_custom_jdbc_drivers_file_not_found(self, mock_client):
+        """Test JDBC driver upload with non-existent file."""
+        service = ConnectivityService(profile="test")
+        with pytest.raises(FileNotFoundError, match="File not found"):
+            service.upload_custom_jdbc_drivers(
+                "ri.conn.main.connection.123",
+                "/nonexistent/path/driver.jar",
+            )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_upload_custom_jdbc_drivers_invalid_extension(self, mock_client, tmp_path):
+        """Test JDBC driver upload with non-JAR file."""
+        # Create a temporary non-JAR file
+        txt_file = tmp_path / "file.txt"
+        txt_file.write_text("not a jar file")
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(ValueError, match="File must be a JAR file"):
+            service.upload_custom_jdbc_drivers(
+                "ri.conn.main.connection.123",
+                str(txt_file),
+            )
+
+    @patch("pltr.services.connectivity.ConnectivityService.client")
+    def test_upload_custom_jdbc_drivers_api_error(self, mock_client, tmp_path):
+        """Test JDBC driver upload API error handling."""
+        # Create a temporary JAR file
+        jar_file = tmp_path / "driver.jar"
+        jar_file.write_bytes(b"fake jar content")
+
+        mock_client.connections.Connection.upload_custom_jdbc_drivers.side_effect = (
+            Exception("Upload failed")
+        )
+
+        service = ConnectivityService(profile="test")
+        with pytest.raises(RuntimeError, match="Failed to upload JDBC driver"):
+            service.upload_custom_jdbc_drivers(
+                "ri.conn.main.connection.123",
+                str(jar_file),
+            )
