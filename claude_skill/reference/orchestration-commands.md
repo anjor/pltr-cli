@@ -60,6 +60,17 @@ pltr orchestration builds jobs BUILD_RID [--page-size N] [--format FORMAT]
 pltr orchestration builds jobs ri.orchestration.main.build.abc123
 ```
 
+### Get Multiple Builds (Batch)
+
+```bash
+pltr orchestration builds get-batch BUILD_RIDS
+
+# BUILD_RIDS is comma-separated, max 100
+
+# Example
+pltr orchestration builds get-batch "ri.orchestration.main.build.abc,ri.orchestration.main.build.def"
+```
+
 ## Job Commands
 
 ### Get Job Details
@@ -158,6 +169,17 @@ pltr orchestration schedules replace SCHEDULE_RID ACTION [OPTIONS]
 pltr orchestration schedules replace ri.orchestration.main.schedule.ghi789 \
   '{"type": "BUILD", "target": "ri.foundry.main.dataset.new"}' \
   --name "Updated Schedule"
+```
+
+### List Schedule Runs
+
+```bash
+pltr orchestration schedules runs SCHEDULE_RID [--page-size N] [--page-token TEXT] [--format FORMAT]
+
+# List recent execution runs for a schedule
+
+# Example
+pltr orchestration schedules runs ri.orchestration.main.schedule.ghi789 --page-size 20
 ```
 
 ## Common Patterns
