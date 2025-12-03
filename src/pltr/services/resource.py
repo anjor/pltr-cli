@@ -239,6 +239,184 @@ class ResourceService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to search resources: {e}")
 
+    # ==================== Trash Operations ====================
+
+    def delete_resource(self, resource_rid: str) -> None:
+        """
+        Move a resource to trash.
+
+        The resource can be restored later or permanently deleted.
+
+        Args:
+            resource_rid: Resource Identifier
+
+        Raises:
+            RuntimeError: If deletion fails
+        """
+        try:
+            self.service.Resource.delete(resource_rid, preview=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to delete resource {resource_rid}: {e}")
+
+    def restore_resource(self, resource_rid: str) -> None:
+        """
+        Restore a resource from trash.
+
+        This also restores any directly trashed ancestors.
+        Operation is ignored if the resource is not trashed.
+
+        Args:
+            resource_rid: Resource Identifier
+
+        Raises:
+            RuntimeError: If restoration fails
+        """
+        try:
+            self.service.Resource.restore(resource_rid, preview=True)
+        except Exception as e:
+            raise RuntimeError(f"Failed to restore resource {resource_rid}: {e}")
+
+    def permanently_delete_resource(self, resource_rid: str) -> None:
+        """
+        Permanently delete a resource from trash.
+
+        The resource must already be in the trash. This operation is irreversible.
+
+        Args:
+            resource_rid: Resource Identifier
+
+        Raises:
+            RuntimeError: If permanent deletion fails
+        """
+        try:
+            self.service.Resource.permanently_delete(resource_rid, preview=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to permanently delete resource {resource_rid}: {e}"
+            )
+
+    # ==================== Markings Operations ====================
+
+    def add_markings(self, resource_rid: str, marking_ids: List[str]) -> None:
+        """
+        Add markings to a resource.
+
+        Args:
+            resource_rid: Resource Identifier
+            marking_ids: List of marking identifiers to add
+
+        Raises:
+            RuntimeError: If adding markings fails
+        """
+        try:
+            self.service.Resource.add_markings(
+                resource_rid, marking_ids=marking_ids, preview=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to add markings to resource {resource_rid}: {e}"
+            )
+
+    def remove_markings(self, resource_rid: str, marking_ids: List[str]) -> None:
+        """
+        Remove markings from a resource.
+
+        Args:
+            resource_rid: Resource Identifier
+            marking_ids: List of marking identifiers to remove
+
+        Raises:
+            RuntimeError: If removing markings fails
+        """
+        try:
+            self.service.Resource.remove_markings(
+                resource_rid, marking_ids=marking_ids, preview=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to remove markings from resource {resource_rid}: {e}"
+            )
+
+    def list_markings(
+        self,
+        resource_rid: str,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        List markings directly applied to a resource.
+
+        Args:
+            resource_rid: Resource Identifier
+            page_size: Number of items per page (optional)
+            page_token: Pagination token (optional)
+
+        Returns:
+            List of marking information dictionaries
+        """
+        try:
+            markings = []
+            list_params: Dict[str, Any] = {"preview": True}
+
+            if page_size:
+                list_params["page_size"] = page_size
+            if page_token:
+                list_params["page_token"] = page_token
+
+            for marking in self.service.Resource.markings(resource_rid, **list_params):
+                markings.append(self._format_marking_info(marking))
+            return markings
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list markings for resource {resource_rid}: {e}"
+            )
+
+    # ==================== Access & Batch Operations ====================
+
+    def get_access_requirements(self, resource_rid: str) -> Dict[str, Any]:
+        """
+        Get access requirements for a resource.
+
+        Returns the Organizations and Markings required to view the resource.
+
+        Args:
+            resource_rid: Resource Identifier
+
+        Returns:
+            Access requirements dictionary with organizations and markings
+        """
+        try:
+            requirements = self.service.Resource.get_access_requirements(
+                resource_rid, preview=True
+            )
+            return self._format_access_requirements(requirements)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get access requirements for resource {resource_rid}: {e}"
+            )
+
+    def get_resources_by_path_batch(self, paths: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get multiple resources by their absolute paths in a single request.
+
+        Args:
+            paths: List of absolute paths (max 1000)
+
+        Returns:
+            List of resource information dictionaries
+        """
+        if len(paths) > 1000:
+            raise ValueError("Maximum batch size is 1000 paths")
+
+        try:
+            response = self.service.Resource.get_by_path_batch(body=paths, preview=True)
+            resources = []
+            for resource in response.resources:
+                resources.append(self._format_resource_info(resource))
+            return resources
+        except Exception as e:
+            raise RuntimeError(f"Failed to get resources by path batch: {e}")
+
     def _format_resource_info(self, resource: Any) -> Dict[str, Any]:
         """
         Format resource information for consistent output.
@@ -303,3 +481,52 @@ class ResourceService(BaseService):
         if hasattr(timestamp, "time"):
             return str(timestamp.time)
         return str(timestamp)
+
+    def _format_marking_info(self, marking: Any) -> Dict[str, Any]:
+        """
+        Format marking information for consistent output.
+
+        Args:
+            marking: Marking object from Foundry SDK
+
+        Returns:
+            Formatted marking information dictionary
+        """
+        return {
+            "marking_id": getattr(marking, "marking_id", None),
+            "display_name": getattr(marking, "display_name", None),
+            "description": getattr(marking, "description", None),
+            "category_id": getattr(marking, "category_id", None),
+            "category_display_name": getattr(marking, "category_display_name", None),
+        }
+
+    def _format_access_requirements(self, requirements: Any) -> Dict[str, Any]:
+        """
+        Format access requirements for consistent output.
+
+        Args:
+            requirements: AccessRequirements object from Foundry SDK
+
+        Returns:
+            Formatted access requirements dictionary
+        """
+        organizations = []
+        markings = []
+
+        if hasattr(requirements, "organizations"):
+            for org in getattr(requirements, "organizations", []) or []:
+                organizations.append(
+                    {
+                        "organization_rid": getattr(org, "organization_rid", None),
+                        "display_name": getattr(org, "display_name", None),
+                    }
+                )
+
+        if hasattr(requirements, "markings"):
+            for marking in getattr(requirements, "markings", []) or []:
+                markings.append(self._format_marking_info(marking))
+
+        return {
+            "organizations": organizations,
+            "markings": markings,
+        }
