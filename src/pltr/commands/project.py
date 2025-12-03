@@ -366,6 +366,227 @@ def get_projects_batch(
         raise typer.Exit(1)
 
 
+# ==================== Organization Operations ====================
+
+
+@app.command("add-orgs")
+def add_organizations(
+    project_rid: str = typer.Argument(
+        ..., help="Project Resource Identifier", autocompletion=complete_rid
+    ),
+    organization_rids: List[str] = typer.Option(
+        ...,
+        "--org",
+        "-o",
+        help="Organization RID(s) to add (can specify multiple)",
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Add organizations to a project."""
+    try:
+        service = ProjectService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Adding {len(organization_rids)} organization(s) to project {project_rid}..."
+        ):
+            service.add_organizations(project_rid, organization_rids)
+
+        formatter.print_success(
+            f"Successfully added {len(organization_rids)} organization(s) to project {project_rid}"
+        )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to add organizations: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("remove-orgs")
+def remove_organizations(
+    project_rid: str = typer.Argument(
+        ..., help="Project Resource Identifier", autocompletion=complete_rid
+    ),
+    organization_rids: List[str] = typer.Option(
+        ...,
+        "--org",
+        "-o",
+        help="Organization RID(s) to remove (can specify multiple)",
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+):
+    """Remove organizations from a project."""
+    try:
+        service = ProjectService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Removing {len(organization_rids)} organization(s) from project {project_rid}..."
+        ):
+            service.remove_organizations(project_rid, organization_rids)
+
+        formatter.print_success(
+            f"Successfully removed {len(organization_rids)} organization(s) from project {project_rid}"
+        )
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to remove organizations: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("list-orgs")
+def list_organizations(
+    project_rid: str = typer.Argument(
+        ..., help="Project Resource Identifier", autocompletion=complete_rid
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of items per page"
+    ),
+):
+    """List organizations directly applied to a project."""
+    try:
+        service = ProjectService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching organizations for project {project_rid}..."
+        ):
+            organizations = service.list_organizations(project_rid, page_size=page_size)
+
+        if not organizations:
+            formatter.print_info("No organizations found on this project.")
+            return
+
+        # Format output
+        if format == "json":
+            if output:
+                formatter.save_to_file(organizations, output, "json")
+            else:
+                formatter.format_list(organizations)
+        elif format == "csv":
+            if output:
+                formatter.save_to_file(organizations, output, "csv")
+            else:
+                formatter.format_list(organizations)
+        else:
+            _format_organizations_table(organizations)
+
+        if output:
+            formatter.print_success(f"Organizations list saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to list organizations: {e}")
+        raise typer.Exit(1)
+
+
+# ==================== Template Operations ====================
+
+
+@app.command("create-from-template")
+def create_from_template(
+    template_rid: str = typer.Option(
+        ...,
+        "--template-rid",
+        "-t",
+        help="Template Resource Identifier",
+        autocompletion=complete_rid,
+    ),
+    variable: List[str] = typer.Option(
+        ...,
+        "--var",
+        "-v",
+        help="Variable values in format 'name=value' (can specify multiple)",
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="Project description"
+    ),
+    organization_rids: Optional[List[str]] = typer.Option(
+        None,
+        "--org",
+        "-o",
+        help="Organization RIDs (can be specified multiple times)",
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+):
+    """Create a project from a template."""
+    try:
+        # Parse variable values
+        variable_values = {}
+        for var in variable:
+            if "=" not in var:
+                formatter.print_error(
+                    f"Invalid variable format: '{var}'. Use 'name=value' format."
+                )
+                raise typer.Exit(1)
+            name, value = var.split("=", 1)
+            variable_values[name] = value
+
+        service = ProjectService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Creating project from template {template_rid}..."
+        ):
+            project = service.create_project_from_template(
+                template_rid=template_rid,
+                variable_values=variable_values,
+                organization_rids=organization_rids,
+                project_description=description,
+            )
+
+        # Cache the RID for future completions
+        if project.get("rid"):
+            cache_rid(project["rid"])
+
+        formatter.print_success("Successfully created project from template")
+        formatter.print_info(f"Project RID: {project.get('rid', 'unknown')}")
+
+        # Format output
+        if format == "json":
+            formatter.format_dict(project)
+        elif format == "csv":
+            formatter.format_list([project])
+        else:
+            _format_project_table(project)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to create project from template: {e}")
+        raise typer.Exit(1)
+
+
 def _format_project_table(project: dict):
     """Format project information as a table."""
     table = Table(
@@ -410,6 +631,24 @@ def _format_projects_table(projects: List[dict]):
     console.print(f"\nTotal: {len(projects)} projects")
 
 
+def _format_organizations_table(organizations: List[dict]):
+    """Format organizations as a table."""
+    table = Table(title="Organizations", show_header=True, header_style="bold cyan")
+    table.add_column("Organization RID")
+    table.add_column("Display Name")
+    table.add_column("Description")
+
+    for org in organizations:
+        table.add_row(
+            org.get("organization_rid", "N/A"),
+            org.get("display_name", "N/A"),
+            org.get("description", "N/A"),
+        )
+
+    console.print(table)
+    console.print(f"\nTotal: {len(organizations)} organizations")
+
+
 @app.callback()
 def main():
     """
@@ -436,5 +675,13 @@ def main():
 
         # Delete project
         pltr project delete ri.compass.main.project.abc456
+
+        # Organization operations
+        pltr project add-orgs ri.compass.main.project.abc456 -o org-rid-1 -o org-rid-2
+        pltr project remove-orgs ri.compass.main.project.abc456 -o org-rid-1
+        pltr project list-orgs ri.compass.main.project.abc456
+
+        # Create from template
+        pltr project create-from-template -t template-rid -v "name=MyProject" -v "desc=Description"
     """
     pass

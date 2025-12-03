@@ -185,6 +185,126 @@ class ProjectService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to get projects batch: {e}")
 
+    # ==================== Organization Operations ====================
+
+    def add_organizations(self, project_rid: str, organization_rids: List[str]) -> None:
+        """
+        Add organizations to a project.
+
+        Args:
+            project_rid: Project Resource Identifier
+            organization_rids: List of organization RIDs to add
+
+        Raises:
+            RuntimeError: If adding organizations fails
+        """
+        try:
+            self.service.Project.add_organizations(
+                project_rid, organization_rids=organization_rids, preview=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to add organizations to project {project_rid}: {e}"
+            )
+
+    def remove_organizations(
+        self, project_rid: str, organization_rids: List[str]
+    ) -> None:
+        """
+        Remove organizations from a project.
+
+        Args:
+            project_rid: Project Resource Identifier
+            organization_rids: List of organization RIDs to remove
+
+        Raises:
+            RuntimeError: If removing organizations fails
+        """
+        try:
+            self.service.Project.remove_organizations(
+                project_rid, organization_rids=organization_rids, preview=True
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to remove organizations from project {project_rid}: {e}"
+            )
+
+    def list_organizations(
+        self,
+        project_rid: str,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        List organizations directly applied to a project.
+
+        Args:
+            project_rid: Project Resource Identifier
+            page_size: Number of items per page (optional)
+            page_token: Pagination token (optional)
+
+        Returns:
+            List of organization information dictionaries
+        """
+        try:
+            organizations = []
+            list_params: Dict[str, Any] = {"preview": True}
+
+            if page_size:
+                list_params["page_size"] = page_size
+            if page_token:
+                list_params["page_token"] = page_token
+
+            for org in self.service.Project.organizations(project_rid, **list_params):
+                organizations.append(self._format_organization_info(org))
+            return organizations
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to list organizations for project {project_rid}: {e}"
+            )
+
+    # ==================== Template Operations ====================
+
+    def create_project_from_template(
+        self,
+        template_rid: str,
+        variable_values: Dict[str, str],
+        default_roles: Optional[List[str]] = None,
+        organization_rids: Optional[List[str]] = None,
+        project_description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a project from a template.
+
+        Args:
+            template_rid: Template Resource Identifier
+            variable_values: Dictionary mapping template variable names to values
+            default_roles: List of default role names (optional)
+            organization_rids: List of organization RIDs (optional)
+            project_description: Project description (optional)
+
+        Returns:
+            Created project information
+        """
+        try:
+            create_params: Dict[str, Any] = {
+                "template_rid": template_rid,
+                "variable_values": variable_values,
+                "preview": True,
+            }
+
+            if default_roles:
+                create_params["default_roles"] = default_roles
+            if organization_rids:
+                create_params["organization_rids"] = organization_rids
+            if project_description:
+                create_params["project_description"] = project_description
+
+            project = self.service.Project.create_from_template(**create_params)
+            return self._format_project_info(project)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create project from template: {e}")
+
     def _format_project_info(self, project: Any) -> Dict[str, Any]:
         """
         Format project information for consistent output.
@@ -211,6 +331,22 @@ class ProjectService(BaseService):
             ),
             "trash_status": getattr(project, "trash_status", None),
             "type": "project",
+        }
+
+    def _format_organization_info(self, organization: Any) -> Dict[str, Any]:
+        """
+        Format organization information for consistent output.
+
+        Args:
+            organization: Organization object from Foundry SDK
+
+        Returns:
+            Formatted organization information dictionary
+        """
+        return {
+            "organization_rid": getattr(organization, "organization_rid", None),
+            "display_name": getattr(organization, "display_name", None),
+            "description": getattr(organization, "description", None),
         }
 
     def _format_timestamp(self, timestamp: Any) -> Optional[str]:
