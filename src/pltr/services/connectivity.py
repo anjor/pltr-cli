@@ -58,6 +58,145 @@ class ConnectivityService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to get connection {connection_rid}: {e}")
 
+    def create_connection(
+        self,
+        display_name: str,
+        parent_folder_rid: str,
+        configuration: Dict[str, Any],
+        worker: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Create a new connection.
+
+        Args:
+            display_name: Display name for the connection
+            parent_folder_rid: Parent folder Resource Identifier
+            configuration: Connection configuration dictionary
+            worker: Worker configuration dictionary
+
+        Returns:
+            Created connection information dictionary
+        """
+        try:
+            connection = self.connections_service.Connection.create(
+                configuration=configuration,
+                display_name=display_name,
+                parent_folder_rid=parent_folder_rid,
+                worker=worker,
+            )
+            return self._format_connection_info(connection)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create connection '{display_name}': {e}")
+
+    def get_connection_configuration(self, connection_rid: str) -> Dict[str, Any]:
+        """
+        Get connection configuration.
+
+        Args:
+            connection_rid: Connection Resource Identifier
+
+        Returns:
+            Connection configuration dictionary
+        """
+        try:
+            config = self.connections_service.Connection.get_configuration(
+                connection_rid
+            )
+            return {"connection_rid": connection_rid, "configuration": config}
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get configuration for connection {connection_rid}: {e}"
+            )
+
+    def update_export_settings(
+        self, connection_rid: str, export_settings: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update connection export settings.
+
+        Args:
+            connection_rid: Connection Resource Identifier
+            export_settings: Export settings dictionary
+
+        Returns:
+            Status dictionary
+        """
+        try:
+            self.connections_service.Connection.update_export_settings(
+                connection_rid=connection_rid,
+                export_settings=export_settings,
+            )
+            return {
+                "connection_rid": connection_rid,
+                "status": "export settings updated",
+            }
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to update export settings for connection {connection_rid}: {e}"
+            )
+
+    def update_secrets(
+        self, connection_rid: str, secrets: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Update connection secrets.
+
+        Args:
+            connection_rid: Connection Resource Identifier
+            secrets: Dictionary mapping secret names to values
+
+        Returns:
+            Status dictionary
+        """
+        try:
+            self.connections_service.Connection.update_secrets(
+                connection_rid=connection_rid,
+                secrets=secrets,
+            )
+            return {"connection_rid": connection_rid, "status": "secrets updated"}
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to update secrets for connection {connection_rid}: {e}"
+            )
+
+    def upload_custom_jdbc_drivers(
+        self, connection_rid: str, file_path: str
+    ) -> Dict[str, Any]:
+        """
+        Upload custom JDBC drivers to a connection.
+
+        Args:
+            connection_rid: Connection Resource Identifier
+            file_path: Path to the JAR file
+
+        Returns:
+            Updated connection information dictionary
+        """
+        from pathlib import Path
+
+        file_path_obj = Path(file_path)
+
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if not file_path_obj.suffix.lower() == ".jar":
+            raise ValueError(f"File must be a JAR file: {file_path}")
+
+        try:
+            with open(file_path_obj, "rb") as f:
+                file_content = f.read()
+
+            connection = self.connections_service.Connection.upload_custom_jdbc_drivers(
+                connection_rid=connection_rid,
+                body=file_content,
+                file_name=file_path_obj.name,
+            )
+            return self._format_connection_info(connection)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to upload JDBC driver to connection {connection_rid}: {e}"
+            )
+
     def create_file_import(
         self,
         connection_rid: str,
