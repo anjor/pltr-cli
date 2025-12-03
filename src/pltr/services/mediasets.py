@@ -226,15 +226,7 @@ class MediaSetsService(BaseService):
                     preview=preview,
                 )
 
-            with open(output_path_obj, "wb") as file:
-                if hasattr(response, "content"):
-                    file.write(response.content)
-                else:
-                    # Handle streaming response
-                    for chunk in response:
-                        file.write(chunk)
-
-            file_size = output_path_obj.stat().st_size
+            file_size = self._write_response_to_file(response, output_path_obj)
             return {
                 "media_set_rid": media_set_rid,
                 "media_item_rid": media_item_rid,
@@ -290,4 +282,147 @@ class MediaSetsService(BaseService):
             "reference_id": getattr(reference_response, "reference_id", "unknown"),
             "url": getattr(reference_response, "url", "unknown"),
             "expires_at": getattr(reference_response, "expires_at", None),
+        }
+
+    def _write_response_to_file(self, response: Any, output_path: Path) -> int:
+        """
+        Write response content to file and return file size.
+
+        Args:
+            response: SDK response object (with .content attribute or iterable)
+            output_path: Path object for the output file
+
+        Returns:
+            File size in bytes
+        """
+        with open(output_path, "wb") as file:
+            if hasattr(response, "content"):
+                file.write(response.content)
+            else:
+                # Handle streaming response
+                for chunk in response:
+                    file.write(chunk)
+        return output_path.stat().st_size
+
+    def calculate_thumbnail(
+        self,
+        media_set_rid: str,
+        media_item_rid: str,
+        preview: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Initiate thumbnail generation for an image.
+
+        Args:
+            media_set_rid: Media Set Resource Identifier
+            media_item_rid: Media Item Resource Identifier
+            preview: Enable preview mode
+
+        Returns:
+            Thumbnail calculation status information
+        """
+        try:
+            response = self.service.MediaSet.calculate(
+                media_set_rid=media_set_rid,
+                media_item_rid=media_item_rid,
+                preview=preview,
+            )
+            return self._format_thumbnail_status(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to calculate thumbnail: {e}")
+
+    def retrieve_thumbnail(
+        self,
+        media_set_rid: str,
+        media_item_rid: str,
+        output_path: str,
+        preview: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve a calculated thumbnail (200px wide webp).
+
+        Args:
+            media_set_rid: Media Set Resource Identifier
+            media_item_rid: Media Item Resource Identifier
+            output_path: Local path where thumbnail should be saved
+            preview: Enable preview mode
+
+        Returns:
+            Download response information
+        """
+        try:
+            output_path_obj = Path(output_path)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+            response = self.service.MediaSet.retrieve(
+                media_set_rid=media_set_rid,
+                media_item_rid=media_item_rid,
+                preview=preview,
+            )
+
+            file_size = self._write_response_to_file(response, output_path_obj)
+
+            # Validate that we received actual content
+            if file_size == 0:
+                output_path_obj.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "Downloaded thumbnail is empty - thumbnail may not be ready yet"
+                )
+
+            return {
+                "media_set_rid": media_set_rid,
+                "media_item_rid": media_item_rid,
+                "output_path": str(output_path_obj),
+                "file_size": file_size,
+                "downloaded": True,
+                "format": "image/webp",
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to retrieve thumbnail: {e}")
+
+    def upload_temp_media(
+        self,
+        file_path: str,
+        filename: Optional[str] = None,
+        attribution: Optional[str] = None,
+        preview: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Upload temporary media (auto-deleted after 1 hour if not persisted).
+
+        Args:
+            file_path: Local path to the file to upload
+            filename: Optional filename override
+            attribution: Optional attribution string
+            preview: Enable preview mode
+
+        Returns:
+            Media reference information
+        """
+        try:
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            # Use provided filename or default to file name
+            upload_filename = filename or file_path_obj.name
+
+            with open(file_path_obj, "rb") as file:
+                response = self.service.MediaSet.upload_media(
+                    body=file,
+                    filename=upload_filename,
+                    attribution=attribution,
+                    preview=preview,
+                )
+
+            return self._format_media_reference(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload temporary media: {e}")
+
+    def _format_thumbnail_status(self, status_response: Any) -> Dict[str, Any]:
+        """Format thumbnail calculation status response for display."""
+        return {
+            "status": getattr(status_response, "status", "unknown"),
+            "transformation_id": getattr(status_response, "transformation_id", None),
+            "media_item_rid": getattr(status_response, "media_item_rid", None),
         }

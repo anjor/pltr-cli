@@ -96,6 +96,61 @@ pltr media-sets download ri.mediasets.main.media-set.abc123 \
   ri.mediasets.main.media-item.def456 /local/download/original.jpg --original
 ```
 
+## Thumbnail Operations
+
+Generate and retrieve thumbnails for images (200px wide webp format).
+
+### Calculate Thumbnail
+
+Initiate thumbnail generation for an image:
+
+```bash
+pltr media-sets thumbnail-calculate MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]
+
+# Options:
+#   --preview       Enable preview mode
+#   --format        Output format (table, json, csv)
+#   --output        Output file path
+
+# Example
+pltr media-sets thumbnail-calculate ri.mediasets.main.media-set.abc123 \
+  ri.mediasets.main.media-item.def456
+```
+
+### Retrieve Thumbnail
+
+Download a calculated thumbnail:
+
+```bash
+pltr media-sets thumbnail-retrieve MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH [OPTIONS]
+
+# Options:
+#   --preview       Enable preview mode
+#   --overwrite     Overwrite existing file
+
+# Example
+pltr media-sets thumbnail-retrieve ri.mediasets.main.media-set.abc123 \
+  ri.mediasets.main.media-item.def456 /local/thumbnail.webp
+```
+
+## Upload Temporary Media
+
+Upload temporary media that will be auto-deleted after 1 hour if not persisted:
+
+```bash
+pltr media-sets upload-temp FILE_PATH [OPTIONS]
+
+# Options:
+#   --filename      Override filename for the upload
+#   --attribution   Attribution string for the media
+#   --preview       Enable preview mode
+#   --format        Output format (table, json, csv)
+#   --output        Output file path
+
+# Example
+pltr media-sets upload-temp /local/image.jpg --attribution "Photo by John Doe"
+```
+
 ## MediaSets Workflow
 
 The typical upload workflow:

@@ -985,6 +985,50 @@ class OutputFormatter:
         else:
             return self.format_output(reference, format_type, output_file)
 
+    def format_thumbnail_status(
+        self,
+        status: Dict[str, Any],
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Format thumbnail calculation status for display.
+
+        Args:
+            status: Thumbnail status dictionary
+            format_type: Output format
+            output_file: Optional output file path
+
+        Returns:
+            Formatted string if no output file specified
+        """
+        if format_type == "table":
+            details = []
+
+            property_order = [
+                ("status", "Status"),
+                ("transformation_id", "Transformation ID"),
+                ("media_item_rid", "Media Item RID"),
+            ]
+
+            for key, label in property_order:
+                if status.get(key) is not None:
+                    details.append({"Property": label, "Value": str(status[key])})
+
+            # Add any remaining properties
+            for key, value in status.items():
+                if (
+                    key not in [prop[0] for prop in property_order]
+                    and value is not None
+                ):
+                    details.append(
+                        {"Property": key.replace("_", " ").title(), "Value": str(value)}
+                    )
+
+            return self.format_output(details, format_type, output_file)
+        else:
+            return self.format_output(status, format_type, output_file)
+
     # Dataset formatting methods
 
     def format_branches(
