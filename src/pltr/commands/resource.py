@@ -787,6 +787,10 @@ def get_resources_by_path_batch(
 ):
     """Get multiple resources by their absolute paths (max 1000)."""
     try:
+        if len(paths) > 1000:
+            formatter.print_error("Maximum batch size is 1000 paths")
+            raise typer.Exit(1)
+
         service = ResourceService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner(

@@ -456,9 +456,7 @@ def list_organizations(
         help="Output format (table, json, csv)",
         autocompletion=complete_output_format,
     ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    output: Optional[str] = typer.Option(None, "--output", help="Output file path"),
     page_size: Optional[int] = typer.Option(
         None, "--page-size", help="Number of items per page"
     ),
@@ -550,6 +548,10 @@ def create_from_template(
                 )
                 raise typer.Exit(1)
             name, value = var.split("=", 1)
+            name = name.strip()
+            if not name:
+                formatter.print_error(f"Variable name cannot be empty: '{var}'")
+                raise typer.Exit(1)
             variable_values[name] = value
 
         service = ProjectService(profile=profile)
