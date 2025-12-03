@@ -4,7 +4,8 @@ Connectivity management commands for Foundry connections and imports.
 
 import typer
 import json
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 from rich.console import Console
 
 from ..services.connectivity import ConnectivityService
@@ -27,6 +28,53 @@ formatter = OutputFormatter(console)
 # Add sub-apps
 app.add_typer(connection_app, name="connection", help="Manage connections")
 app.add_typer(import_app, name="import", help="Manage data imports")
+
+
+def _load_json_param(
+    json_str: Optional[str], file_path: Optional[str], param_name: str
+) -> dict:
+    """
+    Load JSON from either a string or a file.
+
+    Args:
+        json_str: JSON string (optional)
+        file_path: Path to JSON file (optional)
+        param_name: Name of parameter for error messages
+
+    Returns:
+        Parsed JSON dictionary
+
+    Raises:
+        typer.Exit: If neither or both are provided, or if parsing fails
+    """
+    if json_str and file_path:
+        console.print(
+            f"[red]Cannot specify both {param_name} and {param_name}-file[/red]"
+        )
+        raise typer.Exit(1)
+
+    if not json_str and not file_path:
+        console.print(
+            f"[red]Must specify either {param_name} or --{param_name}-file[/red]"
+        )
+        raise typer.Exit(1)
+
+    if file_path:
+        path = Path(file_path)
+        if not path.exists():
+            console.print(f"[red]File not found: {file_path}[/red]")
+            raise typer.Exit(1)
+        try:
+            json_str = path.read_text()
+        except Exception as e:
+            console.print(f"[red]Error reading {file_path}: {e}[/red]")
+            raise typer.Exit(1)
+
+    try:
+        return json.loads(json_str)  # type: ignore[arg-type]
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid JSON for {param_name}: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @connection_app.command("list")
@@ -110,10 +158,18 @@ def create_connection(
     parent_folder_rid: str = typer.Argument(
         ..., help="Parent folder Resource Identifier", autocompletion=complete_rid
     ),
-    configuration: str = typer.Argument(
-        ..., help="Connection configuration in JSON format"
+    configuration: Optional[str] = typer.Argument(
+        None, help="Connection configuration in JSON format"
     ),
-    worker: str = typer.Argument(..., help="Worker configuration in JSON format"),
+    worker: Optional[str] = typer.Argument(
+        None, help="Worker configuration in JSON format"
+    ),
+    config_file: Optional[str] = typer.Option(
+        None, "--config-file", help="Path to JSON file with connection configuration"
+    ),
+    worker_file: Optional[str] = typer.Option(
+        None, "--worker-file", help="Path to JSON file with worker configuration"
+    ),
     profile: Optional[str] = typer.Option(
         None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),
@@ -128,23 +184,16 @@ def create_connection(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Create a new connection."""
+    """Create a new connection.
+
+    Configuration and worker can be provided as JSON strings or via file options.
+    """
     try:
         cache_rid(parent_folder_rid)
 
-        # Parse configuration JSON
-        try:
-            config_dict = json.loads(configuration)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON configuration: {e}[/red]")
-            raise typer.Exit(1)
-
-        # Parse worker JSON
-        try:
-            worker_dict = json.loads(worker)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON worker configuration: {e}[/red]")
-            raise typer.Exit(1)
+        # Load configuration from string or file
+        config_dict = _load_json_param(configuration, config_file, "configuration")
+        worker_dict = _load_json_param(worker, worker_file, "worker")
 
         service = ConnectivityService(profile=profile)
 
@@ -212,22 +261,38 @@ def update_connection_secrets(
     connection_rid: str = typer.Argument(
         ..., help="Connection Resource Identifier", autocompletion=complete_rid
     ),
-    secrets: str = typer.Argument(
-        ..., help="Secrets in JSON format (mapping secret names to values)"
+    secrets_file: str = typer.Option(
+        ...,
+        "--secrets-file",
+        "-s",
+        help="Path to JSON file containing secrets (mapping secret names to values)",
     ),
     profile: Optional[str] = typer.Option(
         None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),
 ):
-    """Update connection secrets."""
+    """Update connection secrets.
+
+    Secrets must be provided via a file for security (to avoid exposure in shell
+    history or process listings).
+    """
     try:
         cache_rid(connection_rid)
 
-        # Parse secrets JSON
+        # Load secrets from file
+        path = Path(secrets_file)
+        if not path.exists():
+            console.print(f"[red]Secrets file not found: {secrets_file}[/red]")
+            raise typer.Exit(1)
+
         try:
-            secrets_dict = json.loads(secrets)
+            secrets_content = path.read_text()
+            secrets_dict = json.loads(secrets_content)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON secrets: {e}[/red]")
+            console.print(f"[red]Invalid JSON in secrets file: {e}[/red]")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]Error reading secrets file: {e}[/red]")
             raise typer.Exit(1)
 
         service = ConnectivityService(profile=profile)
@@ -252,21 +317,25 @@ def update_export_settings(
     connection_rid: str = typer.Argument(
         ..., help="Connection Resource Identifier", autocompletion=complete_rid
     ),
-    settings: str = typer.Argument(..., help="Export settings in JSON format"),
+    settings: Optional[str] = typer.Argument(
+        None, help="Export settings in JSON format"
+    ),
+    settings_file: Optional[str] = typer.Option(
+        None, "--settings-file", help="Path to JSON file with export settings"
+    ),
     profile: Optional[str] = typer.Option(
         None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),
 ):
-    """Update connection export settings."""
+    """Update connection export settings.
+
+    Settings can be provided as a JSON string or via --settings-file.
+    """
     try:
         cache_rid(connection_rid)
 
-        # Parse settings JSON
-        try:
-            settings_dict = json.loads(settings)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON settings: {e}[/red]")
-            raise typer.Exit(1)
+        # Load settings from string or file
+        settings_dict = _load_json_param(settings, settings_file, "settings")
 
         service = ConnectivityService(profile=profile)
 
@@ -290,7 +359,7 @@ def upload_jdbc_drivers(
     connection_rid: str = typer.Argument(
         ..., help="Connection Resource Identifier", autocompletion=complete_rid
     ),
-    driver_files: list[str] = typer.Argument(
+    driver_files: List[str] = typer.Argument(
         ..., help="Path(s) to JAR file(s) to upload"
     ),
     profile: Optional[str] = typer.Option(
@@ -307,9 +376,22 @@ def upload_jdbc_drivers(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Upload custom JDBC drivers to a connection."""
+    """Upload custom JDBC drivers to a connection.
+
+    Only JAR files are supported.
+    """
     try:
         cache_rid(connection_rid)
+
+        # Validate files exist and are JAR files before uploading
+        for driver_file in driver_files:
+            path = Path(driver_file)
+            if not path.exists():
+                console.print(f"[red]File not found: {driver_file}[/red]")
+                raise typer.Exit(1)
+            if path.suffix.lower() != ".jar":
+                console.print(f"[red]File must be a JAR file: {driver_file}[/red]")
+                raise typer.Exit(1)
 
         service = ConnectivityService(profile=profile)
         results = []
@@ -322,12 +404,6 @@ def upload_jdbc_drivers(
 
         formatter.format_output(results, format, output)
 
-    except FileNotFoundError as e:
-        console.print(f"[red]File not found: {e}[/red]")
-        raise typer.Exit(1)
-    except ValueError as e:
-        console.print(f"[red]Invalid file: {e}[/red]")
-        raise typer.Exit(1)
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         console.print(f"[red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
