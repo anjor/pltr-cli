@@ -138,8 +138,53 @@ pltr project create "ML Pipeline" ri.compass.main.space.abc123 \
 pltr project get PROJECT_RID
 pltr project list [--space-rid RID]
 pltr project update PROJECT_RID [--display-name TEXT] [--description TEXT]
-pltr project delete PROJECT_RID [--yes]
+pltr project delete PROJECT_RID [--confirm]
 pltr project batch-get PROJECT_RIDS...
+```
+
+### Add Organizations to Project
+
+```bash
+pltr project add-orgs PROJECT_RID --org ORG_RID [--org ORG_RID...]
+
+# Example
+pltr project add-orgs ri.compass.main.project.abc123 -o ri.compass.main.org.123 -o ri.compass.main.org.456
+```
+
+### Remove Organizations from Project
+
+```bash
+pltr project remove-orgs PROJECT_RID --org ORG_RID [--org ORG_RID...]
+
+# Example
+pltr project remove-orgs ri.compass.main.project.abc123 -o ri.compass.main.org.123
+```
+
+### List Project Organizations
+
+```bash
+pltr project list-orgs PROJECT_RID [--page-size N] [--format FORMAT]
+
+# Example
+pltr project list-orgs ri.compass.main.project.abc123 --format json
+```
+
+### Create Project from Template
+
+```bash
+pltr project create-from-template --template-rid TEMPLATE_RID --var "name=value" [OPTIONS]
+
+# Options:
+#   --template-rid, -t    Template RID (required)
+#   --var, -v             Variable values in format 'name=value' (can specify multiple)
+#   --description, -d     Project description
+#   --org, -o             Organization RIDs (can specify multiple)
+
+# Example
+pltr project create-from-template -t ri.template.main.123 \
+  -v "project_name=MyProject" \
+  -v "environment=production" \
+  -d "Project from template"
 ```
 
 ## Resource Commands
@@ -194,6 +239,96 @@ pltr resource move RESOURCE_RID TARGET_FOLDER_RID
 
 # Example
 pltr resource move ri.foundry.main.dataset.abc123 ri.compass.main.folder.new456
+```
+
+## Resource Lifecycle Commands
+
+### Delete Resource (Move to Trash)
+
+```bash
+pltr resource delete RESOURCE_RID [--force]
+
+# Example
+pltr resource delete ri.foundry.main.dataset.abc123
+
+# Skip confirmation prompt
+pltr resource delete ri.foundry.main.dataset.abc123 --force
+```
+
+### Restore Resource from Trash
+
+```bash
+pltr resource restore RESOURCE_RID
+
+# Example
+pltr resource restore ri.foundry.main.dataset.abc123
+```
+
+### Permanently Delete Resource
+
+```bash
+pltr resource permanently-delete RESOURCE_RID [--force]
+
+# WARNING: This action is irreversible!
+
+# Example
+pltr resource permanently-delete ri.foundry.main.dataset.abc123 --force
+```
+
+## Resource Markings Commands
+
+### Add Markings to Resource
+
+```bash
+pltr resource add-markings RESOURCE_RID --marking MARKING_ID [--marking MARKING_ID...]
+
+# Example - add single marking
+pltr resource add-markings ri.foundry.main.dataset.abc123 -m marking-id-1
+
+# Add multiple markings
+pltr resource add-markings ri.foundry.main.dataset.abc123 -m marking-id-1 -m marking-id-2
+```
+
+### Remove Markings from Resource
+
+```bash
+pltr resource remove-markings RESOURCE_RID --marking MARKING_ID [--marking MARKING_ID...]
+
+# Example
+pltr resource remove-markings ri.foundry.main.dataset.abc123 -m marking-id-1 -m marking-id-2
+```
+
+### List Resource Markings
+
+```bash
+pltr resource list-markings RESOURCE_RID [--page-size N] [--format FORMAT]
+
+# Example
+pltr resource list-markings ri.foundry.main.dataset.abc123 --format json
+```
+
+### Get Access Requirements
+
+```bash
+pltr resource access-requirements RESOURCE_RID [--format FORMAT]
+
+# Returns required organizations and markings for accessing a resource
+
+# Example
+pltr resource access-requirements ri.foundry.main.dataset.abc123 --format json
+```
+
+## Resource Path Operations
+
+### Batch Get Resources by Path
+
+```bash
+pltr resource batch-get-by-path PATHS... [--format FORMAT]
+
+# Get multiple resources by their absolute paths (max 1000)
+
+# Example
+pltr resource batch-get-by-path "/Org/Project/Dataset1" "/Org/Project/Dataset2"
 ```
 
 ## Resource Role Commands

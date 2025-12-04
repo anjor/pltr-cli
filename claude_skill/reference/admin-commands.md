@@ -58,6 +58,26 @@ pltr admin user revoke-tokens USER_ID [--confirm]
 pltr admin user revoke-tokens john.doe@company.com --confirm
 ```
 
+### Delete User
+
+```bash
+pltr admin user delete USER_ID [--confirm]
+
+# Example
+pltr admin user delete john.doe@company.com --confirm
+```
+
+### Batch Get Users
+
+```bash
+pltr admin user batch-get USER_IDS...
+
+# Max 500 user IDs
+
+# Example
+pltr admin user batch-get user1@company.com user2@company.com user3@company.com
+```
+
 ## Group Commands
 
 ### List Groups
@@ -105,6 +125,17 @@ pltr admin group delete GROUP_ID [--confirm]
 pltr admin group delete old-team --confirm
 ```
 
+### Batch Get Groups
+
+```bash
+pltr admin group batch-get GROUP_IDS...
+
+# Max 500 group IDs
+
+# Example
+pltr admin group batch-get engineering-team data-team security-team
+```
+
 ## Role Commands
 
 ### Get Role Info
@@ -116,6 +147,17 @@ pltr admin role get ROLE_ID [--format FORMAT]
 pltr admin role get admin-role
 ```
 
+### Batch Get Roles
+
+```bash
+pltr admin role batch-get ROLE_IDS...
+
+# Max 500 role IDs
+
+# Example
+pltr admin role batch-get admin-role editor-role viewer-role
+```
+
 ## Organization Commands
 
 ### Get Organization Info
@@ -125,6 +167,99 @@ pltr admin org get ORGANIZATION_ID [--format FORMAT]
 
 # Example
 pltr admin org get my-organization
+```
+
+### Create Organization
+
+```bash
+pltr admin org create NAME --enrollment-rid ENROLLMENT_RID [OPTIONS]
+
+# Options:
+#   --admin-id TEXT    Admin user IDs (can specify multiple)
+
+# Example
+pltr admin org create "New Organization" --enrollment-rid ri.enrollment.main.123 \
+  --admin-id admin1@company.com --admin-id admin2@company.com
+```
+
+### Replace Organization
+
+```bash
+pltr admin org replace ORGANIZATION_RID NAME [OPTIONS]
+
+# Options:
+#   --description TEXT    New organization description
+#   --confirm             Skip confirmation prompt
+
+# Example
+pltr admin org replace ri.compass.main.org.123 "Updated Org Name" \
+  --description "Updated description" --confirm
+```
+
+### List Available Roles for Organization
+
+```bash
+pltr admin org available-roles ORGANIZATION_RID [--page-size N] [--page-token TEXT]
+
+# Example
+pltr admin org available-roles ri.compass.main.org.123 --page-size 50
+```
+
+## Marking Commands
+
+### List Markings
+
+```bash
+pltr admin marking list [--page-size N] [--page-token TEXT] [--format FORMAT]
+
+# Example
+pltr admin marking list --format json --output markings.json
+```
+
+### Get Marking Info
+
+```bash
+pltr admin marking get MARKING_ID [--format FORMAT]
+
+# Example
+pltr admin marking get marking-confidential
+```
+
+### Create Marking
+
+```bash
+pltr admin marking create NAME [OPTIONS]
+
+# Options:
+#   --description TEXT    Marking description
+#   --category-id TEXT    Category ID for the marking
+
+# Example
+pltr admin marking create "Confidential" --description "Confidential data marking"
+```
+
+### Replace Marking
+
+```bash
+pltr admin marking replace MARKING_ID NAME [OPTIONS]
+
+# Options:
+#   --description TEXT    New marking description
+#   --confirm             Skip confirmation prompt
+
+# Example
+pltr admin marking replace marking-123 "Updated Name" --description "New description" --confirm
+```
+
+### Batch Get Markings
+
+```bash
+pltr admin marking batch-get MARKING_IDS...
+
+# Max 500 marking IDs
+
+# Example
+pltr admin marking batch-get marking-1 marking-2 marking-3
 ```
 
 ## Common Patterns
