@@ -312,6 +312,31 @@ class DatasetService(BaseService):
         except Exception as e:
             raise RuntimeError(f"Failed to read dataset {dataset_rid}: {e}")
 
+    def preview_data(
+        self,
+        dataset_rid: str,
+        branch: str = "master",
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Preview dataset contents as a list of records.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch: Branch name
+            limit: Maximum number of rows to return
+
+        Returns:
+            List of dictionaries representing rows
+        """
+        try:
+            # Use read_table with pandas format for easy conversion
+            df = self.read_table(dataset_rid, format="pandas")
+            # Limit rows and convert to records
+            return df.head(limit).to_dict(orient="records")
+        except Exception as e:
+            raise RuntimeError(f"Failed to preview dataset {dataset_rid}: {e}")
+
     def delete_dataset(self, dataset_rid: str) -> bool:
         """
         Delete a dataset.
