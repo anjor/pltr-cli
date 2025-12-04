@@ -57,22 +57,30 @@ pltr dataset files get ri.foundry.main.dataset.abc123 "/report.pdf" "./report.pd
 
 ## Schema Operations
 
+**Note:** `schema get` requires API preview access. If you encounter `ApiFeaturePreviewUsageOnly` errors, use `schema apply` instead.
+
 ```bash
-# Get dataset schema
+# Get dataset schema (requires preview access)
 pltr dataset schema get DATASET_RID [--branch BRANCH]
+
+# Apply/infer schema (works for all users)
+pltr dataset schema apply DATASET_RID
 
 # Example
 pltr dataset schema get ri.foundry.main.dataset.abc123
+pltr dataset schema apply ri.foundry.main.dataset.abc123
 ```
 
 ## Preview Data
 
 ```bash
 # Preview dataset contents
-pltr dataset preview DATASET_RID [--limit N]
+pltr dataset preview DATASET_RID [--limit N] [--branch BRANCH]
 
-# Example
-pltr dataset preview ri.foundry.main.dataset.abc123 --limit 10
+# Examples
+pltr dataset preview ri.foundry.main.dataset.abc123
+pltr dataset preview ri.foundry.main.dataset.abc123 --limit 50
+pltr dataset preview ri.foundry.main.dataset.abc123 --format csv --output preview.csv
 ```
 
 ## Transaction Operations
