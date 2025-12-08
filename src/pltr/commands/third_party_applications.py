@@ -3,7 +3,6 @@ Third-party applications management commands for Foundry.
 """
 
 import typer
-from pathlib import Path
 from typing import Optional
 from rich.console import Console
 
@@ -44,7 +43,7 @@ def get_application(
         help="Output format (table, json, csv)",
         autocompletion=complete_output_format,
     ),
-    output_file: Optional[Path] = typer.Option(
+    output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
     preview: bool = typer.Option(
@@ -66,9 +65,9 @@ def get_application(
             application = service.get_application(application_rid, preview=preview)
 
         # Format output
-        if output_file:
-            formatter.save_to_file(application, output_file, format)
-            formatter.print_success(f"Application information saved to {output_file}")
+        if output:
+            formatter.save_to_file(application, output, format)
+            formatter.print_success(f"Application information saved to {output}")
         else:
             formatter.display(application, format)
 

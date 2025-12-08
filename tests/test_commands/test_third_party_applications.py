@@ -3,7 +3,6 @@ Tests for third-party applications commands.
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 
@@ -164,7 +163,7 @@ class TestThirdPartyApplicationsCommands:
             # Assert
             assert result.exit_code == 0
             mock_formatter.save_to_file.assert_called_once_with(
-                app_result, Path("/tmp/app.json"), "json"
+                app_result, "/tmp/app.json", "json"
             )
             mock_formatter.print_success.assert_called_once()
 
