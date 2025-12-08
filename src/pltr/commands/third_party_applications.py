@@ -37,7 +37,7 @@ def get_application(
         help="Profile name",
         autocompletion=complete_profile,
     ),
-    output_format: str = typer.Option(
+    format: str = typer.Option(
         "table",
         "--format",
         "-f",
@@ -67,13 +67,16 @@ def get_application(
 
         # Format output
         if output_file:
-            formatter.save_to_file(application, output_file, output_format)
+            formatter.save_to_file(application, output_file, format)
             formatter.print_success(f"Application information saved to {output_file}")
         else:
-            formatter.display(application, output_format)
+            formatter.display(application, format)
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        formatter.print_error(f"Invalid request: {e}")
         raise typer.Exit(1)
     except Exception as e:
         formatter.print_error(f"Failed to get third-party application: {e}")

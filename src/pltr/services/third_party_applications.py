@@ -23,13 +23,26 @@ class ThirdPartyApplicationsService(BaseService):
 
         Args:
             application_rid: Third-party application Resource Identifier
+                Expected format: ri.third-party-applications.<realm>.third-party-application.<locator>
+                Example: ri.third-party-applications.main.third-party-application.my-app-123
             preview: Enable preview mode (default: False)
 
         Returns:
-            Third-party application information dictionary
+            Third-party application information dictionary containing:
+            - rid: Application resource identifier
+            - name: Application name
+            - description: Application description (if available)
+            - status: Application status (if available)
 
         Raises:
             RuntimeError: If the operation fails
+
+        Example:
+            >>> service = ThirdPartyApplicationsService()
+            >>> app = service.get_application(
+            ...     "ri.third-party-applications.main.third-party-application.my-app"
+            ... )
+            >>> print(app['name'])
         """
         try:
             application = self.service.get(application_rid, preview=preview)
