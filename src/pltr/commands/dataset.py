@@ -78,7 +78,9 @@ def preview_dataset(
     dataset_rid: str = typer.Argument(
         ..., help="Dataset Resource Identifier", autocompletion=complete_rid
     ),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of rows to display"),
+    limit: int = typer.Option(
+        10, "--limit", "-n", help="Number of rows to display", min=1
+    ),
     profile: Optional[str] = typer.Option(
         None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),

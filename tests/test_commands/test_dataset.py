@@ -230,6 +230,21 @@ def test_preview_dataset_with_limit(mock_dataset_service):
     )
 
 
+def test_preview_dataset_with_invalid_limit(mock_dataset_service):
+    """Test dataset preview with invalid (zero or negative) limit."""
+    # Test with zero limit
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--limit", "0"]
+    )
+    assert result.exit_code == 2  # Typer returns 2 for validation errors
+
+    # Test with negative limit
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--limit", "-5"]
+    )
+    assert result.exit_code == 2  # Typer returns 2 for validation errors
+
+
 def test_preview_dataset_json_format(mock_dataset_service):
     """Test dataset preview with JSON format."""
     mock_dataset_service.preview_data.return_value = [

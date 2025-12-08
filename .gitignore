@@ -144,5 +144,12 @@ cython_debug/
 config.ini
 credentials.json
 
+# Test data files (avoid committing test outputs to root)
+/children.csv
+/folder_info.json
+/folders.json
+/*.csv
+/*.json
+
 # ruff
 .ruff_cache/
