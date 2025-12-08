@@ -558,7 +558,7 @@ class OutputFormatter:
 
         # Current state
         info_lines.append(
-            f"Fetched {metadata.items_fetched} items " f"(page {metadata.current_page})"
+            f"Fetched {metadata.items_fetched} items (page {metadata.current_page})"
         )
 
         # Next steps if more data available
