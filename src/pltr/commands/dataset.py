@@ -79,7 +79,6 @@ def preview_dataset(
         ..., help="Dataset Resource Identifier", autocompletion=complete_rid
     ),
     limit: int = typer.Option(10, "--limit", "-n", help="Number of rows to display"),
-    branch: str = typer.Option("master", "--branch", "-b", help="Dataset branch"),
     profile: Optional[str] = typer.Option(
         None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
     ),
@@ -100,9 +99,9 @@ def preview_dataset(
         service = DatasetService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner(
-            f"Fetching preview of {dataset_rid} (branch: {branch}, limit: {limit})..."
+            f"Fetching preview of {dataset_rid} (limit: {limit})..."
         ):
-            data = service.preview_data(dataset_rid, branch=branch, limit=limit)
+            data = service.preview_data(dataset_rid, limit=limit)
 
         if not data:
             formatter.print_warning("Dataset is empty or has no readable data")

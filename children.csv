@@ -1,0 +1,3 @@
+description,display_name,name,rid,type
+A child folder,Child Folder,,ri.compass.main.folder.child-folder,folder
+,Child Dataset,Child Dataset,ri.foundry.main.dataset.child-dataset,dataset

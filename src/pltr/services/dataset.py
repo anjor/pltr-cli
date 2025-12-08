@@ -315,7 +315,6 @@ class DatasetService(BaseService):
     def preview_data(
         self,
         dataset_rid: str,
-        branch: str = "master",
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
@@ -323,7 +322,6 @@ class DatasetService(BaseService):
 
         Args:
             dataset_rid: Dataset Resource Identifier
-            branch: Branch name
             limit: Maximum number of rows to return
 
         Returns:

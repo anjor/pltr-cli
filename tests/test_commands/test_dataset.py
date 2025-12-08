@@ -196,3 +196,142 @@ def test_create_dataset_error(mock_dataset_service):
 
     assert result.exit_code == 1
     assert "Failed to create dataset" in result.stdout
+
+
+# Tests for 'preview' command
+def test_preview_dataset_success(mock_dataset_service):
+    """Test successful dataset preview."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+        {"id": 2, "name": "test2"},
+    ]
+
+    result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
+
+    assert result.exit_code == 0
+    mock_dataset_service.preview_data.assert_called_once_with(
+        "ri.foundry.main.dataset.test", limit=10
+    )
+
+
+def test_preview_dataset_with_limit(mock_dataset_service):
+    """Test dataset preview with custom limit."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--limit", "5"]
+    )
+
+    assert result.exit_code == 0
+    mock_dataset_service.preview_data.assert_called_once_with(
+        "ri.foundry.main.dataset.test", limit=5
+    )
+
+
+def test_preview_dataset_json_format(mock_dataset_service):
+    """Test dataset preview with JSON format."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--format", "json"]
+    )
+
+    assert result.exit_code == 0
+
+
+def test_preview_dataset_csv_format(mock_dataset_service):
+    """Test dataset preview with CSV format."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--format", "csv"]
+    )
+
+    assert result.exit_code == 0
+
+
+def test_preview_dataset_with_output_file(mock_dataset_service, tmp_path):
+    """Test dataset preview with output file."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+
+    output_file = tmp_path / "preview.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "preview",
+            "ri.foundry.main.dataset.test",
+            "--format",
+            "json",
+            "--output",
+            str(output_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Preview saved to" in result.stdout
+
+
+def test_preview_dataset_empty(mock_dataset_service):
+    """Test preview of empty dataset."""
+    mock_dataset_service.preview_data.return_value = []
+
+    result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
+
+    assert result.exit_code == 0
+    assert "Dataset is empty" in result.stdout
+
+
+def test_preview_dataset_with_profile(mock_dataset_service):
+    """Test dataset preview with specific profile."""
+    mock_dataset_service.preview_data.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+
+    result = runner.invoke(
+        app, ["preview", "ri.foundry.main.dataset.test", "--profile", "test-profile"]
+    )
+
+    assert result.exit_code == 0
+
+
+def test_preview_dataset_profile_not_found(mock_dataset_service):
+    """Test dataset preview with non-existent profile."""
+    mock_dataset_service.preview_data.side_effect = ProfileNotFoundError(
+        "Profile not found"
+    )
+
+    result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
+
+    assert result.exit_code == 1
+    assert "Profile not found" in result.stdout
+
+
+def test_preview_dataset_missing_credentials(mock_dataset_service):
+    """Test dataset preview with missing credentials."""
+    mock_dataset_service.preview_data.side_effect = MissingCredentialsError(
+        "Missing token"
+    )
+
+    result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
+
+    assert result.exit_code == 1
+    assert "Missing token" in result.stdout
+
+
+def test_preview_dataset_error(mock_dataset_service):
+    """Test dataset preview with error."""
+    mock_dataset_service.preview_data.side_effect = Exception("Preview failed")
+
+    result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
+
+    assert result.exit_code == 1
+    assert "Failed to preview dataset" in result.stdout

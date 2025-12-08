@@ -1,0 +1,11 @@
+[
+  {
+    "rid": "ri.compass.main.folder.test-folder",
+    "display_name": "Test Folder",
+    "description": "Test folder description",
+    "parent_folder_rid": "ri.compass.main.folder.parent",
+    "created": "2024-01-01T00:00:00Z",
+    "modified": "2024-01-02T00:00:00Z",
+    "type": "folder"
+  }
+]

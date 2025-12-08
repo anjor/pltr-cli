@@ -155,7 +155,6 @@ Preview the contents of a dataset.
 
 **Options:**
 - `--limit`, `-n` INTEGER: Number of rows to display [default: 10]
-- `--branch`, `-b` TEXT: Dataset branch [default: master]
 - `--profile`, `-p` TEXT: Profile name
 - `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
 - `--output`, `-o` TEXT: Output file path

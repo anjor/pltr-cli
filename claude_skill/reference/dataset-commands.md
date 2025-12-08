@@ -75,7 +75,7 @@ pltr dataset schema apply ri.foundry.main.dataset.abc123
 
 ```bash
 # Preview dataset contents
-pltr dataset preview DATASET_RID [--limit N] [--branch BRANCH]
+pltr dataset preview DATASET_RID [--limit N]
 
 # Examples
 pltr dataset preview ri.foundry.main.dataset.abc123
