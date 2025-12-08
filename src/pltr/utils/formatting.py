@@ -510,9 +510,9 @@ class OutputFormatter:
                 }
                 # Include next_page_token if available
                 if metadata.next_page_token:
-                    output_data["pagination"][
-                        "next_page_token"
-                    ] = metadata.next_page_token
+                    output_data["pagination"]["next_page_token"] = (
+                        metadata.next_page_token
+                    )
 
                 return self._format_json(output_data, output_file)
             else:
