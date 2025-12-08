@@ -2,10 +2,12 @@
 Dataset service wrapper for Foundry SDK.
 """
 
-from typing import Any, Optional, List, Dict, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from pathlib import Path
 import csv
 
+from ..config.settings import Settings
+from ..utils.pagination import PaginationConfig, PaginationResult
 from .base import BaseService
 
 
@@ -516,6 +518,8 @@ class DatasetService(BaseService):
         """
         List files in a dataset.
 
+        DEPRECATED: Use list_files_paginated() instead for better pagination support.
+
         Args:
             dataset_rid: Dataset Resource Identifier
             branch: Dataset branch name
@@ -539,6 +543,53 @@ class DatasetService(BaseService):
             ]
         except Exception as e:
             raise RuntimeError(f"Failed to list files in dataset {dataset_rid}: {e}")
+
+    def list_files_paginated(
+        self,
+        dataset_rid: str,
+        branch: str,
+        config: PaginationConfig,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> PaginationResult:
+        """
+        List files with full pagination control.
+
+        Args:
+            dataset_rid: Dataset Resource Identifier
+            branch: Dataset branch name
+            config: Pagination configuration
+            progress_callback: Optional progress callback
+
+        Returns:
+            PaginationResult with file information and metadata
+        """
+        try:
+            settings = Settings()
+
+            # Get iterator from SDK - ResourceIterator with next_page_token support
+            iterator = self.service.Dataset.File.list(
+                dataset_rid=dataset_rid,
+                branch_name=branch,
+                page_size=config.page_size or settings.get("page_size", 20),
+            )
+
+            # Use iterator pagination handler
+            result = self._paginate_iterator(iterator, config, progress_callback)
+
+            # Format file information
+            result.data = [
+                {
+                    "path": file.path,
+                    "size_bytes": getattr(file, "size_bytes", None),
+                    "last_modified": getattr(file, "last_modified", None),
+                    "transaction_rid": getattr(file, "transaction_rid", None),
+                }
+                for file in result.data
+            ]
+
+            return result
+        except Exception as e:
+            raise RuntimeError(f"Failed to list files: {e}")
 
     def get_branches(self, dataset_rid: str) -> List[Dict[str, Any]]:
         """

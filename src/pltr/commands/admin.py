@@ -12,6 +12,7 @@ from rich.console import Console
 from ..services.admin import AdminService
 from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
+from ..utils.pagination import PaginationConfig
 
 # Create the main admin app
 app = typer.Typer(
@@ -46,28 +47,60 @@ def list_users(
         None, "--output", help="Save results to file"
     ),
     page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of users per page"
+        None, "--page-size", help="Number of users per page (default: from settings)"
+    ),
+    max_pages: Optional[int] = typer.Option(
+        1, "--max-pages", help="Maximum number of pages to fetch (default: 1)"
     ),
     page_token: Optional[str] = typer.Option(
-        None, "--page-token", help="Pagination token from previous response"
+        None, "--page-token", help="Page token to resume from previous response"
+    ),
+    all: bool = typer.Option(
+        False, "--all", help="Fetch all available pages (overrides --max-pages)"
     ),
 ) -> None:
-    """List all users in the organization."""
+    """
+    List users in the organization with pagination support.
+
+    By default, fetches only the first page of results. Use --all to fetch all users,
+    or --max-pages to control how many pages to fetch.
+
+    Examples:
+        # List first page of users (default)
+        pltr admin user list
+
+        # List all users
+        pltr admin user list --all
+
+        # List first 3 pages
+        pltr admin user list --max-pages 3
+
+        # Resume from a specific page
+        pltr admin user list --page-token abc123
+    """
     console = Console()
     formatter = OutputFormatter()
 
     try:
         service = AdminService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner("Fetching users..."):
-            result = service.list_users(page_size=page_size, page_token=page_token)
+        # Create pagination config
+        config = PaginationConfig(
+            page_size=page_size,
+            max_pages=max_pages,
+            page_token=page_token,
+            fetch_all=all,
+        )
 
-        # Format and display results
+        with SpinnerProgressTracker().track_spinner("Fetching users..."):
+            result = service.list_users_paginated(config)
+
+        # Format and display paginated results
         if output_file:
-            formatter.save_to_file(result, output_file, output_format)
-            console.print(f"Results saved to {output_file}")
+            formatter.format_paginated_output(result, output_format, str(output_file))
+            console.print(f"[green]Results saved to {output_file}[/green]")
         else:
-            formatter.display(result, output_format)
+            formatter.format_paginated_output(result, output_format)
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")

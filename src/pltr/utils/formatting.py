@@ -4,13 +4,19 @@ Output formatting utilities for CLI commands.
 
 import json
 import csv
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable
 from datetime import datetime
 from io import StringIO
 
 from rich.console import Console
 from rich.table import Table
 from rich import print as rich_print
+
+# Type checking import to avoid circular dependencies
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    pass
 
 
 class OutputFormatter:
@@ -459,6 +465,118 @@ class OutputFormatter:
                     json.dump(data, f, indent=2, default=str)
                 else:
                     f.write(str(data))
+
+    def format_paginated_output(
+        self,
+        result: Any,  # PaginationResult
+        format_type: str = "table",
+        output_file: Optional[str] = None,
+        formatter_fn: Optional[Callable] = None,
+    ) -> Optional[str]:
+        """
+        Format paginated results with metadata.
+
+        This method handles display of paginated data and automatically
+        includes pagination information based on the output format.
+
+        Args:
+            result: PaginationResult object with .data and .metadata attributes
+            format_type: Output format ('table', 'json', 'csv')
+            output_file: Optional output file path
+            formatter_fn: Optional custom formatter function for the data
+
+        Returns:
+            Formatted string if no output file specified
+
+        Example:
+            >>> result = PaginationResult(data=[...], metadata=metadata)
+            >>> formatter.format_paginated_output(result, "json")
+        """
+        # Extract data and metadata
+        data = result.data if hasattr(result, "data") else result
+        metadata = result.metadata if hasattr(result, "metadata") else None
+
+        # JSON format: include pagination metadata in output
+        if format_type == "json":
+            if metadata:
+                output_data = {
+                    "data": data,
+                    "pagination": {
+                        "page": metadata.current_page,
+                        "items_count": metadata.items_fetched,
+                        "has_more": metadata.has_more,
+                        "total_pages_fetched": metadata.total_pages_fetched,
+                    },
+                }
+                # Include next_page_token if available
+                if metadata.next_page_token:
+                    output_data["pagination"]["next_page_token"] = (
+                        metadata.next_page_token
+                    )
+
+                return self._format_json(output_data, output_file)
+            else:
+                # No metadata, format data directly
+                return self._format_json(data, output_file)
+
+        # Table/CSV format: format data normally, then print pagination info
+        else:
+            # Format the data using custom formatter or default
+            if formatter_fn:
+                formatted_result = formatter_fn(data, format_type, output_file)
+            else:
+                formatted_result = self.format_output(data, format_type, output_file)
+
+            # Print pagination info to console (even when saving to file)
+            # For CSV/table formats, pagination metadata is shown on console
+            # while data is written to file
+            if metadata:
+                self.print_pagination_info(metadata)
+
+            return formatted_result
+
+    def print_pagination_info(self, metadata: Any) -> None:  # PaginationMetadata
+        """
+        Print pagination information to the console.
+
+        This provides users with helpful information about the current
+        pagination state and how to fetch more data.
+
+        Args:
+            metadata: PaginationMetadata object
+
+        Example output:
+            Fetched 20 items (page 1)
+            Next page: --page-token abc123
+            Fetch all: Add --all flag
+        """
+        if not metadata:
+            return
+
+        # Build info message
+        info_lines = []
+
+        # Current state
+        info_lines.append(
+            f"Fetched {metadata.items_fetched} items (page {metadata.current_page})"
+        )
+
+        # Next steps if more data available
+        if metadata.has_more:
+            if metadata.next_page_token:
+                info_lines.append(f"Next page: --page-token {metadata.next_page_token}")
+            else:
+                # Iterator pattern without explicit token
+                info_lines.append(
+                    f"Next page: Use --max-pages {metadata.current_page + 1}"
+                )
+
+            info_lines.append("Fetch all: Add --all flag")
+        else:
+            info_lines.append("No more pages available")
+
+        # Print as info message
+        self.print_info("\n".join(info_lines))
 
     def format_sql_results(
         self,

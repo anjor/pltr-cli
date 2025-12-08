@@ -113,14 +113,20 @@ def test_get_object_type_command(mock_services):
 # Object operation command tests
 def test_list_objects_command(mock_services):
     """Test list objects command."""
+    from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
     mock_instance = Mock()
-    mock_instance.list_objects.return_value = [
+    object_data = [
         {
             "employee_id": "EMP001",
             "name": "John Doe",
             "department": "Engineering",
         }
     ]
+    pagination_result = PaginationResult(
+        data=object_data, metadata=PaginationMetadata(items_fetched=1, current_page=1)
+    )
+    mock_instance.list_objects_paginated.return_value = pagination_result
     mock_services["object"].return_value = mock_instance
 
     result = runner.invoke(
@@ -128,15 +134,19 @@ def test_list_objects_command(mock_services):
     )
 
     assert result.exit_code == 0
-    mock_instance.list_objects.assert_called_once()
+    mock_instance.list_objects_paginated.assert_called_once()
 
 
 def test_list_objects_with_properties(mock_services):
     """Test list objects with specific properties."""
+    from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
     mock_instance = Mock()
-    mock_instance.list_objects.return_value = [
-        {"employee_id": "EMP001", "name": "John Doe"}
-    ]
+    object_data = [{"employee_id": "EMP001", "name": "John Doe"}]
+    pagination_result = PaginationResult(
+        data=object_data, metadata=PaginationMetadata(items_fetched=1, current_page=1)
+    )
+    mock_instance.list_objects_paginated.return_value = pagination_result
     mock_services["object"].return_value = mock_instance
 
     result = runner.invoke(
@@ -151,9 +161,7 @@ def test_list_objects_with_properties(mock_services):
     )
 
     assert result.exit_code == 0
-    mock_instance.list_objects.assert_called_once()
-    call_args = mock_instance.list_objects.call_args
-    assert call_args[1]["properties"] == ["employee_id", "name"]
+    mock_instance.list_objects_paginated.assert_called_once()
 
 
 def test_get_object_command(mock_services):

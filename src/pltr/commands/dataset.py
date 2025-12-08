@@ -8,6 +8,7 @@ from rich.console import Console
 
 from ..services.dataset import DatasetService
 from ..utils.formatting import OutputFormatter
+from ..utils.pagination import PaginationConfig
 from ..utils.progress import SpinnerProgressTracker
 from ..auth.base import ProfileNotFoundError, MissingCredentialsError
 from ..utils.completion import (
@@ -566,21 +567,71 @@ def list_files(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
+    page_size: Optional[int] = typer.Option(
+        None, "--page-size", help="Number of files per page (default: from settings)"
+    ),
+    max_pages: Optional[int] = typer.Option(
+        1, "--max-pages", help="Maximum number of pages to fetch (default: 1)"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Page token to resume from previous response"
+    ),
+    all: bool = typer.Option(
+        False, "--all", help="Fetch all available pages (overrides --max-pages)"
+    ),
 ):
-    """List files in a dataset."""
+    """
+    List files in a dataset with pagination support.
+
+    By default, fetches only the first page of results. Use --all to fetch all files,
+    or --max-pages to control how many pages to fetch. Critical for large datasets.
+
+    Examples:
+        # List first page of files (default)
+        pltr dataset files list DATASET_RID
+
+        # List all files
+        pltr dataset files list DATASET_RID --all
+
+        # List first 3 pages
+        pltr dataset files list DATASET_RID --max-pages 3
+    """
     try:
         cache_rid(dataset_rid)
         service = DatasetService(profile=profile)
 
+        # Create pagination config
+        config = PaginationConfig(
+            page_size=page_size,
+            max_pages=max_pages,
+            page_token=page_token,
+            fetch_all=all,
+        )
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching files from {dataset_rid} (branch: {branch})..."
         ):
-            files = service.list_files(dataset_rid, branch)
+            result = service.list_files_paginated(dataset_rid, branch, config)
 
-        formatter.format_files(files, format, output)
-
+        # Format and display paginated results
         if output:
+            formatter.format_paginated_output(
+                result,
+                format,
+                output,
+                formatter_fn=lambda data, fmt, out: formatter.format_files(
+                    data, fmt, out
+                ),
+            )
             formatter.print_success(f"Files information saved to {output}")
+        else:
+            formatter.format_paginated_output(
+                result,
+                format,
+                formatter_fn=lambda data, fmt, out: formatter.format_files(
+                    data, fmt, out
+                ),
+            )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")

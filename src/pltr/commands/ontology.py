@@ -15,6 +15,7 @@ from ..services.ontology import (
     QueryService,
 )
 from ..utils.formatting import OutputFormatter
+from ..utils.pagination import PaginationConfig
 from ..utils.progress import SpinnerProgressTracker
 from ..auth.base import ProfileNotFoundError, MissingCredentialsError
 
@@ -176,36 +177,66 @@ def list_objects(
         None, "--output", "-o", help="Output file path"
     ),
     page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
+        None, "--page-size", help="Number of objects per page (default: from settings)"
+    ),
+    max_pages: Optional[int] = typer.Option(
+        1, "--max-pages", help="Maximum number of pages to fetch (default: 1)"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Page token to resume from previous response"
+    ),
+    all: bool = typer.Option(
+        False, "--all", help="Fetch all available pages (overrides --max-pages)"
     ),
     properties: Optional[str] = typer.Option(
         None, "--properties", help="Comma-separated list of properties to include"
     ),
 ):
-    """List objects of a specific type."""
+    """
+    List objects of a specific type with pagination support.
+
+    By default, fetches only the first page of results. Use --all to fetch all objects,
+    or --max-pages to control how many pages to fetch.
+
+    Examples:
+        # List first page of objects (default)
+        pltr ontology object-list ONTOLOGY_RID ObjectType
+
+        # List all objects
+        pltr ontology object-list ONTOLOGY_RID ObjectType --all
+
+        # List first 3 pages
+        pltr ontology object-list ONTOLOGY_RID ObjectType --max-pages 3
+
+        # Resume from a specific page
+        pltr ontology object-list ONTOLOGY_RID ObjectType --page-token abc123
+    """
     try:
         service = OntologyObjectService(profile=profile)
 
         prop_list = properties.split(",") if properties else None
 
+        # Create pagination config
+        config = PaginationConfig(
+            page_size=page_size,
+            max_pages=max_pages,
+            page_token=page_token,
+            fetch_all=all,
+        )
+
         with SpinnerProgressTracker().track_spinner(
             f"Fetching {object_type} objects..."
         ):
-            objects = service.list_objects(
-                ontology_rid, object_type, page_size=page_size, properties=prop_list
+            result = service.list_objects_paginated(
+                ontology_rid, object_type, config, properties=prop_list
             )
 
-        if format == "table" and objects:
-            # Use first object's keys as columns
-            columns = list(objects[0].keys()) if objects else []
-            formatter.format_table(
-                objects, columns=columns, format=format, output=output
-            )
-        else:
-            formatter.format_list(objects, format=format, output=output)
-
+        # Format and display paginated results
         if output:
+            formatter.format_paginated_output(result, format, output)
             formatter.print_success(f"Objects saved to {output}")
+        else:
+            formatter.format_paginated_output(result, format)
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
