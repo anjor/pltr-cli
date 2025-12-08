@@ -214,13 +214,26 @@ class TestResponsePaginationHandler:
         assert result.data == [3, 4, 5, 6]
 
 
+class MockIterator:
+    """Mock iterator that mimics SDK's ResourceIterator with next_page_token property."""
+
+    def __init__(self, items, next_page_token=None):
+        self._items = iter(items)
+        self.next_page_token = next_page_token
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._items)
+
+
 class TestIteratorPaginationHandler:
     """Tests for IteratorPaginationHandler."""
 
     def test_single_page_iterator(self):
         """Test iterating single page from iterator."""
-        mock_iterator = iter([1, 2, 3, 4, 5])
-        mock_iterator.next_page_token = None  # SDK ResourceIterator property
+        mock_iterator = MockIterator([1, 2, 3, 4, 5], next_page_token=None)
 
         handler = IteratorPaginationHandler()
         config = PaginationConfig(page_size=10, max_pages=1)
@@ -233,8 +246,7 @@ class TestIteratorPaginationHandler:
 
     def test_multiple_pages_from_iterator(self):
         """Test paginating iterator results."""
-        mock_iterator = iter(range(1, 51))  # 50 items
-        mock_iterator.next_page_token = "next_token"
+        mock_iterator = MockIterator(range(1, 51), next_page_token="next_token")
 
         handler = IteratorPaginationHandler()
         config = PaginationConfig(page_size=20, max_pages=2)
@@ -246,8 +258,7 @@ class TestIteratorPaginationHandler:
 
     def test_iterator_with_next_token_property(self):
         """Test extracting next_page_token from iterator."""
-        mock_iterator = iter([1, 2, 3])
-        mock_iterator.next_page_token = "abc123"
+        mock_iterator = MockIterator([1, 2, 3], next_page_token="abc123")
 
         handler = IteratorPaginationHandler()
         config = PaginationConfig(page_size=10, max_pages=1)
@@ -270,8 +281,7 @@ class TestIteratorPaginationHandler:
 
     def test_fetch_all_from_iterator(self):
         """Test fetching all items from iterator."""
-        mock_iterator = iter(range(1, 101))  # 100 items
-        mock_iterator.next_page_token = None
+        mock_iterator = MockIterator(range(1, 101), next_page_token=None)
 
         handler = IteratorPaginationHandler()
         config = PaginationConfig(page_size=20, fetch_all=True)
@@ -283,8 +293,7 @@ class TestIteratorPaginationHandler:
 
     def test_progress_callback_iterator(self):
         """Test progress callback with iterator."""
-        mock_iterator = iter(range(1, 41))  # 40 items
-        mock_iterator.next_page_token = None
+        mock_iterator = MockIterator(range(1, 41), next_page_token=None)
 
         progress_calls = []
 
@@ -301,8 +310,7 @@ class TestIteratorPaginationHandler:
 
     def test_partial_last_page(self):
         """Test handling partial last page."""
-        mock_iterator = iter(range(1, 26))  # 25 items
-        mock_iterator.next_page_token = None
+        mock_iterator = MockIterator(range(1, 26), next_page_token=None)
 
         handler = IteratorPaginationHandler()
         config = PaginationConfig(page_size=20, fetch_all=True)

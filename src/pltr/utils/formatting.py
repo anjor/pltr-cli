@@ -527,8 +527,10 @@ class OutputFormatter:
             else:
                 formatted_result = self.format_output(data, format_type, output_file)
 
-            # Print pagination info to console (not to output file)
-            if metadata and not output_file:
+            # Print pagination info to console (even when saving to file)
+            # For CSV/table formats, pagination metadata is shown on console
+            # while data is written to file
+            if metadata:
                 self.print_pagination_info(metadata)
 
             return formatted_result

@@ -24,10 +24,7 @@ This guide helps you migrate scripts and workflows from v1.x to v2.0, which intr
 The following commands have changed default behavior:
 
 - `pltr admin user list`
-- `pltr admin group list`
 - `pltr orchestration builds search`
-- `pltr orchestration jobs list`
-- `pltr orchestration schedules list`
 - `pltr ontology object-list`
 - `pltr dataset files list` (NEW: previously had no pagination support)
 
@@ -303,13 +300,9 @@ Process different datasets in parallel:
 
 ```bash
 #!/bin/bash
-# Before: Sequential fetching
-pltr admin user list --all > users.txt
-pltr admin group list --all > groups.txt
-
-# After: Parallel fetching (faster)
+# Process different datasets in parallel
 pltr admin user list --all > users.txt &
-pltr admin group list --all > groups.txt &
+pltr orchestration builds search --all > builds.txt &
 wait
 ```
 

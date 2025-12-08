@@ -384,7 +384,7 @@ This warning appears for iterator-based commands. The SDK's `ResourceIterator` m
 1. **Parallel fetching**: For different queries, run them in parallel
    ```bash
    pltr admin user list --all > users.txt &
-   pltr admin group list --all > groups.txt &
+   pltr orchestration builds search --all > builds.txt &
    wait
    ```
 

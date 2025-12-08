@@ -151,40 +151,69 @@ class ResponsePaginationHandler:
         max_pages = config.effective_max_pages()
 
         while True:
-            # Fetch the current page
-            response = fetch_fn(current_token)
-            page_data = response.get("data", [])
-            next_token = response.get("next_page_token")
+            try:
+                # Fetch the current page
+                response = fetch_fn(current_token)
+                page_data = response.get("data", [])
+                next_token = response.get("next_page_token")
 
-            # Add items from this page
-            all_items.extend(page_data)
-            page_num += 1
+                # Add items from this page
+                all_items.extend(page_data)
+                page_num += 1
 
-            # Update progress
-            if progress_callback:
-                progress_callback(page_num, len(all_items))
+                # Update progress
+                if progress_callback:
+                    progress_callback(page_num, len(all_items))
 
-            # Check if we should continue
-            has_more = next_token is not None
-            should_stop = (
-                not has_more  # No more pages
-                or (
-                    max_pages is not None and page_num >= max_pages
-                )  # Reached max pages
-            )
-
-            if should_stop:
-                metadata = PaginationMetadata(
-                    current_page=page_num,
-                    items_fetched=len(all_items),
-                    next_page_token=next_token,
-                    has_more=has_more,
-                    total_pages_fetched=page_num,
+                # Check if we should continue
+                has_more = next_token is not None
+                should_stop = (
+                    not has_more  # No more pages
+                    or (
+                        max_pages is not None and page_num >= max_pages
+                    )  # Reached max pages
                 )
-                return PaginationResult(data=all_items, metadata=metadata)
 
-            # Continue to next page
-            current_token = next_token
+                if should_stop:
+                    metadata = PaginationMetadata(
+                        current_page=page_num,
+                        items_fetched=len(all_items),
+                        next_page_token=next_token,
+                        has_more=has_more,
+                        total_pages_fetched=page_num,
+                    )
+                    return PaginationResult(data=all_items, metadata=metadata)
+
+                # Continue to next page
+                current_token = next_token
+
+            except Exception as e:
+                # Error occurred while fetching - return partial results
+                # Include the error information in metadata for user awareness
+                if all_items:
+                    # We have partial results - return what we got so far
+                    import sys
+
+                    print(
+                        f"\nWarning: Error fetching page {page_num + 1}: {e}",
+                        file=sys.stderr,
+                    )
+                    print(
+                        f"Returning partial results ({len(all_items)} items from {page_num} pages)",
+                        file=sys.stderr,
+                    )
+
+                    metadata = PaginationMetadata(
+                        current_page=page_num,
+                        items_fetched=len(all_items),
+                        next_page_token=current_token,  # Token for retry
+                        has_more=True,  # Assume more pages exist
+                        total_pages_fetched=page_num,
+                    )
+                    return PaginationResult(data=all_items, metadata=metadata)
+                else:
+                    # No data fetched yet - re-raise the error
+                    raise
 
 
 class IteratorPaginationHandler:
@@ -226,47 +255,64 @@ class IteratorPaginationHandler:
         all_items: List[Any] = []
         page_num = 0
         max_pages = config.effective_max_pages()
-
-        # Collect items from the iterator
-        for item in iterator:
-            all_items.append(item)
-
-            # Check if we've completed a "page" worth of items
-            page_size = config.page_size or 20  # Default page size
-            if len(all_items) % page_size == 0:
-                page_num += 1
-
-                # Update progress
-                if progress_callback:
-                    progress_callback(page_num, len(all_items))
-
-                # Check if we should stop
-                if max_pages is not None and page_num >= max_pages:
-                    break
-
-        # Calculate final page number if items don't align with page_size
-        if len(all_items) % page_size != 0:
-            page_num += 1
-            if progress_callback:
-                progress_callback(page_num, len(all_items))
-
-        # Get the next page token from the ResourceIterator
-        # The SDK's ResourceIterator has .next_page_token and .data properties
         next_token = None
         has_more = False
 
-        # Check if the iterator has the next_page_token attribute (SDK's ResourceIterator)
-        if hasattr(iterator, "next_page_token"):
-            next_token = iterator.next_page_token
-            has_more = next_token is not None
-        else:
-            # Fallback: try to peek ahead to see if there are more items
-            try:
-                # This won't work well, but it's a fallback
-                next(iterator)
-                has_more = True
-            except StopIteration:
-                has_more = False
+        try:
+            # Collect items from the iterator
+            for item in iterator:
+                all_items.append(item)
+
+                # Check if we've completed a "page" worth of items
+                page_size = config.page_size or 20  # Default page size
+                if len(all_items) % page_size == 0:
+                    page_num += 1
+
+                    # Update progress
+                    if progress_callback:
+                        progress_callback(page_num, len(all_items))
+
+                    # Check if we should stop
+                    if max_pages is not None and page_num >= max_pages:
+                        # Capture next_page_token BEFORE breaking while iterator state is known
+                        if hasattr(iterator, "next_page_token"):
+                            next_token = iterator.next_page_token
+                            has_more = next_token is not None
+                        break
+
+            # Calculate final page number if items don't align with page_size
+            if len(all_items) % page_size != 0:
+                page_num += 1
+                if progress_callback:
+                    progress_callback(page_num, len(all_items))
+
+            # If we didn't break early (exhausted iterator), check for next_page_token
+            if next_token is None and hasattr(iterator, "next_page_token"):
+                next_token = iterator.next_page_token
+                has_more = next_token is not None
+
+        except Exception as e:
+            # Error occurred during iteration - return partial results
+            if all_items:
+                # We have partial results
+                import sys
+
+                print(
+                    f"\nWarning: Error during iteration: {e}",
+                    file=sys.stderr,
+                )
+                print(
+                    f"Returning partial results ({len(all_items)} items)",
+                    file=sys.stderr,
+                )
+
+                # Try to get next_page_token if available
+                if hasattr(iterator, "next_page_token"):
+                    next_token = iterator.next_page_token
+                    has_more = next_token is not None
+            else:
+                # No data fetched yet - re-raise the error
+                raise
 
         metadata = PaginationMetadata(
             current_page=page_num,

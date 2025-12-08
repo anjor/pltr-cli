@@ -7,6 +7,20 @@ from src.pltr.services.base import BaseService
 from src.pltr.utils.pagination import PaginationConfig, PaginationResult
 
 
+class MockIterator:
+    """Mock iterator that mimics SDK's ResourceIterator with next_page_token property."""
+
+    def __init__(self, items, next_page_token=None):
+        self._items = iter(items)
+        self.next_page_token = next_page_token
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._items)
+
+
 class MockService(BaseService):
     """Mock service for testing BaseService pagination methods."""
 
@@ -22,8 +36,9 @@ class TestBaseServicePagination:
         service = MockService()
 
         # Create mock iterator
-        mock_iterator = iter([{"id": 1}, {"id": 2}, {"id": 3}])
-        mock_iterator.next_page_token = None
+        mock_iterator = MockIterator(
+            [{"id": 1}, {"id": 2}, {"id": 3}], next_page_token=None
+        )
 
         config = PaginationConfig(page_size=10, max_pages=1)
         result = service._paginate_iterator(mock_iterator, config)
@@ -114,8 +129,7 @@ class TestBaseServicePagination:
         """Test iterator pagination with progress tracking."""
         service = MockService()
 
-        mock_iterator = iter(range(1, 21))  # 20 items
-        mock_iterator.next_page_token = None
+        mock_iterator = MockIterator(range(1, 21), next_page_token=None)
 
         progress_calls = []
 
