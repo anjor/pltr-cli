@@ -195,15 +195,18 @@ def test_get_build_jobs_empty(mock_orchestration_service):
 
 def test_search_builds_success(mock_orchestration_service, sample_build):
     """Test successful build search."""
-    mock_orchestration_service.search_builds.return_value = {
-        "builds": [sample_build],
-        "next_page_token": None,
-    }
+    from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
+    pagination_result = PaginationResult(
+        data=[sample_build],
+        metadata=PaginationMetadata(items_fetched=1, current_page=1),
+    )
+    mock_orchestration_service.search_builds_paginated.return_value = pagination_result
 
     result = runner.invoke(app, ["builds", "search"])
 
     assert result.exit_code == 0
-    mock_orchestration_service.search_builds.assert_called_once()
+    mock_orchestration_service.search_builds_paginated.assert_called_once()
 
 
 def test_get_builds_batch_success(mock_orchestration_service, sample_build):

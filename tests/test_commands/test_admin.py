@@ -27,14 +27,16 @@ class TestAdminCommands:
     def test_user_list_command_success(self, runner, mock_service):
         """Test successful user list command."""
         # Setup
-        user_result = {
-            "users": [
-                {"id": "user1", "username": "john.doe", "email": "john@example.com"},
-                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"},
-            ],
-            "nextPageToken": None,
-        }
-        mock_service.list_users.return_value = user_result
+        from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
+        user_data = [
+            {"id": "user1", "username": "john.doe", "email": "john@example.com"},
+            {"id": "user2", "username": "jane.doe", "email": "jane@example.com"},
+        ]
+        pagination_result = PaginationResult(
+            data=user_data, metadata=PaginationMetadata(items_fetched=2, current_page=1)
+        )
+        mock_service.list_users_paginated.return_value = pagination_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
@@ -43,13 +45,23 @@ class TestAdminCommands:
 
         # Assert
         assert result.exit_code == 0
-        mock_service.list_users.assert_called_once_with(page_size=None, page_token=None)
+        mock_service.list_users_paginated.assert_called_once()
 
     def test_user_list_with_pagination(self, runner, mock_service):
         """Test user list command with pagination."""
         # Setup
-        user_result = {"users": [], "nextPageToken": "next123"}
-        mock_service.list_users.return_value = user_result
+        from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
+        pagination_result = PaginationResult(
+            data=[],
+            metadata=PaginationMetadata(
+                items_fetched=0,
+                current_page=1,
+                next_page_token="next123",
+                has_more=True,
+            ),
+        )
+        mock_service.list_users_paginated.return_value = pagination_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
@@ -60,9 +72,7 @@ class TestAdminCommands:
 
         # Assert
         assert result.exit_code == 0
-        mock_service.list_users.assert_called_once_with(
-            page_size=10, page_token="prev123"
-        )
+        mock_service.list_users_paginated.assert_called_once()
 
     def test_user_get_command_success(self, runner, mock_service):
         """Test successful user get command."""
@@ -391,9 +401,13 @@ class TestAdminCommands:
     def test_user_list_with_profile(self, runner, mock_service):
         """Test user list command with profile parameter."""
         # Setup
+        from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
         profile_name = "prod"
-        user_result = {"users": [], "nextPageToken": None}
-        mock_service.list_users.return_value = user_result
+        pagination_result = PaginationResult(
+            data=[], metadata=PaginationMetadata(items_fetched=0, current_page=1)
+        )
+        mock_service.list_users_paginated.return_value = pagination_result
 
         with patch("pltr.commands.admin.AdminService") as mock_service_class:
             mock_service_class.return_value = mock_service
@@ -427,8 +441,13 @@ class TestAdminCommands:
     def test_user_list_json_format(self, runner, mock_service):
         """Test user list command with JSON format."""
         # Setup
-        user_result = {"users": [{"id": "user1", "username": "john"}]}
-        mock_service.list_users.return_value = user_result
+        from src.pltr.utils.pagination import PaginationResult, PaginationMetadata
+
+        user_data = [{"id": "user1", "username": "john"}]
+        pagination_result = PaginationResult(
+            data=user_data, metadata=PaginationMetadata(items_fetched=1, current_page=1)
+        )
+        mock_service.list_users_paginated.return_value = pagination_result
 
         with (
             patch("pltr.commands.admin.AdminService") as mock_service_class,
@@ -442,7 +461,7 @@ class TestAdminCommands:
 
         # Assert
         assert result.exit_code == 0
-        mock_formatter_instance.display.assert_called_once_with(user_result, "json")
+        mock_formatter_instance.format_paginated_output.assert_called_once()
 
     def test_group_create_csv_format(self, runner, mock_service):
         """Test group create command with CSV format."""
