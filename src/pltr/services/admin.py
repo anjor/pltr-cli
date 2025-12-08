@@ -3,10 +3,12 @@ Admin service wrapper for Foundry SDK admin operations.
 Provides a high-level interface for user, group, role, and organization management.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 import json
 
 from .base import BaseService
+from ..utils.pagination import PaginationConfig, PaginationResult
+from ..config.settings import Settings
 
 
 class AdminService(BaseService):
@@ -23,6 +25,8 @@ class AdminService(BaseService):
         """
         List all users in the organization.
 
+        DEPRECATED: Use list_users_paginated() instead for better pagination support.
+
         Args:
             page_size: Maximum number of users to return per page
             page_token: Token for pagination (from previous response)
@@ -35,6 +39,42 @@ class AdminService(BaseService):
                 page_size=page_size, page_token=page_token
             )
             return self._serialize_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to list users: {str(e)}")
+
+    def list_users_paginated(
+        self,
+        config: PaginationConfig,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> PaginationResult:
+        """
+        List users with full pagination control.
+
+        Args:
+            config: Pagination configuration (page_size, max_pages, etc.)
+            progress_callback: Optional callback(page_num, items_count)
+
+        Returns:
+            PaginationResult with users and metadata
+
+        Example:
+            >>> config = PaginationConfig(page_size=50, max_pages=2)
+            >>> result = service.list_users_paginated(config)
+            >>> print(f"Fetched {result.metadata.items_fetched} users")
+        """
+        try:
+            settings = Settings()
+
+            def fetch_page(page_token: Optional[str]) -> Dict[str, Any]:
+                """Fetch a single page of users."""
+                response = self.service.User.list(
+                    page_size=config.page_size or settings.get("page_size", 20),
+                    page_token=page_token,
+                )
+                return self._serialize_response(response)
+
+            # Use response pagination handler
+            return self._paginate_response(fetch_page, config, progress_callback)
         except Exception as e:
             raise RuntimeError(f"Failed to list users: {str(e)}")
 
