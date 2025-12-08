@@ -147,6 +147,30 @@ pltr dataset create "My New Dataset"
 pltr dataset create "Analysis Results" --parent-folder ri.foundry.main.folder.xyz789
 ```
 
+#### `pltr dataset preview [OPTIONS] DATASET_RID`
+Preview the contents of a dataset.
+
+**Arguments:**
+- `DATASET_RID` (required): Dataset Resource Identifier
+
+**Options:**
+- `--limit`, `-n` INTEGER: Number of rows to display [default: 10]
+- `--profile`, `-p` TEXT: Profile name
+- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+- `--output`, `-o` TEXT: Output file path
+
+**Examples:**
+```bash
+# Preview first 10 rows
+pltr dataset preview ri.foundry.main.dataset.abc123
+
+# Preview first 50 rows
+pltr dataset preview ri.foundry.main.dataset.abc123 --limit 50
+
+# Export preview as CSV
+pltr dataset preview ri.foundry.main.dataset.abc123 --format csv --output preview.csv
+```
+
 ### Branch Operations
 
 #### `pltr dataset branches list [OPTIONS] DATASET_RID`
@@ -313,6 +337,7 @@ Dataset Resource Identifiers follow the pattern: `ri.foundry.main.dataset.{uuid}
 ### SDK Compatibility Notes
 - Branch and file operations are available in most SDK versions
 - Transaction and view operations require newer SDK versions and will gracefully degrade with informative messages if unavailable
+- **Schema get** (`pltr dataset schema get`) requires API preview access. If you encounter `ApiFeaturePreviewUsageOnly` errors, use `pltr dataset schema apply` instead, which works for all users
 - All dataset operations work with the RID-based API and require knowing dataset RIDs in advance
 - Find dataset RIDs in the Foundry web interface or via other API calls
 

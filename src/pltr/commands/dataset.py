@@ -74,6 +74,55 @@ def get_dataset(
         raise typer.Exit(1)
 
 
+@app.command("preview")
+def preview_dataset(
+    dataset_rid: str = typer.Argument(
+        ..., help="Dataset Resource Identifier", autocompletion=complete_rid
+    ),
+    limit: int = typer.Option(
+        10, "--limit", "-n", help="Number of rows to display", min=1
+    ),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Preview dataset contents."""
+    try:
+        cache_rid(dataset_rid)
+        service = DatasetService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Fetching preview of {dataset_rid} (limit: {limit})..."
+        ):
+            data = service.preview_data(dataset_rid, limit=limit)
+
+        if not data:
+            formatter.print_warning("Dataset is empty or has no readable data")
+            return
+
+        formatter.format_output(data, format, output)
+
+        if output:
+            formatter.print_success(f"Preview saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to preview dataset: {e}")
+        raise typer.Exit(1)
+
+
 # Schema commands
 @schema_app.command("get")
 def get_schema(

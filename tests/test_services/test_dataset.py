@@ -198,6 +198,75 @@ def test_read_table_error(mock_dataset_service):
         service.read_table("ri.foundry.main.dataset.test-dataset")
 
 
+def test_preview_data_success(mock_dataset_service):
+    """Test successful dataset preview."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock pandas DataFrame
+    mock_df = Mock()
+    mock_df.head.return_value.to_dict.return_value = [
+        {"id": 1, "name": "test1"},
+        {"id": 2, "name": "test2"},
+    ]
+    mock_dataset_class.read_table.return_value = mock_df
+
+    result = service.preview_data("ri.foundry.main.dataset.test-dataset", limit=10)
+
+    assert len(result) == 2
+    assert result[0]["id"] == 1
+    assert result[0]["name"] == "test1"
+    assert result[1]["id"] == 2
+    mock_dataset_class.read_table.assert_called_once_with(
+        "ri.foundry.main.dataset.test-dataset", format="pandas"
+    )
+    mock_df.head.assert_called_once_with(10)
+
+
+def test_preview_data_custom_limit(mock_dataset_service):
+    """Test dataset preview with custom limit."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock pandas DataFrame
+    mock_df = Mock()
+    mock_df.head.return_value.to_dict.return_value = [
+        {"id": 1, "name": "test1"},
+    ]
+    mock_dataset_class.read_table.return_value = mock_df
+
+    result = service.preview_data("ri.foundry.main.dataset.test-dataset", limit=5)
+
+    assert len(result) == 1
+    mock_df.head.assert_called_once_with(5)
+
+
+def test_preview_data_empty_dataset(mock_dataset_service):
+    """Test preview of empty dataset."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock empty DataFrame
+    mock_df = Mock()
+    mock_df.head.return_value.to_dict.return_value = []
+    mock_dataset_class.read_table.return_value = mock_df
+
+    result = service.preview_data("ri.foundry.main.dataset.test-dataset")
+
+    assert result == []
+    mock_dataset_class.read_table.assert_called_once_with(
+        "ri.foundry.main.dataset.test-dataset", format="pandas"
+    )
+
+
+def test_preview_data_error(mock_dataset_service):
+    """Test dataset preview with error."""
+    service, mock_dataset_class = mock_dataset_service
+
+    # Mock error response
+    mock_dataset_class.read_table.side_effect = Exception("Read failed")
+
+    with pytest.raises(RuntimeError, match="Failed to preview dataset"):
+        service.preview_data("ri.foundry.main.dataset.test-dataset")
+
+
 def test_format_dataset_info(mock_dataset_service, sample_dataset):
     """Test dataset info formatting."""
     service, mock_dataset_class = mock_dataset_service
