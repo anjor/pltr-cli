@@ -1,6 +1,6 @@
 # pltr-cli
 
-A comprehensive command-line interface for Palantir Foundry APIs, providing 80+ commands for data analysis, dataset management, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
+A comprehensive command-line interface for Palantir Foundry APIs, providing 81+ commands for data analysis, dataset management, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
 
 ## Overview
 
@@ -178,6 +178,7 @@ pltr connectivity import table <conn-rid> <table-name> <dataset-rid> --execute  
 # Administrative
 pltr admin user current        # Current user info
 pltr admin user list          # List users
+pltr third-party-apps get <rid>  # Get third-party application details
 
 # Interactive & Tools
 pltr shell                    # Interactive mode
@@ -433,7 +434,7 @@ See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed architectu
 
 pltr-cli is **production-ready** with comprehensive features:
 
-- ✅ **80+ Commands** across 10 command groups
+- ✅ **81+ Commands** across 11 command groups
 - ✅ **273 Unit Tests** with 67% code coverage
 - ✅ **Published on PyPI** with automated releases
 - ✅ **Cross-Platform** support (Windows, macOS, Linux)

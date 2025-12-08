@@ -24,6 +24,7 @@ from pltr.commands import (
     alias,
     mediasets,
     connectivity,
+    third_party_applications,
 )
 from pltr.commands.cp import cp_command
 
@@ -54,6 +55,11 @@ app.add_typer(
 )
 app.add_typer(
     connectivity.app, name="connectivity", help="Manage connections and data imports"
+)
+app.add_typer(
+    third_party_applications.app,
+    name="third-party-apps",
+    help="Manage third-party applications",
 )
 app.add_typer(
     admin.app,
