@@ -2,7 +2,10 @@
 Ontology service wrappers for Foundry SDK.
 """
 
-from typing import Any, Optional, Dict, List
+from typing import Any, Callable, Dict, List, Optional
+
+from ..config.settings import Settings
+from ..utils.pagination import PaginationConfig, PaginationResult
 from .base import BaseService
 
 
@@ -165,6 +168,8 @@ class OntologyObjectService(BaseService):
         """
         List objects of a specific type.
 
+        DEPRECATED: Use list_objects_paginated() instead for better pagination support.
+
         Args:
             ontology_rid: Ontology Resource Identifier
             object_type: Object type API name
@@ -185,6 +190,48 @@ class OntologyObjectService(BaseService):
             for obj in result:
                 objects.append(self._format_object(obj))
             return objects
+        except Exception as e:
+            raise RuntimeError(f"Failed to list objects: {e}")
+
+    def list_objects_paginated(
+        self,
+        ontology_rid: str,
+        object_type: str,
+        config: PaginationConfig,
+        properties: Optional[List[str]] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> PaginationResult:
+        """
+        List objects with full pagination control.
+
+        Args:
+            ontology_rid: Ontology Resource Identifier
+            object_type: Object type API name
+            config: Pagination configuration
+            properties: List of properties to include
+            progress_callback: Optional progress callback
+
+        Returns:
+            PaginationResult with objects and metadata
+        """
+        try:
+            settings = Settings()
+
+            # Get iterator from SDK - ResourceIterator with next_page_token support
+            iterator = self.service.OntologyObject.list(
+                ontology_rid,
+                object_type,
+                page_size=config.page_size or settings.get("page_size", 20),
+                properties=properties,
+            )
+
+            # Use iterator pagination handler
+            result = self._paginate_iterator(iterator, config, progress_callback)
+
+            # Format objects
+            result.data = [self._format_object(obj) for obj in result.data]
+
+            return result
         except Exception as e:
             raise RuntimeError(f"Failed to list objects: {e}")
 
