@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ..services.orchestration import OrchestrationService
 from ..utils.formatting import OutputFormatter
+from ..utils.pagination import PaginationConfig
 from ..utils.progress import SpinnerProgressTracker
 from ..auth.base import ProfileNotFoundError, MissingCredentialsError
 from ..utils.completion import (
@@ -241,7 +242,16 @@ def get_build_jobs(
 def search_builds(
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
     page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
+        None, "--page-size", help="Number of builds per page (default: from settings)"
+    ),
+    max_pages: Optional[int] = typer.Option(
+        1, "--max-pages", help="Maximum number of pages to fetch (default: 1)"
+    ),
+    page_token: Optional[str] = typer.Option(
+        None, "--page-token", help="Page token to resume from previous response"
+    ),
+    all: bool = typer.Option(
+        False, "--all", help="Fetch all available pages (overrides --max-pages)"
     ),
     format: str = typer.Option(
         "table", "--format", "-f", help="Output format (table, json, csv)"
@@ -250,27 +260,61 @@ def search_builds(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Search for builds."""
+    """
+    Search for builds with pagination support.
+
+    By default, fetches only the first page of results. Use --all to fetch all builds,
+    or --max-pages to control how many pages to fetch.
+
+    Examples:
+        # Search first page of builds (default)
+        pltr orchestration builds search
+
+        # Search all builds
+        pltr orchestration builds search --all
+
+        # Search first 3 pages
+        pltr orchestration builds search --max-pages 3
+
+        # Resume from a specific page
+        pltr orchestration builds search --page-token abc123
+    """
     try:
         service = OrchestrationService(profile=profile)
 
+        # Create pagination config
+        config = PaginationConfig(
+            page_size=page_size,
+            max_pages=max_pages,
+            page_token=page_token,
+            fetch_all=all,
+        )
+
         with SpinnerProgressTracker().track_spinner("Searching builds..."):
-            response = service.search_builds(page_size=page_size)
+            result = service.search_builds_paginated(config)
 
-        builds = response.get("builds", [])
-
-        if not builds:
+        if not result.data:
             formatter.print_warning("No builds found")
             return
 
-        formatter.format_builds_list(builds, format, output)
-
+        # Format and display paginated results
         if output:
+            formatter.format_paginated_output(
+                result,
+                format,
+                output,
+                formatter_fn=lambda data, fmt, out: formatter.format_builds_list(
+                    data, fmt, out
+                ),
+            )
             formatter.print_success(f"Builds list saved to {output}")
-
-        if response.get("next_page_token"):
-            formatter.print_info(
-                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
+        else:
+            formatter.format_paginated_output(
+                result,
+                format,
+                formatter_fn=lambda data, fmt, out: formatter.format_builds_list(
+                    data, fmt, out
+                ),
             )
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:

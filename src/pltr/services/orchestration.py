@@ -3,8 +3,10 @@ Orchestration service wrapper for Foundry SDK v2 API.
 Provides operations for managing builds, jobs, and schedules.
 """
 
-from typing import Any, Optional, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
+from ..config.settings import Settings
+from ..utils.pagination import PaginationConfig, PaginationResult
 from .base import BaseService
 
 
@@ -134,6 +136,8 @@ class OrchestrationService(BaseService):
         """
         Search for builds.
 
+        DEPRECATED: Use search_builds_paginated() instead for better pagination support.
+
         Args:
             page_size: Number of results per page
             page_token: Token for pagination
@@ -152,6 +156,42 @@ class OrchestrationService(BaseService):
 
             response = self.service.Build.search(**kwargs)
             return self._format_builds_search_response(response)
+        except Exception as e:
+            raise RuntimeError(f"Failed to search builds: {e}")
+
+    def search_builds_paginated(
+        self,
+        config: PaginationConfig,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        **search_params,
+    ) -> PaginationResult:
+        """
+        Search for builds with full pagination control.
+
+        Args:
+            config: Pagination configuration
+            progress_callback: Optional progress callback
+            **search_params: Additional search parameters
+
+        Returns:
+            PaginationResult with builds and metadata
+        """
+        try:
+            settings = Settings()
+
+            def fetch_page(page_token: Optional[str]) -> Dict[str, Any]:
+                """Fetch a single page of builds."""
+                kwargs: Dict[str, Any] = {
+                    "page_size": config.page_size or settings.get("page_size", 20),
+                }
+                if page_token:
+                    kwargs["page_token"] = page_token
+                kwargs.update(search_params)
+
+                response = self.service.Build.search(**kwargs)
+                return self._format_builds_search_response(response)
+
+            return self._paginate_response(fetch_page, config, progress_callback)
         except Exception as e:
             raise RuntimeError(f"Failed to search builds: {e}")
 
