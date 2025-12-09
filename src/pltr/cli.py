@@ -25,6 +25,7 @@ from pltr.commands import (
     mediasets,
     connectivity,
     third_party_applications,
+    aip_agents,
 )
 from pltr.commands.cp import cp_command
 
@@ -60,6 +61,11 @@ app.add_typer(
     third_party_applications.app,
     name="third-party-apps",
     help="Manage third-party applications",
+)
+app.add_typer(
+    aip_agents.app,
+    name="aip-agents",
+    help="Manage AIP Agents, sessions, and versions",
 )
 app.add_typer(
     admin.app,
