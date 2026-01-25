@@ -167,20 +167,23 @@ class TestAdminService:
     # Group Management Tests
     def test_list_groups(self, service, mock_client):
         """Test listing all groups."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "groups": [
-                {
-                    "id": "group1",
-                    "name": "Engineering",
-                    "description": "Engineering team",
-                },
-                {"id": "group2", "name": "Product", "description": "Product team"},
-            ],
-            "nextPageToken": None,
+        # Setup - mock ResourceIterator with .data and .next_page_token
+        mock_group1 = Mock()
+        mock_group1.dict.return_value = {
+            "id": "group1",
+            "name": "Engineering",
+            "description": "Engineering team",
         }
-        mock_client.admin.Group.list.return_value = mock_response
+        mock_group2 = Mock()
+        mock_group2.dict.return_value = {
+            "id": "group2",
+            "name": "Product",
+            "description": "Product team",
+        }
+        mock_iterator = Mock()
+        mock_iterator.data = [mock_group1, mock_group2]
+        mock_iterator.next_page_token = None
+        mock_client.admin.Group.list.return_value = mock_iterator
 
         # Execute
         result = service.list_groups()
@@ -189,8 +192,10 @@ class TestAdminService:
         mock_client.admin.Group.list.assert_called_once_with(
             page_size=None, page_token=None
         )
-        assert "groups" in result
-        assert len(result["groups"]) == 2
+        assert "data" in result
+        assert len(result["data"]) == 2
+        assert result["data"][0]["id"] == "group1"
+        assert result["data"][1]["id"] == "group2"
 
     def test_get_group(self, service, mock_client):
         """Test getting a specific group."""
