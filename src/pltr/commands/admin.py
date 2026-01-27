@@ -394,12 +394,22 @@ def list_groups(
         with SpinnerProgressTracker().track_spinner("Fetching groups..."):
             result = service.list_groups(page_size=page_size, page_token=page_token)
 
+        # Extract data from result (service returns {data: [...], next_page_token: ...})
+        groups = result.get("data", [])
+        next_token = result.get("next_page_token")
+
         # Format and display results
         if output_file:
-            formatter.save_to_file(result, output_file, output_format)
+            formatter.save_to_file(groups, output_file, output_format)
             console.print(f"Results saved to {output_file}")
         else:
-            formatter.display(result, output_format)
+            formatter.display(groups, output_format)
+
+        # Show pagination info
+        if next_token:
+            console.print(
+                f"\n[dim]More results available. Use --page-token {next_token} to continue[/dim]"
+            )
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")

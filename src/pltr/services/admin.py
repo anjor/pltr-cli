@@ -67,11 +67,16 @@ class AdminService(BaseService):
 
             def fetch_page(page_token: Optional[str]) -> Dict[str, Any]:
                 """Fetch a single page of users."""
-                response = self.service.User.list(
+                iterator = self.service.User.list(
                     page_size=config.page_size or settings.get("page_size", 20),
                     page_token=page_token,
                 )
-                return self._serialize_response(response)
+                # ResourceIterator has .data and .next_page_token attributes
+                # Extract them properly for the pagination handler
+                return {
+                    "data": [self._serialize_response(user) for user in iterator.data],
+                    "next_page_token": iterator.next_page_token,
+                }
 
             # Use response pagination handler
             return self._paginate_response(fetch_page, config, progress_callback)
@@ -219,10 +224,16 @@ class AdminService(BaseService):
             Dictionary containing group list and pagination info
         """
         try:
-            response = self.service.Group.list(
+            iterator = self.service.Group.list(
                 page_size=page_size, page_token=page_token
             )
-            return self._serialize_response(response)
+            # ResourceIterator has .data and .next_page_token attributes
+            # Return structure compatible with formatter.display()
+            groups = [self._serialize_response(group) for group in iterator.data]
+            return {
+                "data": groups,
+                "next_page_token": iterator.next_page_token,
+            }
         except Exception as e:
             raise RuntimeError(f"Failed to list groups: {str(e)}")
 
