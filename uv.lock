@@ -421,18 +421,19 @@ wheels = [
 
 [[package]]
 name = "foundry-platform-sdk"
-version = "1.27.0"
+version = "1.69.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-types" },
     { name = "h11" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "retrying" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/98/62/d9e4c495138ba05b0bc9b6064b39128c852ccd234d11e62a74c768e51787/foundry_platform_sdk-1.27.0.tar.gz", hash = "sha256:c659ff3cb181e22b092e873aef8468f0fe2306a9b3cf19d41af61bb1c1e4b95c", size = 403719, upload-time = "2025-08-04T00:08:57.935Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/8a/bfefd2be6b48206252151594529c9223ead62ede729c0d2f52e283246948/foundry_platform_sdk-1.69.0.tar.gz", hash = "sha256:306bcbb1b2e545f47daba882c90faf5e2bf98f068430f9555bcd49390ef47f92", size = 498333, upload-time = "2025-12-18T23:51:37.047Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/a9/fe1fa79978eb0b6c3c95de828f82f5a9ae94cec80ce96fbfcab1e54a81e0/foundry_platform_sdk-1.27.0-py3-none-any.whl", hash = "sha256:ddf842211ac809922438cc37153ca6188367854a1ff1f4504250facfa89e9d75", size = 546791, upload-time = "2025-08-04T00:08:56.087Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/21/b5474cef91b080f76ec845513393aa1126198b16cd29e1b8ade7ddfa6a60/foundry_platform_sdk-1.69.0-py3-none-any.whl", hash = "sha256:d1d79648870cda2ce5416e042ff473bc8ddc6950958859efbbbb78b3ba2de824", size = 668892, upload-time = "2025-12-18T23:51:35.74Z" },
 ]
 
 [[package]]
@@ -1018,7 +1019,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click-repl", specifier = ">=0.3.0" },
-    { name = "foundry-platform-sdk", specifier = ">=1.27.0" },
+    { name = "foundry-platform-sdk", specifier = ">=1.69.0" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
@@ -1368,6 +1369,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e1/0a/929373653770d8a0d7ea76c37de6e41f11eb07559b103b1c02cafb3f7cf8/requests-2.32.4.tar.gz", hash = "sha256:27d0316682c8a29834d3264820024b62a36942083d52caf2f14c0591336d3422", size = 135258, upload-time = "2025-06-09T16:43:07.34Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7c/e4/56027c4a6b4ae70ca9de302488c5ca95ad4a39e190093d6c1a8ace08341b/requests-2.32.4-py3-none-any.whl", hash = "sha256:27babd3cda2a6d50b30443204ee89830707d396671944c998b5975b031ac2b2c", size = 64847, upload-time = "2025-06-09T16:43:05.728Z" },
+]
+
+[[package]]
+name = "retrying"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/5a/b17e1e257d3e6f2e7758930e1256832c9ddd576f8631781e6a072914befa/retrying-1.4.2.tar.gz", hash = "sha256:d102e75d53d8d30b88562d45361d6c6c934da06fab31bd81c0420acb97a8ba39", size = 11411, upload-time = "2025-08-03T03:35:25.189Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/f3/6cd296376653270ac1b423bb30bd70942d9916b6978c6f40472d6ac038e7/retrying-1.4.2-py3-none-any.whl", hash = "sha256:bbc004aeb542a74f3569aeddf42a2516efefcdaff90df0eb38fbfbf19f179f59", size = 10859, upload-time = "2025-08-03T03:35:23.829Z" },
 ]
 
 [[package]]
