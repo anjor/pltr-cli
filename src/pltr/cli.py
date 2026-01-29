@@ -26,6 +26,7 @@ from pltr.commands import (
     connectivity,
     third_party_applications,
     aip_agents,
+    functions,
 )
 from pltr.commands.cp import cp_command
 
@@ -66,6 +67,11 @@ app.add_typer(
     aip_agents.app,
     name="aip-agents",
     help="Manage AIP Agents, sessions, and versions",
+)
+app.add_typer(
+    functions.app,
+    name="functions",
+    help="Manage Functions queries and value types",
 )
 app.add_typer(
     admin.app,
