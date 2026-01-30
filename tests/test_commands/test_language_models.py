@@ -19,7 +19,7 @@ class TestLanguageModelsCommands:
     def mock_service(self):
         """Create mock LanguageModelsService."""
         with patch(
-            "pltr.commands.language_models.LanguageModelsService"
+            "pltr.services.language_models.LanguageModelsService"
         ) as MockService:
             mock_svc = Mock()
             MockService.return_value = mock_svc

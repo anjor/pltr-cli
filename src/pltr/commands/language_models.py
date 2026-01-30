@@ -5,11 +5,14 @@ Provides commands for Anthropic Claude models and OpenAI embeddings.
 
 import typer
 import json
-from typing import Optional, List, Any
+from typing import Optional, List, Any, TYPE_CHECKING
 from pathlib import Path
 from rich.console import Console
 
-from ..services.language_models import LanguageModelsService
+# Lazy import to avoid SDK Literal types being processed by typer at module load time
+if TYPE_CHECKING:
+    pass
+
 from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
 from ..auth.base import ProfileNotFoundError, MissingCredentialsError
@@ -225,6 +228,8 @@ def anthropic_messages(
             --output response.json
     """
     try:
+        from ..services.language_models import LanguageModelsService
+
         service = LanguageModelsService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner("Sending message..."):
@@ -346,6 +351,8 @@ def anthropic_messages_advanced(
             raise ValueError("Request must include 'messages' field")
         if "maxTokens" not in request_data:
             raise ValueError("Request must include 'maxTokens' field")
+
+        from ..services.language_models import LanguageModelsService
 
         service = LanguageModelsService(profile=profile)
 
@@ -481,6 +488,8 @@ def openai_embeddings(
         # Validate encoding format if provided
         if encoding and encoding not in ["float", "base64"]:
             raise ValueError("Encoding format must be 'float' or 'base64'")
+
+        from ..services.language_models import LanguageModelsService
 
         service = LanguageModelsService(profile=profile)
 
