@@ -18,8 +18,6 @@ class DatasetService(BaseService):
         """Get the Foundry datasets service."""
         return self.client.datasets
 
-    # list_datasets method removed - not supported by foundry-platform-sdk v1.27.0
-
     def get_dataset(self, dataset_rid: str) -> Dict[str, Any]:
         """
         Get information about a specific dataset.
@@ -254,6 +252,7 @@ class DatasetService(BaseService):
             # Clean column name (remove special characters for field name)
             clean_name = col.strip().replace(" ", "_").replace("-", "_")
 
+            # SDK 1.69.0 expects FieldType enum but accepts strings at runtime
             fields.append(
                 DatasetFieldSchema(name=clean_name, type=field_type, nullable=nullable)  # type: ignore[arg-type]
             )
