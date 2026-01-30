@@ -1019,7 +1019,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click-repl", specifier = ">=0.3.0" },
-    { name = "foundry-platform-sdk", specifier = ">=1.69.0" },
+    { name = "foundry-platform-sdk", specifier = ">=1.69.0,<2.0.0" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
