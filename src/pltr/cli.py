@@ -28,6 +28,7 @@ from pltr.commands import (
     aip_agents,
     functions,
     streams,
+    language_models,
 )
 from pltr.commands.cp import cp_command
 
@@ -78,6 +79,11 @@ app.add_typer(
     streams.app,
     name="streams",
     help="Manage streaming datasets and streams",
+)
+app.add_typer(
+    language_models.app,
+    name="language-models",
+    help="Interact with language models (Claude, OpenAI embeddings)",
 )
 app.add_typer(
     admin.app,
