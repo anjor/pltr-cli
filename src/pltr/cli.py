@@ -27,6 +27,7 @@ from pltr.commands import (
     third_party_applications,
     aip_agents,
     functions,
+    streams,
 )
 from pltr.commands.cp import cp_command
 
@@ -72,6 +73,11 @@ app.add_typer(
     functions.app,
     name="functions",
     help="Manage Functions queries and value types",
+)
+app.add_typer(
+    streams.app,
+    name="streams",
+    help="Manage streaming datasets and streams",
 )
 app.add_typer(
     admin.app,
