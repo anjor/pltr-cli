@@ -255,7 +255,7 @@ class DatasetService(BaseService):
             clean_name = col.strip().replace(" ", "_").replace("-", "_")
 
             fields.append(
-                DatasetFieldSchema(name=clean_name, type=field_type, nullable=nullable)
+                DatasetFieldSchema(name=clean_name, type=field_type, nullable=nullable)  # type: ignore[arg-type]
             )
 
         return DatasetSchema(field_schema_list=fields)
