@@ -1477,30 +1477,36 @@ pltr (production)> exit
 
 Manage Foundry spaces, including creation, member management, and space administration.
 
-### `pltr space create [OPTIONS] DISPLAY_NAME ORGANIZATION_RID`
+### `pltr space create [OPTIONS] DISPLAY_NAME`
 Create a new space in Foundry.
 
 **Arguments:**
 - `DISPLAY_NAME` (required): Display name for the space
-- `ORGANIZATION_RID` (required): Organization Resource Identifier
 
-**Options:**
+**Required Options:**
+- `--enrollment-rid`, `-e` TEXT: Enrollment Resource Identifier
+- `--organization`, `-org` TEXT: Organization RID(s) (can specify multiple)
+- `--deletion-policy-org`, `-dpo` TEXT: Organization RID(s) for deletion policy (can specify multiple)
+
+**Optional:**
 - `--description` TEXT: Space description
-- `--default-roles` TEXT: Comma-separated list of default roles
-- `--role-grants` TEXT: JSON string of role grants configuration
-- `--profile`, `-p` TEXT: Profile name
+- `--profile` TEXT: Profile name
 - `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
 
 **Examples:**
 ```bash
-# Create basic space
-pltr space create "Data Science Team" ri.compass.main.organization.abc123
+# Create space with required parameters
+pltr space create "Data Science Team" \
+  --enrollment-rid ri.enrollment.main.enrollment.xyz123 \
+  --organization ri.compass.main.organization.abc123 \
+  --deletion-policy-org ri.compass.main.organization.abc123
 
-# Create with description and default roles
-pltr space create "Analytics Space" ri.compass.main.organization.abc123 \
-  --description "Space for analytics work" \
-  --default-roles "viewer,editor"
+# Create with description
+pltr space create "Analytics Space" \
+  --enrollment-rid ri.enrollment.main.enrollment.xyz123 \
+  --organization ri.compass.main.organization.abc123 \
+  --deletion-policy-org ri.compass.main.organization.abc123 \
+  --description "Space for analytics work"
 ```
 
 ### `pltr space get [OPTIONS] SPACE_RID`
@@ -1571,58 +1577,6 @@ Delete a space.
 **Example:**
 ```bash
 pltr space delete ri.compass.main.space.def456 --yes
-```
-
-### `pltr space batch-get [OPTIONS] SPACE_RIDS...`
-Get multiple spaces in a single request (max 1000).
-
-**Arguments:**
-- `SPACE_RIDS...` (required): Space-separated list of space Resource Identifiers
-
-**Example:**
-```bash
-pltr space batch-get ri.compass.main.space.abc123 ri.compass.main.space.def456
-```
-
-### Space Member Management
-
-#### `pltr space members [OPTIONS] SPACE_RID`
-List all members of a space.
-
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
-
-**Example:**
-```bash
-pltr space members ri.compass.main.space.def456
-```
-
-#### `pltr space add-member [OPTIONS] SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
-Add a member to a space.
-
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
-- `PRINCIPAL_ID` (required): User ID or Group ID
-- `PRINCIPAL_TYPE` (required): "User" or "Group"
-- `ROLE_NAME` (required): Role name to assign
-
-**Example:**
-```bash
-pltr space add-member ri.compass.main.space.def456 john.doe User viewer
-pltr space add-member ri.compass.main.space.def456 data-team Group editor
-```
-
-#### `pltr space remove-member [OPTIONS] SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE`
-Remove a member from a space.
-
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
-- `PRINCIPAL_ID` (required): User ID or Group ID
-- `PRINCIPAL_TYPE` (required): "User" or "Group"
-
-**Example:**
-```bash
-pltr space remove-member ri.compass.main.space.def456 john.doe User
 ```
 
 ---
@@ -1724,17 +1678,6 @@ Delete a project.
 pltr project delete ri.compass.main.project.ghi789 --yes
 ```
 
-### `pltr project batch-get [OPTIONS] PROJECT_RIDS...`
-Get multiple projects in a single request (max 1000).
-
-**Arguments:**
-- `PROJECT_RIDS...` (required): Space-separated list of project Resource Identifiers
-
-**Example:**
-```bash
-pltr project batch-get ri.compass.main.project.abc123 ri.compass.main.project.def456
-```
-
 ---
 
 ## 📄 Resource Commands
@@ -1819,42 +1762,6 @@ Get metadata for a resource.
 **Example:**
 ```bash
 pltr resource metadata get ri.foundry.main.dataset.abc123
-```
-
-#### `pltr resource metadata set [OPTIONS] RESOURCE_RID METADATA`
-Set metadata for a resource.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `METADATA` (required): JSON string of metadata to set
-
-**Example:**
-```bash
-pltr resource metadata set ri.foundry.main.dataset.abc123 '{"owner": "data-team", "environment": "production"}'
-```
-
-#### `pltr resource metadata delete [OPTIONS] RESOURCE_RID KEYS`
-Delete specific metadata keys from a resource.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `KEYS` (required): Comma-separated list of metadata keys to delete
-
-**Example:**
-```bash
-pltr resource metadata delete ri.foundry.main.dataset.abc123 "temporary,test-key"
-```
-
-### `pltr resource move [OPTIONS] RESOURCE_RID TARGET_FOLDER_RID`
-Move a resource to a different folder.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier to move
-- `TARGET_FOLDER_RID` (required): Target folder Resource Identifier
-
-**Example:**
-```bash
-pltr resource move ri.foundry.main.dataset.abc123 ri.compass.main.folder.new456
 ```
 
 ---

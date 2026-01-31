@@ -38,23 +38,13 @@ class ProjectService(BaseService):
             Created project information
         """
         try:
-            # Prepare the create request payload
-            create_request: Dict[str, Any] = {
-                "display_name": display_name,
-                "space_rid": space_rid,
-            }
-
-            if description:
-                create_request["description"] = description
-            if organization_rids:
-                create_request["organization_rids"] = organization_rids
-            if default_roles:
-                create_request["default_roles"] = default_roles
-            if role_grants:
-                create_request["role_grants"] = role_grants
-
             project = self.service.Project.create(
-                body=create_request,
+                display_name=display_name,
+                space_rid=space_rid,
+                description=description,
+                organization_rids=organization_rids if organization_rids else [],
+                default_roles=default_roles if default_roles else [],
+                role_grants=role_grants if role_grants else [],
                 preview=True,
             )
             return self._format_project_info(project)
@@ -134,56 +124,34 @@ class ProjectService(BaseService):
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Update project information.
+        Update project information using replace().
 
         Args:
             project_rid: Project Resource Identifier
-            display_name: New display name (optional)
+            display_name: New display name (optional, fetches current if not provided)
             description: New description (optional)
 
         Returns:
             Updated project information
         """
-        update_request: Dict[str, Any] = {}
-        if display_name:
-            update_request["display_name"] = display_name
-        if description:
-            update_request["description"] = description
-
-        if not update_request:
+        if not display_name and not description:
             raise ValueError("At least one field must be provided for update")
 
         try:
-            project = self.service.Project.update(
+            # Fetch current project to get display_name if not provided (required for replace)
+            if not display_name:
+                current_project = self.service.Project.get(project_rid, preview=True)
+                display_name = current_project.display_name
+
+            project = self.service.Project.replace(
                 project_rid=project_rid,
-                body=update_request,
+                display_name=display_name,
+                description=description,
                 preview=True,
             )
             return self._format_project_info(project)
         except Exception as e:
             raise RuntimeError(f"Failed to update project {project_rid}: {e}")
-
-    def get_projects_batch(self, project_rids: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get multiple projects in a single request.
-
-        Args:
-            project_rids: List of project RIDs (max 1000)
-
-        Returns:
-            List of project information dictionaries
-        """
-        if len(project_rids) > 1000:
-            raise ValueError("Maximum batch size is 1000 projects")
-
-        try:
-            response = self.service.Project.get_batch(body=project_rids, preview=True)
-            projects = []
-            for project in response.projects:
-                projects.append(self._format_project_info(project))
-            return projects
-        except Exception as e:
-            raise RuntimeError(f"Failed to get projects batch: {e}")
 
     # ==================== Organization Operations ====================
 

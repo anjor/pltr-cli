@@ -10,25 +10,22 @@ Setting up access control, permissions, and resource roles.
 # 1. Get organization info
 pltr admin org get my-organization
 
-# 2. Create space
-SPACE_RID=$(pltr space create "Data Analytics Team" ri.compass.main.organization.abc123 \
+# 2. Create space (requires enrollment-rid, organization, and deletion-policy-org)
+SPACE_RID=$(pltr space create "Data Analytics Team" \
+  --enrollment-rid ri.enrollment.main.enrollment.xyz123 \
+  --organization ri.compass.main.organization.abc123 \
+  --deletion-policy-org ri.compass.main.organization.abc123 \
   --description "Space for analytics and reporting work" \
-  --default-roles "viewer" \
   --format json | jq -r '.rid')
 echo "Created space: $SPACE_RID"
 
 # 3. Create project within space
-PROJECT_RID=$(pltr project create "Customer Analytics" $SPACE_RID \
+PROJECT_RID=$(pltr project create "Customer Analytics" --space-rid $SPACE_RID \
   --description "Customer behavior and segmentation analysis" \
   --format json | jq -r '.rid')
 echo "Created project: $PROJECT_RID"
 
-# 4. Add team members to space
-pltr space add-member $SPACE_RID john.doe User editor
-pltr space add-member $SPACE_RID jane.smith User editor
-pltr space add-member $SPACE_RID data-team Group viewer
-
-# 5. Create folder structure
+# 4. Create folder structure
 ROOT_FOLDER=$(pltr folder create "Analytics Work" --format json | jq -r '.rid')
 pltr folder create "Raw Data" --parent-folder $ROOT_FOLDER
 pltr folder create "Processed Data" --parent-folder $ROOT_FOLDER
@@ -168,34 +165,23 @@ pltr admin group delete old-team --confirm
 
 ## Resource Organization
 
-### Move and Organize Resources
+### Search and Inspect Resources
 
 ```bash
 # Search for resources
 pltr resource search "sales" --resource-type dataset --format json --output sales.json
 
-# Move to organized folder
+# Get details for each resource
 for rid in $(cat sales.json | jq -r '.[].rid'); do
-  pltr resource move "$rid" ri.compass.main.folder.sales-folder
+  pltr resource get "$rid" --format json
 done
 ```
 
-### Set Resource Metadata
+### Get Resource Metadata
 
 ```bash
-# Set metadata for discoverability
-pltr resource metadata set ri.foundry.main.dataset.sales-analytics '{
-  "category": "analytics",
-  "team": "sales-team",
-  "update_frequency": "daily",
-  "data_classification": "internal"
-}'
-
-# Get metadata
-pltr resource metadata get ri.foundry.main.dataset.sales-analytics
-
-# Delete metadata keys
-pltr resource metadata delete ri.foundry.main.dataset.sales-analytics "temporary,test-key"
+# Get metadata for a resource
+pltr resource get-metadata ri.foundry.main.dataset.sales-analytics --format json
 ```
 
 ## Security Audit

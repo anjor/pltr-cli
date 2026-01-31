@@ -59,17 +59,22 @@ pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def45
 ### Create Space
 
 ```bash
-pltr space create DISPLAY_NAME ORGANIZATION_RID [OPTIONS]
+pltr space create DISPLAY_NAME [OPTIONS]
 
-# Options:
+# Required Options:
+#   --enrollment-rid, -e     Enrollment Resource Identifier
+#   --organization, -org     Organization RID(s) (can specify multiple)
+#   --deletion-policy-org    Organization RID(s) for deletion policy (can specify multiple)
+
+# Optional:
 #   --description TEXT       Space description
-#   --default-roles TEXT     Comma-separated default roles
-#   --role-grants TEXT       Role grants config (JSON)
 
 # Example
-pltr space create "Data Science Team" ri.compass.main.organization.abc123 \
-  --description "Space for analytics work" \
-  --default-roles "viewer,editor"
+pltr space create "Data Science Team" \
+  --enrollment-rid ri.enrollment.main.enrollment.abc123 \
+  --organization ri.compass.main.organization.xyz456 \
+  --deletion-policy-org ri.compass.main.organization.xyz456 \
+  --description "Space for analytics work"
 ```
 
 ### Get Space
@@ -96,25 +101,6 @@ pltr space update SPACE_RID [--display-name TEXT] [--description TEXT]
 pltr space delete SPACE_RID [--yes]
 ```
 
-### Space Member Management
-
-```bash
-# List members
-pltr space members SPACE_RID
-
-# Add member
-pltr space add-member SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME
-# PRINCIPAL_TYPE: "User" or "Group"
-
-# Remove member
-pltr space remove-member SPACE_RID PRINCIPAL_ID PRINCIPAL_TYPE
-
-# Examples
-pltr space add-member ri.compass.main.space.abc123 john.doe User editor
-pltr space add-member ri.compass.main.space.abc123 data-team Group viewer
-pltr space remove-member ri.compass.main.space.abc123 john.doe User
-```
-
 ## Project Commands
 
 ### Create Project
@@ -139,7 +125,6 @@ pltr project get PROJECT_RID
 pltr project list [--space-rid RID]
 pltr project update PROJECT_RID [--display-name TEXT] [--description TEXT]
 pltr project delete PROJECT_RID [--confirm]
-pltr project batch-get PROJECT_RIDS...
 ```
 
 ### Add Organizations to Project
@@ -223,22 +208,10 @@ pltr resource batch-get RESOURCE_RIDS...
 
 ```bash
 # Get metadata
-pltr resource metadata get RESOURCE_RID
-
-# Set metadata (JSON)
-pltr resource metadata set RESOURCE_RID '{"owner": "data-team", "env": "production"}'
-
-# Delete metadata keys
-pltr resource metadata delete RESOURCE_RID "key1,key2"
-```
-
-### Move Resource
-
-```bash
-pltr resource move RESOURCE_RID TARGET_FOLDER_RID
+pltr resource get-metadata RESOURCE_RID [--format FORMAT]
 
 # Example
-pltr resource move ri.foundry.main.dataset.abc123 ri.compass.main.folder.new456
+pltr resource get-metadata ri.foundry.main.dataset.abc123 --format json
 ```
 
 ## Resource Lifecycle Commands
@@ -413,13 +386,13 @@ pltr resource-role grant $DATASET analytics-team Group editor
 pltr resource-role grant $DATASET john.analyst User viewer
 ```
 
-### Organize resources
+### Find resources
 ```bash
-# Search and move datasets
+# Search for datasets
 pltr resource search "sales" --resource-type dataset --format json --output sales.json
 
-# Move to organized folder
+# Get resource details
 for rid in $(cat sales.json | jq -r '.[].rid'); do
-  pltr resource move "$rid" ri.compass.main.folder.sales-data
+  pltr resource get "$rid" --format json
 done
 ```

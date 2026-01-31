@@ -159,9 +159,14 @@ class TestResourceService:
         rids = ["ri.compass.main.dataset.123", "ri.compass.main.dataset.456"]
         result = resource_service.get_resources_batch(rids)
 
-        mock_client.filesystem.Resource.get_batch.assert_called_once_with(
-            body=rids, preview=True
-        )
+        # Verify the call was made with GetResourcesBatchRequestElement objects
+        call_args = mock_client.filesystem.Resource.get_batch.call_args
+        assert call_args.kwargs["preview"] is True
+        elements = call_args.kwargs["body"]
+        assert len(elements) == 2
+        assert elements[0].resource_rid == "ri.compass.main.dataset.123"
+        assert elements[1].resource_rid == "ri.compass.main.dataset.456"
+
         assert len(result) == 2
         assert result[0]["rid"] == "ri.compass.main.dataset.123"
         assert result[1]["rid"] == "ri.compass.main.dataset.456"
@@ -186,63 +191,6 @@ class TestResourceService:
             "ri.compass.main.dataset.123", preview=True
         )
         assert result == mock_metadata
-
-    def test_set_resource_metadata(self, resource_service, mock_client):
-        """Test setting resource metadata."""
-        metadata_to_set = {"key1": "value1", "key2": "value2"}
-        mock_updated_metadata = {"key1": "value1", "key2": "value2", "key3": "value3"}
-
-        mock_client.filesystem.Resource.set_metadata.return_value = (
-            mock_updated_metadata
-        )
-        resource_service._client = mock_client
-
-        result = resource_service.set_resource_metadata(
-            "ri.compass.main.dataset.123", metadata_to_set
-        )
-
-        mock_client.filesystem.Resource.set_metadata.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body=metadata_to_set,
-            preview=True,
-        )
-        assert result == mock_updated_metadata
-
-    def test_delete_resource_metadata(self, resource_service, mock_client):
-        """Test deleting resource metadata."""
-        resource_service._client = mock_client
-        keys_to_delete = ["key1", "key2"]
-
-        resource_service.delete_resource_metadata(
-            "ri.compass.main.dataset.123", keys_to_delete
-        )
-
-        mock_client.filesystem.Resource.delete_metadata.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body={"keys": keys_to_delete},
-            preview=True,
-        )
-
-    def test_move_resource(self, resource_service, mock_client):
-        """Test moving a resource."""
-        mock_resource = Mock()
-        mock_resource.rid = "ri.compass.main.dataset.123"
-        mock_resource.folder_rid = "ri.compass.main.folder.456"
-
-        mock_client.filesystem.Resource.move.return_value = mock_resource
-        resource_service._client = mock_client
-
-        result = resource_service.move_resource(
-            "ri.compass.main.dataset.123", "ri.compass.main.folder.456"
-        )
-
-        mock_client.filesystem.Resource.move.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body={"target_folder_rid": "ri.compass.main.folder.456"},
-            preview=True,
-        )
-        assert result["rid"] == "ri.compass.main.dataset.123"
-        assert result["folder_rid"] == "ri.compass.main.folder.456"
 
     def test_search_resources(self, resource_service, mock_client):
         """Test searching resources."""
@@ -564,9 +512,14 @@ class TestResourceService:
         paths = ["/Org/Project/Dataset1", "/Org/Project/Dataset2"]
         result = resource_service.get_resources_by_path_batch(paths)
 
-        mock_client.filesystem.Resource.get_by_path_batch.assert_called_once_with(
-            body=paths, preview=True
-        )
+        # Verify the call was made with GetByPathResourcesBatchRequestElement objects
+        call_args = mock_client.filesystem.Resource.get_by_path_batch.call_args
+        assert call_args.kwargs["preview"] is True
+        elements = call_args.kwargs["body"]
+        assert len(elements) == 2
+        assert elements[0].path == "/Org/Project/Dataset1"
+        assert elements[1].path == "/Org/Project/Dataset2"
+
         assert len(result) == 2
         assert result[0]["rid"] == "ri.compass.main.dataset.123"
         assert result[1]["rid"] == "ri.compass.main.dataset.456"

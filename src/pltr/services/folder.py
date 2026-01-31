@@ -4,6 +4,8 @@ Folder service wrapper for Foundry SDK filesystem API.
 
 from typing import Any, Optional, Dict, List
 
+from foundry_sdk.v2.filesystem.models import GetFoldersBatchRequestElement
+
 from .base import BaseService
 
 
@@ -95,7 +97,10 @@ class FolderService(BaseService):
             raise ValueError("Maximum batch size is 1000 folders")
 
         try:
-            response = self.service.Folder.get_batch(body=folder_rids, preview=True)
+            elements = [
+                GetFoldersBatchRequestElement(folder_rid=rid) for rid in folder_rids
+            ]
+            response = self.service.Folder.get_batch(body=elements, preview=True)
             folders = []
             for folder in response.folders:
                 folders.append(self._format_folder_info(folder))

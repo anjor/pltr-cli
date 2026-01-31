@@ -17,7 +17,9 @@ class SpaceService(BaseService):
     def create_space(
         self,
         display_name: str,
-        organization_rid: str,
+        enrollment_rid: str,
+        organizations: List[str],
+        deletion_policy_organizations: List[str],
         description: Optional[str] = None,
         default_roles: Optional[List[str]] = None,
         role_grants: Optional[List[Dict[str, Any]]] = None,
@@ -27,7 +29,9 @@ class SpaceService(BaseService):
 
         Args:
             display_name: Space display name
-            organization_rid: Organization Resource Identifier
+            enrollment_rid: Enrollment Resource Identifier
+            organizations: List of organization RIDs
+            deletion_policy_organizations: List of organization RIDs for deletion policy
             description: Space description (optional)
             default_roles: List of default role names (optional)
             role_grants: List of role grant specifications (optional)
@@ -36,21 +40,14 @@ class SpaceService(BaseService):
             Created space information
         """
         try:
-            # Prepare the create request payload
-            create_request: Dict[str, Any] = {
-                "display_name": display_name,
-                "organization_rid": organization_rid,
-            }
-
-            if description:
-                create_request["description"] = description
-            if default_roles:
-                create_request["default_roles"] = default_roles
-            if role_grants:
-                create_request["role_grants"] = role_grants
-
             space = self.service.Space.create(
-                body=create_request,
+                display_name=display_name,
+                enrollment_rid=enrollment_rid,
+                organizations=organizations,
+                deletion_policy_organizations=deletion_policy_organizations,
+                description=description,
+                default_roles=default_roles if default_roles else [],
+                role_grants=role_grants if role_grants else [],
                 preview=True,
             )
             return self._format_space_info(space)
@@ -115,29 +112,29 @@ class SpaceService(BaseService):
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Update space information.
+        Update space information using replace().
 
         Args:
             space_rid: Space Resource Identifier
-            display_name: New display name (optional)
+            display_name: New display name (optional, fetches current if not provided)
             description: New description (optional)
 
         Returns:
             Updated space information
         """
-        update_request: Dict[str, Any] = {}
-        if display_name:
-            update_request["display_name"] = display_name
-        if description:
-            update_request["description"] = description
-
-        if not update_request:
+        if not display_name and not description:
             raise ValueError("At least one field must be provided for update")
 
         try:
-            space = self.service.Space.update(
+            # Fetch current space to get display_name if not provided (required for replace)
+            if not display_name:
+                current_space = self.service.Space.get(space_rid, preview=True)
+                display_name = current_space.display_name
+
+            space = self.service.Space.replace(
                 space_rid=space_rid,
-                body=update_request,
+                display_name=display_name,
+                description=description,
                 preview=True,
             )
             return self._format_space_info(space)
@@ -158,135 +155,6 @@ class SpaceService(BaseService):
             self.service.Space.delete(space_rid, preview=True)
         except Exception as e:
             raise RuntimeError(f"Failed to delete space {space_rid}: {e}")
-
-    def get_spaces_batch(self, space_rids: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get multiple spaces in a single request.
-
-        Args:
-            space_rids: List of space RIDs (max 1000)
-
-        Returns:
-            List of space information dictionaries
-        """
-        if len(space_rids) > 1000:
-            raise ValueError("Maximum batch size is 1000 spaces")
-
-        try:
-            response = self.service.Space.get_batch(body=space_rids, preview=True)
-            spaces = []
-            for space in response.spaces:
-                spaces.append(self._format_space_info(space))
-            return spaces
-        except Exception as e:
-            raise RuntimeError(f"Failed to get spaces batch: {e}")
-
-    def get_space_members(
-        self,
-        space_rid: str,
-        principal_type: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Get all members (users/groups) of a space.
-
-        Args:
-            space_rid: Space Resource Identifier
-            principal_type: Filter by principal type ('User' or 'Group', optional)
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
-
-        Returns:
-            List of space member information dictionaries
-        """
-        try:
-            members = []
-            list_params: Dict[str, Any] = {"preview": True}
-
-            if principal_type:
-                list_params["principal_type"] = principal_type
-            if page_size:
-                list_params["page_size"] = page_size
-            if page_token:
-                list_params["page_token"] = page_token
-
-            # The get_members method returns an iterator
-            for member in self.service.Space.get_members(space_rid, **list_params):
-                members.append(self._format_member_info(member))
-            return members
-        except Exception as e:
-            raise RuntimeError(f"Failed to get members for space {space_rid}: {e}")
-
-    def add_space_member(
-        self,
-        space_rid: str,
-        principal_id: str,
-        principal_type: str,
-        role_name: str,
-    ) -> Dict[str, Any]:
-        """
-        Add a member to a space with a specific role.
-
-        Args:
-            space_rid: Space Resource Identifier
-            principal_id: Principal (user/group) identifier
-            principal_type: Principal type ('User' or 'Group')
-            role_name: Role name to grant
-
-        Returns:
-            Space member information
-        """
-        try:
-            member_request: Dict[str, Any] = {
-                "principal_id": principal_id,
-                "principal_type": principal_type,
-                "role_name": role_name,
-            }
-
-            result = self.service.Space.add_member(
-                space_rid=space_rid,
-                body=member_request,
-                preview=True,
-            )
-            return self._format_member_info(result)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to add {principal_type} '{principal_id}' to space {space_rid}: {e}"
-            )
-
-    def remove_space_member(
-        self,
-        space_rid: str,
-        principal_id: str,
-        principal_type: str,
-    ) -> None:
-        """
-        Remove a member from a space.
-
-        Args:
-            space_rid: Space Resource Identifier
-            principal_id: Principal (user/group) identifier
-            principal_type: Principal type ('User' or 'Group')
-
-        Raises:
-            RuntimeError: If removal fails
-        """
-        try:
-            member_removal: Dict[str, Any] = {
-                "principal_id": principal_id,
-                "principal_type": principal_type,
-            }
-
-            self.service.Space.remove_member(
-                space_rid=space_rid,
-                body=member_removal,
-                preview=True,
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to remove {principal_type} '{principal_id}' from space {space_rid}: {e}"
-            )
 
     def _format_space_info(self, space: Any) -> Dict[str, Any]:
         """
@@ -314,25 +182,6 @@ class SpaceService(BaseService):
             ),
             "trash_status": getattr(space, "trash_status", None),
             "type": "space",
-        }
-
-    def _format_member_info(self, member: Any) -> Dict[str, Any]:
-        """
-        Format space member information for consistent output.
-
-        Args:
-            member: Member object from Foundry SDK
-
-        Returns:
-            Formatted member information dictionary
-        """
-        return {
-            "space_rid": getattr(member, "space_rid", None),
-            "principal_id": getattr(member, "principal_id", None),
-            "principal_type": getattr(member, "principal_type", None),
-            "role_name": getattr(member, "role_name", None),
-            "added_by": getattr(member, "added_by", None),
-            "added_time": self._format_timestamp(getattr(member, "added_time", None)),
         }
 
     def _format_timestamp(self, timestamp: Any) -> Optional[str]:

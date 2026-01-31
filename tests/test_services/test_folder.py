@@ -168,7 +168,13 @@ def test_get_folders_batch(mock_folder_service, sample_folder):
     assert result[0]["rid"] == "ri.compass.main.folder.test-folder"
     assert result[1]["rid"] == "ri.compass.main.folder.test-folder"
 
-    mock_folder_class.get_batch.assert_called_once_with(body=folder_rids, preview=True)
+    # Verify the call was made with GetFoldersBatchRequestElement objects
+    call_args = mock_folder_class.get_batch.call_args
+    assert call_args.kwargs["preview"] is True
+    elements = call_args.kwargs["body"]
+    assert len(elements) == 2
+    assert elements[0].folder_rid == "ri.compass.main.folder.folder1"
+    assert elements[1].folder_rid == "ri.compass.main.folder.folder2"
 
 
 def test_get_folders_batch_exceeds_limit(mock_folder_service):
