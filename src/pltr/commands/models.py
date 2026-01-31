@@ -106,10 +106,10 @@ def create_model(
         console.print(f"[green]✓[/green] Created model: {result.get('name')}")
         console.print(f"  Model RID: {result.get('rid')}")
 
+        formatter.format_output(result, format, output)
+
         if output:
-            formatter.save_to_file(result, output, format)
-        else:
-            formatter.display(result, format)
+            console.print(f"[green]✓[/green] Model information saved to {output}")
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         console.print(f"[red]Authentication Error: {e}[/red]")
@@ -177,10 +177,10 @@ def get_model(
                 preview=preview,
             )
 
+        formatter.format_output(result, format, output)
+
         if output:
-            formatter.save_to_file(result, output, format)
-        else:
-            formatter.display(result, format)
+            console.print(f"[green]✓[/green] Model information saved to {output}")
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         console.print(f"[red]Authentication Error: {e}[/red]")
@@ -254,10 +254,10 @@ def get_version(
                 preview=preview,
             )
 
+        formatter.format_output(result, format, output)
+
         if output:
-            formatter.save_to_file(result, output, format)
-        else:
-            formatter.display(result, format)
+            console.print(f"[green]✓[/green] Version information saved to {output}")
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         console.print(f"[red]Authentication Error: {e}[/red]")
@@ -343,16 +343,16 @@ def list_versions(
                 preview=preview,
             )
 
-        # Show pagination info if available
-        if result.get("nextPageToken"):
+        formatter.format_output(result, format, output)
+
+        # Show pagination info if available (only when outputting to console, not file)
+        if not output and result.get("nextPageToken"):
             console.print(
                 f"[dim]Next page available. Use --page-token {result['nextPageToken']}[/dim]"
             )
 
         if output:
-            formatter.save_to_file(result, output, format)
-        else:
-            formatter.display(result, format)
+            console.print(f"[green]✓[/green] Version list saved to {output}")
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         console.print(f"[red]Authentication Error: {e}[/red]")
