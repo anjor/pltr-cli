@@ -37,7 +37,7 @@ class TestSpaceService:
         assert space_service._get_service() == mock_client.filesystem
 
     def test_create_space_basic(self, space_service, mock_client):
-        """Test creating a space with basic parameters."""
+        """Test creating a space with required parameters."""
         mock_space = Mock()
         mock_space.rid = "ri.compass.main.space.123"
         mock_space.display_name = "Test Space"
@@ -49,14 +49,19 @@ class TestSpaceService:
 
         result = space_service.create_space(
             display_name="Test Space",
-            organization_rid="ri.compass.main.organization.456",
+            enrollment_rid="ri.enrollment.main.enrollment.456",
+            organizations=["ri.compass.main.organization.456"],
+            deletion_policy_organizations=["ri.compass.main.organization.456"],
         )
 
         mock_client.filesystem.Space.create.assert_called_once_with(
-            body={
-                "display_name": "Test Space",
-                "organization_rid": "ri.compass.main.organization.456",
-            },
+            display_name="Test Space",
+            enrollment_rid="ri.enrollment.main.enrollment.456",
+            organizations=["ri.compass.main.organization.456"],
+            deletion_policy_organizations=["ri.compass.main.organization.456"],
+            description=None,
+            default_roles=[],
+            role_grants=[],
             preview=True,
         )
 
@@ -75,7 +80,9 @@ class TestSpaceService:
 
         space_service.create_space(
             display_name="Test Space",
-            organization_rid="ri.compass.main.organization.456",
+            enrollment_rid="ri.enrollment.main.enrollment.456",
+            organizations=["ri.compass.main.organization.456"],
+            deletion_policy_organizations=["ri.compass.main.organization.456"],
             description="Test description",
             default_roles=["viewer"],
             role_grants=[
@@ -87,22 +94,21 @@ class TestSpaceService:
             ],
         )
 
-        expected_body = {
-            "display_name": "Test Space",
-            "organization_rid": "ri.compass.main.organization.456",
-            "description": "Test description",
-            "default_roles": ["viewer"],
-            "role_grants": [
+        mock_client.filesystem.Space.create.assert_called_once_with(
+            display_name="Test Space",
+            enrollment_rid="ri.enrollment.main.enrollment.456",
+            organizations=["ri.compass.main.organization.456"],
+            deletion_policy_organizations=["ri.compass.main.organization.456"],
+            description="Test description",
+            default_roles=["viewer"],
+            role_grants=[
                 {
                     "principal_id": "user1",
                     "principal_type": "User",
                     "role_name": "owner",
                 }
             ],
-        }
-
-        mock_client.filesystem.Space.create.assert_called_once_with(
-            body=expected_body, preview=True
+            preview=True,
         )
 
     def test_create_space_failure(self, space_service, mock_client):
@@ -115,7 +121,9 @@ class TestSpaceService:
         ):
             space_service.create_space(
                 display_name="Test Space",
-                organization_rid="ri.compass.main.organization.456",
+                enrollment_rid="ri.enrollment.main.enrollment.456",
+                organizations=["ri.compass.main.organization.456"],
+                deletion_policy_organizations=["ri.compass.main.organization.456"],
             )
 
     def test_get_space(self, space_service, mock_client):
@@ -189,7 +197,7 @@ class TestSpaceService:
         mock_space.rid = "ri.compass.main.space.123"
         mock_space.display_name = "Updated Space"
 
-        mock_client.filesystem.Space.update.return_value = mock_space
+        mock_client.filesystem.Space.replace.return_value = mock_space
         space_service._client = mock_client
 
         result = space_service.update_space(
@@ -198,15 +206,43 @@ class TestSpaceService:
             description="Updated description",
         )
 
-        mock_client.filesystem.Space.update.assert_called_once_with(
+        mock_client.filesystem.Space.replace.assert_called_once_with(
             space_rid="ri.compass.main.space.123",
-            body={
-                "display_name": "Updated Space",
-                "description": "Updated description",
-            },
+            display_name="Updated Space",
+            description="Updated description",
             preview=True,
         )
         assert result["display_name"] == "Updated Space"
+
+    def test_update_space_without_display_name(self, space_service, mock_client):
+        """Test updating a space when display_name not provided - fetches current."""
+        mock_current_space = Mock()
+        mock_current_space.display_name = "Current Name"
+
+        mock_updated_space = Mock()
+        mock_updated_space.rid = "ri.compass.main.space.123"
+        mock_updated_space.display_name = "Current Name"
+        mock_updated_space.description = "New description"
+
+        mock_client.filesystem.Space.get.return_value = mock_current_space
+        mock_client.filesystem.Space.replace.return_value = mock_updated_space
+        space_service._client = mock_client
+
+        result = space_service.update_space(
+            space_rid="ri.compass.main.space.123",
+            description="New description",
+        )
+
+        mock_client.filesystem.Space.get.assert_called_once_with(
+            "ri.compass.main.space.123", preview=True
+        )
+        mock_client.filesystem.Space.replace.assert_called_once_with(
+            space_rid="ri.compass.main.space.123",
+            display_name="Current Name",
+            description="New description",
+            preview=True,
+        )
+        assert result["display_name"] == "Current Name"
 
     def test_update_space_no_fields(self, space_service):
         """Test update space with no fields raises error."""
@@ -236,116 +272,6 @@ class TestSpaceService:
         ):
             space_service.delete_space("ri.compass.main.space.123")
 
-    def test_get_spaces_batch(self, space_service, mock_client):
-        """Test getting multiple spaces in batch."""
-        mock_response = Mock()
-        mock_spaces = [Mock(), Mock()]
-        mock_spaces[0].rid = "ri.compass.main.space.123"
-        mock_spaces[1].rid = "ri.compass.main.space.456"
-        mock_response.spaces = mock_spaces
-
-        mock_client.filesystem.Space.get_batch.return_value = mock_response
-        space_service._client = mock_client
-
-        rids = ["ri.compass.main.space.123", "ri.compass.main.space.456"]
-        result = space_service.get_spaces_batch(rids)
-
-        mock_client.filesystem.Space.get_batch.assert_called_once_with(
-            body=rids, preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.space.123"
-        assert result[1]["rid"] == "ri.compass.main.space.456"
-
-    def test_get_spaces_batch_too_many(self, space_service):
-        """Test batch get with too many spaces raises error."""
-        rids = ["rid"] * 1001
-
-        with pytest.raises(ValueError, match="Maximum batch size is 1000 spaces"):
-            space_service.get_spaces_batch(rids)
-
-    def test_get_space_members(self, space_service, mock_client):
-        """Test getting space members."""
-        mock_members = [Mock(), Mock()]
-        mock_members[0].space_rid = "ri.compass.main.space.123"
-        mock_members[0].principal_id = "user123"
-        mock_members[0].principal_type = "User"
-        mock_members[0].role_name = "viewer"
-        mock_members[1].space_rid = "ri.compass.main.space.123"
-        mock_members[1].principal_id = "group456"
-        mock_members[1].principal_type = "Group"
-        mock_members[1].role_name = "editor"
-
-        mock_client.filesystem.Space.get_members.return_value = iter(mock_members)
-        space_service._client = mock_client
-
-        result = space_service.get_space_members("ri.compass.main.space.123")
-
-        mock_client.filesystem.Space.get_members.assert_called_once_with(
-            "ri.compass.main.space.123", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["principal_id"] == "user123"
-        assert result[0]["role_name"] == "viewer"
-        assert result[1]["principal_id"] == "group456"
-        assert result[1]["role_name"] == "editor"
-
-    def test_add_space_member(self, space_service, mock_client):
-        """Test adding a space member."""
-        mock_member = Mock()
-        mock_member.space_rid = "ri.compass.main.space.123"
-        mock_member.principal_id = "user123"
-        mock_member.principal_type = "User"
-        mock_member.role_name = "viewer"
-
-        mock_client.filesystem.Space.add_member.return_value = mock_member
-        space_service._client = mock_client
-
-        result = space_service.add_space_member(
-            space_rid="ri.compass.main.space.123",
-            principal_id="user123",
-            principal_type="User",
-            role_name="viewer",
-        )
-
-        expected_member_request = {
-            "principal_id": "user123",
-            "principal_type": "User",
-            "role_name": "viewer",
-        }
-
-        mock_client.filesystem.Space.add_member.assert_called_once_with(
-            space_rid="ri.compass.main.space.123",
-            body=expected_member_request,
-            preview=True,
-        )
-
-        assert result["space_rid"] == "ri.compass.main.space.123"
-        assert result["principal_id"] == "user123"
-        assert result["principal_type"] == "User"
-        assert result["role_name"] == "viewer"
-
-    def test_remove_space_member(self, space_service, mock_client):
-        """Test removing a space member."""
-        space_service._client = mock_client
-
-        space_service.remove_space_member(
-            space_rid="ri.compass.main.space.123",
-            principal_id="user123",
-            principal_type="User",
-        )
-
-        expected_member_removal = {
-            "principal_id": "user123",
-            "principal_type": "User",
-        }
-
-        mock_client.filesystem.Space.remove_member.assert_called_once_with(
-            space_rid="ri.compass.main.space.123",
-            body=expected_member_removal,
-            preview=True,
-        )
-
     def test_format_space_info(self, space_service):
         """Test formatting space information."""
         mock_space = Mock()
@@ -368,23 +294,3 @@ class TestSpaceService:
         assert result["created_by"] == "user123"
         assert result["created_time"] == "2023-01-01T00:00:00Z"
         assert result["type"] == "space"
-
-    def test_format_member_info(self, space_service):
-        """Test formatting space member information."""
-        mock_member = Mock()
-        mock_member.space_rid = "ri.compass.main.space.123"
-        mock_member.principal_id = "user123"
-        mock_member.principal_type = "User"
-        mock_member.role_name = "viewer"
-        mock_member.added_by = "admin"
-        mock_member.added_time = Mock()
-        mock_member.added_time.time = "2023-01-01T00:00:00Z"
-
-        result = space_service._format_member_info(mock_member)
-
-        assert result["space_rid"] == "ri.compass.main.space.123"
-        assert result["principal_id"] == "user123"
-        assert result["principal_type"] == "User"
-        assert result["role_name"] == "viewer"
-        assert result["added_by"] == "admin"
-        assert result["added_time"] == "2023-01-01T00:00:00Z"

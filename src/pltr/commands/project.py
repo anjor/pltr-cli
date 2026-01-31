@@ -305,67 +305,6 @@ def delete_project(
         raise typer.Exit(1)
 
 
-@app.command("batch-get")
-def get_projects_batch(
-    project_rids: List[str] = typer.Argument(
-        ..., help="Project Resource Identifiers (space-separated)"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """Get multiple projects in a single request (max 1000)."""
-    try:
-        service = ProjectService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching {len(project_rids)} projects..."
-        ):
-            projects = service.get_projects_batch(project_rids)
-
-        # Cache RIDs for future completions
-        for project in projects:
-            if project.get("rid"):
-                cache_rid(project["rid"])
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(projects, output, "json")
-            else:
-                formatter.format_list(projects)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(projects, output, "csv")
-            else:
-                formatter.format_list(projects)
-        else:
-            _format_projects_table(projects)
-
-        if output:
-            formatter.print_success(f"Projects information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get projects batch: {e}")
-        raise typer.Exit(1)
-
-
 # ==================== Organization Operations ====================
 
 

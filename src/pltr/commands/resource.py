@@ -409,56 +409,6 @@ def get_resource_metadata(
         raise typer.Exit(1)
 
 
-@app.command("move")
-def move_resource(
-    resource_rid: str = typer.Argument(
-        ..., help="Resource Identifier", autocompletion=complete_rid
-    ),
-    target_folder_rid: str = typer.Option(
-        ...,
-        "--target-folder",
-        "-t",
-        help="Target folder Resource Identifier",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-):
-    """Move a resource to a different folder."""
-    try:
-        service = ResourceService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Moving resource {resource_rid} to {target_folder_rid}..."
-        ):
-            resource = service.move_resource(resource_rid, target_folder_rid)
-
-        formatter.print_success(f"Successfully moved resource to {target_folder_rid}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(resource)
-        elif format == "csv":
-            formatter.format_list([resource])
-        else:
-            _format_resource_table(resource)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to move resource: {e}")
-        raise typer.Exit(1)
-
-
 # ==================== Trash Operations ====================
 
 
@@ -989,9 +939,6 @@ def main():
 
         # Get resource metadata
         pltr resource get-metadata ri.compass.main.dataset.xyz123
-
-        # Move resource to different folder
-        pltr resource move ri.compass.main.dataset.xyz123 --target-folder ri.compass.main.folder.new456
 
         # Trash operations
         pltr resource delete ri.compass.main.dataset.xyz123

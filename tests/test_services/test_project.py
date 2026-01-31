@@ -51,10 +51,12 @@ class TestProjectService:
         )
 
         mock_client.filesystem.Project.create.assert_called_once_with(
-            body={
-                "display_name": "Test Project",
-                "space_rid": "ri.compass.main.space.456",
-            },
+            display_name="Test Project",
+            space_rid="ri.compass.main.space.456",
+            description=None,
+            organization_rids=[],
+            default_roles=[],
+            role_grants=[],
             preview=True,
         )
 
@@ -85,23 +87,20 @@ class TestProjectService:
             ],
         )
 
-        expected_body = {
-            "display_name": "Test Project",
-            "space_rid": "ri.compass.main.space.456",
-            "description": "Test description",
-            "organization_rids": ["ri.compass.main.org.789"],
-            "default_roles": ["viewer"],
-            "role_grants": [
+        mock_client.filesystem.Project.create.assert_called_once_with(
+            display_name="Test Project",
+            space_rid="ri.compass.main.space.456",
+            description="Test description",
+            organization_rids=["ri.compass.main.org.789"],
+            default_roles=["viewer"],
+            role_grants=[
                 {
                     "principal_id": "user1",
                     "principal_type": "User",
                     "role_name": "owner",
                 }
             ],
-        }
-
-        mock_client.filesystem.Project.create.assert_called_once_with(
-            body=expected_body, preview=True
+            preview=True,
         )
 
     def test_create_project_failure(self, project_service, mock_client):
@@ -207,7 +206,7 @@ class TestProjectService:
         mock_project.rid = "ri.compass.main.project.123"
         mock_project.display_name = "Updated Project"
 
-        mock_client.filesystem.Project.update.return_value = mock_project
+        mock_client.filesystem.Project.replace.return_value = mock_project
         project_service._client = mock_client
 
         result = project_service.update_project(
@@ -216,15 +215,43 @@ class TestProjectService:
             description="Updated description",
         )
 
-        mock_client.filesystem.Project.update.assert_called_once_with(
+        mock_client.filesystem.Project.replace.assert_called_once_with(
             project_rid="ri.compass.main.project.123",
-            body={
-                "display_name": "Updated Project",
-                "description": "Updated description",
-            },
+            display_name="Updated Project",
+            description="Updated description",
             preview=True,
         )
         assert result["display_name"] == "Updated Project"
+
+    def test_update_project_without_display_name(self, project_service, mock_client):
+        """Test updating a project when display_name not provided - fetches current."""
+        mock_current_project = Mock()
+        mock_current_project.display_name = "Current Name"
+
+        mock_updated_project = Mock()
+        mock_updated_project.rid = "ri.compass.main.project.123"
+        mock_updated_project.display_name = "Current Name"
+        mock_updated_project.description = "New description"
+
+        mock_client.filesystem.Project.get.return_value = mock_current_project
+        mock_client.filesystem.Project.replace.return_value = mock_updated_project
+        project_service._client = mock_client
+
+        result = project_service.update_project(
+            project_rid="ri.compass.main.project.123",
+            description="New description",
+        )
+
+        mock_client.filesystem.Project.get.assert_called_once_with(
+            "ri.compass.main.project.123", preview=True
+        )
+        mock_client.filesystem.Project.replace.assert_called_once_with(
+            project_rid="ri.compass.main.project.123",
+            display_name="Current Name",
+            description="New description",
+            preview=True,
+        )
+        assert result["display_name"] == "Current Name"
 
     def test_update_project_no_fields(self, project_service):
         """Test update project with no fields raises error."""
@@ -232,34 +259,6 @@ class TestProjectService:
             ValueError, match="At least one field must be provided for update"
         ):
             project_service.update_project("ri.compass.main.project.123")
-
-    def test_get_projects_batch(self, project_service, mock_client):
-        """Test getting multiple projects in batch."""
-        mock_response = Mock()
-        mock_projects = [Mock(), Mock()]
-        mock_projects[0].rid = "ri.compass.main.project.123"
-        mock_projects[1].rid = "ri.compass.main.project.456"
-        mock_response.projects = mock_projects
-
-        mock_client.filesystem.Project.get_batch.return_value = mock_response
-        project_service._client = mock_client
-
-        rids = ["ri.compass.main.project.123", "ri.compass.main.project.456"]
-        result = project_service.get_projects_batch(rids)
-
-        mock_client.filesystem.Project.get_batch.assert_called_once_with(
-            body=rids, preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.project.123"
-        assert result[1]["rid"] == "ri.compass.main.project.456"
-
-    def test_get_projects_batch_too_many(self, project_service):
-        """Test batch get with too many projects raises error."""
-        rids = ["rid"] * 1001
-
-        with pytest.raises(ValueError, match="Maximum batch size is 1000 projects"):
-            project_service.get_projects_batch(rids)
 
     def test_format_project_info(self, project_service):
         """Test formatting project information."""

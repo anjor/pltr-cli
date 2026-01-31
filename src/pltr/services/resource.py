@@ -4,6 +4,11 @@ Resource service wrapper for Foundry SDK filesystem API.
 
 from typing import Any, Optional, Dict, List
 
+from foundry_sdk.v2.filesystem.models import (
+    GetResourcesBatchRequestElement,
+    GetByPathResourcesBatchRequestElement,
+)
+
 from .base import BaseService
 
 
@@ -99,7 +104,11 @@ class ResourceService(BaseService):
             raise ValueError("Maximum batch size is 1000 resources")
 
         try:
-            response = self.service.Resource.get_batch(body=resource_rids, preview=True)
+            elements = [
+                GetResourcesBatchRequestElement(resource_rid=rid)
+                for rid in resource_rids
+            ]
+            response = self.service.Resource.get_batch(body=elements, preview=True)
             resources = []
             for resource in response.resources:
                 resources.append(self._format_resource_info(resource))
@@ -124,76 +133,6 @@ class ResourceService(BaseService):
             raise RuntimeError(
                 f"Failed to get metadata for resource {resource_rid}: {e}"
             )
-
-    def set_resource_metadata(
-        self, resource_rid: str, metadata: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Set metadata for a specific resource.
-
-        Args:
-            resource_rid: Resource Identifier
-            metadata: Metadata dictionary to set
-
-        Returns:
-            Updated resource metadata
-        """
-        try:
-            updated_metadata = self.service.Resource.set_metadata(
-                resource_rid=resource_rid,
-                body=metadata,
-                preview=True,
-            )
-            return self._format_metadata(updated_metadata)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to set metadata for resource {resource_rid}: {e}"
-            )
-
-    def delete_resource_metadata(self, resource_rid: str, keys: List[str]) -> None:
-        """
-        Delete specific metadata keys for a resource.
-
-        Args:
-            resource_rid: Resource Identifier
-            keys: List of metadata keys to delete
-
-        Raises:
-            RuntimeError: If deletion fails
-        """
-        try:
-            self.service.Resource.delete_metadata(
-                resource_rid=resource_rid,
-                body={"keys": keys},
-                preview=True,
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to delete metadata for resource {resource_rid}: {e}"
-            )
-
-    def move_resource(
-        self, resource_rid: str, target_folder_rid: str
-    ) -> Dict[str, Any]:
-        """
-        Move a resource to a different folder.
-
-        Args:
-            resource_rid: Resource Identifier
-            target_folder_rid: Target folder Resource Identifier
-
-        Returns:
-            Updated resource information
-        """
-        try:
-            resource = self.service.Resource.move(
-                resource_rid=resource_rid,
-                body={"target_folder_rid": target_folder_rid},
-                preview=True,
-            )
-            return self._format_resource_info(resource)
-        except Exception as e:
-            raise RuntimeError(f"Failed to move resource {resource_rid}: {e}")
 
     def search_resources(
         self,
@@ -409,7 +348,10 @@ class ResourceService(BaseService):
             raise ValueError("Maximum batch size is 1000 paths")
 
         try:
-            response = self.service.Resource.get_by_path_batch(body=paths, preview=True)
+            elements = [GetByPathResourcesBatchRequestElement(path=p) for p in paths]
+            response = self.service.Resource.get_by_path_batch(
+                body=elements, preview=True
+            )
             resources = []
             for resource in response.resources:
                 resources.append(self._format_resource_info(resource))
