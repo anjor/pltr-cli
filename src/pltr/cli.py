@@ -29,6 +29,7 @@ from pltr.commands import (
     functions,
     streams,
     language_models,
+    models,
 )
 from pltr.commands.cp import cp_command
 
@@ -84,6 +85,11 @@ app.add_typer(
     language_models.app,
     name="language-models",
     help="Interact with language models (Claude, OpenAI embeddings)",
+)
+app.add_typer(
+    models.app,
+    name="models",
+    help="Manage ML models and versions",
 )
 app.add_typer(
     admin.app,
