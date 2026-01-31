@@ -9,14 +9,14 @@ This skill helps you use the pltr-cli to interact with Palantir Foundry effectiv
 
 ## Compatibility
 
-- **Skill version**: 1.0.0
-- **pltr-cli version**: 0.11.0+
+- **Skill version**: 1.1.0
+- **pltr-cli version**: 0.12.0+
 - **Python**: 3.9, 3.10, 3.11, 3.12
-- **Dependencies**: foundry-platform-sdk >= 1.27.0
+- **Dependencies**: foundry-platform-sdk >= 1.69.0
 
 ## Overview
 
-pltr-cli is a comprehensive CLI with 80+ commands for:
+pltr-cli is a comprehensive CLI with 100+ commands for:
 - **Dataset operations**: Get info, list files, download files, manage branches and transactions
 - **SQL queries**: Execute queries, export results, manage async queries
 - **Ontology**: List ontologies, object types, objects, execute actions and queries
@@ -25,6 +25,11 @@ pltr-cli is a comprehensive CLI with 80+ commands for:
 - **Admin**: User, group, role management
 - **Connectivity**: External connections and data imports
 - **MediaSets**: Media file management
+- **Language Models**: Interact with Anthropic Claude models and OpenAI embeddings
+- **Streams**: Create and manage streaming datasets, publish real-time data
+- **Functions**: Execute queries and inspect value types
+- **AIP Agents**: Manage AI agents, sessions, and versions
+- **Models**: ML model registry for model and version management
 
 ## Critical Concepts
 
@@ -83,6 +88,11 @@ Load these files based on the user's task:
 | Folders, spaces, projects, resources, permissions | `reference/filesystem-commands.md` |
 | Connections, imports | `reference/connectivity-commands.md` |
 | Media sets, media items | `reference/mediasets-commands.md` |
+| Anthropic Claude models, OpenAI embeddings | `reference/language-models-commands.md` |
+| Streaming datasets, real-time data publishing | `reference/streams-commands.md` |
+| Functions queries, value types | `reference/functions-commands.md` |
+| AIP Agents, sessions, versions | `reference/aip-agents-commands.md` |
+| ML model registry, model versions | `reference/models-commands.md` |
 
 ## Workflow Files
 
@@ -126,6 +136,39 @@ pltr orchestration builds search
 
 # Interactive shell mode
 pltr shell
+
+# Send message to Claude model
+pltr language-models anthropic messages ri.language-models.main.model.xxx \
+    --message "Explain this concept"
+
+# Generate embeddings
+pltr language-models openai embeddings ri.language-models.main.model.xxx \
+    --input "Sample text"
+
+# Create streaming dataset
+pltr streams dataset create my-stream \
+    --folder ri.compass.main.folder.xxx \
+    --schema '{"fieldSchemaList": [{"name": "value", "type": "STRING"}]}'
+
+# Publish record to stream
+pltr streams stream publish ri.foundry.main.dataset.xxx \
+    --branch master \
+    --record '{"value": "hello"}'
+
+# Execute a function query
+pltr functions query execute myQuery --parameters '{"limit": 10}'
+
+# Get AIP Agent info
+pltr aip-agents get ri.foundry.main.agent.abc123
+
+# List agent sessions
+pltr aip-agents sessions list ri.foundry.main.agent.abc123
+
+# Get ML model info
+pltr models model get ri.foundry.main.model.abc123
+
+# List model versions
+pltr models version list ri.foundry.main.model.abc123
 ```
 
 ## Best Practices
