@@ -18,6 +18,9 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 81+ 
 - 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
 - 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
 - 🎬 **MediaSets Operations**: Upload, download, and manage media content with transaction support
+- 🤖 **Models Management**: Create and inspect ML models and versions in the model registry
+- 🌊 **Streams Management**: Manage streaming datasets and publish real-time data
+- 💬 **Language Models**: Interact with Claude and OpenAI embeddings for LLM operations
 - 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
 - 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
 - 💻 **Interactive Shell**: REPL mode with tab completion and command history
@@ -295,6 +298,52 @@ pltr media-sets download ri.mediasets.main.media-set.abc \
 - Profile selection (`--profile production`)
 - Preview mode (`--preview`)
 - Transaction-based upload workflow
+
+### 🤖 Models Commands
+
+pltr-cli provides support for managing ML models and versions in the Foundry model registry. This is distinct from the LanguageModels module, which handles LLM chat and embeddings.
+
+**Note**: The SDK does not provide a way to list all models. Use the Foundry web UI or Ontology API to discover models.
+
+#### Model Operations
+```bash
+# Create a new model
+pltr models model create "fraud-detector" --folder ri.compass.main.folder.xxx
+
+# Get model details
+pltr models model get ri.foundry.main.model.abc123
+
+# Get model as JSON
+pltr models model get ri.foundry.main.model.abc123 --format json
+```
+
+#### Model Version Operations
+```bash
+# List all versions of a model
+pltr models version list ri.foundry.main.model.abc123
+
+# List with pagination
+pltr models version list ri.foundry.main.model.abc123 --page-size 50
+
+# Get next page
+pltr models version list ri.foundry.main.model.abc123 \
+  --page-size 50 --page-token <token-from-previous-response>
+
+# Get specific version details
+pltr models version get ri.foundry.main.model.abc123 v1.0.0
+
+# Save version details to file
+pltr models version get ri.foundry.main.model.abc123 v1.0.0 \
+  --format json --output version-details.json
+```
+
+**All Models commands support:**
+- Multiple output formats (table, JSON, CSV)
+- File output (`--output filename`)
+- Profile selection (`--profile production`)
+- Preview mode (`--preview`)
+
+**Note**: Model version creation requires specialized ML tooling and is not provided via CLI. Use the Python SDK directly for version creation with dill-serialized models.
 
 ### 📊 Dataset Transaction Management
 
