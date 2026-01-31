@@ -302,7 +302,7 @@ echo "Workspace setup complete!"
 
 ### Resource Organization Workflow
 
-Organize existing resources into a structured hierarchy:
+Organize resources by creating a folder structure and searching for datasets:
 
 ```bash
 #!/bin/bash
@@ -317,25 +317,15 @@ SALES_FOLDER=$(pltr folder create "Sales Analytics" --format json | jq -r '.rid'
 RAW_DATA_FOLDER=$(pltr folder create "Raw Sales Data" --parent-folder $SALES_FOLDER --format json | jq -r '.rid')
 PROCESSED_FOLDER=$(pltr folder create "Processed Sales Data" --parent-folder $SALES_FOLDER --format json | jq -r '.rid')
 
-# 3. Move datasets to appropriate folders (example with specific RIDs)
-# Move raw datasets
-pltr resource move ri.foundry.main.dataset.sales-raw-2024 $RAW_DATA_FOLDER
-pltr resource move ri.foundry.main.dataset.sales-raw-2025 $RAW_DATA_FOLDER
+# 3. Get resource metadata
+pltr resource get-metadata ri.foundry.main.dataset.sales-analytics --format json
 
-# Move processed datasets
-pltr resource move ri.foundry.main.dataset.sales-clean-2024 $PROCESSED_FOLDER
-pltr resource move ri.foundry.main.dataset.sales-analytics $PROCESSED_FOLDER
-
-# 4. Set metadata for better discoverability
-pltr resource metadata set ri.foundry.main.dataset.sales-analytics '{
-  "category": "analytics",
-  "team": "sales-team",
-  "update_frequency": "daily",
-  "data_classification": "internal"
-}'
-
-echo "Resource organization complete!"
+echo "Folder structure created!"
+echo "Raw data folder: $RAW_DATA_FOLDER"
+echo "Processed folder: $PROCESSED_FOLDER"
 ```
+
+> **Note:** Moving resources between folders must be done through the Foundry UI.
 
 ### Permission Management Workflow
 
