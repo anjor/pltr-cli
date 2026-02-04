@@ -3,6 +3,7 @@ Project service wrapper for Foundry SDK filesystem API.
 """
 
 from typing import Any, Optional, Dict, List
+import inspect
 
 from .base import BaseService
 
@@ -21,7 +22,7 @@ class ProjectService(BaseService):
         description: Optional[str] = None,
         organization_rids: Optional[List[str]] = None,
         default_roles: Optional[List[str]] = None,
-        role_grants: Optional[List[Dict[str, Any]]] = None,
+        role_grants: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Create a new project.
@@ -38,15 +39,84 @@ class ProjectService(BaseService):
             Created project information
         """
         try:
-            project = self.service.Project.create(
-                display_name=display_name,
-                space_rid=space_rid,
-                description=description,
-                organization_rids=organization_rids if organization_rids else [],
-                default_roles=default_roles if default_roles else [],
-                role_grants=role_grants if role_grants else [],
-                preview=True,
-            )
+            normalized_role_grants: Dict[str, List[Dict[str, Any]]] = {}
+            if role_grants is None:
+                from .admin import AdminService
+
+                current_user = AdminService(profile=self.profile).get_current_user()
+                user_id = (
+                    current_user.get("id")
+                    or current_user.get("user_id")
+                    or current_user.get("userId")
+                )
+                if not user_id:
+                    raise RuntimeError(
+                        "Unable to determine current user id for owner role grant"
+                    )
+                normalized_role_grants = {
+                    "compass:manage": [
+                        {
+                            "principal_id": user_id,
+                            "principal_type": "USER",
+                        }
+                    ]
+                }
+            elif role_grants:
+                if isinstance(role_grants, dict):
+                    normalized_role_grants = role_grants
+                elif isinstance(role_grants, list):
+                    for grant in role_grants:
+                        if not isinstance(grant, dict):
+                            raise ValueError(
+                                "role_grants list entries must be dictionaries"
+                            )
+                        role_name = grant.get("role_name")
+                        if not role_name:
+                            raise ValueError(
+                                "role_grants entries must include role_name"
+                            )
+                        principal = {
+                            key: value
+                            for key, value in grant.items()
+                            if key != "role_name"
+                        }
+                        normalized_role_grants.setdefault(role_name, []).append(
+                            principal
+                        )
+                else:
+                    raise ValueError("role_grants must be a dict or a list of dicts")
+
+            if normalized_role_grants:
+                for principals in normalized_role_grants.values():
+                    for principal in principals:
+                        principal_type = principal.get("principal_type")
+                        if isinstance(principal_type, str):
+                            principal["principal_type"] = principal_type.upper()
+
+            create_params: Dict[str, Any] = {
+                "display_name": display_name,
+                "space_rid": space_rid,
+                "description": description,
+                "organization_rids": organization_rids if organization_rids else [],
+                "default_roles": default_roles if default_roles else [],
+                "role_grants": normalized_role_grants,
+            }
+
+            create_fn = self.service.Project.create
+            try:
+                params = inspect.signature(create_fn).parameters
+                supports_kwargs = "display_name" in params or any(
+                    param.kind == inspect.Parameter.VAR_KEYWORD
+                    for param in params.values()
+                )
+                if supports_kwargs:
+                    project = create_fn(**create_params, preview=True)
+                elif "body" in params:
+                    project = create_fn(body=create_params, preview=True)
+                else:
+                    project = create_fn(**create_params, preview=True)
+            except (TypeError, ValueError):
+                project = create_fn(**create_params, preview=True)
             return self._format_project_info(project)
         except Exception as e:
             raise RuntimeError(f"Failed to create project '{display_name}': {e}")

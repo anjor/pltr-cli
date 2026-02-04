@@ -42,6 +42,16 @@ def create_project(
         "-org",
         help="Organization RIDs (can be specified multiple times)",
     ),
+    owner_id: Optional[str] = typer.Option(
+        None,
+        "--owner-id",
+        help="Owner principal id (user or group) for compass:manage",
+    ),
+    owner_type: str = typer.Option(
+        "USER",
+        "--owner-type",
+        help="Owner principal type (USER or GROUP)",
+    ),
     profile: Optional[str] = typer.Option(
         None, "--profile", help="Profile name", autocompletion=complete_profile
     ),
@@ -57,12 +67,23 @@ def create_project(
     try:
         service = ProjectService(profile=profile)
 
+        role_grants = None
+        if owner_id:
+            role_grants = [
+                {
+                    "principal_id": owner_id,
+                    "principal_type": owner_type,
+                    "role_name": "compass:manage",
+                }
+            ]
+
         with SpinnerProgressTracker().track_spinner(f"Creating project '{name}'..."):
             project = service.create_project(
                 display_name=name,
                 space_rid=space_rid,
                 description=description,
                 organization_rids=organization_rids,
+                role_grants=role_grants,
             )
 
         # Cache the RID for future completions
