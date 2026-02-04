@@ -31,12 +31,23 @@ class TestProjectService:
         """Create a ProjectService instance with mocked dependencies."""
         return ProjectService()
 
+    @pytest.fixture
+    def mock_admin_service(self):
+        """Create a mock admin service for current user lookup."""
+        with patch("pltr.services.admin.AdminService") as MockAdminService:
+            mock_admin = Mock()
+            mock_admin.get_current_user.return_value = {"id": "user1"}
+            MockAdminService.return_value = mock_admin
+            yield mock_admin
+
     def test_get_service(self, project_service, mock_client):
         """Test _get_service returns filesystem service."""
         project_service._client = mock_client
         assert project_service._get_service() == mock_client.filesystem
 
-    def test_create_project_basic(self, project_service, mock_client):
+    def test_create_project_basic(
+        self, project_service, mock_client, mock_admin_service
+    ):
         """Test creating a project with basic parameters."""
         mock_project = Mock()
         mock_project.rid = "ri.compass.main.project.123"
@@ -56,7 +67,14 @@ class TestProjectService:
             description=None,
             organization_rids=[],
             default_roles=[],
-            role_grants=[],
+            role_grants={
+                "compass:manage": [
+                    {
+                        "principal_id": "user1",
+                        "principal_type": "USER",
+                    }
+                ]
+            },
             preview=True,
         )
 
@@ -93,17 +111,20 @@ class TestProjectService:
             description="Test description",
             organization_rids=["ri.compass.main.org.789"],
             default_roles=["viewer"],
-            role_grants=[
-                {
-                    "principal_id": "user1",
-                    "principal_type": "User",
-                    "role_name": "owner",
-                }
-            ],
+            role_grants={
+                "owner": [
+                    {
+                        "principal_id": "user1",
+                        "principal_type": "USER",
+                    }
+                ]
+            },
             preview=True,
         )
 
-    def test_create_project_failure(self, project_service, mock_client):
+    def test_create_project_failure(
+        self, project_service, mock_client, mock_admin_service
+    ):
         """Test handling project creation failure."""
         mock_client.filesystem.Project.create.side_effect = Exception("Creation failed")
         project_service._client = mock_client
