@@ -1,9 +1,11 @@
 """
-Tests for audit log commands.
+Tests for audit log file commands.
 """
 
-import pytest
+from datetime import date
 from unittest.mock import Mock, patch
+
+import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
@@ -28,64 +30,29 @@ class TestAuditCommands:
     # ===== List Command Tests =====
 
     def test_list_command_success(self, runner, mock_service) -> None:
-        """Test successful list audit logs command."""
+        """Test successful list audit log files command."""
         # Setup
         logs_result = [
             {
-                "id": "audit-log-1",
-                "timestamp": "2024-01-15T10:30:00Z",
-                "user": "user123",
-                "action": "DATASET_READ",
-                "resource": "ri.foundry.main.dataset.abc",
+                "fileId": "2024-01-15",
+                "date": "2024-01-15",
+                "size": 1024,
             },
             {
-                "id": "audit-log-2",
-                "timestamp": "2024-01-15T11:00:00Z",
-                "user": "user456",
-                "action": "DATASET_WRITE",
-                "resource": "ri.foundry.main.dataset.def",
+                "fileId": "2024-01-16",
+                "date": "2024-01-16",
+                "size": 2048,
             },
         ]
-        mock_service.list_audit_logs.return_value = logs_result
-
-        result = runner.invoke(
-            app,
-            ["audit", "list", "--format", "json"],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_audit_logs.assert_called_once_with(
-            start_time=None,
-            end_time=None,
-            user_id=None,
-            preview=False,
-        )
-
-    def test_list_command_with_filters(self, runner, mock_service) -> None:
-        """Test list command with time and user filters."""
-        # Setup
-        logs_result = [
-            {
-                "id": "audit-log-1",
-                "timestamp": "2024-01-15T10:30:00Z",
-                "user": "user123",
-                "action": "DATASET_READ",
-            },
-        ]
-        mock_service.list_audit_logs.return_value = logs_result
+        mock_service.list_log_files.return_value = logs_result
 
         result = runner.invoke(
             app,
             [
                 "audit",
                 "list",
-                "--start-time",
-                "2024-01-01T00:00:00Z",
-                "--end-time",
-                "2024-01-31T23:59:59Z",
-                "--user-id",
-                "user123",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
                 "--format",
                 "json",
             ],
@@ -93,97 +60,235 @@ class TestAuditCommands:
 
         # Assert
         assert result.exit_code == 0
-        mock_service.list_audit_logs.assert_called_once_with(
-            start_time="2024-01-01T00:00:00Z",
-            end_time="2024-01-31T23:59:59Z",
-            user_id="user123",
+        mock_service.list_log_files.assert_called_once_with(
+            organization_rid="ri.multipass..organization.abc123",
+            start_date=date(2024, 1, 1),
+            end_date=None,
+            page_size=None,
+            preview=False,
+        )
+
+    def test_list_command_with_end_date(self, runner, mock_service) -> None:
+        """Test list command with end date filter."""
+        # Setup
+        mock_service.list_log_files.return_value = [{"fileId": "2024-01-15"}]
+
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
+                "--end-date",
+                "2024-01-31",
+                "--format",
+                "json",
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        mock_service.list_log_files.assert_called_once_with(
+            organization_rid="ri.multipass..organization.abc123",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31),
+            page_size=None,
             preview=False,
         )
 
     def test_list_command_empty_result(self, runner, mock_service) -> None:
         """Test list command with no results."""
         # Setup
-        mock_service.list_audit_logs.return_value = []
+        mock_service.list_log_files.return_value = []
 
         result = runner.invoke(
             app,
-            ["audit", "list"],
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
+            ],
         )
 
         # Assert
         assert result.exit_code == 0
-        assert "No audit logs found" in result.stdout
+        assert "No audit log files found" in result.stdout
 
     def test_list_command_with_preview(self, runner, mock_service) -> None:
         """Test list command with preview flag."""
         # Setup
-        mock_service.list_audit_logs.return_value = []
+        mock_service.list_log_files.return_value = []
 
         result = runner.invoke(
             app,
-            ["audit", "list", "--preview"],
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
+                "--preview",
+            ],
         )
 
         # Assert
         assert result.exit_code == 0
-        mock_service.list_audit_logs.assert_called_once_with(
-            start_time=None,
-            end_time=None,
-            user_id=None,
+        mock_service.list_log_files.assert_called_once_with(
+            organization_rid="ri.multipass..organization.abc123",
+            start_date=date(2024, 1, 1),
+            end_date=None,
+            page_size=None,
             preview=True,
         )
+
+    def test_list_command_with_page_size(self, runner, mock_service) -> None:
+        """Test list command with page size."""
+        # Setup
+        mock_service.list_log_files.return_value = [{"fileId": "2024-01-15"}]
+
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
+                "--page-size",
+                "50",
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        mock_service.list_log_files.assert_called_once_with(
+            organization_rid="ri.multipass..organization.abc123",
+            start_date=date(2024, 1, 1),
+            end_date=None,
+            page_size=50,
+            preview=False,
+        )
+
+    def test_list_command_invalid_date(self, runner, mock_service) -> None:
+        """Test list command with invalid date format."""
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "not-a-date",
+            ],
+        )
+
+        # Assert
+        assert result.exit_code != 0
+        assert "Invalid date format" in result.stdout
 
     def test_list_command_error(self, runner, mock_service) -> None:
         """Test list command with service error."""
         # Setup
-        mock_service.list_audit_logs.side_effect = RuntimeError(
+        mock_service.list_log_files.side_effect = RuntimeError(
             "Failed to fetch audit logs"
         )
 
         result = runner.invoke(
             app,
-            ["audit", "list"],
+            [
+                "audit",
+                "list",
+                "ri.multipass..organization.abc123",
+                "2024-01-01",
+            ],
         )
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to list audit logs" in result.stdout
+        assert "Failed to list audit log files" in result.stdout
 
     # ===== Get Command Tests =====
 
-    def test_get_command_success(self, runner, mock_service) -> None:
-        """Test successful get audit log command."""
-        # Setup
-        log_result = {
-            "id": "audit-log-123",
-            "timestamp": "2024-01-15T10:30:00Z",
-            "user": "user123",
-            "action": "DATASET_READ",
-            "resource": "ri.foundry.main.dataset.abc",
-            "details": {"ip_address": "10.0.0.1"},
-        }
-        mock_service.get_audit_log.return_value = log_result
+    def test_get_command_success_text_output(self, runner, mock_service) -> None:
+        """Test successful get log file command with text content."""
+        # Setup - return UTF-8 text content
+        mock_service.get_log_file_content.return_value = b'{"event": "test"}\n'
 
         result = runner.invoke(
             app,
-            ["audit", "get", "audit-log-123", "--format", "json"],
+            [
+                "audit",
+                "get",
+                "ri.multipass..organization.abc123",
+                "2024-01-15",
+            ],
         )
 
         # Assert
         assert result.exit_code == 0
-        mock_service.get_audit_log.assert_called_once_with(
-            "audit-log-123", preview=False
+        mock_service.get_log_file_content.assert_called_once_with(
+            organization_rid="ri.multipass..organization.abc123",
+            log_file_id="2024-01-15",
+            preview=False,
         )
+        assert '{"event": "test"}' in result.stdout
+
+    def test_get_command_with_file_output(self, runner, mock_service, tmp_path) -> None:
+        """Test get command with file output."""
+        # Setup
+        mock_service.get_log_file_content.return_value = b"binary content here"
+        output_file = tmp_path / "audit.log"
+
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                "get",
+                "ri.multipass..organization.abc123",
+                "2024-01-15",
+                "--output",
+                str(output_file),
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        assert output_file.read_bytes() == b"binary content here"
+        assert "saved to" in result.stdout
+
+    def test_get_command_binary_content_no_output(self, runner, mock_service) -> None:
+        """Test get command with binary content but no output file."""
+        # Setup - return non-UTF-8 binary content
+        mock_service.get_log_file_content.return_value = b"\x80\x81\x82\xff"
+
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                "get",
+                "ri.multipass..organization.abc123",
+                "2024-01-15",
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 1
+        assert "binary content" in result.stdout.lower()
 
     def test_get_command_with_profile(self, runner, mock_service) -> None:
         """Test get command with custom profile."""
         # Setup
-        log_result = {"id": "audit-log-456"}
-        mock_service.get_audit_log.return_value = log_result
+        mock_service.get_log_file_content.return_value = b"log content"
 
         result = runner.invoke(
             app,
-            ["audit", "get", "audit-log-456", "--profile", "production"],
+            [
+                "audit",
+                "get",
+                "ri.multipass..organization.abc123",
+                "2024-01-15",
+                "--profile",
+                "production",
+            ],
         )
 
         # Assert
@@ -192,147 +297,21 @@ class TestAuditCommands:
     def test_get_command_error(self, runner, mock_service) -> None:
         """Test get command with service error."""
         # Setup
-        mock_service.get_audit_log.side_effect = RuntimeError("Audit log not found")
-
-        result = runner.invoke(
-            app,
-            ["audit", "get", "invalid-log-id"],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get audit log" in result.stdout
-
-    # ===== Export Command Tests =====
-
-    def test_export_command_success(self, runner, mock_service) -> None:
-        """Test successful export audit logs command."""
-        # Setup
-        export_result = {
-            "id": "export-123",
-            "status": "PENDING",
-            "start_time": "2024-01-01T00:00:00Z",
-            "end_time": "2024-01-31T23:59:59Z",
-        }
-        mock_service.export_audit_logs.return_value = export_result
+        mock_service.get_log_file_content.side_effect = RuntimeError("Log not found")
 
         result = runner.invoke(
             app,
             [
                 "audit",
-                "export",
-                "2024-01-01T00:00:00Z",
-                "2024-01-31T23:59:59Z",
-                "--format",
-                "json",
+                "get",
+                "ri.multipass..organization.abc123",
+                "invalid-log-id",
             ],
         )
 
         # Assert
-        assert result.exit_code == 0
-        mock_service.export_audit_logs.assert_called_once_with(
-            start_time="2024-01-01T00:00:00Z",
-            end_time="2024-01-31T23:59:59Z",
-            format="json",
-            preview=False,
-        )
-
-    def test_export_command_with_csv_format(self, runner, mock_service) -> None:
-        """Test export command with CSV export format."""
-        # Setup
-        export_result = {"id": "export-456", "status": "PENDING"}
-        mock_service.export_audit_logs.return_value = export_result
-
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "export",
-                "2024-01-01T00:00:00Z",
-                "2024-01-31T23:59:59Z",
-                "--export-format",
-                "csv",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.export_audit_logs.assert_called_once_with(
-            start_time="2024-01-01T00:00:00Z",
-            end_time="2024-01-31T23:59:59Z",
-            format="csv",
-            preview=False,
-        )
-
-    def test_export_command_error(self, runner, mock_service) -> None:
-        """Test export command with service error."""
-        # Setup
-        mock_service.export_audit_logs.side_effect = RuntimeError("Export failed")
-
-        result = runner.invoke(
-            app,
-            ["audit", "export", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z"],
-        )
-
-        # Assert
         assert result.exit_code == 1
-        assert "Failed to export audit logs" in result.stdout
-
-    # ===== Export Status Command Tests =====
-
-    def test_export_status_command_success(self, runner, mock_service) -> None:
-        """Test successful export status command."""
-        # Setup
-        status_result = {
-            "id": "export-123",
-            "status": "COMPLETED",
-            "download_url": "https://foundry.example.com/export/123/download",
-        }
-        mock_service.get_export_status.return_value = status_result
-
-        result = runner.invoke(
-            app,
-            ["audit", "export-status", "export-123", "--format", "json"],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_export_status.assert_called_once_with(
-            "export-123", preview=False
-        )
-
-    def test_export_status_command_pending(self, runner, mock_service) -> None:
-        """Test export status command with pending status."""
-        # Setup
-        status_result = {
-            "id": "export-456",
-            "status": "IN_PROGRESS",
-            "progress": 50,
-        }
-        mock_service.get_export_status.return_value = status_result
-
-        result = runner.invoke(
-            app,
-            ["audit", "export-status", "export-456"],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_export_status.assert_called_once()
-
-    def test_export_status_command_error(self, runner, mock_service) -> None:
-        """Test export status command with service error."""
-        # Setup
-        mock_service.get_export_status.side_effect = RuntimeError("Export not found")
-
-        result = runner.invoke(
-            app,
-            ["audit", "export-status", "invalid-export-id"],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get export status" in result.stdout
+        assert "Failed to get audit log file" in result.stdout
 
     # ===== Help Command Tests =====
 
@@ -342,33 +321,30 @@ class TestAuditCommands:
         result = runner.invoke(app, ["audit", "--help"])
         assert result.exit_code == 0
         assert "audit" in result.stdout.lower()
-        assert (
-            "compliance" in result.stdout.lower() or "security" in result.stdout.lower()
-        )
 
         # Test list command help
         result = runner.invoke(app, ["audit", "list", "--help"])
         assert result.exit_code == 0
-        # Check for time filter option (may have ANSI codes)
-        assert "--start-time" in result.stdout or "start" in result.stdout.lower()
+        assert (
+            "ORGANIZATION_RID" in result.stdout
+            or "organization" in result.stdout.lower()
+        )
 
         # Test get command help
         result = runner.invoke(app, ["audit", "get", "--help"])
         assert result.exit_code == 0
-        assert "LOG_ID" in result.stdout or "log" in result.stdout.lower()
-
-        # Test export command help
-        result = runner.invoke(app, ["audit", "export", "--help"])
-        assert result.exit_code == 0
-        assert "START_TIME" in result.stdout or "start" in result.stdout.lower()
+        assert "LOG_FILE_ID" in result.stdout or "log" in result.stdout.lower()
 
     # ===== File Output Tests =====
 
-    def test_list_command_with_file_output(self, runner, mock_service) -> None:
+    def test_list_command_with_file_output(
+        self, runner, mock_service, tmp_path
+    ) -> None:
         """Test list command with file output."""
         # Setup
-        logs_result = [{"id": "audit-log-1", "action": "DATASET_READ"}]
-        mock_service.list_audit_logs.return_value = logs_result
+        logs_result = [{"fileId": "2024-01-15", "size": 1024}]
+        mock_service.list_log_files.return_value = logs_result
+        output_file = tmp_path / "audit_logs.json"
 
         with patch("pltr.commands.audit.formatter") as mock_formatter:
             result = runner.invoke(
@@ -376,8 +352,10 @@ class TestAuditCommands:
                 [
                     "audit",
                     "list",
+                    "ri.multipass..organization.abc123",
+                    "2024-01-01",
                     "--output",
-                    "/tmp/audit_logs.json",
+                    str(output_file),
                     "--format",
                     "json",
                 ],
@@ -386,32 +364,5 @@ class TestAuditCommands:
             # Assert
             assert result.exit_code == 0
             mock_formatter.save_to_file.assert_called_once_with(
-                logs_result, "/tmp/audit_logs.json", "json"
-            )
-            mock_formatter.print_success.assert_called()
-
-    def test_get_command_with_file_output(self, runner, mock_service) -> None:
-        """Test get command with file output."""
-        # Setup
-        log_result = {"id": "audit-log-123", "action": "DATASET_READ"}
-        mock_service.get_audit_log.return_value = log_result
-
-        with patch("pltr.commands.audit.formatter") as mock_formatter:
-            result = runner.invoke(
-                app,
-                [
-                    "audit",
-                    "get",
-                    "audit-log-123",
-                    "--output",
-                    "/tmp/audit_log.json",
-                    "--format",
-                    "json",
-                ],
-            )
-
-            # Assert
-            assert result.exit_code == 0
-            mock_formatter.save_to_file.assert_called_once_with(
-                log_result, "/tmp/audit_log.json", "json"
+                logs_result, str(output_file), "json"
             )

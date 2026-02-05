@@ -1,9 +1,11 @@
 """
 Audit service wrapper for Foundry SDK.
-Provides access to audit log operations for compliance and security monitoring.
+Provides access to audit log file operations for compliance and security monitoring.
 """
 
+from datetime import date
 from typing import Any, Dict, List, Optional
+
 from .base import BaseService
 
 
@@ -14,153 +16,94 @@ class AuditService(BaseService):
         """Get the Foundry Audit service."""
         return self.client.audit
 
-    def list_audit_logs(
+    def list_log_files(
         self,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        user_id: Optional[str] = None,
+        organization_rid: str,
+        start_date: date,
+        end_date: Optional[date] = None,
+        page_size: Optional[int] = None,
         preview: bool = False,
     ) -> List[Dict[str, Any]]:
         """
-        List audit log entries.
+        List audit log files for an organization.
 
         Args:
-            start_time: Start time filter (ISO 8601 format)
-            end_time: End time filter (ISO 8601 format)
-            user_id: Filter by user ID
+            organization_rid: Organization Resource Identifier
+                Expected format: ri.multipass..organization.<locator>
+            start_date: Start date for audit events (required)
+            end_date: End date for audit events (inclusive, optional)
+            page_size: Number of results per page (optional)
             preview: Enable preview mode (default: False)
 
         Returns:
-            List of audit log entries
+            List of log file dictionaries containing:
+            - fileId: Log file identifier
+            - date: Date of the log file
+            - size: Size of the log file in bytes
 
         Raises:
             RuntimeError: If the operation fails
 
         Example:
+            >>> from datetime import date
             >>> service = AuditService()
-            >>> logs = service.list_audit_logs(
-            ...     start_time="2024-01-01T00:00:00Z",
-            ...     end_time="2024-01-31T23:59:59Z"
+            >>> logs = service.list_log_files(
+            ...     organization_rid="ri.multipass..organization.abc123",
+            ...     start_date=date(2024, 1, 1),
+            ...     end_date=date(2024, 1, 31)
             ... )
         """
         try:
-            # Build filter parameters
-            kwargs: Dict[str, Any] = {"preview": preview}
-            if start_time:
-                kwargs["start_time"] = start_time
-            if end_time:
-                kwargs["end_time"] = end_time
-            if user_id:
-                kwargs["user_id"] = user_id
+            # Build optional parameters
+            kwargs: Dict[str, Any] = {}
+            if end_date:
+                kwargs["end_date"] = end_date
+            if page_size:
+                kwargs["page_size"] = page_size
 
-            logs = self.service.AuditLog.list(**kwargs)
-            return [self._serialize_response(log) for log in logs]
-        except Exception as e:
-            raise RuntimeError(f"Failed to list audit logs: {e}")
-
-    def get_audit_log(
-        self,
-        log_id: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Get a specific audit log entry.
-
-        Args:
-            log_id: Audit log identifier
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            Audit log entry dictionary containing:
-            - id: Log entry identifier
-            - timestamp: When the event occurred
-            - user: User who performed the action
-            - action: Type of action performed
-            - resource: Resource that was affected
-            - details: Additional event details
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = AuditService()
-            >>> log = service.get_audit_log("audit-log-123")
-        """
-        try:
-            log = self.service.AuditLog.get(log_id, preview=preview)
-            return self._serialize_response(log)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get audit log '{log_id}': {e}")
-
-    def export_audit_logs(
-        self,
-        start_time: str,
-        end_time: str,
-        format: str = "json",
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Export audit logs for a time range.
-
-        Args:
-            start_time: Start time (ISO 8601 format)
-            end_time: End time (ISO 8601 format)
-            format: Export format (json, csv)
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            Export result with download URL or data
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = AuditService()
-            >>> export = service.export_audit_logs(
-            ...     start_time="2024-01-01T00:00:00Z",
-            ...     end_time="2024-01-31T23:59:59Z",
-            ...     format="csv"
-            ... )
-        """
-        try:
-            result = self.service.AuditLogExport.create(
-                start_time=start_time,
-                end_time=end_time,
-                format=format,
-                preview=preview,
+            log_files = self.service.Organization.LogFile.list(
+                organization_rid=organization_rid,
+                start_date=start_date,
+                **kwargs,
             )
-            return self._serialize_response(result)
+            return [self._serialize_response(log) for log in log_files]
         except Exception as e:
-            raise RuntimeError(f"Failed to export audit logs: {e}")
+            raise RuntimeError(f"Failed to list audit log files: {e}")
 
-    def get_export_status(
+    def get_log_file_content(
         self,
-        export_id: str,
+        organization_rid: str,
+        log_file_id: str,
         preview: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> bytes:
         """
-        Get the status of an audit log export.
+        Get the content of a specific audit log file.
 
         Args:
-            export_id: Export job identifier
+            organization_rid: Organization Resource Identifier
+            log_file_id: Log file identifier (from list_log_files)
             preview: Enable preview mode (default: False)
 
         Returns:
-            Export status dictionary containing:
-            - id: Export identifier
-            - status: Current status (PENDING, IN_PROGRESS, COMPLETED, FAILED)
-            - download_url: URL to download the export (if completed)
-            - error: Error message (if failed)
+            Raw bytes content of the log file
 
         Raises:
             RuntimeError: If the operation fails
 
         Example:
             >>> service = AuditService()
-            >>> status = service.get_export_status("export-123")
+            >>> content = service.get_log_file_content(
+            ...     organization_rid="ri.multipass..organization.abc123",
+            ...     log_file_id="2024-01-15"
+            ... )
         """
         try:
-            result = self.service.AuditLogExport.get(export_id, preview=preview)
-            return self._serialize_response(result)
+            content = self.service.Organization.LogFile.content(
+                organization_rid=organization_rid,
+                log_file_id=log_file_id,
+            )
+            return content
         except Exception as e:
-            raise RuntimeError(f"Failed to get export status '{export_id}': {e}")
+            raise RuntimeError(
+                f"Failed to get audit log file content '{log_file_id}': {e}"
+            )

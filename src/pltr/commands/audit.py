@@ -1,45 +1,60 @@
 """
-Audit log management commands for Foundry.
+Audit log file management commands for Foundry.
 Provides access to audit logs for compliance and security monitoring.
 """
 
-import typer
+from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
+
+import typer
 from rich.console import Console
 
+from ..auth.base import MissingCredentialsError, ProfileNotFoundError
 from ..services.audit import AuditService
+from ..utils.completion import (
+    complete_output_format,
+    complete_profile,
+    complete_rid,
+    cache_rid,
+)
 from ..utils.formatting import OutputFormatter
 from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_profile,
-    complete_output_format,
-)
 
 app = typer.Typer(help="Audit log operations for compliance and security monitoring")
 console = Console()
 formatter = OutputFormatter(console)
 
 
+def parse_date(date_str: str) -> date:
+    """Parse a date string in YYYY-MM-DD format."""
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise typer.BadParameter(f"Invalid date format: {date_str}. Use YYYY-MM-DD.")
+
+
 @app.command("list")
-def list_audit_logs(
-    start_time: Optional[str] = typer.Option(
-        None,
-        "--start-time",
-        "-s",
-        help="Start time filter (ISO 8601 format, e.g., 2024-01-01T00:00:00Z)",
+def list_log_files(
+    organization_rid: str = typer.Argument(
+        ...,
+        help="Organization Resource Identifier (e.g., ri.multipass..organization.xxx)",
+        autocompletion=complete_rid,
     ),
-    end_time: Optional[str] = typer.Option(
+    start_date: str = typer.Argument(
+        ...,
+        help="Start date for audit events (YYYY-MM-DD format, required)",
+    ),
+    end_date: Optional[str] = typer.Option(
         None,
-        "--end-time",
+        "--end-date",
         "-e",
-        help="End time filter (ISO 8601 format, e.g., 2024-01-31T23:59:59Z)",
+        help="End date for audit events (YYYY-MM-DD format, inclusive)",
     ),
-    user_id: Optional[str] = typer.Option(
+    page_size: Optional[int] = typer.Option(
         None,
-        "--user-id",
-        "-u",
-        help="Filter by user ID",
+        "--page-size",
+        help="Number of results per page",
     ),
     profile: Optional[str] = typer.Option(
         None,
@@ -64,46 +79,67 @@ def list_audit_logs(
         help="Enable preview mode",
     ),
 ):
-    """List audit log entries with optional filters."""
+    """List audit log files for an organization."""
     try:
+        # Cache the RID for future completions
+        cache_rid(organization_rid)
+
+        # Parse dates
+        start = parse_date(start_date)
+        end = parse_date(end_date) if end_date else None
+
         service = AuditService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner("Fetching audit logs..."):
-            logs = service.list_audit_logs(
-                start_time=start_time,
-                end_time=end_time,
-                user_id=user_id,
+        with SpinnerProgressTracker().track_spinner("Fetching audit log files..."):
+            logs = service.list_log_files(
+                organization_rid=organization_rid,
+                start_date=start,
+                end_date=end,
+                page_size=page_size,
                 preview=preview,
             )
 
         if not logs:
-            formatter.print_info("No audit logs found matching the criteria")
+            formatter.print_info("No audit log files found for the specified criteria")
             return
 
-        formatter.print_info(f"Found {len(logs)} audit log entries")
+        formatter.print_info(f"Found {len(logs)} audit log files")
 
         if output:
             formatter.save_to_file(logs, output, format)
-            formatter.print_success(f"Audit logs saved to {output}")
+            formatter.print_success(f"Audit log files saved to {output}")
         else:
             formatter.display(logs, format)
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
         raise typer.Exit(1)
+    except typer.BadParameter:
+        raise
     except ValueError as e:
         formatter.print_error(f"Invalid request: {e}")
         raise typer.Exit(1)
     except Exception as e:
-        formatter.print_error(f"Failed to list audit logs: {e}")
+        formatter.print_error(f"Failed to list audit log files: {e}")
         raise typer.Exit(1)
 
 
 @app.command("get")
-def get_audit_log(
-    log_id: str = typer.Argument(
+def get_log_file_content(
+    organization_rid: str = typer.Argument(
         ...,
-        help="Audit log identifier",
+        help="Organization Resource Identifier (e.g., ri.multipass..organization.xxx)",
+        autocompletion=complete_rid,
+    ),
+    log_file_id: str = typer.Argument(
+        ...,
+        help="Log file identifier (from list command)",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file path (required for binary content)",
     ),
     profile: Optional[str] = typer.Option(
         None,
@@ -112,105 +148,44 @@ def get_audit_log(
         help="Profile name",
         autocompletion=complete_profile,
     ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
     preview: bool = typer.Option(
         False,
         "--preview",
         help="Enable preview mode",
     ),
 ):
-    """Get detailed information about a specific audit log entry."""
+    """Get the content of a specific audit log file."""
     try:
-        service = AuditService(profile=profile)
+        # Cache the RID for future completions
+        cache_rid(organization_rid)
 
-        with SpinnerProgressTracker().track_spinner(f"Fetching audit log {log_id}..."):
-            log = service.get_audit_log(log_id, preview=preview)
-
-        if output:
-            formatter.save_to_file(log, output, format)
-            formatter.print_success(f"Audit log saved to {output}")
-        else:
-            formatter.display(log, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get audit log: {e}")
-        raise typer.Exit(1)
-
-
-@app.command("export")
-def export_audit_logs(
-    start_time: str = typer.Argument(
-        ...,
-        help="Start time (ISO 8601 format, e.g., 2024-01-01T00:00:00Z)",
-    ),
-    end_time: str = typer.Argument(
-        ...,
-        help="End time (ISO 8601 format, e.g., 2024-01-31T23:59:59Z)",
-    ),
-    export_format: str = typer.Option(
-        "json",
-        "--export-format",
-        help="Export format (json, csv)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
-):
-    """Export audit logs for a time range."""
-    try:
         service = AuditService(profile=profile)
 
         with SpinnerProgressTracker().track_spinner(
-            f"Initiating audit log export from {start_time} to {end_time}..."
+            f"Fetching audit log file {log_file_id}..."
         ):
-            result = service.export_audit_logs(
-                start_time=start_time,
-                end_time=end_time,
-                format=export_format,
+            content = service.get_log_file_content(
+                organization_rid=organization_rid,
+                log_file_id=log_file_id,
                 preview=preview,
             )
 
-        formatter.print_success("Audit log export initiated")
-
         if output:
-            formatter.save_to_file(result, output, format)
-            formatter.print_success(f"Export details saved to {output}")
+            # Write binary content to file
+            Path(output).write_bytes(content)
+            formatter.print_success(
+                f"Audit log file saved to {output} ({len(content)} bytes)"
+            )
         else:
-            formatter.display(result, format)
+            # Try to decode as text for display
+            try:
+                text_content = content.decode("utf-8")
+                console.print(text_content)
+            except UnicodeDecodeError:
+                formatter.print_error(
+                    "Log file contains binary content. Use --output to save to a file."
+                )
+                raise typer.Exit(1)
 
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
@@ -219,60 +194,5 @@ def export_audit_logs(
         formatter.print_error(f"Invalid request: {e}")
         raise typer.Exit(1)
     except Exception as e:
-        formatter.print_error(f"Failed to export audit logs: {e}")
-        raise typer.Exit(1)
-
-
-@app.command("export-status")
-def get_export_status(
-    export_id: str = typer.Argument(
-        ...,
-        help="Export job identifier",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
-):
-    """Get the status of an audit log export job."""
-    try:
-        service = AuditService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Checking export status for {export_id}..."
-        ):
-            status = service.get_export_status(export_id, preview=preview)
-
-        if output:
-            formatter.save_to_file(status, output, format)
-            formatter.print_success(f"Export status saved to {output}")
-        else:
-            formatter.display(status, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get export status: {e}")
+        formatter.print_error(f"Failed to get audit log file: {e}")
         raise typer.Exit(1)
