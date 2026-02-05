@@ -30,6 +30,7 @@ from pltr.commands import (
     streams,
     language_models,
     models,
+    data_health,
 )
 from pltr.commands.cp import cp_command
 
@@ -90,6 +91,11 @@ app.add_typer(
     models.app,
     name="models",
     help="Manage ML models and versions",
+)
+app.add_typer(
+    data_health.app,
+    name="data-health",
+    help="Manage data health checks and reports",
 )
 app.add_typer(
     admin.app,
