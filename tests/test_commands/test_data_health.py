@@ -112,9 +112,9 @@ class TestDataHealthCommands:
             "type": "buildStatus",
             "subject": {
                 "datasetRid": "ri.foundry.main.dataset.xxx",
-                "branchId": "master"
+                "branchId": "master",
             },
-            "statusCheckConfig": {"severity": "WARNING"}
+            "statusCheckConfig": {"severity": "WARNING"},
         }
         response = {
             "rid": "ri.data-health.main.check.abc123",

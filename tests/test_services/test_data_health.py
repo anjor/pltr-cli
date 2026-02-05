@@ -34,9 +34,9 @@ class TestDataHealthService:
             "type": "buildStatus",
             "subject": {
                 "datasetRid": "ri.foundry.main.dataset.xxx",
-                "branchId": "master"
+                "branchId": "master",
             },
-            "statusCheckConfig": {"severity": "WARNING"}
+            "statusCheckConfig": {"severity": "WARNING"},
         }
         intent = "Monitor build health"
         mock_response = Mock()
@@ -82,7 +82,9 @@ class TestDataHealthService:
     def test_create_check_error(self, service, mock_client):
         """Test error handling in create_check."""
         # Setup
-        mock_client.data_health.Check.create.side_effect = Exception("Permission denied")
+        mock_client.data_health.Check.create.side_effect = Exception(
+            "Permission denied"
+        )
 
         # Execute & Assert
         with pytest.raises(RuntimeError, match="Failed to create check"):
@@ -130,8 +132,11 @@ class TestDataHealthService:
         check_rid = "ri.data-health.main.check.abc123"
         config = {
             "type": "buildStatus",
-            "subject": {"datasetRid": "ri.foundry.main.dataset.xxx", "branchId": "master"},
-            "statusCheckConfig": {"severity": "ERROR"}
+            "subject": {
+                "datasetRid": "ri.foundry.main.dataset.xxx",
+                "branchId": "master",
+            },
+            "statusCheckConfig": {"severity": "ERROR"},
         }
         intent = "Updated threshold"
         mock_response = Mock()
@@ -166,7 +171,9 @@ class TestDataHealthService:
         mock_client.data_health.Check.replace.side_effect = Exception("Not found")
 
         # Execute & Assert
-        with pytest.raises(RuntimeError, match=f"Failed to replace check '{check_rid}'"):
+        with pytest.raises(
+            RuntimeError, match=f"Failed to replace check '{check_rid}'"
+        ):
             service.replace_check(check_rid=check_rid, config={"type": "buildStatus"})
 
     # ===== Delete Check Tests =====
@@ -205,7 +212,9 @@ class TestDataHealthService:
         """Test error handling in delete_check."""
         # Setup
         check_rid = "ri.data-health.main.check.abc123"
-        mock_client.data_health.Check.delete.side_effect = Exception("Permission denied")
+        mock_client.data_health.Check.delete.side_effect = Exception(
+            "Permission denied"
+        )
 
         # Execute & Assert
         with pytest.raises(RuntimeError, match=f"Failed to delete check '{check_rid}'"):
@@ -244,5 +253,7 @@ class TestDataHealthService:
         mock_client.data_health.CheckReport.get.side_effect = Exception("Not found")
 
         # Execute & Assert
-        with pytest.raises(RuntimeError, match=f"Failed to get check report '{check_report_rid}'"):
+        with pytest.raises(
+            RuntimeError, match=f"Failed to get check report '{check_report_rid}'"
+        ):
             service.get_check_report(check_report_rid=check_report_rid)
