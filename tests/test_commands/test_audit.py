@@ -181,10 +181,11 @@ class TestAuditCommands:
             ],
         )
 
-        # Assert - typer.BadParameter outputs to stderr or combined output
+        # Assert - typer.BadParameter causes non-zero exit
+        # Error message may be in stdout, output attribute, or cause exit code 2
         assert result.exit_code != 0
-        output = result.stdout + (result.stderr or "")
-        assert "Invalid date format" in output or result.exit_code == 2
+        # Check output (combined stdout/stderr in CliRunner)
+        assert "Invalid date format" in result.output or result.exit_code == 2
 
     def test_list_command_error(self, runner, mock_service) -> None:
         """Test list command with service error."""
