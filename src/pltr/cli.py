@@ -32,6 +32,7 @@ from pltr.commands import (
     models,
     data_health,
     audit,
+    widgets,
 )
 from pltr.commands.cp import cp_command
 
@@ -102,6 +103,11 @@ app.add_typer(
     audit.app,
     name="audit",
     help="Audit log operations for compliance and security monitoring",
+)
+app.add_typer(
+    widgets.app,
+    name="widgets",
+    help="Manage widget sets, releases, and repositories",
 )
 app.add_typer(
     admin.app,
