@@ -27,7 +27,7 @@ formatter = OutputFormatter(console)
 
 
 def parse_date(date_str: str) -> date:
-    """Parse a date string in YYYY-MM-DD format."""
+    """Parse a date string in YYYY-MM-DD format (not full ISO 8601)."""
     try:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
@@ -73,7 +73,7 @@ def list_log_files(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-):
+) -> None:
     """List audit log files for an organization."""
     try:
         # Cache the RID for future completions
@@ -142,7 +142,7 @@ def get_log_file_content(
         help="Profile name",
         autocompletion=complete_profile,
     ),
-):
+) -> None:
     """Get the content of a specific audit log file."""
     try:
         # Cache the RID for future completions
