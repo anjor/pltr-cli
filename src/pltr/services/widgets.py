@@ -169,7 +169,7 @@ class WidgetsService(BaseService):
         """
         try:
             kwargs: Dict[str, Any] = {}
-            if page_size:
+            if page_size is not None:
                 kwargs["page_size"] = page_size
 
             releases = self.service.WidgetSet.Release.list(
