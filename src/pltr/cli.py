@@ -31,6 +31,7 @@ from pltr.commands import (
     language_models,
     models,
     data_health,
+    audit,
 )
 from pltr.commands.cp import cp_command
 
@@ -96,6 +97,11 @@ app.add_typer(
     data_health.app,
     name="data-health",
     help="Manage data health checks and reports",
+)
+app.add_typer(
+    audit.app,
+    name="audit",
+    help="Audit log operations for compliance and security monitoring",
 )
 app.add_typer(
     admin.app,
