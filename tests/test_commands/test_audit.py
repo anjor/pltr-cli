@@ -65,7 +65,6 @@ class TestAuditCommands:
             start_date=date(2024, 1, 1),
             end_date=None,
             page_size=None,
-            preview=False,
         )
 
     def test_list_command_with_end_date(self, runner, mock_service) -> None:
@@ -94,7 +93,6 @@ class TestAuditCommands:
             start_date=date(2024, 1, 1),
             end_date=date(2024, 1, 31),
             page_size=None,
-            preview=False,
         )
 
     def test_list_command_empty_result(self, runner, mock_service) -> None:
@@ -115,32 +113,6 @@ class TestAuditCommands:
         # Assert
         assert result.exit_code == 0
         assert "No audit log files found" in result.stdout
-
-    def test_list_command_with_preview(self, runner, mock_service) -> None:
-        """Test list command with preview flag."""
-        # Setup
-        mock_service.list_log_files.return_value = []
-
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_log_files.assert_called_once_with(
-            organization_rid="ri.multipass..organization.abc123",
-            start_date=date(2024, 1, 1),
-            end_date=None,
-            page_size=None,
-            preview=True,
-        )
 
     def test_list_command_with_page_size(self, runner, mock_service) -> None:
         """Test list command with page size."""
@@ -166,7 +138,6 @@ class TestAuditCommands:
             start_date=date(2024, 1, 1),
             end_date=None,
             page_size=50,
-            preview=False,
         )
 
     def test_list_command_invalid_date(self, runner, mock_service) -> None:
@@ -230,7 +201,6 @@ class TestAuditCommands:
         mock_service.get_log_file_content.assert_called_once_with(
             organization_rid="ri.multipass..organization.abc123",
             log_file_id="2024-01-15",
-            preview=False,
         )
         assert '{"event": "test"}' in result.stdout
 

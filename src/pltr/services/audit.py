@@ -22,7 +22,6 @@ class AuditService(BaseService):
         start_date: date,
         end_date: Optional[date] = None,
         page_size: Optional[int] = None,
-        preview: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         List audit log files for an organization.
@@ -33,7 +32,6 @@ class AuditService(BaseService):
             start_date: Start date for audit events (required)
             end_date: End date for audit events (inclusive, optional)
             page_size: Number of results per page (optional)
-            preview: Enable preview mode (default: False)
 
         Returns:
             List of log file dictionaries containing:
@@ -74,7 +72,6 @@ class AuditService(BaseService):
         self,
         organization_rid: str,
         log_file_id: str,
-        preview: bool = False,
     ) -> bytes:
         """
         Get the content of a specific audit log file.
@@ -82,7 +79,6 @@ class AuditService(BaseService):
         Args:
             organization_rid: Organization Resource Identifier
             log_file_id: Log file identifier (from list_log_files)
-            preview: Enable preview mode (default: False)
 
         Returns:
             Raw bytes content of the log file

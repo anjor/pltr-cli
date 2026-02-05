@@ -73,11 +73,6 @@ def list_log_files(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
 ):
     """List audit log files for an organization."""
     try:
@@ -96,7 +91,6 @@ def list_log_files(
                 start_date=start,
                 end_date=end,
                 page_size=page_size,
-                preview=preview,
             )
 
         if not logs:
@@ -148,11 +142,6 @@ def get_log_file_content(
         help="Profile name",
         autocompletion=complete_profile,
     ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
 ):
     """Get the content of a specific audit log file."""
     try:
@@ -167,7 +156,6 @@ def get_log_file_content(
             content = service.get_log_file_content(
                 organization_rid=organization_rid,
                 log_file_id=log_file_id,
-                preview=preview,
             )
 
         if output:
