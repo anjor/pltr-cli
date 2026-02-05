@@ -327,15 +327,14 @@ def delete_check(
         # Delete without confirmation
         pltr data-health check delete ri.data-health.main.check.abc123 --force
     """
-    try:
-        if not force:
-            confirm = typer.confirm(
-                f"Are you sure you want to delete check '{check_rid}'?"
-            )
-            if not confirm:
-                console.print("[yellow]Cancelled[/yellow]")
-                raise typer.Exit(0)
+    # Handle confirmation outside try-except to avoid catching typer.Exit
+    if not force:
+        confirm = typer.confirm(f"Are you sure you want to delete check '{check_rid}'?")
+        if not confirm:
+            console.print("[yellow]Cancelled[/yellow]")
+            raise typer.Exit(0)
 
+    try:
         with SpinnerProgressTracker().track_spinner("Deleting check"):
             service = DataHealthService(profile=profile)
             service.delete_check(
