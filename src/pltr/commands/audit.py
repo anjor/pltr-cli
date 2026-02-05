@@ -132,9 +132,7 @@ def get_audit_log(
     try:
         service = AuditService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching audit log {log_id}..."
-        ):
+        with SpinnerProgressTracker().track_spinner(f"Fetching audit log {log_id}..."):
             log = service.get_audit_log(log_id, preview=preview)
 
         if output:

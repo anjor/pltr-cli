@@ -45,7 +45,7 @@ class AuditService(BaseService):
         """
         try:
             # Build filter parameters
-            kwargs = {"preview": preview}
+            kwargs: Dict[str, Any] = {"preview": preview}
             if start_time:
                 kwargs["start_time"] = start_time
             if end_time:

@@ -342,7 +342,9 @@ class TestAuditCommands:
         result = runner.invoke(app, ["audit", "--help"])
         assert result.exit_code == 0
         assert "audit" in result.stdout.lower()
-        assert "compliance" in result.stdout.lower() or "security" in result.stdout.lower()
+        assert (
+            "compliance" in result.stdout.lower() or "security" in result.stdout.lower()
+        )
 
         # Test list command help
         result = runner.invoke(app, ["audit", "list", "--help"])
