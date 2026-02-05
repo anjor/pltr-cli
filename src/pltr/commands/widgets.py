@@ -405,12 +405,14 @@ def delete_release(
 
         formatter.print_success(f"Release {release_version} deleted successfully")
 
+    except typer.Exit:
+        raise  # Re-raise Exit exceptions (including cancellation)
     except (ProfileNotFoundError, MissingCredentialsError) as e:
         formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         formatter.print_error(f"Failed to delete release: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 # ===== Repository Commands =====
