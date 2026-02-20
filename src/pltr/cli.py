@@ -33,6 +33,7 @@ from pltr.commands import (
     data_health,
     audit,
     widgets,
+    mcp,
 )
 from pltr.commands.cp import cp_command
 
@@ -114,6 +115,7 @@ app.add_typer(
     name="admin",
     help="Admin operations for user, group, and organization management",
 )
+app.add_typer(mcp.app, name="mcp", help="Manage MCP server integration")
 app.add_typer(shell.shell_app, name="shell", help="Interactive shell mode")
 app.add_typer(completion.app, name="completion", help="Manage shell completions")
 app.add_typer(alias.app, name="alias", help="Manage command aliases")
