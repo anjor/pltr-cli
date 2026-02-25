@@ -2,6 +2,7 @@
 Authentication manager for getting configured Foundry clients.
 """
 
+import os
 from typing import Optional, Any
 
 from .base import AuthProvider, ProfileNotFoundError, MissingCredentialsError
@@ -16,8 +17,16 @@ class AuthManager:
 
     def __init__(self):
         """Initialize authentication manager."""
-        self.storage = CredentialStorage()
+        # Delay initialization of storage to avoid keyring import in headless environments
+        self._storage = None
         self.profile_manager = ProfileManager()
+
+    @property
+    def storage(self):
+        """Lazily initialize credential storage."""
+        if self._storage is None:
+            self._storage = CredentialStorage()
+        return self._storage
 
     def get_client(self, profile: Optional[str] = None) -> Any:
         """
@@ -33,6 +42,15 @@ class AuthManager:
             ProfileNotFoundError: If profile doesn't exist
             MissingCredentialsError: If credentials are incomplete
         """
+        # Check for environment variables first (avoids keyring access in headless environments)
+        foundry_token = os.environ.get("FOUNDRY_TOKEN")
+        foundry_host = os.environ.get("FOUNDRY_HOST")
+        
+        if foundry_token and foundry_host:
+            # Create TokenAuthProvider directly from env vars
+            provider = TokenAuthProvider(token=foundry_token, host=foundry_host)
+            return provider.get_client()
+
         # Determine which profile to use
         if not profile:
             profile = self.profile_manager.get_active_profile()
@@ -123,6 +141,15 @@ class AuthManager:
         Raises:
             Exception if validation fails
         """
+        # Check for environment variables first
+        foundry_token = os.environ.get("FOUNDRY_TOKEN")
+        foundry_host = os.environ.get("FOUNDRY_HOST")
+        
+        if foundry_token and foundry_host:
+            # Validate environment variable credentials directly
+            provider = TokenAuthProvider(token=foundry_token, host=foundry_host)
+            return provider.validate()
+
         self.get_client(profile)
         # The actual validation will happen when we try to use the client
         # in the verify command
