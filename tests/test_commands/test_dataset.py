@@ -122,7 +122,9 @@ def test_create_dataset_success(mock_dataset_service, sample_dataset):
     """Test successful dataset creation."""
     mock_dataset_service.create_dataset.return_value = sample_dataset
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"])
+    result = runner.invoke(
+        app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"]
+    )
 
     assert result.exit_code == 0
     assert "Successfully created dataset" in result.stdout
@@ -150,7 +152,17 @@ def test_create_dataset_json_format(mock_dataset_service, sample_dataset):
     """Test dataset creation with JSON output format."""
     mock_dataset_service.create_dataset.return_value = sample_dataset
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test", "--format", "json"])
+    result = runner.invoke(
+        app,
+        [
+            "create",
+            "New Dataset",
+            "--parent-folder",
+            "ri.compass.main.folder.test",
+            "--format",
+            "json",
+        ],
+    )
 
     assert result.exit_code == 0
 
@@ -159,7 +171,17 @@ def test_create_dataset_with_profile(mock_dataset_service, sample_dataset):
     """Test dataset creation with specific profile."""
     mock_dataset_service.create_dataset.return_value = sample_dataset
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test", "--profile", "test-profile"])
+    result = runner.invoke(
+        app,
+        [
+            "create",
+            "New Dataset",
+            "--parent-folder",
+            "ri.compass.main.folder.test",
+            "--profile",
+            "test-profile",
+        ],
+    )
 
     assert result.exit_code == 0
 
@@ -170,7 +192,9 @@ def test_create_dataset_profile_not_found(mock_dataset_service):
         "Profile not found"
     )
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"])
+    result = runner.invoke(
+        app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"]
+    )
 
     assert result.exit_code == 1
     assert "Profile not found" in result.stdout
@@ -182,7 +206,9 @@ def test_create_dataset_missing_credentials(mock_dataset_service):
         "Missing token"
     )
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"])
+    result = runner.invoke(
+        app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"]
+    )
 
     assert result.exit_code == 1
     assert "Missing token" in result.stdout
@@ -192,7 +218,9 @@ def test_create_dataset_error(mock_dataset_service):
     """Test dataset creation with error."""
     mock_dataset_service.create_dataset.side_effect = Exception("Creation failed")
 
-    result = runner.invoke(app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"])
+    result = runner.invoke(
+        app, ["create", "New Dataset", "--parent-folder", "ri.compass.main.folder.test"]
+    )
 
     assert result.exit_code == 1
     assert "Failed to create dataset" in result.stdout
