@@ -254,7 +254,13 @@ class TestAuthManager:
         assert result == "current_profile"
         mock_profile_manager.get_active_profile.assert_called_once()
 
-    @patch.dict(os.environ, {"FOUNDRY_TOKEN": "env_token", "FOUNDRY_HOST": "https://env.palantirfoundry.com"})
+    @patch.dict(
+        os.environ,
+        {
+            "FOUNDRY_TOKEN": "env_token",
+            "FOUNDRY_HOST": "https://env.palantirfoundry.com",
+        },
+    )
     @patch("pltr.auth.manager.TokenAuthProvider")
     def test_get_client_with_env_vars(self, mock_token_provider_class):
         """Test getting client with environment variables (bypasses keyring)."""
@@ -266,7 +272,7 @@ class TestAuthManager:
         # Should not initialize storage when env vars are present
         with (
             patch("pltr.auth.manager.CredentialStorage") as mock_storage_class,
-            patch("pltr.auth.manager.ProfileManager") as mock_profile_class,
+            patch("pltr.auth.manager.ProfileManager"),
         ):
             manager = AuthManager()
             result = manager.get_client("any_profile")
@@ -285,7 +291,9 @@ class TestAuthManager:
     @patch.dict(os.environ, {"FOUNDRY_TOKEN": "env_token"})  # Missing FOUNDRY_HOST
     @patch("pltr.auth.manager.CredentialStorage")
     @patch("pltr.auth.manager.ProfileManager")
-    def test_get_client_with_partial_env_vars(self, mock_profile_class, mock_storage_class):
+    def test_get_client_with_partial_env_vars(
+        self, mock_profile_class, mock_storage_class
+    ):
         """Test getting client with only partial env vars falls back to profile."""
         # Setup mocks for fallback to profile
         mock_storage = Mock()
@@ -321,8 +329,10 @@ class TestAuthManager:
 
     @patch.dict(os.environ, {}, clear=True)  # Clear all env vars
     @patch("pltr.auth.manager.CredentialStorage")
-    @patch("pltr.auth.manager.ProfileManager")  
-    def test_get_client_without_env_vars_uses_profile(self, mock_profile_class, mock_storage_class):
+    @patch("pltr.auth.manager.ProfileManager")
+    def test_get_client_without_env_vars_uses_profile(
+        self, mock_profile_class, mock_storage_class
+    ):
         """Test getting client without env vars uses profile (existing behavior)."""
         # Setup mocks
         mock_storage = Mock()
@@ -357,7 +367,13 @@ class TestAuthManager:
 
             assert result == mock_client
 
-    @patch.dict(os.environ, {"FOUNDRY_TOKEN": "env_token", "FOUNDRY_HOST": "https://env.palantirfoundry.com"})
+    @patch.dict(
+        os.environ,
+        {
+            "FOUNDRY_TOKEN": "env_token",
+            "FOUNDRY_HOST": "https://env.palantirfoundry.com",
+        },
+    )
     @patch("pltr.auth.manager.TokenAuthProvider")
     def test_validate_profile_with_env_vars(self, mock_token_provider_class):
         """Test validating profile with environment variables."""
@@ -393,17 +409,17 @@ class TestAuthManager:
         """Test that storage is only initialized when accessed."""
         with (
             patch("pltr.auth.manager.CredentialStorage") as mock_storage_class,
-            patch("pltr.auth.manager.ProfileManager") as mock_profile_class,
+            patch("pltr.auth.manager.ProfileManager"),
         ):
             manager = AuthManager()
-            
+
             # Storage should not be initialized yet
             mock_storage_class.assert_not_called()
-            
+
             # Accessing storage should initialize it
             storage = manager.storage
             mock_storage_class.assert_called_once()
-            
+
             # Subsequent access should return the same instance
             storage2 = manager.storage
             assert storage is storage2

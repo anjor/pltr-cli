@@ -45,7 +45,7 @@ class AuthManager:
         # Check for environment variables first (avoids keyring access in headless environments)
         foundry_token = os.environ.get("FOUNDRY_TOKEN")
         foundry_host = os.environ.get("FOUNDRY_HOST")
-        
+
         if foundry_token and foundry_host:
             # Create TokenAuthProvider directly from env vars
             provider = TokenAuthProvider(token=foundry_token, host=foundry_host)
@@ -144,7 +144,7 @@ class AuthManager:
         # Check for environment variables first
         foundry_token = os.environ.get("FOUNDRY_TOKEN")
         foundry_host = os.environ.get("FOUNDRY_HOST")
-        
+
         if foundry_token and foundry_host:
             # Validate environment variable credentials directly
             provider = TokenAuthProvider(token=foundry_token, host=foundry_host)
