@@ -69,9 +69,9 @@ def grant_role(
 
         # Format output
         if format == "json":
-            formatter.format_dict(role_grant)
+            formatter.format_dict(role_grant, format=format)
         elif format == "csv":
-            formatter.format_list([role_grant])
+            formatter.format_list([role_grant], format=format)
         else:
             _format_role_grant_table(role_grant)
 
@@ -191,12 +191,12 @@ def list_resource_roles(
             if output:
                 formatter.save_to_file(role_grants, output, "json")
             else:
-                formatter.format_list(role_grants)
+                formatter.format_list(role_grants, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(role_grants, output, "csv")
             else:
-                formatter.format_list(role_grants)
+                formatter.format_list(role_grants, format=format)
         else:
             _format_role_grants_table(role_grants)
 
@@ -272,12 +272,12 @@ def get_principal_roles(
             if output:
                 formatter.save_to_file(role_grants, output, "json")
             else:
-                formatter.format_list(role_grants)
+                formatter.format_list(role_grants, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(role_grants, output, "csv")
             else:
-                formatter.format_list(role_grants)
+                formatter.format_list(role_grants, format=format)
         else:
             _format_role_grants_table(role_grants)
 
@@ -331,12 +331,12 @@ def get_available_roles(
             if output:
                 formatter.save_to_file(roles, output, "json")
             else:
-                formatter.format_list(roles)
+                formatter.format_list(roles, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(roles, output, "csv")
             else:
-                formatter.format_list(roles)
+                formatter.format_list(roles, format=format)
         else:
             _format_available_roles_table(roles)
 

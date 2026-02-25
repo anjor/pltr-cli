@@ -74,9 +74,9 @@ def create_project(
 
         # Format output
         if format == "json":
-            formatter.format_dict(project)
+            formatter.format_dict(project, format="json")
         elif format == "csv":
-            formatter.format_list([project])
+            formatter.format_list([project], format="csv")
         else:
             _format_project_table(project)
 
@@ -124,12 +124,12 @@ def get_project(
             if output:
                 formatter.save_to_file(project, output, "json")
             else:
-                formatter.format_dict(project)
+                formatter.format_dict(project, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file([project], output, "csv")
             else:
-                formatter.format_list([project])
+                formatter.format_list([project], format="csv")
         else:
             _format_project_table(project)
 
@@ -189,12 +189,12 @@ def list_projects(
             if output:
                 formatter.save_to_file(projects, output, "json")
             else:
-                formatter.format_list(projects)
+                formatter.format_list(projects, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(projects, output, "csv")
             else:
-                formatter.format_list(projects)
+                formatter.format_list(projects, format="csv")
         else:
             _format_projects_table(projects)
 
@@ -254,9 +254,9 @@ def update_project(
 
         # Format output
         if format == "json":
-            formatter.format_dict(project)
+            formatter.format_dict(project, format="json")
         elif format == "csv":
-            formatter.format_list([project])
+            formatter.format_list([project], format="csv")
         else:
             _format_project_table(project)
 
@@ -343,12 +343,12 @@ def get_projects_batch(
             if output:
                 formatter.save_to_file(projects, output, "json")
             else:
-                formatter.format_list(projects)
+                formatter.format_list(projects, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(projects, output, "csv")
             else:
-                formatter.format_list(projects)
+                formatter.format_list(projects, format="csv")
         else:
             _format_projects_table(projects)
 
@@ -479,12 +479,12 @@ def list_organizations(
             if output:
                 formatter.save_to_file(organizations, output, "json")
             else:
-                formatter.format_list(organizations)
+                formatter.format_list(organizations, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(organizations, output, "csv")
             else:
-                formatter.format_list(organizations)
+                formatter.format_list(organizations, format="json")
         else:
             _format_organizations_table(organizations)
 
@@ -575,9 +575,9 @@ def create_from_template(
 
         # Format output
         if format == "json":
-            formatter.format_dict(project)
+            formatter.format_dict(project, format="json")
         elif format == "csv":
-            formatter.format_list([project])
+            formatter.format_list([project], format="csv")
         else:
             _format_project_table(project)
 

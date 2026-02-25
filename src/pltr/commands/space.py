@@ -70,9 +70,9 @@ def create_space(
 
         # Format output
         if format == "json":
-            formatter.format_dict(space)
+            formatter.format_dict(space, format="json")
         elif format == "csv":
-            formatter.format_list([space])
+            formatter.format_list([space], format="csv")
         else:
             _format_space_table(space)
 
@@ -118,12 +118,12 @@ def get_space(
             if output:
                 formatter.save_to_file(space, output, "json")
             else:
-                formatter.format_dict(space)
+                formatter.format_dict(space, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file([space], output, "csv")
             else:
-                formatter.format_list([space])
+                formatter.format_list([space], format="csv")
         else:
             _format_space_table(space)
 
@@ -183,12 +183,12 @@ def list_spaces(
             if output:
                 formatter.save_to_file(spaces, output, "json")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(spaces, output, "csv")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format="csv")
         else:
             _format_spaces_table(spaces)
 
@@ -246,9 +246,9 @@ def update_space(
 
         # Format output
         if format == "json":
-            formatter.format_dict(space)
+            formatter.format_dict(space, format="json")
         elif format == "csv":
-            formatter.format_list([space])
+            formatter.format_list([space], format="csv")
         else:
             _format_space_table(space)
 
@@ -333,12 +333,12 @@ def get_spaces_batch(
             if output:
                 formatter.save_to_file(spaces, output, "json")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(spaces, output, "csv")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format="csv")
         else:
             _format_spaces_table(spaces)
 
@@ -407,12 +407,12 @@ def list_space_members(
             if output:
                 formatter.save_to_file(members, output, "json")
             else:
-                formatter.format_list(members)
+                formatter.format_list(members, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(members, output, "csv")
             else:
-                formatter.format_list(members)
+                formatter.format_list(members, format="csv")
         else:
             _format_space_members_table(members)
 
@@ -473,9 +473,9 @@ def add_space_member(
 
         # Format output
         if format == "json":
-            formatter.format_dict(member)
+            formatter.format_dict(member, format="json")
         elif format == "csv":
-            formatter.format_list([member])
+            formatter.format_list([member], format="csv")
         else:
             _format_space_member_table(member)
 

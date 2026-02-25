@@ -351,8 +351,8 @@ def set_schema(
 def create_dataset(
     name: str = typer.Argument(..., help="Dataset name"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    parent_folder: Optional[str] = typer.Option(
-        None, "--parent-folder", help="Parent folder RID"
+    parent_folder: str = typer.Option(
+        ..., "--parent-folder", help="Parent folder RID"
     ),
     format: str = typer.Option(
         "table", "--format", "-f", help="Output format (table, json, csv)"

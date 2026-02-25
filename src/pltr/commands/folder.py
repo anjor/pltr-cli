@@ -27,10 +27,10 @@ formatter = OutputFormatter(console)
 def create_folder(
     name: str = typer.Argument(..., help="Folder display name"),
     parent_folder: str = typer.Option(
-        "ri.compass.main.folder.0",
+        ...,
         "--parent-folder",
         "-p",
-        help="Parent folder RID (default: root folder)",
+        help="Parent folder RID",
         autocompletion=complete_rid,
     ),
     profile: Optional[str] = typer.Option(
@@ -62,9 +62,9 @@ def create_folder(
 
         # Format output
         if format == "json":
-            formatter.format_dict(folder)
+            formatter.format_dict(folder, format="json")
         elif format == "csv":
-            formatter.format_list([folder])
+            formatter.format_list([folder], format="csv")
         else:
             _format_folder_table(folder)
 
@@ -110,12 +110,12 @@ def get_folder(
             if output:
                 formatter.save_to_file(folder, output, "json")
             else:
-                formatter.format_dict(folder)
+                formatter.format_dict(folder, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file([folder], output, "csv")
             else:
-                formatter.format_list([folder])
+                formatter.format_list([folder], format="csv")
         else:
             _format_folder_table(folder)
 
@@ -175,12 +175,12 @@ def list_children(
             if output:
                 formatter.save_to_file(children, output, "json")
             else:
-                formatter.format_list(children)
+                formatter.format_list(children, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(children, output, "csv")
             else:
-                formatter.format_list(children)
+                formatter.format_list(children, format="csv")
         else:
             _format_children_table(children)
 
@@ -233,12 +233,12 @@ def get_folders_batch(
             if output:
                 formatter.save_to_file(folders, output, "json")
             else:
-                formatter.format_list(folders)
+                formatter.format_list(folders, format="json")
         elif format == "csv":
             if output:
                 formatter.save_to_file(folders, output, "csv")
             else:
-                formatter.format_list(folders)
+                formatter.format_list(folders, format="csv")
         else:
             _format_folders_batch_table(folders)
 
