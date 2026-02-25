@@ -84,9 +84,9 @@ def create_space(
 
         # Format output
         if format == "json":
-            formatter.format_dict(space)
+            formatter.format_dict(space, format=format)
         elif format == "csv":
-            formatter.format_list([space])
+            formatter.format_list([space], format=format)
         else:
             _format_space_table(space)
 
@@ -132,12 +132,12 @@ def get_space(
             if output:
                 formatter.save_to_file(space, output, "json")
             else:
-                formatter.format_dict(space)
+                formatter.format_dict(space, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file([space], output, "csv")
             else:
-                formatter.format_list([space])
+                formatter.format_list([space], format=format)
         else:
             _format_space_table(space)
 
@@ -197,12 +197,12 @@ def list_spaces(
             if output:
                 formatter.save_to_file(spaces, output, "json")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(spaces, output, "csv")
             else:
-                formatter.format_list(spaces)
+                formatter.format_list(spaces, format=format)
         else:
             _format_spaces_table(spaces)
 
@@ -260,9 +260,9 @@ def update_space(
 
         # Format output
         if format == "json":
-            formatter.format_dict(space)
+            formatter.format_dict(space, format=format)
         elif format == "csv":
-            formatter.format_list([space])
+            formatter.format_list([space], format=format)
         else:
             _format_space_table(space)
 

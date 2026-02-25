@@ -59,12 +59,12 @@ def get_resource(
             if output:
                 formatter.save_to_file(resource, output, "json")
             else:
-                formatter.format_dict(resource)
+                formatter.format_dict(resource, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file([resource], output, "csv")
             else:
-                formatter.format_list([resource])
+                formatter.format_list([resource], format=format)
         else:
             _format_resource_table(resource)
 
@@ -117,12 +117,12 @@ def get_resource_by_path(
             if output:
                 formatter.save_to_file(resource, output, "json")
             else:
-                formatter.format_dict(resource)
+                formatter.format_dict(resource, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file([resource], output, "csv")
             else:
-                formatter.format_list([resource])
+                formatter.format_list([resource], format=format)
         else:
             _format_resource_table(resource)
 
@@ -194,12 +194,12 @@ def list_resources(
             if output:
                 formatter.save_to_file(resources, output, "json")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(resources, output, "csv")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         else:
             _format_resources_table(resources)
 
@@ -273,12 +273,12 @@ def search_resources(
             if output:
                 formatter.save_to_file(resources, output, "json")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(resources, output, "csv")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         else:
             _format_resources_table(resources)
 
@@ -331,12 +331,12 @@ def get_resources_batch(
             if output:
                 formatter.save_to_file(resources, output, "json")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(resources, output, "csv")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         else:
             _format_resources_table(resources)
 
@@ -387,14 +387,14 @@ def get_resource_metadata(
             if output:
                 formatter.save_to_file(metadata, output, "json")
             else:
-                formatter.format_dict(metadata)
+                formatter.format_dict(metadata, format=format)
         elif format == "csv":
             # Convert metadata dict to list for CSV output
             metadata_list = [{"key": k, "value": v} for k, v in metadata.items()]
             if output:
                 formatter.save_to_file(metadata_list, output, "csv")
             else:
-                formatter.format_list(metadata_list)
+                formatter.format_list(metadata_list, format=format)
         else:
             _format_metadata_table(metadata)
 
@@ -634,12 +634,12 @@ def list_markings(
             if output:
                 formatter.save_to_file(markings, output, "json")
             else:
-                formatter.format_list(markings)
+                formatter.format_list(markings, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(markings, output, "csv")
             else:
-                formatter.format_list(markings)
+                formatter.format_list(markings, format=format)
         else:
             _format_markings_table(markings)
 
@@ -690,7 +690,7 @@ def get_access_requirements(
             if output:
                 formatter.save_to_file(requirements, output, "json")
             else:
-                formatter.format_dict(requirements)
+                formatter.format_dict(requirements, format=format)
         elif format == "csv":
             # Flatten for CSV output
             flat_data = []
@@ -701,7 +701,7 @@ def get_access_requirements(
             if output:
                 formatter.save_to_file(flat_data, output, "csv")
             else:
-                formatter.format_list(flat_data)
+                formatter.format_list(flat_data, format=format)
         else:
             _format_access_requirements_table(requirements)
 
@@ -758,12 +758,12 @@ def get_resources_by_path_batch(
             if output:
                 formatter.save_to_file(resources, output, "json")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(resources, output, "csv")
             else:
-                formatter.format_list(resources)
+                formatter.format_list(resources, format=format)
         else:
             _format_resources_table(resources)
 
