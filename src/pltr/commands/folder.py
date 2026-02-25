@@ -27,10 +27,10 @@ formatter = OutputFormatter(console)
 def create_folder(
     name: str = typer.Argument(..., help="Folder display name"),
     parent_folder: str = typer.Option(
-        "ri.compass.main.folder.0",
+        ...,
         "--parent-folder",
         "-p",
-        help="Parent folder RID (default: root folder)",
+        help="Parent folder RID. Use 'pltr space list' to find your space RID.",
         autocompletion=complete_rid,
     ),
     profile: Optional[str] = typer.Option(
