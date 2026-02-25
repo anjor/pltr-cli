@@ -347,7 +347,7 @@ def test_count_objects(mock_ontology_object_service):
     assert result["object_type"] == "Employee"
     assert result["branch"] is None
     mock_ontology_object_class.count.assert_called_once_with(
-        "ri.ontology.main.ontology.test", "Employee", branch_name=None
+        "ri.ontology.main.ontology.test", "Employee", branch=None
     )
 
 
@@ -363,7 +363,7 @@ def test_count_objects_with_branch(mock_ontology_object_service):
     assert result["count"] == 24
     assert result["branch"] == "master"
     mock_ontology_object_class.count.assert_called_once_with(
-        "ri.ontology.main.ontology.test", "Employee", branch_name="master"
+        "ri.ontology.main.ontology.test", "Employee", branch="master"
     )
 
 
@@ -384,8 +384,8 @@ def test_search_objects(mock_ontology_object_service, sample_object):
         "Employee",
         query="John",
         page_size=None,
-        properties=None,
-        branch_name=None,
+        select=None,
+        branch=None,
     )
 
 
@@ -409,8 +409,8 @@ def test_search_objects_with_options(mock_ontology_object_service, sample_object
         "Employee",
         query="Jane",
         page_size=10,
-        properties=["name", "department"],
-        branch_name="master",
+        select=["name", "department"],
+        branch="master",
     )
 
 

@@ -184,7 +184,7 @@ class OntologyObjectService(BaseService):
                 ontology_rid,
                 object_type,
                 page_size=page_size,
-                properties=properties,
+                select=properties,
             )
             objects = []
             for obj in result:
@@ -222,7 +222,7 @@ class OntologyObjectService(BaseService):
                 ontology_rid,
                 object_type,
                 page_size=config.page_size or settings.get("page_size", 20),
-                properties=properties,
+                select=properties,
             )
 
             # Use iterator pagination handler
@@ -256,7 +256,7 @@ class OntologyObjectService(BaseService):
         """
         try:
             obj = self.service.OntologyObject.get(
-                ontology_rid, object_type, primary_key, properties=properties
+                ontology_rid, object_type, primary_key, select=properties
             )
             return self._format_object(obj)
         except Exception as e:
@@ -325,7 +325,7 @@ class OntologyObjectService(BaseService):
                 primary_key,
                 link_type,
                 page_size=page_size,
-                properties=properties,
+                select=properties,
             )
             objects = []
             for obj in result:
@@ -355,7 +355,7 @@ class OntologyObjectService(BaseService):
             count = self.service.OntologyObject.count(
                 ontology_rid,
                 object_type,
-                branch_name=branch,
+                branch=branch,
             )
             return {
                 "ontology_rid": ontology_rid,
@@ -395,8 +395,8 @@ class OntologyObjectService(BaseService):
                 object_type,
                 query=query,
                 page_size=page_size,
-                properties=properties,
-                branch_name=branch,
+                select=properties,
+                branch=branch,
             )
             objects = []
             for obj in result:
