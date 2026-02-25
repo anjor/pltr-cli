@@ -62,9 +62,9 @@ def create_folder(
 
         # Format output
         if format == "json":
-            formatter.format_dict(folder)
+            formatter.format_dict(folder, format=format)
         elif format == "csv":
-            formatter.format_list([folder])
+            formatter.format_list([folder], format=format)
         else:
             _format_folder_table(folder)
 
@@ -110,12 +110,12 @@ def get_folder(
             if output:
                 formatter.save_to_file(folder, output, "json")
             else:
-                formatter.format_dict(folder)
+                formatter.format_dict(folder, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file([folder], output, "csv")
             else:
-                formatter.format_list([folder])
+                formatter.format_list([folder], format=format)
         else:
             _format_folder_table(folder)
 
@@ -175,12 +175,12 @@ def list_children(
             if output:
                 formatter.save_to_file(children, output, "json")
             else:
-                formatter.format_list(children)
+                formatter.format_list(children, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(children, output, "csv")
             else:
-                formatter.format_list(children)
+                formatter.format_list(children, format=format)
         else:
             _format_children_table(children)
 
@@ -233,12 +233,12 @@ def get_folders_batch(
             if output:
                 formatter.save_to_file(folders, output, "json")
             else:
-                formatter.format_list(folders)
+                formatter.format_list(folders, format=format)
         elif format == "csv":
             if output:
                 formatter.save_to_file(folders, output, "csv")
             else:
-                formatter.format_list(folders)
+                formatter.format_list(folders, format=format)
         else:
             _format_folders_batch_table(folders)
 
