@@ -82,25 +82,19 @@ def test_create_folder(runner, mock_folder_service, sample_folder):
     )
 
 
-def test_create_folder_default_parent(runner, mock_folder_service, sample_folder):
-    """Test folder creation with default parent (root)."""
-    mock_folder_service.create_folder.return_value = sample_folder
-
+def test_create_folder_requires_parent(runner, mock_folder_service, sample_folder):
+    """Test folder creation requires --parent-folder."""
     result = runner.invoke(app, ["folder", "create", "Test Folder"])
 
-    assert result.exit_code == 0
-    assert "Successfully created folder 'Test Folder'" in result.stdout
-
-    mock_folder_service.create_folder.assert_called_once_with(
-        display_name="Test Folder", parent_folder_rid="ri.compass.main.folder.0"
-    )
+    assert result.exit_code != 0
+    assert "Missing option" in result.stdout or "required" in result.stdout.lower() or result.exit_code == 2
 
 
 def test_create_folder_json_output(runner, mock_folder_service, sample_folder):
     """Test folder creation with JSON output."""
     mock_folder_service.create_folder.return_value = sample_folder
 
-    result = runner.invoke(app, ["folder", "create", "Test Folder", "--format", "json"])
+    result = runner.invoke(app, ["folder", "create", "Test Folder", "--parent-folder", "ri.compass.main.folder.test-parent", "--format", "json"])
 
     assert result.exit_code == 0
     assert "Successfully created folder 'Test Folder'" in result.stdout
@@ -201,7 +195,7 @@ def test_create_folder_auth_error(runner, mock_folder_service):
         "Profile not found"
     )
 
-    result = runner.invoke(app, ["folder", "create", "Test Folder"])
+    result = runner.invoke(app, ["folder", "create", "Test Folder", "--parent-folder", "ri.compass.main.folder.test"])
 
     assert result.exit_code == 1
     assert "Authentication error" in result.stdout
@@ -213,7 +207,7 @@ def test_create_folder_missing_credentials(runner, mock_folder_service):
         "Missing credentials"
     )
 
-    result = runner.invoke(app, ["folder", "create", "Test Folder"])
+    result = runner.invoke(app, ["folder", "create", "Test Folder", "--parent-folder", "ri.compass.main.folder.test"])
 
     assert result.exit_code == 1
     assert "Authentication error" in result.stdout
@@ -223,7 +217,7 @@ def test_create_folder_general_error(runner, mock_folder_service):
     """Test folder creation with general error."""
     mock_folder_service.create_folder.side_effect = Exception("API error")
 
-    result = runner.invoke(app, ["folder", "create", "Test Folder"])
+    result = runner.invoke(app, ["folder", "create", "Test Folder", "--parent-folder", "ri.compass.main.folder.test"])
 
     assert result.exit_code == 1
     assert "Failed to create folder" in result.stdout
@@ -278,7 +272,7 @@ def test_create_folder_with_profile(runner, mock_folder_service, sample_folder):
     mock_folder_service.create_folder.return_value = sample_folder
 
     result = runner.invoke(
-        app, ["folder", "create", "Test Folder", "--profile", "custom-profile"]
+        app, ["folder", "create", "Test Folder", "--parent-folder", "ri.compass.main.folder.test", "--profile", "custom-profile"]
     )
 
     assert result.exit_code == 0
