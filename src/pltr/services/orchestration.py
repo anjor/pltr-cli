@@ -147,8 +147,7 @@ class OrchestrationService(BaseService):
             Search results with pagination info
         """
         try:
-            kwargs: Dict[str, Any] = {}
-            kwargs["preview"] = True
+            kwargs: Dict[str, Any] = {"preview": True}
             if page_size is not None:
                 kwargs["page_size"] = page_size
             if page_token is not None:
@@ -192,6 +191,10 @@ class OrchestrationService(BaseService):
 
                 response = self.service.Build.search(**kwargs)
                 formatted = self._format_builds_search_response(response)
+                # _format_builds_search_response returns {"builds": [...], "next_page_token": ...}
+                # but _paginate_response expects {"data": [...], "next_page_token": ...},
+                # so we remap the key here. This mismatch is specific to build search;
+                # other paginated endpoints (e.g. admin.User.list) return "data" directly.
                 return {
                     "data": formatted.get("builds", []),
                     "next_page_token": formatted.get("next_page_token"),

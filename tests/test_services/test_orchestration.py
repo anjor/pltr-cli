@@ -214,6 +214,51 @@ def test_search_builds_paginated_uses_preview(mock_orchestration_service, sample
     mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
 
 
+def test_search_builds_paginated_two_pages(mock_orchestration_service, sample_build):
+    """Test paginated build search collects results across two pages."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    build_page2 = Mock()
+    build_page2.rid = "ri.orchestration.main.build.test-build-2"
+    build_page2.status = "RUNNING"
+    build_page2.created_time = "2024-01-02T00:00:00Z"
+    build_page2.started_time = "2024-01-02T00:01:00Z"
+    build_page2.finished_time = None
+    build_page2.created_by = "user2@example.com"
+    build_page2.branch_name = "develop"
+    build_page2.commit_hash = "def456"
+
+    # First page returns a next_page_token; second page returns None
+    response_page1 = Mock()
+    response_page1.data = [sample_build]
+    response_page1.next_page_token = "page-2-token"
+
+    response_page2 = Mock()
+    response_page2.data = [build_page2]
+    response_page2.next_page_token = None
+
+    mock_build_class.search.side_effect = [response_page1, response_page2]
+
+    config = PaginationConfig(page_size=1, max_pages=2)
+    result = service.search_builds_paginated(config)
+
+    assert len(result.data) == 2
+    assert result.data[0]["rid"] == "ri.orchestration.main.build.test-build"
+    assert result.data[1]["rid"] == "ri.orchestration.main.build.test-build-2"
+    assert result.metadata.total_pages_fetched == 2
+    assert result.metadata.has_more is False
+    assert mock_build_class.search.call_count == 2
+
+    # Verify first call had no page_token, second call used the token
+    first_call_kwargs = mock_build_class.search.call_args_list[0][1]
+    assert first_call_kwargs["preview"] is True
+    assert "page_token" not in first_call_kwargs
+
+    second_call_kwargs = mock_build_class.search.call_args_list[1][1]
+    assert second_call_kwargs["preview"] is True
+    assert second_call_kwargs["page_token"] == "page-2-token"
+
+
 def test_get_builds_batch_success(mock_orchestration_service, sample_build):
     """Test successful batch build retrieval."""
     service, mock_build_class, _, _ = mock_orchestration_service
