@@ -17,7 +17,14 @@ class ConnectivityService(BaseService):
     @property
     def connections_service(self) -> Any:
         """Get the connections service from the client."""
-        return self.client.connections
+        legacy_connections = getattr(self.client, "connections", None)
+        if legacy_connections is not None:
+            return legacy_connections
+
+        connectivity = getattr(self.client, "connectivity", None)
+        if connectivity is None:
+            raise RuntimeError("Connectivity service is not available on the client")
+        return connectivity
 
     @property
     def file_imports_service(self) -> Any:
@@ -37,7 +44,11 @@ class ConnectivityService(BaseService):
             List of connection information dictionaries
         """
         try:
-            connections = self.connections_service.Connection.list()
+            connection_client = self.connections_service.Connection
+            if hasattr(connection_client, "list"):
+                connections = connection_client.list()
+            else:
+                connections = self._list_connections_from_filesystem()
             return [self._format_connection_info(conn) for conn in connections]
         except Exception as e:
             raise RuntimeError(f"Failed to list connections: {e}")
@@ -384,6 +395,17 @@ class ConnectivityService(BaseService):
             Formatted connection dictionary
         """
         try:
+            if isinstance(connection, dict):
+                return {
+                    "rid": connection.get("rid", "N/A"),
+                    "display_name": connection.get("display_name", "N/A"),
+                    "description": connection.get("description", ""),
+                    "connection_type": connection.get("connection_type", "N/A"),
+                    "status": connection.get("status", "N/A"),
+                    "created_time": connection.get("created_time", "N/A"),
+                    "modified_time": connection.get("modified_time", "N/A"),
+                }
+
             return {
                 "rid": getattr(connection, "rid", "N/A"),
                 "display_name": getattr(connection, "display_name", "N/A"),
@@ -395,6 +417,64 @@ class ConnectivityService(BaseService):
             }
         except Exception:
             return {"raw": str(connection)}
+
+    def _list_connections_from_filesystem(self) -> List[Dict[str, Any]]:
+        """
+        Discover connection resources from filesystem when SDK list() is unavailable.
+        """
+        filesystem = getattr(self.client, "filesystem", None)
+        if filesystem is None or not hasattr(filesystem, "Folder"):
+            raise RuntimeError(
+                "Connection.list() is unavailable and filesystem fallback is not supported"
+            )
+
+        folder_client = filesystem.Folder
+        root_folder_rid = "ri.compass.main.folder.0"
+        pending_folders = [root_folder_rid]
+        visited_folders = set()
+        discovered_connections: List[Dict[str, Any]] = []
+        max_folders = 1000
+
+        while pending_folders and len(visited_folders) < max_folders:
+            folder_rid = pending_folders.pop(0)
+            if folder_rid in visited_folders:
+                continue
+            visited_folders.add(folder_rid)
+
+            try:
+                children = folder_client.children(folder_rid, preview=True)
+            except Exception:
+                continue
+
+            for child in children:
+                child_rid = getattr(child, "rid", None)
+                if not child_rid:
+                    continue
+
+                child_type = str(getattr(child, "type", "") or "").lower()
+                if self._looks_like_connection_resource(child_rid, child_type):
+                    discovered_connections.append(
+                        {
+                            "rid": child_rid,
+                            "display_name": getattr(child, "display_name", "N/A"),
+                            "description": getattr(child, "description", ""),
+                            "connection_type": child_type or "connection",
+                            "status": getattr(child, "status", "N/A"),
+                            "created_time": getattr(child, "created_time", "N/A"),
+                            "modified_time": getattr(child, "modified_time", "N/A"),
+                        }
+                    )
+                    continue
+
+                if child_type in {"folder", "compass_folder", "project", "space"}:
+                    pending_folders.append(child_rid)
+
+        return discovered_connections
+
+    @staticmethod
+    def _looks_like_connection_resource(resource_rid: str, resource_type: str) -> bool:
+        """Best-effort detection for connection resources from filesystem entries."""
+        return "connection" in resource_type or ".connection." in resource_rid
 
     def _format_import_info(self, import_obj: Any) -> Dict[str, Any]:
         """
