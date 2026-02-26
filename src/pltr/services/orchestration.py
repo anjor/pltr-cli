@@ -148,6 +148,7 @@ class OrchestrationService(BaseService):
         """
         try:
             kwargs: Dict[str, Any] = {}
+            kwargs["preview"] = True
             if page_size is not None:
                 kwargs["page_size"] = page_size
             if page_token is not None:
@@ -183,13 +184,18 @@ class OrchestrationService(BaseService):
                 """Fetch a single page of builds."""
                 kwargs: Dict[str, Any] = {
                     "page_size": config.page_size or settings.get("page_size", 20),
+                    "preview": True,
                 }
                 if page_token:
                     kwargs["page_token"] = page_token
                 kwargs.update(search_params)
 
                 response = self.service.Build.search(**kwargs)
-                return self._format_builds_search_response(response)
+                formatted = self._format_builds_search_response(response)
+                return {
+                    "data": formatted.get("builds", []),
+                    "next_page_token": formatted.get("next_page_token"),
+                }
 
             return self._paginate_response(fetch_page, config, progress_callback)
         except Exception as e:

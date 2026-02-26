@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 from pltr.services.orchestration import OrchestrationService
+from pltr.utils.pagination import PaginationConfig
 
 
 @pytest.fixture
@@ -193,6 +194,24 @@ def test_search_builds_success(mock_orchestration_service, sample_build):
     assert len(result["builds"]) == 1
     assert result["builds"][0]["rid"] == "ri.orchestration.main.build.test-build"
     assert result["next_page_token"] == "next-token"
+    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
+
+
+def test_search_builds_paginated_uses_preview(mock_orchestration_service, sample_build):
+    """Test paginated build search enables preview mode."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    mock_response = Mock()
+    mock_response.data = [sample_build]
+    mock_response.next_page_token = None
+    mock_build_class.search.return_value = mock_response
+
+    config = PaginationConfig(page_size=10, max_pages=1)
+    result = service.search_builds_paginated(config)
+
+    assert len(result.data) == 1
+    assert result.data[0]["rid"] == "ri.orchestration.main.build.test-build"
+    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
 
 
 def test_get_builds_batch_success(mock_orchestration_service, sample_build):
