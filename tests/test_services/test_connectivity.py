@@ -4,6 +4,7 @@ Tests for connectivity service wrapper.
 
 import pytest
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from pltr.services.connectivity import ConnectivityService
 
@@ -26,6 +27,21 @@ class TestConnectivityService:
         """Test service initialization without profile."""
         service = ConnectivityService()
         assert service.profile is None
+
+    def test_connections_service_with_connectivity_namespace(self):
+        """Test connections_service with modern SDK client namespace."""
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(connectivity="connectivity-client")
+
+        assert service.connections_service == "connectivity-client"
+
+    def test_connections_service_missing_namespace_raises(self):
+        """Test connections_service raises when no supported namespace exists."""
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace()
+
+        with pytest.raises(RuntimeError, match="Connectivity service is not available"):
+            _ = service.connections_service
 
     @patch("pltr.services.connectivity.ConnectivityService.client")
     def test_get_service(self, mock_client):
@@ -84,6 +100,127 @@ class TestConnectivityService:
 
         service = ConnectivityService(profile="test")
         with pytest.raises(RuntimeError, match="Failed to list connections"):
+            service.list_connections()
+
+    def test_list_connections_filesystem_fallback(self):
+        """Test connection listing fallback when SDK list() is unavailable."""
+        folder_child = Mock()
+        folder_child.rid = "ri.compass.main.folder.abc"
+        folder_child.type = "folder"
+
+        connection_child = Mock()
+        connection_child.rid = "ri.magritte.main.connection.123"
+        connection_child.type = "connection"
+        connection_child.display_name = "Warehouse Connection"
+        connection_child.description = "Test connection"
+        connection_child.status = "ACTIVE"
+        connection_child.created_time = "2024-01-01T00:00:00Z"
+        connection_child.modified_time = "2024-01-02T00:00:00Z"
+
+        folder_client = Mock()
+        folder_client.children.side_effect = [
+            [folder_child, connection_child],
+            [],
+        ]
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+
+        result = service.list_connections()
+
+        assert len(result) == 1
+        assert result[0]["rid"] == "ri.magritte.main.connection.123"
+        assert result[0]["display_name"] == "Warehouse Connection"
+        assert result[0]["connection_type"] == "connection"
+        folder_client.children.assert_any_call("ri.compass.main.folder.0", preview=True)
+
+    def test_list_connections_filesystem_fallback_respects_env_start_folder(
+        self, monkeypatch
+    ):
+        """Test filesystem fallback starts at env-configured folder RID."""
+        monkeypatch.setenv(
+            "PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID",
+            "ri.compass.main.folder.custom-start",
+        )
+
+        folder_client = Mock()
+        folder_client.children.return_value = []
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+
+        result = service.list_connections()
+
+        assert result == []
+        folder_client.children.assert_called_once_with(
+            "ri.compass.main.folder.custom-start", preview=True
+        )
+
+    def test_list_connections_filesystem_fallback_requires_filesystem(self):
+        """Test filesystem fallback raises when filesystem namespace is unavailable."""
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(connectivity=connectivity, filesystem=None)
+
+        with pytest.raises(
+            RuntimeError,
+            match="Connection.list\\(\\) is unavailable and filesystem fallback is not supported",
+        ):
+            service.list_connections()
+
+    def test_list_connections_filesystem_fallback_raises_on_scan_limit(self):
+        """Test filesystem fallback raises when traversal exceeds folder scan cap."""
+        folder_child = Mock()
+        folder_child.rid = "ri.compass.main.folder.child"
+        folder_child.type = "folder"
+
+        folder_client = Mock()
+        folder_client.children.return_value = [folder_child]
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+        service.MAX_FALLBACK_FOLDERS = 1
+
+        with pytest.raises(
+            RuntimeError, match="Connection discovery exceeded folder scan limit"
+        ):
+            service.list_connections()
+
+    def test_list_connections_filesystem_fallback_raises_on_start_folder_error(self):
+        """Test filesystem fallback raises when starting folder cannot be listed."""
+        folder_client = Mock()
+        folder_client.children.side_effect = Exception("Permission denied")
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+
+        with pytest.raises(RuntimeError, match="Unable to list fallback start folder"):
             service.list_connections()
 
     @patch("pltr.services.connectivity.ConnectivityService.client")
@@ -350,6 +487,24 @@ class TestConnectivityService:
             "errors": [],
         }
         assert result == expected
+
+    def test_looks_like_connection_resource_true_by_rid(self):
+        """Test RID-based connection detection heuristic."""
+        assert ConnectivityService._looks_like_connection_resource(
+            "ri.magritte.main.connection.123", "dataset"
+        )
+
+    def test_looks_like_connection_resource_true_by_type(self):
+        """Test type-based connection detection heuristic."""
+        assert ConnectivityService._looks_like_connection_resource(
+            "ri.compass.main.dataset.123", "connection"
+        )
+
+    def test_looks_like_connection_resource_false_for_folder(self):
+        """Test non-connection resources are not misidentified."""
+        assert not ConnectivityService._looks_like_connection_resource(
+            "ri.compass.main.folder.123", "folder"
+        )
 
     @patch("pltr.services.connectivity.ConnectivityService.client")
     def test_create_connection_success(self, mock_client):

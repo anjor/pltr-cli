@@ -2,13 +2,21 @@
 Connectivity service wrapper for Foundry SDK.
 """
 
+import logging
+import os
+from collections import deque
 from typing import Any, Optional, Dict, List
 
 from .base import BaseService
 
+logger = logging.getLogger(__name__)
+
 
 class ConnectivityService(BaseService):
     """Service wrapper for Foundry connectivity operations."""
+
+    DEFAULT_FILESYSTEM_FALLBACK_START_FOLDER_RID = "ri.compass.main.folder.0"
+    MAX_FALLBACK_FOLDERS = 1000
 
     def _get_service(self) -> Any:
         """Get the Foundry client for connectivity operations."""
@@ -17,7 +25,15 @@ class ConnectivityService(BaseService):
     @property
     def connections_service(self) -> Any:
         """Get the connections service from the client."""
-        return self.client.connections
+        # Prefer legacy namespace first for backward compatibility with older SDKs.
+        legacy_connections = getattr(self.client, "connections", None)
+        if legacy_connections is not None:
+            return legacy_connections
+
+        connectivity = getattr(self.client, "connectivity", None)
+        if connectivity is None:
+            raise RuntimeError("Connectivity service is not available on the client")
+        return connectivity
 
     @property
     def file_imports_service(self) -> Any:
@@ -37,8 +53,17 @@ class ConnectivityService(BaseService):
             List of connection information dictionaries
         """
         try:
-            connections = self.connections_service.Connection.list()
-            return [self._format_connection_info(conn) for conn in connections]
+            connection_client = self.connections_service.Connection
+            if hasattr(connection_client, "list"):
+                connections = connection_client.list()
+                return [self._format_connection_info(conn) for conn in connections]
+
+            logger.warning(
+                "Connection.list() is unavailable; falling back to filesystem scan. "
+                "Set PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID to a narrower folder "
+                "if this is slow."
+            )
+            return self._list_connections_from_filesystem()
         except Exception as e:
             raise RuntimeError(f"Failed to list connections: {e}")
 
@@ -384,6 +409,17 @@ class ConnectivityService(BaseService):
             Formatted connection dictionary
         """
         try:
+            if isinstance(connection, dict):
+                return {
+                    "rid": connection.get("rid", "N/A"),
+                    "display_name": connection.get("display_name", "N/A"),
+                    "description": connection.get("description", ""),
+                    "connection_type": connection.get("connection_type", "N/A"),
+                    "status": connection.get("status", "N/A"),
+                    "created_time": connection.get("created_time", "N/A"),
+                    "modified_time": connection.get("modified_time", "N/A"),
+                }
+
             return {
                 "rid": getattr(connection, "rid", "N/A"),
                 "display_name": getattr(connection, "display_name", "N/A"),
@@ -395,6 +431,88 @@ class ConnectivityService(BaseService):
             }
         except Exception:
             return {"raw": str(connection)}
+
+    def _list_connections_from_filesystem(self) -> List[Dict[str, Any]]:
+        """
+        Discover connection resources from filesystem when SDK list() is unavailable.
+
+        Notes:
+            - Uses Folder.children(preview=True), which requires preview access.
+            - Traversal starts from PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID when set,
+              otherwise defaults to ri.compass.main.folder.0.
+        """
+        filesystem = getattr(self.client, "filesystem", None)
+        if filesystem is None or not hasattr(filesystem, "Folder"):
+            raise RuntimeError(
+                "Connection.list() is unavailable and filesystem fallback is not supported"
+            )
+
+        folder_client = filesystem.Folder
+        start_folder_rid = os.environ.get(
+            "PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID",
+            self.DEFAULT_FILESYSTEM_FALLBACK_START_FOLDER_RID,
+        )
+        pending_folders = deque([start_folder_rid])
+        visited_folders: set[str] = set()
+        discovered_connections: List[Dict[str, Any]] = []
+
+        while pending_folders and len(visited_folders) < self.MAX_FALLBACK_FOLDERS:
+            folder_rid = pending_folders.popleft()
+            if folder_rid in visited_folders:
+                continue
+            visited_folders.add(folder_rid)
+
+            try:
+                children = folder_client.children(folder_rid, preview=True)
+            except Exception as error:
+                if folder_rid == start_folder_rid:
+                    raise RuntimeError(
+                        f"Unable to list fallback start folder '{start_folder_rid}': {error}"
+                    ) from error
+                logger.debug(
+                    "Skipping folder '%s' during connection discovery due to error: %s",
+                    folder_rid,
+                    error,
+                )
+                continue
+
+            for child in children:
+                child_rid = getattr(child, "rid", None)
+                if not child_rid:
+                    continue
+
+                child_type = str(getattr(child, "type", "") or "").lower()
+                if self._looks_like_connection_resource(child_rid, child_type):
+                    discovered_connections.append(
+                        {
+                            "rid": child_rid,
+                            "display_name": getattr(child, "display_name", "N/A"),
+                            "description": getattr(child, "description", ""),
+                            "connection_type": child_type or "connection",
+                            "status": getattr(child, "status", "N/A"),
+                            "created_time": getattr(child, "created_time", "N/A"),
+                            "modified_time": getattr(child, "modified_time", "N/A"),
+                        }
+                    )
+                    continue
+
+                if child_type in {"folder", "compass_folder", "project", "space"}:
+                    pending_folders.append(child_rid)
+
+        if pending_folders:
+            raise RuntimeError(
+                "Connection discovery exceeded folder scan limit "
+                f"({self.MAX_FALLBACK_FOLDERS}). "
+                "Set PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID to a narrower folder "
+                "and retry."
+            )
+
+        return discovered_connections
+
+    @staticmethod
+    def _looks_like_connection_resource(resource_rid: str, resource_type: str) -> bool:
+        """Best-effort detection for connection resources from filesystem entries."""
+        return "connection" in resource_type or ".connection." in resource_rid
 
     def _format_import_info(self, import_obj: Any) -> Dict[str, Any]:
         """
