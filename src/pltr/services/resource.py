@@ -2,6 +2,7 @@
 Resource service wrapper for Foundry SDK filesystem API.
 """
 
+from collections import deque
 from typing import Any, Optional, Dict, List
 
 from foundry_sdk.v2.filesystem.models import (
@@ -14,6 +15,10 @@ from .base import BaseService
 
 class ResourceService(BaseService):
     """Service wrapper for Foundry resource operations using filesystem API."""
+
+    # Foundry filesystem root folder RID used for unscoped resource listing/search.
+    ROOT_FOLDER_RID = "ri.compass.main.folder.0"
+    MAX_SEARCH_FOLDERS = 1000
 
     def _get_service(self) -> Any:
         """Get the Foundry filesystem service."""
@@ -66,28 +71,32 @@ class ResourceService(BaseService):
         Args:
             folder_rid: Folder Resource Identifier to filter by (optional)
             resource_type: Resource type to filter by (optional)
-            page_size: Number of items per page (optional)
+            page_size: Number of children to request per API page (optional)
             page_token: Pagination token (optional)
 
         Returns:
             List of resource information dictionaries
+
+        Note:
+            Resource type filtering is applied client-side because Folder.children()
+            does not expose a server-side resource type filter. When resource_type
+            is provided, each API page can include non-matching resources, so the
+            returned list may contain fewer than page_size items.
         """
         try:
+            parent_folder_rid = folder_rid or self.ROOT_FOLDER_RID
             resources = []
             list_params: Dict[str, Any] = {"preview": True}
-
-            if folder_rid:
-                list_params["folder_rid"] = folder_rid
-            if resource_type:
-                list_params["resource_type"] = resource_type
             if page_size:
                 list_params["page_size"] = page_size
             if page_token:
                 list_params["page_token"] = page_token
 
-            # The list method returns an iterator
-            for resource in self.service.Resource.list(**list_params):
-                resources.append(self._format_resource_info(resource))
+            for resource in self.service.Folder.children(
+                parent_folder_rid, **list_params
+            ):
+                if self._matches_resource_type(resource, resource_type):
+                    resources.append(self._format_resource_info(resource))
             return resources
         except Exception as e:
             detail = self._format_error_detail(e)
@@ -154,33 +163,62 @@ class ResourceService(BaseService):
             query: Search query string
             resource_type: Resource type to filter by (optional)
             folder_rid: Folder to search within (optional)
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
+            page_size: Maximum number of matching results to return (optional)
+            page_token: Pagination token (unsupported for recursive search)
 
         Returns:
             List of matching resource information dictionaries
         """
+        normalized_query = query.strip().lower()
+        if not normalized_query:
+            return []
+        if page_token is not None:
+            raise ValueError(
+                "page_token is not supported for recursive resource search"
+            )
+
+        max_results = page_size if page_size and page_size > 0 else None
+
         try:
-            resources = []
-            search_params: Dict[str, Any] = {
-                "query": query,
-                "preview": True,
-            }
+            start_folder_rid = folder_rid or self.ROOT_FOLDER_RID
 
-            if resource_type:
-                search_params["resource_type"] = resource_type
-            if folder_rid:
-                search_params["folder_rid"] = folder_rid
-            if page_size:
-                search_params["page_size"] = page_size
-            if page_token:
-                search_params["page_token"] = page_token
+            matches: List[Dict[str, Any]] = []
+            pending_folders = deque([start_folder_rid])
+            visited_folders: set[str] = set()
 
-            # The search method returns an iterator
-            for resource in self.service.Resource.search(**search_params):
-                resources.append(self._format_resource_info(resource))
-            return resources
+            while pending_folders and len(visited_folders) < self.MAX_SEARCH_FOLDERS:
+                current_folder_rid = pending_folders.popleft()
+                if current_folder_rid in visited_folders:
+                    continue
+                visited_folders.add(current_folder_rid)
+
+                children = self.service.Folder.children(
+                    current_folder_rid, preview=True
+                )
+                for resource in children:
+                    if self._matches_resource_type(
+                        resource, resource_type
+                    ) and self._resource_matches_query(resource, normalized_query):
+                        matches.append(self._format_resource_info(resource))
+                        if max_results is not None and len(matches) >= max_results:
+                            return matches
+
+                    if self._is_container_resource(resource):
+                        child_rid = getattr(resource, "rid", None)
+                        if child_rid and child_rid not in visited_folders:
+                            pending_folders.append(child_rid)
+
+            if pending_folders:
+                raise RuntimeError(
+                    "Resource search exceeded folder scan limit "
+                    f"({self.MAX_SEARCH_FOLDERS}). "
+                    "Provide a narrower folder_rid and retry."
+                )
+
+            return matches
         except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
             detail = self._format_error_detail(e)
             raise RuntimeError(f"Failed to search resources: {detail}")
 
@@ -383,6 +421,14 @@ class ResourceService(BaseService):
         Returns:
             Formatted resource information dictionary
         """
+        modified_by = getattr(resource, "modified_by", None)
+        if modified_by is None:
+            modified_by = getattr(resource, "updated_by", None)
+
+        modified_time = getattr(resource, "modified_time", None)
+        if modified_time is None:
+            modified_time = getattr(resource, "updated_time", None)
+
         return {
             "rid": getattr(resource, "rid", None),
             "display_name": getattr(resource, "display_name", None),
@@ -395,13 +441,42 @@ class ResourceService(BaseService):
             "created_time": self._format_timestamp(
                 getattr(resource, "created_time", None)
             ),
-            "modified_by": getattr(resource, "modified_by", None),
-            "modified_time": self._format_timestamp(
-                getattr(resource, "modified_time", None)
-            ),
+            "modified_by": modified_by,
+            "modified_time": self._format_timestamp(modified_time),
             "size_bytes": getattr(resource, "size_bytes", None),
             "trash_status": getattr(resource, "trash_status", None),
         }
+
+    @staticmethod
+    def _matches_resource_type(resource: Any, expected_type: Optional[str]) -> bool:
+        """Check whether a resource matches a requested type filter."""
+        if not expected_type:
+            return True
+        actual_type = str(getattr(resource, "type", "") or "").lower()
+        return actual_type == expected_type.lower()
+
+    @staticmethod
+    def _resource_matches_query(resource: Any, query: str) -> bool:
+        """Check whether a resource matches a text query across common fields."""
+        searchable_parts = [
+            getattr(resource, "rid", ""),
+            getattr(resource, "display_name", ""),
+            getattr(resource, "name", ""),
+            getattr(resource, "description", ""),
+            getattr(resource, "path", ""),
+            getattr(resource, "type", ""),
+        ]
+        haystack = " ".join(str(part) for part in searchable_parts if part).lower()
+        return query in haystack
+
+    @staticmethod
+    def _is_container_resource(resource: Any) -> bool:
+        """Check whether a resource can have filesystem children.
+
+        This list reflects known container resource types returned by filesystem APIs.
+        """
+        resource_type = str(getattr(resource, "type", "") or "").lower()
+        return resource_type in {"folder", "project", "space", "compass_folder"}
 
     def _format_metadata(self, metadata: Any) -> Dict[str, Any]:
         """

@@ -15,6 +15,7 @@ class TestResourceService:
         client = Mock()
         client.filesystem = Mock()
         client.filesystem.Resource = Mock()
+        client.filesystem.Folder = Mock()
         return client
 
     @pytest.fixture
@@ -136,12 +137,14 @@ class TestResourceService:
         mock_resources[1].rid = "ri.compass.main.folder.456"
         mock_resources[1].type = "folder"
 
-        mock_client.filesystem.Resource.list.return_value = iter(mock_resources)
+        mock_client.filesystem.Folder.children.return_value = iter(mock_resources)
         resource_service._client = mock_client
 
         result = resource_service.list_resources()
 
-        mock_client.filesystem.Resource.list.assert_called_once_with(preview=True)
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.folder.0", preview=True
+        )
         assert len(result) == 2
         assert result[0]["rid"] == "ri.compass.main.dataset.123"
         assert result[0]["type"] == "dataset"
@@ -150,26 +153,30 @@ class TestResourceService:
 
     def test_list_resources_with_filters(self, resource_service, mock_client):
         """Test listing resources with filters."""
-        mock_resources = [Mock()]
+        mock_resources = [Mock(), Mock()]
         mock_resources[0].rid = "ri.compass.main.dataset.123"
+        mock_resources[0].type = "dataset"
+        mock_resources[1].rid = "ri.compass.main.folder.123"
+        mock_resources[1].type = "folder"
 
-        mock_client.filesystem.Resource.list.return_value = iter(mock_resources)
+        mock_client.filesystem.Folder.children.return_value = iter(mock_resources)
         resource_service._client = mock_client
 
-        resource_service.list_resources(
+        result = resource_service.list_resources(
             folder_rid="ri.compass.main.folder.789",
             resource_type="dataset",
             page_size=10,
             page_token="token123",
         )
 
-        mock_client.filesystem.Resource.list.assert_called_once_with(
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.folder.789",
             preview=True,
-            folder_rid="ri.compass.main.folder.789",
-            resource_type="dataset",
             page_size=10,
             page_token="token123",
         )
+        assert len(result) == 1
+        assert result[0]["rid"] == "ri.compass.main.dataset.123"
 
     def test_get_resources_batch(self, resource_service, mock_client):
         """Test getting multiple resources in batch."""
@@ -220,19 +227,40 @@ class TestResourceService:
 
     def test_search_resources(self, resource_service, mock_client):
         """Test searching resources."""
-        mock_resources = [Mock(), Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
-        mock_resources[0].display_name = "Sales Data"
-        mock_resources[1].rid = "ri.compass.main.dataset.456"
-        mock_resources[1].display_name = "Sales Report"
+        folder_resource = Mock()
+        folder_resource.rid = "ri.compass.main.folder.100"
+        folder_resource.type = "folder"
+        folder_resource.display_name = "Analytics"
+        folder_resource.name = ""
+        folder_resource.description = ""
+        folder_resource.path = ""
 
-        mock_client.filesystem.Resource.search.return_value = iter(mock_resources)
+        root_dataset = Mock()
+        root_dataset.rid = "ri.compass.main.dataset.123"
+        root_dataset.display_name = "Sales Data"
+        root_dataset.type = "dataset"
+        root_dataset.name = ""
+        root_dataset.description = ""
+        root_dataset.path = ""
+
+        nested_dataset = Mock()
+        nested_dataset.rid = "ri.compass.main.dataset.456"
+        nested_dataset.display_name = "Sales Report"
+        nested_dataset.type = "dataset"
+        nested_dataset.name = ""
+        nested_dataset.description = ""
+        nested_dataset.path = ""
+
+        mock_client.filesystem.Folder.children.side_effect = [
+            [folder_resource, root_dataset],
+            [nested_dataset],
+        ]
         resource_service._client = mock_client
 
         result = resource_service.search_resources("sales")
 
-        mock_client.filesystem.Resource.search.assert_called_once_with(
-            query="sales", preview=True
+        mock_client.filesystem.Folder.children.assert_any_call(
+            "ri.compass.main.folder.0", preview=True
         )
         assert len(result) == 2
         assert result[0]["display_name"] == "Sales Data"
@@ -240,28 +268,113 @@ class TestResourceService:
 
     def test_search_resources_with_filters(self, resource_service, mock_client):
         """Test searching resources with filters."""
-        mock_resources = [Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
+        dataset = Mock()
+        dataset.rid = "ri.compass.main.dataset.123"
+        dataset.display_name = "Sales Data"
+        dataset.type = "dataset"
+        dataset.name = ""
+        dataset.description = ""
+        dataset.path = ""
 
-        mock_client.filesystem.Resource.search.return_value = iter(mock_resources)
+        folder = Mock()
+        folder.rid = "ri.compass.main.folder.123"
+        folder.display_name = "Sales Folder"
+        folder.type = "folder"
+        folder.name = ""
+        folder.description = ""
+        folder.path = ""
+
+        mock_client.filesystem.Folder.children.side_effect = [[dataset, folder], []]
         resource_service._client = mock_client
 
-        resource_service.search_resources(
+        result = resource_service.search_resources(
             query="sales",
             resource_type="dataset",
             folder_rid="ri.compass.main.folder.789",
             page_size=10,
-            page_token="token123",
         )
 
-        mock_client.filesystem.Resource.search.assert_called_once_with(
-            query="sales",
-            preview=True,
-            resource_type="dataset",
-            folder_rid="ri.compass.main.folder.789",
-            page_size=10,
-            page_token="token123",
+        mock_client.filesystem.Folder.children.assert_any_call(
+            "ri.compass.main.folder.789", preview=True
         )
+        assert len(result) == 1
+        assert result[0]["rid"] == "ri.compass.main.dataset.123"
+
+    def test_search_resources_page_size_limits_total_matches(
+        self, resource_service, mock_client
+    ):
+        """Test page_size caps total BFS matches rather than per-folder children."""
+        first_match = Mock()
+        first_match.rid = "ri.compass.main.dataset.111"
+        first_match.display_name = "Sales First"
+        first_match.type = "dataset"
+        first_match.name = ""
+        first_match.description = ""
+        first_match.path = ""
+
+        second_match = Mock()
+        second_match.rid = "ri.compass.main.dataset.222"
+        second_match.display_name = "Sales Second"
+        second_match.type = "dataset"
+        second_match.name = ""
+        second_match.description = ""
+        second_match.path = ""
+
+        mock_client.filesystem.Folder.children.return_value = [
+            first_match,
+            second_match,
+        ]
+        resource_service._client = mock_client
+
+        result = resource_service.search_resources("sales", page_size=1)
+
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.folder.0", preview=True
+        )
+        assert len(result) == 1
+        assert result[0]["rid"] == "ri.compass.main.dataset.111"
+
+    def test_search_resources_with_blank_query_returns_empty(
+        self, resource_service, mock_client
+    ):
+        """Test blank/whitespace query returns no results without API calls."""
+        resource_service._client = mock_client
+
+        result = resource_service.search_resources("   ")
+
+        assert result == []
+        mock_client.filesystem.Folder.children.assert_not_called()
+
+    def test_search_resources_with_page_token_unsupported(
+        self, resource_service, mock_client
+    ):
+        """Test recursive search rejects page_token cursor usage."""
+        resource_service._client = mock_client
+
+        with pytest.raises(ValueError, match="page_token is not supported"):
+            resource_service.search_resources("sales", page_token="token123")
+        mock_client.filesystem.Folder.children.assert_not_called()
+
+    def test_search_resources_raises_on_folder_scan_limit(
+        self, resource_service, mock_client
+    ):
+        """Test recursive search raises when traversal exceeds folder scan cap."""
+        folder = Mock()
+        folder.rid = "ri.compass.main.folder.123"
+        folder.display_name = "Folder"
+        folder.type = "folder"
+        folder.name = ""
+        folder.description = ""
+        folder.path = ""
+
+        mock_client.filesystem.Folder.children.return_value = [folder]
+        resource_service._client = mock_client
+        resource_service.MAX_SEARCH_FOLDERS = 1
+
+        with pytest.raises(
+            RuntimeError, match="Resource search exceeded folder scan limit"
+        ):
+            resource_service.search_resources("folder")
 
     def test_format_resource_info(self, resource_service):
         """Test formatting resource information."""
@@ -286,6 +399,28 @@ class TestResourceService:
         assert result["created_by"] == "user123"
         assert result["created_time"] == "2023-01-01T00:00:00Z"
         assert result["size_bytes"] == 1024
+
+    def test_format_resource_info_uses_updated_fallback_fields(self, resource_service):
+        """Test formatting falls back to updated_* fields when modified_* fields missing."""
+        mock_resource = Mock()
+        mock_resource.rid = "ri.compass.main.dataset.999"
+        mock_resource.display_name = "Fallback Dataset"
+        mock_resource.name = "fallback_dataset"
+        mock_resource.type = "dataset"
+        mock_resource.folder_rid = "ri.compass.main.folder.456"
+        mock_resource.created_by = "user123"
+        mock_resource.created_time = None
+        mock_resource.modified_by = None
+        mock_resource.updated_by = "user456"
+        mock_resource.modified_time = None
+        mock_resource.updated_time = "2024-01-02T00:00:00Z"
+        mock_resource.size_bytes = 2048
+        mock_resource.trash_status = None
+
+        result = resource_service._format_resource_info(mock_resource)
+
+        assert result["modified_by"] == "user456"
+        assert result["modified_time"] == "2024-01-02T00:00:00Z"
 
     def test_format_metadata_dict(self, resource_service):
         """Test formatting metadata as dict."""
