@@ -15,6 +15,8 @@ class TestProjectService:
         client = Mock()
         client.filesystem = Mock()
         client.filesystem.Project = Mock()
+        client.filesystem.Space = Mock()
+        client.filesystem.Folder = Mock()
         return client
 
     @pytest.fixture
@@ -170,14 +172,22 @@ class TestProjectService:
         mock_space = Mock()
         mock_space.rid = "ri.compass.main.space.789"
 
-        mock_projects = [Mock(), Mock()]
-        mock_projects[0].rid = "ri.compass.main.project.123"
-        mock_projects[0].type = "PROJECT"
-        mock_projects[1].rid = "ri.compass.main.project.456"
-        mock_projects[1].type = "PROJECT"
+        project_one = Mock()
+        project_one.rid = "ri.compass.main.project.123"
+        project_one.type = "PROJECT"
+
+        project_two = Mock()
+        project_two.rid = "ri.compass.main.project.456"
+        project_two.type = "PROJECT"
+
+        non_project = Mock()
+        non_project.rid = "ri.compass.main.folder.123"
+        non_project.type = "FOLDER"
 
         mock_client.filesystem.Space.list.return_value = iter([mock_space])
-        mock_client.filesystem.Folder.children.return_value = iter(mock_projects)
+        mock_client.filesystem.Folder.children.return_value = iter(
+            [project_one, project_two, non_project]
+        )
         project_service._client = mock_client
 
         result = project_service.list_projects()
@@ -189,6 +199,56 @@ class TestProjectService:
         assert len(result) == 2
         assert result[0]["rid"] == "ri.compass.main.project.123"
         assert result[1]["rid"] == "ri.compass.main.project.456"
+
+    def test_list_projects_across_multiple_spaces(self, project_service, mock_client):
+        """Test listing projects across multiple spaces."""
+        space_one = Mock()
+        space_one.rid = "ri.compass.main.space.111"
+        space_two = Mock()
+        space_two.rid = "ri.compass.main.space.222"
+
+        project_one = Mock()
+        project_one.rid = "ri.compass.main.project.111"
+        project_one.type = "PROJECT"
+        project_two = Mock()
+        project_two.rid = "ri.compass.main.project.222"
+        project_two.type = "PROJECT"
+
+        mock_client.filesystem.Space.list.return_value = iter([space_one, space_two])
+        mock_client.filesystem.Folder.children.side_effect = [
+            iter([project_one]),
+            iter([project_two]),
+        ]
+        project_service._client = mock_client
+
+        result = project_service.list_projects()
+
+        assert len(result) == 2
+        assert {item["rid"] for item in result} == {
+            "ri.compass.main.project.111",
+            "ri.compass.main.project.222",
+        }
+
+    def test_list_projects_ignores_pagination_without_space_filter(
+        self, project_service, mock_client
+    ):
+        """Test pagination args are ignored when listing across all spaces."""
+        mock_space = Mock()
+        mock_space.rid = "ri.compass.main.space.789"
+        project = Mock()
+        project.rid = "ri.compass.main.project.123"
+        project.type = "PROJECT"
+
+        mock_client.filesystem.Space.list.return_value = iter([mock_space])
+        mock_client.filesystem.Folder.children.return_value = iter([project])
+        project_service._client = mock_client
+
+        project_service.list_projects(page_size=5, page_token="token")
+
+        mock_client.filesystem.Space.list.assert_called_once_with(preview=True)
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.space.789", preview=True
+        )
 
     def test_list_projects_with_filters(self, project_service, mock_client):
         """Test listing projects with filters."""
@@ -209,6 +269,14 @@ class TestProjectService:
             page_size=10,
             page_token="token123",
         )
+
+    def test_is_project_resource_with_canonical_project_rid(self, project_service):
+        """Test project resource detection fallback by canonical project RID."""
+        resource = Mock()
+        resource.type = None
+        resource.rid = "ri.compass.main.project.abc123"
+
+        assert project_service._is_project_resource(resource) is True
 
     def test_delete_project(self, project_service, mock_client):
         """Test deleting a project."""

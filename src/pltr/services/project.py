@@ -155,35 +155,23 @@ class ProjectService(BaseService):
             List of project information dictionaries
         """
         try:
-            projects_by_rid: Dict[str, Dict[str, Any]] = {}
-
             if space_rid:
-                projects = self._list_projects_in_parent(
+                return self._list_projects_in_parent(
                     parent_folder_rid=space_rid,
                     page_size=page_size,
                     page_token=page_token,
                 )
-                for project in projects:
-                    rid = project.get("rid")
-                    if rid:
-                        projects_by_rid[rid] = project
-                return list(projects_by_rid.values())
 
-            space_params: Dict[str, Any] = {"preview": True}
-            if page_size:
-                space_params["page_size"] = page_size
-            if page_token:
-                space_params["page_token"] = page_token
-
-            for space in self.service.Space.list(**space_params):
+            # page_size/page_token are cursor semantics for a single folder listing.
+            # They are not meaningful when aggregating projects across all spaces.
+            projects_by_rid: Dict[str, Dict[str, Any]] = {}
+            for space in self.service.Space.list(preview=True):
                 parent_space_rid = getattr(space, "rid", None)
                 if not parent_space_rid:
                     continue
 
                 projects = self._list_projects_in_parent(
-                    parent_folder_rid=parent_space_rid,
-                    page_size=page_size,
-                    page_token=page_token,
+                    parent_folder_rid=parent_space_rid
                 )
                 for project in projects:
                     rid = project.get("rid")
@@ -423,7 +411,10 @@ class ProjectService(BaseService):
         """Check whether a filesystem resource is a project."""
         resource_type = str(getattr(resource, "type", "") or "").upper()
         resource_rid = str(getattr(resource, "rid", "") or "")
-        return resource_type == "PROJECT" or ".project." in resource_rid
+        # Fallback to canonical project RID prefix when type is missing.
+        return resource_type == "PROJECT" or resource_rid.startswith(
+            "ri.compass.main.project."
+        )
 
     def _format_organization_info(self, organization: Any) -> Dict[str, Any]:
         """
