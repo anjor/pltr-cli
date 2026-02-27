@@ -214,6 +214,44 @@ def test_search_builds_paginated_uses_preview(mock_orchestration_service, sample
     mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
 
 
+def test_search_builds_paginated_collects_multiple_pages(
+    mock_orchestration_service, sample_build
+):
+    """Test paginated build search collects builds across multiple pages."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    page_one = Mock()
+    build_one = Mock()
+    build_one.rid = "ri.orchestration.main.build.page-1"
+    page_one.data = [build_one]
+    page_one.next_page_token = "token-2"
+
+    page_two = Mock()
+    build_two = Mock()
+    build_two.rid = "ri.orchestration.main.build.page-2"
+    page_two.data = [build_two]
+    page_two.next_page_token = None
+
+    mock_build_class.search.side_effect = [page_one, page_two]
+
+    config = PaginationConfig(page_size=10, max_pages=2)
+    result = service.search_builds_paginated(config)
+
+    assert len(result.data) == 2
+    assert result.data[0]["rid"] == "ri.orchestration.main.build.page-1"
+    assert result.data[1]["rid"] == "ri.orchestration.main.build.page-2"
+    assert mock_build_class.search.call_count == 2
+    assert mock_build_class.search.call_args_list[0].kwargs == {
+        "page_size": 10,
+        "preview": True,
+    }
+    assert mock_build_class.search.call_args_list[1].kwargs == {
+        "page_size": 10,
+        "preview": True,
+        "page_token": "token-2",
+    }
+
+
 def test_get_builds_batch_success(mock_orchestration_service, sample_build):
     """Test successful batch build retrieval."""
     service, mock_build_class, _, _ = mock_orchestration_service

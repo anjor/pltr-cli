@@ -4,6 +4,8 @@ Tests for token authentication.
 
 import pytest
 import os
+import sys
+from types import SimpleNamespace
 from unittest.mock import patch, Mock
 from pltr.auth.token import TokenAuthProvider
 from pltr.auth.base import MissingCredentialsError, InvalidCredentialsError
@@ -75,6 +77,66 @@ class TestTokenAuthProvider:
         # (actual functionality tested in integration tests with real SDK)
         assert hasattr(provider, "get_client")
         assert callable(provider.get_client)
+
+    def test_get_client_prefers_preview_when_supported(self, monkeypatch):
+        """Test get_client passes preview=True when SDK supports it."""
+        calls = []
+
+        class UserTokenAuthStub:
+            def __init__(self, token):
+                self.token = token
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                UserTokenAuth=UserTokenAuthStub,
+            ),
+        )
+
+        provider = TokenAuthProvider(
+            token="test_token", host="https://test.palantirfoundry.com"
+        )
+        provider.get_client()
+
+        assert calls[0]["preview"] is True
+
+    def test_get_client_falls_back_when_preview_unsupported(self, monkeypatch):
+        """Test get_client retries without preview when SDK rejects the preview kwarg."""
+        calls = []
+
+        class UserTokenAuthStub:
+            def __init__(self, token):
+                self.token = token
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+                if "preview" in kwargs:
+                    raise TypeError("unexpected keyword argument 'preview'")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                UserTokenAuth=UserTokenAuthStub,
+            ),
+        )
+
+        provider = TokenAuthProvider(
+            token="test_token", host="https://test.palantirfoundry.com"
+        )
+        provider.get_client()
+
+        assert len(calls) == 2
+        assert calls[0]["preview"] is True
+        assert "preview" not in calls[1]
 
     def test_validate_success(self):
         """Test successful validation."""

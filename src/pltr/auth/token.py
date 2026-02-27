@@ -32,7 +32,12 @@ class TokenAuthProvider(AuthProvider):
         from foundry_sdk import FoundryClient, UserTokenAuth
 
         auth = UserTokenAuth(token=self.token)  # type: ignore
-        return FoundryClient(auth=auth, hostname=self.host)
+        # Newer SDKs may support client-level preview mode while older ones do not.
+        # Try the preview-aware constructor first, then fall back for compatibility.
+        try:
+            return FoundryClient(auth=auth, hostname=self.host, preview=True)
+        except TypeError:
+            return FoundryClient(auth=auth, hostname=self.host)
 
     def validate(self) -> bool:
         """Validate authentication credentials."""

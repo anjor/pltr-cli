@@ -147,8 +147,7 @@ class OrchestrationService(BaseService):
             Search results with pagination info
         """
         try:
-            kwargs: Dict[str, Any] = {}
-            kwargs["preview"] = True
+            kwargs: Dict[str, Any] = {"preview": True}
             if page_size is not None:
                 kwargs["page_size"] = page_size
             if page_token is not None:
