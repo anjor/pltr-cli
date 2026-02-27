@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 from pltr.services.orchestration import OrchestrationService
+from pltr.utils.pagination import PaginationConfig
 
 
 @pytest.fixture
@@ -193,6 +194,101 @@ def test_search_builds_success(mock_orchestration_service, sample_build):
     assert len(result["builds"]) == 1
     assert result["builds"][0]["rid"] == "ri.orchestration.main.build.test-build"
     assert result["next_page_token"] == "next-token"
+    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
+
+
+def test_search_builds_paginated_uses_preview(mock_orchestration_service, sample_build):
+    """Test paginated build search enables preview mode."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    mock_response = Mock()
+    mock_response.data = [sample_build]
+    mock_response.next_page_token = None
+    mock_build_class.search.return_value = mock_response
+
+    config = PaginationConfig(page_size=10, max_pages=1)
+    result = service.search_builds_paginated(config)
+
+    assert len(result.data) == 1
+    assert result.data[0]["rid"] == "ri.orchestration.main.build.test-build"
+    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
+
+
+def test_search_builds_paginated_collects_multiple_pages(
+    mock_orchestration_service, sample_build
+):
+    """Test paginated build search collects builds across multiple pages."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    page_one = Mock()
+    build_one = Mock()
+    build_one.rid = "ri.orchestration.main.build.page-1"
+    page_one.data = [build_one]
+    page_one.next_page_token = "token-2"
+
+    page_two = Mock()
+    build_two = Mock()
+    build_two.rid = "ri.orchestration.main.build.page-2"
+    page_two.data = [build_two]
+    page_two.next_page_token = None
+
+    mock_build_class.search.side_effect = [page_one, page_two]
+
+    config = PaginationConfig(page_size=10, max_pages=2)
+    result = service.search_builds_paginated(config)
+
+    assert len(result.data) == 2
+    assert result.data[0]["rid"] == "ri.orchestration.main.build.page-1"
+    assert result.data[1]["rid"] == "ri.orchestration.main.build.page-2"
+    assert mock_build_class.search.call_count == 2
+    assert mock_build_class.search.call_args_list[0].kwargs == {
+        "page_size": 10,
+        "preview": True,
+    }
+    assert mock_build_class.search.call_args_list[1].kwargs == {
+        "page_size": 10,
+        "preview": True,
+        "page_token": "token-2",
+    }
+
+
+def test_search_builds_falls_back_when_preview_kwarg_unsupported(
+    mock_orchestration_service, sample_build
+):
+    """Test build search retries without preview when call-level preview is unsupported."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    mock_response = Mock()
+    mock_response.data = [sample_build]
+    mock_response.next_page_token = None
+    mock_build_class.search.side_effect = [
+        TypeError("unexpected keyword argument 'preview'"),
+        mock_response,
+    ]
+
+    result = service.search_builds(page_size=10)
+
+    assert len(result["builds"]) == 1
+    assert mock_build_class.search.call_count == 2
+    assert mock_build_class.search.call_args_list[0].kwargs == {
+        "page_size": 10,
+        "preview": True,
+    }
+    assert mock_build_class.search.call_args_list[1].kwargs == {"page_size": 10}
+
+
+def test_search_builds_reraises_unrelated_type_error(mock_orchestration_service):
+    """Test build search does not swallow unrelated TypeError failures."""
+    service, mock_build_class, _, _ = mock_orchestration_service
+
+    mock_build_class.search.side_effect = TypeError("invalid request body")
+
+    with pytest.raises(
+        RuntimeError, match="Failed to search builds: invalid request body"
+    ):
+        service.search_builds(page_size=10)
+
+    assert mock_build_class.search.call_count == 1
 
 
 def test_get_builds_batch_success(mock_orchestration_service, sample_build):

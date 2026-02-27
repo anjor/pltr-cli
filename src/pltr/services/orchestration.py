@@ -147,14 +147,14 @@ class OrchestrationService(BaseService):
             Search results with pagination info
         """
         try:
-            kwargs: Dict[str, Any] = {}
+            kwargs: Dict[str, Any] = {"preview": True}
             if page_size is not None:
                 kwargs["page_size"] = page_size
             if page_token is not None:
                 kwargs["page_token"] = page_token
             kwargs.update(search_params)
 
-            response = self.service.Build.search(**kwargs)
+            response = self._search_with_optional_preview(kwargs)
             return self._format_builds_search_response(response)
         except Exception as e:
             raise RuntimeError(f"Failed to search builds: {e}")
@@ -183,17 +183,38 @@ class OrchestrationService(BaseService):
                 """Fetch a single page of builds."""
                 kwargs: Dict[str, Any] = {
                     "page_size": config.page_size or settings.get("page_size", 20),
+                    "preview": True,
                 }
                 if page_token:
                     kwargs["page_token"] = page_token
                 kwargs.update(search_params)
 
-                response = self.service.Build.search(**kwargs)
-                return self._format_builds_search_response(response)
+                response = self._search_with_optional_preview(kwargs)
+                formatted = self._format_builds_search_response(response)
+                return {
+                    "data": formatted.get("builds", []),
+                    "next_page_token": formatted.get("next_page_token"),
+                }
 
             return self._paginate_response(fetch_page, config, progress_callback)
         except Exception as e:
             raise RuntimeError(f"Failed to search builds: {e}")
+
+    def _search_with_optional_preview(self, kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute Build.search with preview compatibility fallback.
+
+        Some SDK versions reject the `preview` kwarg at call-time even if preview
+        mode is enabled via client defaults.
+        """
+        try:
+            return self.service.Build.search(**kwargs)
+        except TypeError as e:
+            if "preview" not in str(e):
+                raise
+            fallback_kwargs = dict(kwargs)
+            fallback_kwargs.pop("preview", None)
+            return self.service.Build.search(**fallback_kwargs)
 
     def get_builds_batch(self, build_rids: List[str]) -> Dict[str, Any]:
         """

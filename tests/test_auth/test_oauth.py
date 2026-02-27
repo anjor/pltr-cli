@@ -4,6 +4,8 @@ Tests for OAuth authentication.
 
 import pytest
 import os
+import sys
+from types import SimpleNamespace
 from unittest.mock import patch, Mock
 from pltr.auth.oauth import OAuthClientProvider
 from pltr.auth.base import MissingCredentialsError, InvalidCredentialsError
@@ -107,6 +109,104 @@ class TestOAuthClientProvider:
         # (actual functionality tested in integration tests with real SDK)
         assert hasattr(provider, "get_client")
         assert callable(provider.get_client)
+
+    def test_get_client_prefers_preview_when_supported(self, monkeypatch):
+        """Test get_client passes preview=True when SDK supports it."""
+        calls = []
+
+        class ConfidentialClientAuthStub:
+            def __init__(self, client_id, client_secret, scopes):
+                self.client_id = client_id
+                self.client_secret = client_secret
+                self.scopes = scopes
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                ConfidentialClientAuth=ConfidentialClientAuthStub,
+            ),
+        )
+
+        provider = OAuthClientProvider(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            host="https://test.palantirfoundry.com",
+        )
+        provider.get_client()
+
+        assert calls[0]["preview"] is True
+
+    def test_get_client_falls_back_when_preview_unsupported(self, monkeypatch):
+        """Test get_client retries without preview when SDK rejects the preview kwarg."""
+        calls = []
+
+        class ConfidentialClientAuthStub:
+            def __init__(self, client_id, client_secret, scopes):
+                self.client_id = client_id
+                self.client_secret = client_secret
+                self.scopes = scopes
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+                if "preview" in kwargs:
+                    raise TypeError("unexpected keyword argument 'preview'")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                ConfidentialClientAuth=ConfidentialClientAuthStub,
+            ),
+        )
+
+        provider = OAuthClientProvider(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            host="https://test.palantirfoundry.com",
+        )
+        provider.get_client()
+
+        assert len(calls) == 2
+        assert calls[0]["preview"] is True
+        assert "preview" not in calls[1]
+
+    def test_get_client_reraises_unrelated_type_error(self, monkeypatch):
+        """Test get_client does not swallow unrelated TypeError failures."""
+
+        class ConfidentialClientAuthStub:
+            def __init__(self, client_id, client_secret, scopes):
+                self.client_id = client_id
+                self.client_secret = client_secret
+                self.scopes = scopes
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                raise TypeError("bad auth input")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                ConfidentialClientAuth=ConfidentialClientAuthStub,
+            ),
+        )
+
+        provider = OAuthClientProvider(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            host="https://test.palantirfoundry.com",
+        )
+        with pytest.raises(TypeError, match="bad auth input"):
+            provider.get_client()
 
     def test_validate_success(self):
         """Test successful validation."""
