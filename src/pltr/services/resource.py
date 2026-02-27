@@ -71,7 +71,7 @@ class ResourceService(BaseService):
         Args:
             folder_rid: Folder Resource Identifier to filter by (optional)
             resource_type: Resource type to filter by (optional)
-            page_size: Number of items per page (optional)
+            page_size: Number of children to request per API page (optional)
             page_token: Pagination token (optional)
 
         Returns:
@@ -79,7 +79,9 @@ class ResourceService(BaseService):
 
         Note:
             Resource type filtering is applied client-side because Folder.children()
-            does not expose a server-side resource type filter.
+            does not expose a server-side resource type filter. When resource_type
+            is provided, each API page can include non-matching resources, so the
+            returned list may contain fewer than page_size items.
         """
         try:
             parent_folder_rid = folder_rid or self.ROOT_FOLDER_RID
@@ -182,7 +184,7 @@ class ResourceService(BaseService):
 
             matches: List[Dict[str, Any]] = []
             pending_folders = deque([start_folder_rid])
-            visited_folders = set()
+            visited_folders: set[str] = set()
 
             while pending_folders and len(visited_folders) < self.MAX_SEARCH_FOLDERS:
                 current_folder_rid = pending_folders.popleft()
@@ -206,8 +208,17 @@ class ResourceService(BaseService):
                         if child_rid and child_rid not in visited_folders:
                             pending_folders.append(child_rid)
 
+            if pending_folders:
+                raise RuntimeError(
+                    "Resource search exceeded folder scan limit "
+                    f"({self.MAX_SEARCH_FOLDERS}). "
+                    "Provide a narrower folder_rid and retry."
+                )
+
             return matches
         except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
             detail = self._format_error_detail(e)
             raise RuntimeError(f"Failed to search resources: {detail}")
 
@@ -460,7 +471,10 @@ class ResourceService(BaseService):
 
     @staticmethod
     def _is_container_resource(resource: Any) -> bool:
-        """Check whether a resource can have filesystem children."""
+        """Check whether a resource can have filesystem children.
+
+        This list reflects known container resource types returned by filesystem APIs.
+        """
         resource_type = str(getattr(resource, "type", "") or "").lower()
         return resource_type in {"folder", "project", "space", "compass_folder"}
 

@@ -355,6 +355,27 @@ class TestResourceService:
             resource_service.search_resources("sales", page_token="token123")
         mock_client.filesystem.Folder.children.assert_not_called()
 
+    def test_search_resources_raises_on_folder_scan_limit(
+        self, resource_service, mock_client
+    ):
+        """Test recursive search raises when traversal exceeds folder scan cap."""
+        folder = Mock()
+        folder.rid = "ri.compass.main.folder.123"
+        folder.display_name = "Folder"
+        folder.type = "folder"
+        folder.name = ""
+        folder.description = ""
+        folder.path = ""
+
+        mock_client.filesystem.Folder.children.return_value = [folder]
+        resource_service._client = mock_client
+        resource_service.MAX_SEARCH_FOLDERS = 1
+
+        with pytest.raises(
+            RuntimeError, match="Resource search exceeded folder scan limit"
+        ):
+            resource_service.search_resources("folder")
+
     def test_format_resource_info(self, resource_service):
         """Test formatting resource information."""
         mock_resource = Mock()
@@ -378,6 +399,28 @@ class TestResourceService:
         assert result["created_by"] == "user123"
         assert result["created_time"] == "2023-01-01T00:00:00Z"
         assert result["size_bytes"] == 1024
+
+    def test_format_resource_info_uses_updated_fallback_fields(self, resource_service):
+        """Test formatting falls back to updated_* fields when modified_* fields missing."""
+        mock_resource = Mock()
+        mock_resource.rid = "ri.compass.main.dataset.999"
+        mock_resource.display_name = "Fallback Dataset"
+        mock_resource.name = "fallback_dataset"
+        mock_resource.type = "dataset"
+        mock_resource.folder_rid = "ri.compass.main.folder.456"
+        mock_resource.created_by = "user123"
+        mock_resource.created_time = None
+        mock_resource.modified_by = None
+        mock_resource.updated_by = "user456"
+        mock_resource.modified_time = None
+        mock_resource.updated_time = "2024-01-02T00:00:00Z"
+        mock_resource.size_bytes = 2048
+        mock_resource.trash_status = None
+
+        result = resource_service._format_resource_info(mock_resource)
+
+        assert result["modified_by"] == "user456"
+        assert result["modified_time"] == "2024-01-02T00:00:00Z"
 
     def test_format_metadata_dict(self, resource_service):
         """Test formatting metadata as dict."""
