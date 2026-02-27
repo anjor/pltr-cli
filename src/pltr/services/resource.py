@@ -2,6 +2,7 @@
 Resource service wrapper for Foundry SDK filesystem API.
 """
 
+from collections import deque
 from typing import Any, Optional, Dict, List
 
 from foundry_sdk.v2.filesystem.models import (
@@ -15,7 +16,9 @@ from .base import BaseService
 class ResourceService(BaseService):
     """Service wrapper for Foundry resource operations using filesystem API."""
 
+    # Foundry filesystem root folder RID used for unscoped resource listing/search.
     ROOT_FOLDER_RID = "ri.compass.main.folder.0"
+    MAX_SEARCH_FOLDERS = 1000
 
     def _get_service(self) -> Any:
         """Get the Foundry filesystem service."""
@@ -73,6 +76,10 @@ class ResourceService(BaseService):
 
         Returns:
             List of resource information dictionaries
+
+        Note:
+            Resource type filtering is applied client-side because Folder.children()
+            does not expose a server-side resource type filter.
         """
         try:
             parent_folder_rid = folder_rid or self.ROOT_FOLDER_RID
@@ -154,43 +161,45 @@ class ResourceService(BaseService):
             query: Search query string
             resource_type: Resource type to filter by (optional)
             folder_rid: Folder to search within (optional)
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
+            page_size: Maximum number of matching results to return (optional)
+            page_token: Pagination token (unsupported for recursive search)
 
         Returns:
             List of matching resource information dictionaries
         """
-        try:
-            normalized_query = query.strip().lower()
-            if not normalized_query:
-                return []
+        normalized_query = query.strip().lower()
+        if not normalized_query:
+            return []
+        if page_token is not None:
+            raise ValueError(
+                "page_token is not supported for recursive resource search"
+            )
 
+        max_results = page_size if page_size and page_size > 0 else None
+
+        try:
             start_folder_rid = folder_rid or self.ROOT_FOLDER_RID
-            search_params: Dict[str, Any] = {"preview": True}
-            if page_size:
-                search_params["page_size"] = page_size
-            if page_token:
-                search_params["page_token"] = page_token
 
             matches: List[Dict[str, Any]] = []
-            pending_folders = [start_folder_rid]
+            pending_folders = deque([start_folder_rid])
             visited_folders = set()
-            max_folders = 1000
 
-            while pending_folders and len(visited_folders) < max_folders:
-                current_folder_rid = pending_folders.pop(0)
+            while pending_folders and len(visited_folders) < self.MAX_SEARCH_FOLDERS:
+                current_folder_rid = pending_folders.popleft()
                 if current_folder_rid in visited_folders:
                     continue
                 visited_folders.add(current_folder_rid)
 
                 children = self.service.Folder.children(
-                    current_folder_rid, **search_params
+                    current_folder_rid, preview=True
                 )
                 for resource in children:
                     if self._matches_resource_type(
                         resource, resource_type
                     ) and self._resource_matches_query(resource, normalized_query):
                         matches.append(self._format_resource_info(resource))
+                        if max_results is not None and len(matches) >= max_results:
+                            return matches
 
                     if self._is_container_resource(resource):
                         child_rid = getattr(resource, "rid", None)

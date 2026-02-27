@@ -231,16 +231,25 @@ class TestResourceService:
         folder_resource.rid = "ri.compass.main.folder.100"
         folder_resource.type = "folder"
         folder_resource.display_name = "Analytics"
+        folder_resource.name = ""
+        folder_resource.description = ""
+        folder_resource.path = ""
 
         root_dataset = Mock()
         root_dataset.rid = "ri.compass.main.dataset.123"
         root_dataset.display_name = "Sales Data"
         root_dataset.type = "dataset"
+        root_dataset.name = ""
+        root_dataset.description = ""
+        root_dataset.path = ""
 
         nested_dataset = Mock()
         nested_dataset.rid = "ri.compass.main.dataset.456"
         nested_dataset.display_name = "Sales Report"
         nested_dataset.type = "dataset"
+        nested_dataset.name = ""
+        nested_dataset.description = ""
+        nested_dataset.path = ""
 
         mock_client.filesystem.Folder.children.side_effect = [
             [folder_resource, root_dataset],
@@ -263,11 +272,17 @@ class TestResourceService:
         dataset.rid = "ri.compass.main.dataset.123"
         dataset.display_name = "Sales Data"
         dataset.type = "dataset"
+        dataset.name = ""
+        dataset.description = ""
+        dataset.path = ""
 
         folder = Mock()
         folder.rid = "ri.compass.main.folder.123"
         folder.display_name = "Sales Folder"
         folder.type = "folder"
+        folder.name = ""
+        folder.description = ""
+        folder.path = ""
 
         mock_client.filesystem.Folder.children.side_effect = [[dataset, folder], []]
         resource_service._client = mock_client
@@ -277,17 +292,68 @@ class TestResourceService:
             resource_type="dataset",
             folder_rid="ri.compass.main.folder.789",
             page_size=10,
-            page_token="token123",
         )
 
         mock_client.filesystem.Folder.children.assert_any_call(
-            "ri.compass.main.folder.789",
-            preview=True,
-            page_size=10,
-            page_token="token123",
+            "ri.compass.main.folder.789", preview=True
         )
         assert len(result) == 1
         assert result[0]["rid"] == "ri.compass.main.dataset.123"
+
+    def test_search_resources_page_size_limits_total_matches(
+        self, resource_service, mock_client
+    ):
+        """Test page_size caps total BFS matches rather than per-folder children."""
+        first_match = Mock()
+        first_match.rid = "ri.compass.main.dataset.111"
+        first_match.display_name = "Sales First"
+        first_match.type = "dataset"
+        first_match.name = ""
+        first_match.description = ""
+        first_match.path = ""
+
+        second_match = Mock()
+        second_match.rid = "ri.compass.main.dataset.222"
+        second_match.display_name = "Sales Second"
+        second_match.type = "dataset"
+        second_match.name = ""
+        second_match.description = ""
+        second_match.path = ""
+
+        mock_client.filesystem.Folder.children.return_value = [
+            first_match,
+            second_match,
+        ]
+        resource_service._client = mock_client
+
+        result = resource_service.search_resources("sales", page_size=1)
+
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.folder.0", preview=True
+        )
+        assert len(result) == 1
+        assert result[0]["rid"] == "ri.compass.main.dataset.111"
+
+    def test_search_resources_with_blank_query_returns_empty(
+        self, resource_service, mock_client
+    ):
+        """Test blank/whitespace query returns no results without API calls."""
+        resource_service._client = mock_client
+
+        result = resource_service.search_resources("   ")
+
+        assert result == []
+        mock_client.filesystem.Folder.children.assert_not_called()
+
+    def test_search_resources_with_page_token_unsupported(
+        self, resource_service, mock_client
+    ):
+        """Test recursive search rejects page_token cursor usage."""
+        resource_service._client = mock_client
+
+        with pytest.raises(ValueError, match="page_token is not supported"):
+            resource_service.search_resources("sales", page_token="token123")
+        mock_client.filesystem.Folder.children.assert_not_called()
 
     def test_format_resource_info(self, resource_service):
         """Test formatting resource information."""
