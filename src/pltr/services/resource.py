@@ -33,7 +33,8 @@ class ResourceService(BaseService):
             resource = self.service.Resource.get(resource_rid, preview=True)
             return self._format_resource_info(resource)
         except Exception as e:
-            raise RuntimeError(f"Failed to get resource {resource_rid}: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get resource {resource_rid}: {detail}")
 
     def get_resource_by_path(self, path: str) -> Dict[str, Any]:
         """
@@ -89,7 +90,8 @@ class ResourceService(BaseService):
                 resources.append(self._format_resource_info(resource))
             return resources
         except Exception as e:
-            raise RuntimeError(f"Failed to list resources: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to list resources: {detail}")
 
     def get_resources_batch(self, resource_rids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -115,7 +117,8 @@ class ResourceService(BaseService):
                 resources.append(self._format_resource_info(resource))
             return resources
         except Exception as e:
-            raise RuntimeError(f"Failed to get resources batch: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get resources batch: {detail}")
 
     def get_resource_metadata(self, resource_rid: str) -> Dict[str, Any]:
         """
@@ -131,8 +134,9 @@ class ResourceService(BaseService):
             metadata = self.service.Resource.get_metadata(resource_rid, preview=True)
             return self._format_metadata(metadata)
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to get metadata for resource {resource_rid}: {e}"
+                f"Failed to get metadata for resource {resource_rid}: {detail}"
             )
 
     def search_resources(
@@ -177,7 +181,8 @@ class ResourceService(BaseService):
                 resources.append(self._format_resource_info(resource))
             return resources
         except Exception as e:
-            raise RuntimeError(f"Failed to search resources: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to search resources: {detail}")
 
     # ==================== Trash Operations ====================
 
@@ -196,7 +201,8 @@ class ResourceService(BaseService):
         try:
             self.service.Resource.delete(resource_rid, preview=True)
         except Exception as e:
-            raise RuntimeError(f"Failed to delete resource {resource_rid}: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to delete resource {resource_rid}: {detail}")
 
     def restore_resource(self, resource_rid: str) -> None:
         """
@@ -214,7 +220,8 @@ class ResourceService(BaseService):
         try:
             self.service.Resource.restore(resource_rid, preview=True)
         except Exception as e:
-            raise RuntimeError(f"Failed to restore resource {resource_rid}: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to restore resource {resource_rid}: {detail}")
 
     def permanently_delete_resource(self, resource_rid: str) -> None:
         """
@@ -231,8 +238,9 @@ class ResourceService(BaseService):
         try:
             self.service.Resource.permanently_delete(resource_rid, preview=True)
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to permanently delete resource {resource_rid}: {e}"
+                f"Failed to permanently delete resource {resource_rid}: {detail}"
             )
 
     # ==================== Markings Operations ====================
@@ -253,8 +261,9 @@ class ResourceService(BaseService):
                 resource_rid, marking_ids=marking_ids, preview=True
             )
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to add markings to resource {resource_rid}: {e}"
+                f"Failed to add markings to resource {resource_rid}: {detail}"
             )
 
     def remove_markings(self, resource_rid: str, marking_ids: List[str]) -> None:
@@ -273,8 +282,9 @@ class ResourceService(BaseService):
                 resource_rid, marking_ids=marking_ids, preview=True
             )
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to remove markings from resource {resource_rid}: {e}"
+                f"Failed to remove markings from resource {resource_rid}: {detail}"
             )
 
     def list_markings(
@@ -307,8 +317,9 @@ class ResourceService(BaseService):
                 markings.append(self._format_marking_info(marking))
             return markings
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to list markings for resource {resource_rid}: {e}"
+                f"Failed to list markings for resource {resource_rid}: {detail}"
             )
 
     # ==================== Access & Batch Operations ====================
@@ -331,8 +342,9 @@ class ResourceService(BaseService):
             )
             return self._format_access_requirements(requirements)
         except Exception as e:
+            detail = self._format_error_detail(e)
             raise RuntimeError(
-                f"Failed to get access requirements for resource {resource_rid}: {e}"
+                f"Failed to get access requirements for resource {resource_rid}: {detail}"
             )
 
     def get_resources_by_path_batch(self, paths: List[str]) -> List[Dict[str, Any]]:
@@ -358,7 +370,8 @@ class ResourceService(BaseService):
                 resources.append(self._format_resource_info(resource))
             return resources
         except Exception as e:
-            raise RuntimeError(f"Failed to get resources by path batch: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get resources by path batch: {detail}")
 
     def _format_resource_info(self, resource: Any) -> Dict[str, Any]:
         """
@@ -434,7 +447,7 @@ class ResourceService(BaseService):
 
         args = getattr(error, "args", ())
         if args:
-            joined = " ".join(str(arg) for arg in args if arg)
+            joined = " ".join(str(arg) for arg in args if arg is not None)
             if joined:
                 return joined
 

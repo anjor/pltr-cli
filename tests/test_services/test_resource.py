@@ -66,6 +66,19 @@ class TestResourceService:
         ):
             resource_service.get_resource("ri.compass.main.dataset.123")
 
+    def test_get_resource_failure_with_empty_message(
+        self, resource_service, mock_client
+    ):
+        """Test handling resource get failure with empty exception message."""
+        mock_client.filesystem.Resource.get.side_effect = Exception()
+        resource_service._client = mock_client
+
+        with pytest.raises(
+            RuntimeError,
+            match="Failed to get resource ri.compass.main.dataset.123: Exception",
+        ):
+            resource_service.get_resource("ri.compass.main.dataset.123")
+
     def test_get_resource_by_path(self, resource_service, mock_client):
         """Test getting a resource by path."""
         mock_resource = Mock()
@@ -556,6 +569,29 @@ class TestResourceService:
             match="Failed to get resources by path batch: Invalid paths",
         ):
             resource_service.get_resources_by_path_batch(["/Org/Project/Dataset1"])
+
+    def test_get_resources_by_path_batch_failure_with_empty_message(
+        self, resource_service, mock_client
+    ):
+        """Test handling batch get by path failure with empty exception message."""
+        mock_client.filesystem.Resource.get_by_path_batch.side_effect = Exception()
+        resource_service._client = mock_client
+
+        with pytest.raises(
+            RuntimeError,
+            match="Failed to get resources by path batch: Exception",
+        ):
+            resource_service.get_resources_by_path_batch(["/Org/Project/Dataset1"])
+
+    def test_format_error_detail_with_args_fallback(self, resource_service):
+        """Test error detail uses args when __str__ returns empty."""
+
+        class EmptyStrException(Exception):
+            def __str__(self):
+                return ""
+
+        err = EmptyStrException("some detail")
+        assert resource_service._format_error_detail(err) == "some detail"
 
     # ==================== Formatting Tests ====================
 
