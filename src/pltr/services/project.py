@@ -155,20 +155,42 @@ class ProjectService(BaseService):
             List of project information dictionaries
         """
         try:
-            projects = []
-            list_params: Dict[str, Any] = {"preview": True}
+            projects_by_rid: Dict[str, Dict[str, Any]] = {}
 
             if space_rid:
-                list_params["space_rid"] = space_rid
-            if page_size:
-                list_params["page_size"] = page_size
-            if page_token:
-                list_params["page_token"] = page_token
+                projects = self._list_projects_in_parent(
+                    parent_folder_rid=space_rid,
+                    page_size=page_size,
+                    page_token=page_token,
+                )
+                for project in projects:
+                    rid = project.get("rid")
+                    if rid:
+                        projects_by_rid[rid] = project
+                return list(projects_by_rid.values())
 
-            # The list method returns an iterator
-            for project in self.service.Project.list(**list_params):
-                projects.append(self._format_project_info(project))
-            return projects
+            space_params: Dict[str, Any] = {"preview": True}
+            if page_size:
+                space_params["page_size"] = page_size
+            if page_token:
+                space_params["page_token"] = page_token
+
+            for space in self.service.Space.list(**space_params):
+                parent_space_rid = getattr(space, "rid", None)
+                if not parent_space_rid:
+                    continue
+
+                projects = self._list_projects_in_parent(
+                    parent_folder_rid=parent_space_rid,
+                    page_size=page_size,
+                    page_token=page_token,
+                )
+                for project in projects:
+                    rid = project.get("rid")
+                    if rid:
+                        projects_by_rid[rid] = project
+
+            return list(projects_by_rid.values())
         except Exception as e:
             raise RuntimeError(f"Failed to list projects: {e}")
 
@@ -353,6 +375,14 @@ class ProjectService(BaseService):
         Returns:
             Formatted project information dictionary
         """
+        modified_by = getattr(project, "modified_by", None)
+        if modified_by is None:
+            modified_by = getattr(project, "updated_by", None)
+
+        modified_time = getattr(project, "modified_time", None)
+        if modified_time is None:
+            modified_time = getattr(project, "updated_time", None)
+
         return {
             "rid": getattr(project, "rid", None),
             "display_name": getattr(project, "display_name", None),
@@ -363,13 +393,37 @@ class ProjectService(BaseService):
             "created_time": self._format_timestamp(
                 getattr(project, "created_time", None)
             ),
-            "modified_by": getattr(project, "modified_by", None),
-            "modified_time": self._format_timestamp(
-                getattr(project, "modified_time", None)
-            ),
+            "modified_by": modified_by,
+            "modified_time": self._format_timestamp(modified_time),
             "trash_status": getattr(project, "trash_status", None),
             "type": "project",
         }
+
+    def _list_projects_in_parent(
+        self,
+        parent_folder_rid: str,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List project resources directly under a parent folder (space)."""
+        list_params: Dict[str, Any] = {"preview": True}
+        if page_size:
+            list_params["page_size"] = page_size
+        if page_token:
+            list_params["page_token"] = page_token
+
+        projects: List[Dict[str, Any]] = []
+        for resource in self.service.Folder.children(parent_folder_rid, **list_params):
+            if self._is_project_resource(resource):
+                projects.append(self._format_project_info(resource))
+        return projects
+
+    @staticmethod
+    def _is_project_resource(resource: Any) -> bool:
+        """Check whether a filesystem resource is a project."""
+        resource_type = str(getattr(resource, "type", "") or "").upper()
+        resource_rid = str(getattr(resource, "rid", "") or "")
+        return resource_type == "PROJECT" or ".project." in resource_rid
 
     def _format_organization_info(self, organization: Any) -> Dict[str, Any]:
         """

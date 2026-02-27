@@ -167,16 +167,25 @@ class TestProjectService:
 
     def test_list_projects(self, project_service, mock_client):
         """Test listing projects."""
+        mock_space = Mock()
+        mock_space.rid = "ri.compass.main.space.789"
+
         mock_projects = [Mock(), Mock()]
         mock_projects[0].rid = "ri.compass.main.project.123"
+        mock_projects[0].type = "PROJECT"
         mock_projects[1].rid = "ri.compass.main.project.456"
+        mock_projects[1].type = "PROJECT"
 
-        mock_client.filesystem.Project.list.return_value = iter(mock_projects)
+        mock_client.filesystem.Space.list.return_value = iter([mock_space])
+        mock_client.filesystem.Folder.children.return_value = iter(mock_projects)
         project_service._client = mock_client
 
         result = project_service.list_projects()
 
-        mock_client.filesystem.Project.list.assert_called_once_with(preview=True)
+        mock_client.filesystem.Space.list.assert_called_once_with(preview=True)
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.space.789", preview=True
+        )
         assert len(result) == 2
         assert result[0]["rid"] == "ri.compass.main.project.123"
         assert result[1]["rid"] == "ri.compass.main.project.456"
@@ -185,17 +194,18 @@ class TestProjectService:
         """Test listing projects with filters."""
         mock_projects = [Mock()]
         mock_projects[0].rid = "ri.compass.main.project.123"
+        mock_projects[0].type = "PROJECT"
 
-        mock_client.filesystem.Project.list.return_value = iter(mock_projects)
+        mock_client.filesystem.Folder.children.return_value = iter(mock_projects)
         project_service._client = mock_client
 
         project_service.list_projects(
             space_rid="ri.compass.main.space.789", page_size=10, page_token="token123"
         )
 
-        mock_client.filesystem.Project.list.assert_called_once_with(
+        mock_client.filesystem.Folder.children.assert_called_once_with(
+            "ri.compass.main.space.789",
             preview=True,
-            space_rid="ri.compass.main.space.789",
             page_size=10,
             page_token="token123",
         )
