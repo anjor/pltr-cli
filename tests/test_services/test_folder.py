@@ -219,6 +219,15 @@ def test_list_children_error(mock_folder_service):
         service.list_children("ri.compass.main.folder.restricted")
 
 
+def test_list_children_error_with_empty_message(mock_folder_service):
+    """Test list children error handling when exception has no message."""
+    service, mock_folder_class = mock_folder_service
+    mock_folder_class.children.side_effect = Exception()
+
+    with pytest.raises(RuntimeError, match="Failed to list children .* Exception"):
+        service.list_children("ri.compass.main.folder.restricted")
+
+
 def test_format_timestamp_none(mock_folder_service):
     """Test timestamp formatting with None value."""
     service, _ = mock_folder_service

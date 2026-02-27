@@ -81,7 +81,10 @@ class FolderService(BaseService):
                 children.append(self._format_resource_info(child))
             return children
         except Exception as e:
-            raise RuntimeError(f"Failed to list children of folder {folder_rid}: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(
+                f"Failed to list children of folder {folder_rid}: {detail}"
+            )
 
     def get_folders_batch(self, folder_rids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -170,3 +173,18 @@ class FolderService(BaseService):
         if hasattr(timestamp, "time"):
             return str(timestamp.time)
         return str(timestamp)
+
+    @staticmethod
+    def _format_error_detail(error: Exception) -> str:
+        """Format exception details, including fallback for empty SDK error strings."""
+        message = str(error).strip()
+        if message:
+            return message
+
+        args = getattr(error, "args", ())
+        if args:
+            joined = " ".join(str(arg) for arg in args if arg)
+            if joined:
+                return joined
+
+        return error.__class__.__name__
