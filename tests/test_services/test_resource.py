@@ -102,6 +102,19 @@ class TestResourceService:
         ):
             resource_service.get_resource_by_path("/Invalid/Path")
 
+    def test_get_resource_by_path_failure_with_empty_message(
+        self, resource_service, mock_client
+    ):
+        """Test handling resource get by path failure with empty exception message."""
+        mock_client.filesystem.Resource.get_by_path.side_effect = Exception()
+        resource_service._client = mock_client
+
+        with pytest.raises(
+            RuntimeError,
+            match="Failed to get resource at path '/Invalid/Path': Exception",
+        ):
+            resource_service.get_resource_by_path("/Invalid/Path")
+
     def test_list_resources(self, resource_service, mock_client):
         """Test listing resources."""
         mock_resources = [Mock(), Mock()]

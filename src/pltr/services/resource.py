@@ -49,7 +49,8 @@ class ResourceService(BaseService):
             resource = self.service.Resource.get_by_path(path=path, preview=True)
             return self._format_resource_info(resource)
         except Exception as e:
-            raise RuntimeError(f"Failed to get resource at path '{path}': {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get resource at path '{path}': {detail}")
 
     def list_resources(
         self,
@@ -423,6 +424,21 @@ class ResourceService(BaseService):
         if hasattr(timestamp, "time"):
             return str(timestamp.time)
         return str(timestamp)
+
+    @staticmethod
+    def _format_error_detail(error: Exception) -> str:
+        """Format exception details, including fallback for empty SDK error strings."""
+        message = str(error).strip()
+        if message:
+            return message
+
+        args = getattr(error, "args", ())
+        if args:
+            joined = " ".join(str(arg) for arg in args if arg)
+            if joined:
+                return joined
+
+        return error.__class__.__name__
 
     def _format_marking_info(self, marking: Any) -> Dict[str, Any]:
         """
