@@ -56,9 +56,14 @@ class ConnectivityService(BaseService):
             connection_client = self.connections_service.Connection
             if hasattr(connection_client, "list"):
                 connections = connection_client.list()
-            else:
-                connections = self._list_connections_from_filesystem()
-            return [self._format_connection_info(conn) for conn in connections]
+                return [self._format_connection_info(conn) for conn in connections]
+
+            logger.warning(
+                "Connection.list() is unavailable; falling back to filesystem scan. "
+                "Set PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID to a narrower folder "
+                "if this is slow."
+            )
+            return self._list_connections_from_filesystem()
         except Exception as e:
             raise RuntimeError(f"Failed to list connections: {e}")
 
@@ -448,7 +453,7 @@ class ConnectivityService(BaseService):
             self.DEFAULT_FILESYSTEM_FALLBACK_START_FOLDER_RID,
         )
         pending_folders = deque([start_folder_rid])
-        visited_folders = set()
+        visited_folders: set[str] = set()
         discovered_connections: List[Dict[str, Any]] = []
 
         while pending_folders and len(visited_folders) < self.MAX_FALLBACK_FOLDERS:

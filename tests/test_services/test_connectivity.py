@@ -140,6 +140,34 @@ class TestConnectivityService:
         assert result[0]["connection_type"] == "connection"
         folder_client.children.assert_any_call("ri.compass.main.folder.0", preview=True)
 
+    def test_list_connections_filesystem_fallback_respects_env_start_folder(
+        self, monkeypatch
+    ):
+        """Test filesystem fallback starts at env-configured folder RID."""
+        monkeypatch.setenv(
+            "PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID",
+            "ri.compass.main.folder.custom-start",
+        )
+
+        folder_client = Mock()
+        folder_client.children.return_value = []
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+
+        result = service.list_connections()
+
+        assert result == []
+        folder_client.children.assert_called_once_with(
+            "ri.compass.main.folder.custom-start", preview=True
+        )
+
     def test_list_connections_filesystem_fallback_requires_filesystem(self):
         """Test filesystem fallback raises when filesystem namespace is unavailable."""
         connection_client = Mock(spec=["get"])
@@ -459,6 +487,24 @@ class TestConnectivityService:
             "errors": [],
         }
         assert result == expected
+
+    def test_looks_like_connection_resource_true_by_rid(self):
+        """Test RID-based connection detection heuristic."""
+        assert ConnectivityService._looks_like_connection_resource(
+            "ri.magritte.main.connection.123", "dataset"
+        )
+
+    def test_looks_like_connection_resource_true_by_type(self):
+        """Test type-based connection detection heuristic."""
+        assert ConnectivityService._looks_like_connection_resource(
+            "ri.compass.main.dataset.123", "connection"
+        )
+
+    def test_looks_like_connection_resource_false_for_folder(self):
+        """Test non-connection resources are not misidentified."""
+        assert not ConnectivityService._looks_like_connection_resource(
+            "ri.compass.main.folder.123", "folder"
+        )
 
     @patch("pltr.services.connectivity.ConnectivityService.client")
     def test_create_connection_success(self, mock_client):
