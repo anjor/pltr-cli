@@ -199,6 +199,15 @@ def test_create_folder_error(mock_folder_service):
         service.create_folder("Test Folder", "ri.compass.main.folder.parent")
 
 
+def test_create_folder_error_with_empty_message(mock_folder_service):
+    """Test create folder error handling when exception has no message."""
+    service, mock_folder_class = mock_folder_service
+    mock_folder_class.create.side_effect = Exception()
+
+    with pytest.raises(RuntimeError, match="Failed to create folder .* Exception"):
+        service.create_folder("Test Folder", "ri.compass.main.folder.parent")
+
+
 def test_get_folder_error(mock_folder_service):
     """Test get folder error handling."""
     service, mock_folder_class = mock_folder_service
@@ -226,6 +235,27 @@ def test_list_children_error_with_empty_message(mock_folder_service):
 
     with pytest.raises(RuntimeError, match="Failed to list children .* Exception"):
         service.list_children("ri.compass.main.folder.restricted")
+
+
+def test_get_folders_batch_error_with_empty_message(mock_folder_service):
+    """Test batch get error handling when exception has no message."""
+    service, mock_folder_class = mock_folder_service
+    mock_folder_class.get_batch.side_effect = Exception()
+
+    with pytest.raises(RuntimeError, match="Failed to get folders batch: Exception"):
+        service.get_folders_batch(["ri.compass.main.folder.folder1"])
+
+
+def test_format_error_detail_with_args_fallback(mock_folder_service):
+    """Test error detail uses args when __str__ returns empty."""
+    service, _ = mock_folder_service
+
+    class EmptyStrException(Exception):
+        def __str__(self):
+            return ""
+
+    err = EmptyStrException("some detail")
+    assert service._format_error_detail(err) == "some detail"
 
 
 def test_format_timestamp_none(mock_folder_service):

@@ -37,7 +37,8 @@ class FolderService(BaseService):
             )
             return self._format_folder_info(folder)
         except Exception as e:
-            raise RuntimeError(f"Failed to create folder '{display_name}': {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to create folder '{display_name}': {detail}")
 
     def get_folder(self, folder_rid: str) -> Dict[str, Any]:
         """
@@ -53,7 +54,8 @@ class FolderService(BaseService):
             folder = self.service.Folder.get(folder_rid, preview=True)
             return self._format_folder_info(folder)
         except Exception as e:
-            raise RuntimeError(f"Failed to get folder {folder_rid}: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get folder {folder_rid}: {detail}")
 
     def list_children(
         self,
@@ -109,7 +111,8 @@ class FolderService(BaseService):
                 folders.append(self._format_folder_info(folder))
             return folders
         except Exception as e:
-            raise RuntimeError(f"Failed to get folders batch: {e}")
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to get folders batch: {detail}")
 
     def _format_folder_info(self, folder: Any) -> Dict[str, Any]:
         """
@@ -183,7 +186,7 @@ class FolderService(BaseService):
 
         args = getattr(error, "args", ())
         if args:
-            joined = " ".join(str(arg) for arg in args if arg)
+            joined = " ".join(str(arg) for arg in args if arg is not None)
             if joined:
                 return joined
 
