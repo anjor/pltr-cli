@@ -35,6 +35,14 @@ class TestConnectivityService:
 
         assert service.connections_service == "connectivity-client"
 
+    def test_connections_service_missing_namespace_raises(self):
+        """Test connections_service raises when no supported namespace exists."""
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace()
+
+        with pytest.raises(RuntimeError, match="Connectivity service is not available"):
+            _ = service.connections_service
+
     @patch("pltr.services.connectivity.ConnectivityService.client")
     def test_get_service(self, mock_client):
         """Test _get_service returns client."""
@@ -131,6 +139,61 @@ class TestConnectivityService:
         assert result[0]["display_name"] == "Warehouse Connection"
         assert result[0]["connection_type"] == "connection"
         folder_client.children.assert_any_call("ri.compass.main.folder.0", preview=True)
+
+    def test_list_connections_filesystem_fallback_requires_filesystem(self):
+        """Test filesystem fallback raises when filesystem namespace is unavailable."""
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(connectivity=connectivity, filesystem=None)
+
+        with pytest.raises(
+            RuntimeError,
+            match="Connection.list\\(\\) is unavailable and filesystem fallback is not supported",
+        ):
+            service.list_connections()
+
+    def test_list_connections_filesystem_fallback_raises_on_scan_limit(self):
+        """Test filesystem fallback raises when traversal exceeds folder scan cap."""
+        folder_child = Mock()
+        folder_child.rid = "ri.compass.main.folder.child"
+        folder_child.type = "folder"
+
+        folder_client = Mock()
+        folder_client.children.return_value = [folder_child]
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+        service.MAX_FALLBACK_FOLDERS = 1
+
+        with pytest.raises(
+            RuntimeError, match="Connection discovery exceeded folder scan limit"
+        ):
+            service.list_connections()
+
+    def test_list_connections_filesystem_fallback_raises_on_start_folder_error(self):
+        """Test filesystem fallback raises when starting folder cannot be listed."""
+        folder_client = Mock()
+        folder_client.children.side_effect = Exception("Permission denied")
+
+        connection_client = Mock(spec=["get"])
+        connectivity = SimpleNamespace(Connection=connection_client)
+        filesystem = SimpleNamespace(Folder=folder_client)
+
+        service = ConnectivityService(profile="test")
+        service._client = SimpleNamespace(
+            connectivity=connectivity, filesystem=filesystem
+        )
+
+        with pytest.raises(RuntimeError, match="Unable to list fallback start folder"):
+            service.list_connections()
 
     @patch("pltr.services.connectivity.ConnectivityService.client")
     def test_get_connection_success(self, mock_client):

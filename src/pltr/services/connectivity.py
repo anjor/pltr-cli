@@ -2,13 +2,21 @@
 Connectivity service wrapper for Foundry SDK.
 """
 
+import logging
+import os
+from collections import deque
 from typing import Any, Optional, Dict, List
 
 from .base import BaseService
 
+logger = logging.getLogger(__name__)
+
 
 class ConnectivityService(BaseService):
     """Service wrapper for Foundry connectivity operations."""
+
+    DEFAULT_FILESYSTEM_FALLBACK_START_FOLDER_RID = "ri.compass.main.folder.0"
+    MAX_FALLBACK_FOLDERS = 1000
 
     def _get_service(self) -> Any:
         """Get the Foundry client for connectivity operations."""
@@ -17,6 +25,7 @@ class ConnectivityService(BaseService):
     @property
     def connections_service(self) -> Any:
         """Get the connections service from the client."""
+        # Prefer legacy namespace first for backward compatibility with older SDKs.
         legacy_connections = getattr(self.client, "connections", None)
         if legacy_connections is not None:
             return legacy_connections
@@ -421,6 +430,11 @@ class ConnectivityService(BaseService):
     def _list_connections_from_filesystem(self) -> List[Dict[str, Any]]:
         """
         Discover connection resources from filesystem when SDK list() is unavailable.
+
+        Notes:
+            - Uses Folder.children(preview=True), which requires preview access.
+            - Traversal starts from PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID when set,
+              otherwise defaults to ri.compass.main.folder.0.
         """
         filesystem = getattr(self.client, "filesystem", None)
         if filesystem is None or not hasattr(filesystem, "Folder"):
@@ -429,21 +443,32 @@ class ConnectivityService(BaseService):
             )
 
         folder_client = filesystem.Folder
-        root_folder_rid = "ri.compass.main.folder.0"
-        pending_folders = [root_folder_rid]
+        start_folder_rid = os.environ.get(
+            "PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID",
+            self.DEFAULT_FILESYSTEM_FALLBACK_START_FOLDER_RID,
+        )
+        pending_folders = deque([start_folder_rid])
         visited_folders = set()
         discovered_connections: List[Dict[str, Any]] = []
-        max_folders = 1000
 
-        while pending_folders and len(visited_folders) < max_folders:
-            folder_rid = pending_folders.pop(0)
+        while pending_folders and len(visited_folders) < self.MAX_FALLBACK_FOLDERS:
+            folder_rid = pending_folders.popleft()
             if folder_rid in visited_folders:
                 continue
             visited_folders.add(folder_rid)
 
             try:
                 children = folder_client.children(folder_rid, preview=True)
-            except Exception:
+            except Exception as error:
+                if folder_rid == start_folder_rid:
+                    raise RuntimeError(
+                        f"Unable to list fallback start folder '{start_folder_rid}': {error}"
+                    ) from error
+                logger.debug(
+                    "Skipping folder '%s' during connection discovery due to error: %s",
+                    folder_rid,
+                    error,
+                )
                 continue
 
             for child in children:
@@ -468,6 +493,14 @@ class ConnectivityService(BaseService):
 
                 if child_type in {"folder", "compass_folder", "project", "space"}:
                     pending_folders.append(child_rid)
+
+        if pending_folders:
+            raise RuntimeError(
+                "Connection discovery exceeded folder scan limit "
+                f"({self.MAX_FALLBACK_FOLDERS}). "
+                "Set PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID to a narrower folder "
+                "and retry."
+            )
 
         return discovered_connections
 
