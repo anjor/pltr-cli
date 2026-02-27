@@ -138,6 +138,32 @@ class TestTokenAuthProvider:
         assert calls[0]["preview"] is True
         assert "preview" not in calls[1]
 
+    def test_get_client_reraises_unrelated_type_error(self, monkeypatch):
+        """Test get_client does not swallow unrelated TypeError failures."""
+
+        class UserTokenAuthStub:
+            def __init__(self, token):
+                self.token = token
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                raise TypeError("bad auth input")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                UserTokenAuth=UserTokenAuthStub,
+            ),
+        )
+
+        provider = TokenAuthProvider(
+            token="test_token", host="https://test.palantirfoundry.com"
+        )
+        with pytest.raises(TypeError, match="bad auth input"):
+            provider.get_client()
+
     def test_validate_success(self):
         """Test successful validation."""
         with patch.object(TokenAuthProvider, "get_client") as mock_get_client:

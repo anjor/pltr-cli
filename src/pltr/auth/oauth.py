@@ -57,8 +57,12 @@ class OAuthClientProvider(AuthProvider):
         # Newer SDKs may support client-level preview mode while older ones do not.
         # Try the preview-aware constructor first, then fall back for compatibility.
         try:
-            return FoundryClient(auth=auth, hostname=self.host, preview=True)
-        except TypeError:
+            return FoundryClient(  # type: ignore[call-arg]
+                auth=auth, hostname=self.host, preview=True
+            )
+        except TypeError as e:
+            if "preview" not in str(e):
+                raise
             return FoundryClient(auth=auth, hostname=self.host)
 
     def validate(self) -> bool:

@@ -178,6 +178,36 @@ class TestOAuthClientProvider:
         assert calls[0]["preview"] is True
         assert "preview" not in calls[1]
 
+    def test_get_client_reraises_unrelated_type_error(self, monkeypatch):
+        """Test get_client does not swallow unrelated TypeError failures."""
+
+        class ConfidentialClientAuthStub:
+            def __init__(self, client_id, client_secret, scopes):
+                self.client_id = client_id
+                self.client_secret = client_secret
+                self.scopes = scopes
+
+        class FoundryClientStub:
+            def __init__(self, **kwargs):
+                raise TypeError("bad auth input")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "foundry_sdk",
+            SimpleNamespace(
+                FoundryClient=FoundryClientStub,
+                ConfidentialClientAuth=ConfidentialClientAuthStub,
+            ),
+        )
+
+        provider = OAuthClientProvider(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            host="https://test.palantirfoundry.com",
+        )
+        with pytest.raises(TypeError, match="bad auth input"):
+            provider.get_client()
+
     def test_validate_success(self):
         """Test successful validation."""
         with patch.object(OAuthClientProvider, "get_client") as mock_get_client:
