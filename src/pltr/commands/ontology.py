@@ -164,6 +164,112 @@ def get_object_type(
         raise typer.Exit(1)
 
 
+@app.command("object-type-create")
+def create_object_type(
+    ontology_rid: str = typer.Argument(..., help="Ontology Resource Identifier"),
+    api_name: str = typer.Option(..., "--api-name", help="Object type API name"),
+    display_name: str = typer.Option(
+        ..., "--display-name", help="Object type display name"
+    ),
+    primary_key: str = typer.Option(
+        ..., "--primary-key", help="Primary key property API name"
+    ),
+    backing_dataset: str = typer.Option(
+        ..., "--backing-dataset", help="Backing dataset RID"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", help="Object type description"
+    ),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format (table, json, csv)"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Create a new object type in an ontology."""
+    try:
+        service = ObjectTypeService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Creating object type {api_name}..."
+        ):
+            result = service.create_object_type(
+                ontology_rid=ontology_rid,
+                api_name=api_name,
+                display_name=display_name,
+                primary_key=primary_key,
+                backing_dataset=backing_dataset,
+                description=description,
+            )
+
+        formatter.format_dict(result, format=format, output=output)
+
+        if output:
+            formatter.print_success(f"Object type creation result saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to create object type: {e}")
+        raise typer.Exit(1)
+
+
+@app.command("link-type-create")
+def create_link_type(
+    ontology_rid: str = typer.Argument(..., help="Ontology Resource Identifier"),
+    api_name: str = typer.Option(..., "--api-name", help="Link type API name"),
+    from_object: str = typer.Option(
+        ..., "--from", help="Source object type API name"
+    ),
+    to_object: str = typer.Option(..., "--to", help="Target object type API name"),
+    display_name: Optional[str] = typer.Option(
+        None, "--display-name", help="Link type display name"
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", help="Link type description"
+    ),
+    reverse_api_name: Optional[str] = typer.Option(
+        None, "--reverse-api-name", help="Reverse direction link type API name"
+    ),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format (table, json, csv)"
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """Create a new link type in an ontology."""
+    try:
+        service = ObjectTypeService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(f"Creating link type {api_name}..."):
+            result = service.create_link_type(
+                ontology_rid=ontology_rid,
+                api_name=api_name,
+                from_object_type=from_object,
+                to_object_type=to_object,
+                display_name=display_name,
+                description=description,
+                reverse_api_name=reverse_api_name,
+            )
+
+        formatter.format_dict(result, format=format, output=output)
+
+        if output:
+            formatter.print_success(f"Link type creation result saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to create link type: {e}")
+        raise typer.Exit(1)
+
+
 # Object operations
 @app.command("object-list")
 def list_objects(
