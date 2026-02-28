@@ -367,6 +367,192 @@ class TestLanguageModelsService:
 
         assert "Failed to list available language models" in str(exc_info.value)
 
+    # ===== Enrollment/Status Tests =====
+
+    def test_get_model_enrollment_status(self, service):
+        """Test getting model enrollment status."""
+        model_id = (
+            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
+        )
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.json.return_value = {
+            "rid": model_id,
+            "status": "ENROLLED",
+            "provider": "ANTHROPIC",
+            "displayName": "Claude 3.5 Sonnet",
+        }
+
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
+            result = service.get_model_enrollment_status(model_id)
+
+        assert result["model_rid"] == model_id
+        assert result["status"] == "ENROLLED"
+        assert result["type"] == "ANTHROPIC"
+        mock_req.assert_called_once_with(
+            "GET",
+            "/v2/languageModels/ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2",
+        )
+
+    def test_get_model_enrollment_status_openai_proxy_fallback(self, service):
+        """Test status fallback to OpenAI-compatible models listing."""
+        model_id = "gpt-4o"
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {
+            "data": [{"id": "gpt-4o"}, {"id": "gpt-4.1"}]
+        }
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[
+                RuntimeError("not found"),
+                RuntimeError("not found"),
+                fallback_response,
+            ],
+        ) as mock_req:
+            result = service.get_model_enrollment_status(model_id)
+
+        assert result["model_rid"] == "gpt-4o"
+        assert result["status"] == "AVAILABLE"
+        assert result["type"] == "OPENAI"
+        assert mock_req.call_args_list[-1].args == (
+            "GET",
+            "/api/v2/llm/proxy/openai/v1/models",
+        )
+
+    def test_get_model_enrollment_status_not_found_after_fallback(self, service):
+        """Test error when model is not found in fallback list either."""
+        model_id = "missing-model"
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {"data": [{"id": "gpt-4o"}]}
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[
+                RuntimeError("not found"),
+                RuntimeError("not found"),
+                fallback_response,
+            ],
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                service.get_model_enrollment_status(model_id)
+
+        assert "not found via any known endpoint" in str(exc_info.value)
+
+    def test_get_model_enrollment_status_fallback_request_failure(self, service):
+        """Test error details when fallback endpoint request fails."""
+        model_id = "missing-model"
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[
+                RuntimeError("primary endpoint down"),
+                RuntimeError("primary endpoint down"),
+                RuntimeError("fallback endpoint down"),
+            ],
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                service.get_model_enrollment_status(model_id)
+
+        error_text = str(exc_info.value)
+        assert "Primary endpoint error" in error_text
+        assert "Fallback endpoint error" in error_text
+
+    def test_get_model_enrollment_status_json_error_falls_back(self, service):
+        """Test JSON decode errors trigger fallback instead of opaque command errors."""
+        model_id = "gpt-4o"
+        bad_primary_response = Mock()
+        bad_primary_response.text = "not-json"
+        bad_primary_response.json.side_effect = ValueError("invalid json")
+
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {"data": [{"id": "gpt-4o"}]}
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[
+                bad_primary_response,
+                RuntimeError("not found"),
+                fallback_response,
+            ],
+        ):
+            result = service.get_model_enrollment_status(model_id)
+
+        assert result["model_rid"] == "gpt-4o"
+        assert result["status"] == "AVAILABLE"
+
+    def test_enroll_model_success(self, service):
+        """Test enrolling a language model."""
+        model_id = (
+            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
+        )
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.json.return_value = {
+            "status": "ENROLLED",
+            "provider": "ANTHROPIC",
+        }
+
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
+            result = service.enroll_model(model_id)
+
+        assert result["model_rid"] == model_id
+        assert result["status"] == "ENROLLED"
+        assert result["type"] == "ANTHROPIC"
+        assert result["display_name"] == model_id
+        assert "response" not in result
+        mock_req.assert_called_once_with(
+            "POST",
+            "/v2/languageModels/ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2/enroll",
+            json_data={},
+        )
+
+    def test_enroll_model_fallback_endpoint(self, service):
+        """Test enrollment fallback when the first endpoint fails."""
+        model_id = "ri.language-model-service..language-model.gpt_4o"
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {"status": "ENROLLED"}
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[RuntimeError("missing endpoint"), fallback_response],
+        ) as mock_req:
+            result = service.enroll_model(model_id)
+
+        assert result["model_rid"] == model_id
+        assert result["status"] == "ENROLLED"
+        assert mock_req.call_args_list[-1].args == (
+            "POST",
+            "/api/v2/llm/models/ri.language-model-service..language-model.gpt_4o/enroll",
+        )
+        assert mock_req.call_args_list[-1].kwargs == {"json_data": {}}
+
+    def test_enroll_model_error(self, service):
+        """Test enrollment error handling when all endpoints fail."""
+        with patch.object(
+            service, "_make_request", side_effect=RuntimeError("unavailable")
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                service.enroll_model(
+                    "ri.language-model-service..language-model.some_model"
+                )
+
+        assert "Failed to enroll model" in str(exc_info.value)
+        assert "Model Catalog UI access for this model" in str(exc_info.value)
+
     # ===== OpenAI Embeddings Tests =====
 
     def test_generate_embeddings_single_text(self, service, mock_client):
