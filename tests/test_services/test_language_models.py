@@ -243,7 +243,9 @@ class TestLanguageModelsService:
             ]
         }
 
-        with patch.object(service, "_make_request", return_value=mock_response) as mock_req:
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
             result = service.list_available_models()
 
         assert len(result) == 1
