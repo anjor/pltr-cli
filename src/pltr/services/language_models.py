@@ -10,6 +10,11 @@ from .base import BaseService
 class LanguageModelsService(BaseService):
     """Service wrapper for Foundry LanguageModels operations."""
 
+    _MODEL_LIST_ENDPOINTS = [
+        "/v2/languageModels",
+        "/api/v2/llm/proxy/openai/v1/models",
+    ]
+
     def _get_service(self) -> Any:
         """Get the Foundry LanguageModels service."""
         return self.client.language_models
@@ -280,3 +285,91 @@ class LanguageModelsService(BaseService):
             raise RuntimeError(
                 f"Failed to generate embeddings with model {model_id}: {e}"
             )
+
+    def list_available_models(self) -> List[Dict[str, Any]]:
+        """
+        List language models available to the authenticated user.
+
+        Tries the platform language-model listing endpoint first, then falls back
+        to the provider-compatible OpenAI models endpoint.
+
+        Returns:
+            List of model dictionaries with normalized keys:
+            - model_rid
+            - status
+            - type
+            - display_name
+
+        Raises:
+            RuntimeError: If no listing endpoint succeeds
+        """
+        last_error: Optional[Exception] = None
+
+        for endpoint in self._MODEL_LIST_ENDPOINTS:
+            try:
+                response = self._make_request("GET", endpoint)
+                payload = response.json() if response.text else {}
+                return self._normalize_model_list(payload, endpoint)
+            except Exception as e:
+                last_error = e
+
+        raise RuntimeError(f"Failed to list available language models: {last_error}")
+
+    def _normalize_model_list(
+        self, payload: Dict[str, Any], source_endpoint: str
+    ) -> List[Dict[str, Any]]:
+        """Normalize varied model list payloads into a stable CLI schema."""
+        raw_models: Any = []
+        if isinstance(payload, dict):
+            raw_models = payload.get("data") or payload.get("models") or []
+        elif isinstance(payload, list):
+            raw_models = payload
+
+        if not isinstance(raw_models, list):
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for model in raw_models:
+            if not isinstance(model, dict):
+                continue
+
+            model_id = (
+                model.get("rid")
+                or model.get("modelRid")
+                or model.get("id")
+                or model.get("apiName")
+                or model.get("name")
+            )
+            if not model_id:
+                continue
+
+            status = (
+                model.get("status")
+                or model.get("enrollmentStatus")
+                or ("AVAILABLE" if "openai/v1/models" in source_endpoint else "UNKNOWN")
+            )
+
+            model_type = (
+                model.get("type")
+                or model.get("provider")
+                or model.get("modelType")
+                or model.get("family")
+                or ("OPENAI" if "openai/v1/models" in source_endpoint else "UNKNOWN")
+            )
+
+            normalized.append(
+                {
+                    "model_rid": str(model_id),
+                    "status": str(status),
+                    "type": str(model_type),
+                    "display_name": (
+                        model.get("displayName")
+                        or model.get("name")
+                        or model.get("id")
+                        or str(model_id)
+                    ),
+                }
+            )
+
+        normalized.sort(key=lambda item: item["model_rid"])
+        return normalized

@@ -25,6 +25,25 @@ class TestLanguageModelsCommands:
             MockService.return_value = mock_svc
             yield mock_svc
 
+    def test_language_models_list_success(self, runner, mock_service):
+        """Test successful language-models list command."""
+        mock_service.list_available_models.return_value = [
+            {
+                "model_rid": "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2",
+                "status": "ENROLLED",
+                "type": "ANTHROPIC",
+                "display_name": "Claude 3.5 Sonnet",
+            }
+        ]
+
+        result = runner.invoke(
+            app,
+            ["language-models", "list", "--format", "json"],
+        )
+
+        assert result.exit_code == 0
+        mock_service.list_available_models.assert_called_once()
+
     # ===== Anthropic Messages Tests =====
 
     def test_anthropic_messages_success(self, runner, mock_service):
