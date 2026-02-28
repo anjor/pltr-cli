@@ -59,7 +59,7 @@ class TestLanguageModelsService:
         assert "request" not in call_args[1]
         assert call_args[1]["max_tokens"] == 1024
         assert len(call_args[1]["messages"]) == 1
-        assert call_args[1]["messages"][0]["role"] == "user"
+        assert call_args[1]["messages"][0]["role"] == "USER"
         assert call_args[1]["messages"][0]["content"][0]["text"] == message
 
         # Check result

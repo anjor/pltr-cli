@@ -71,7 +71,7 @@ class LanguageModelsService(BaseService):
             # Transform simple message to SDK message format
             messages = [
                 {
-                    "role": "user",
+                    "role": "USER",
                     "content": [{"type": "text", "text": message}],
                 }
             ]
