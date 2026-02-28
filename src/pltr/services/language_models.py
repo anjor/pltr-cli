@@ -98,7 +98,7 @@ class LanguageModelsService(BaseService):
             # Call SDK method
             response = self.service.AnthropicModel.messages(
                 model_id,
-                **request_kwargs,  # type: ignore
+                **request_kwargs,  # type: ignore[arg-type,call-overload]
             )
 
             return self._serialize_response(response)
@@ -201,7 +201,7 @@ class LanguageModelsService(BaseService):
             # Call SDK method
             response = self.service.AnthropicModel.messages(
                 model_id,
-                **request_kwargs,  # type: ignore
+                **request_kwargs,  # type: ignore[arg-type,call-overload]
             )
 
             return self._serialize_response(response)
@@ -256,22 +256,23 @@ class LanguageModelsService(BaseService):
             >>> embeddings = [item['embedding'] for item in response['data']]
         """
         try:
-            # Build request parameters
-            request_params: Dict[str, Any] = {
+            # Build SDK kwargs
+            request_kwargs: Dict[str, Any] = {
                 "input": input_texts,
+                "preview": preview,
             }
 
             # Add optional parameters if provided
             if dimensions is not None:
-                request_params["dimensions"] = dimensions
+                request_kwargs["dimensions"] = dimensions
             if encoding_format is not None:
-                request_params["encodingFormat"] = encoding_format
+                # CLI accepts "float"/"base64", while SDK expects uppercase literals.
+                request_kwargs["encoding_format"] = encoding_format.upper()
 
             # Call SDK method
             response = self.service.OpenAiModel.embeddings(
                 model_id,
-                request=request_params,
-                preview=preview,  # type: ignore
+                **request_kwargs,  # type: ignore[arg-type,call-overload]
             )
 
             return self._serialize_response(response)

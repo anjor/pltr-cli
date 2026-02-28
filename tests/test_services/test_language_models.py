@@ -157,6 +157,7 @@ class TestLanguageModelsService:
         assert "request" not in call_args[1]
         assert call_args[1]["messages"] == messages
         assert call_args[1]["max_tokens"] == max_tokens
+        assert call_args[1]["preview"] is False
         assert result["role"] == "assistant"
 
     def test_send_messages_advanced_with_thinking(self, service, mock_client):
@@ -256,7 +257,8 @@ class TestLanguageModelsService:
         mock_client.language_models.OpenAiModel.embeddings.assert_called_once()
         call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
         assert call_args[0][0] == model_id
-        assert call_args[1]["request"]["input"] == input_texts
+        assert "request" not in call_args[1]
+        assert call_args[1]["input"] == input_texts
         assert call_args[1]["preview"] is False
         assert len(result["data"]) == 1
         assert result["usage"]["totalTokens"] == 2
@@ -283,7 +285,8 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert call_args[1]["request"]["input"] == input_texts
+        assert "request" not in call_args[1]
+        assert call_args[1]["input"] == input_texts
         assert len(result["data"]) == 3
 
     def test_generate_embeddings_with_dimensions(self, service, mock_client):
@@ -305,8 +308,7 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        request = call_args[1]["request"]
-        assert request["dimensions"] == dimensions
+        assert call_args[1]["dimensions"] == dimensions
 
     def test_generate_embeddings_with_encoding_format(self, service, mock_client):
         """Test generating embeddings with base64 encoding."""
@@ -329,8 +331,7 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        request = call_args[1]["request"]
-        assert request["encodingFormat"] == encoding_format
+        assert call_args[1]["encoding_format"] == "BASE64"
 
     def test_generate_embeddings_with_all_parameters(self, service, mock_client):
         """Test generating embeddings with all optional parameters."""
@@ -356,10 +357,9 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        request = call_args[1]["request"]
-        assert request["input"] == input_texts
-        assert request["dimensions"] == 512
-        assert request["encodingFormat"] == "float"
+        assert call_args[1]["input"] == input_texts
+        assert call_args[1]["dimensions"] == 512
+        assert call_args[1]["encoding_format"] == "FLOAT"
         assert call_args[1]["preview"] is True
 
     def test_generate_embeddings_error(self, service, mock_client):
