@@ -221,9 +221,7 @@ def create_object_type(
 def create_link_type(
     ontology_rid: str = typer.Argument(..., help="Ontology Resource Identifier"),
     api_name: str = typer.Option(..., "--api-name", help="Link type API name"),
-    from_object: str = typer.Option(
-        ..., "--from", help="Source object type API name"
-    ),
+    from_object: str = typer.Option(..., "--from", help="Source object type API name"),
     to_object: str = typer.Option(..., "--to", help="Target object type API name"),
     display_name: Optional[str] = typer.Option(
         None, "--display-name", help="Link type display name"
@@ -246,7 +244,9 @@ def create_link_type(
     try:
         service = ObjectTypeService(profile=profile)
 
-        with SpinnerProgressTracker().track_spinner(f"Creating link type {api_name}..."):
+        with SpinnerProgressTracker().track_spinner(
+            f"Creating link type {api_name}..."
+        ):
             result = service.create_link_type(
                 ontology_rid=ontology_rid,
                 api_name=api_name,
