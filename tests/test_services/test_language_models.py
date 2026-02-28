@@ -55,12 +55,12 @@ class TestLanguageModelsService:
         assert call_args[0][0] == model_id
         assert call_args[1]["preview"] is False
 
-        # Check request structure
-        request = call_args[1]["request"]
-        assert request["maxTokens"] == 1024
-        assert len(request["messages"]) == 1
-        assert request["messages"][0]["role"] == "user"
-        assert request["messages"][0]["content"][0]["text"] == message
+        # Check SDK kwargs structure
+        assert "request" not in call_args[1]
+        assert call_args[1]["max_tokens"] == 1024
+        assert len(call_args[1]["messages"]) == 1
+        assert call_args[1]["messages"][0]["role"] == "user"
+        assert call_args[1]["messages"][0]["content"][0]["text"] == message
 
         # Check result
         assert result["role"] == "assistant"
@@ -81,10 +81,9 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        request = call_args[1]["request"]
-        assert "system" in request
-        assert request["system"][0]["type"] == "text"
-        assert request["system"][0]["text"] == system
+        assert "system" in call_args[1]
+        assert call_args[1]["system"][0]["type"] == "text"
+        assert call_args[1]["system"][0]["text"] == system
 
     def test_send_message_with_all_parameters(self, service, mock_client):
         """Test sending message with all optional parameters."""
@@ -110,12 +109,12 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        request = call_args[1]["request"]
-        assert request["maxTokens"] == 500
-        assert request["temperature"] == 0.7
-        assert request["stopSequences"] == ["STOP", "END"]
-        assert request["topK"] == 50
-        assert request["topP"] == 0.9
+        assert "request" not in call_args[1]
+        assert call_args[1]["max_tokens"] == 500
+        assert call_args[1]["temperature"] == 0.7
+        assert call_args[1]["stop_sequences"] == ["STOP", "END"]
+        assert call_args[1]["top_k"] == 50
+        assert call_args[1]["top_p"] == 0.9
         assert call_args[1]["preview"] is True
 
     def test_send_message_error(self, service, mock_client):
@@ -155,9 +154,9 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        request = call_args[1]["request"]
-        assert request["messages"] == messages
-        assert request["maxTokens"] == max_tokens
+        assert "request" not in call_args[1]
+        assert call_args[1]["messages"] == messages
+        assert call_args[1]["max_tokens"] == max_tokens
         assert result["role"] == "assistant"
 
     def test_send_messages_advanced_with_thinking(self, service, mock_client):
@@ -177,8 +176,7 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        request = call_args[1]["request"]
-        assert request["thinking"] == thinking
+        assert call_args[1]["thinking"] == thinking
 
     def test_send_messages_advanced_with_tools(self, service, mock_client):
         """Test sending messages with tool calling."""
@@ -210,9 +208,8 @@ class TestLanguageModelsService:
 
         # Assert
         call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        request = call_args[1]["request"]
-        assert request["tools"] == tools
-        assert request["toolChoice"] == tool_choice
+        assert call_args[1]["tools"] == tools
+        assert call_args[1]["tool_choice"] == tool_choice
 
     def test_send_messages_advanced_error(self, service, mock_client):
         """Test error handling in send_messages_advanced."""

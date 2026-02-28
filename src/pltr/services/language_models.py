@@ -76,29 +76,29 @@ class LanguageModelsService(BaseService):
                 }
             ]
 
-            # Build request parameters
-            request_params: Dict[str, Any] = {
+            # Build SDK kwargs
+            request_kwargs: Dict[str, Any] = {
                 "messages": messages,
-                "maxTokens": max_tokens,
+                "max_tokens": max_tokens,
+                "preview": preview,
             }
 
             # Add optional parameters if provided
             if system is not None:
-                request_params["system"] = [{"type": "text", "text": system}]
+                request_kwargs["system"] = [{"type": "text", "text": system}]
             if temperature is not None:
-                request_params["temperature"] = temperature
+                request_kwargs["temperature"] = temperature
             if stop_sequences is not None:
-                request_params["stopSequences"] = stop_sequences
+                request_kwargs["stop_sequences"] = stop_sequences
             if top_k is not None:
-                request_params["topK"] = top_k
+                request_kwargs["top_k"] = top_k
             if top_p is not None:
-                request_params["topP"] = top_p
+                request_kwargs["top_p"] = top_p
 
             # Call SDK method
             response = self.service.AnthropicModel.messages(
                 model_id,
-                request=request_params,
-                preview=preview,  # type: ignore
+                **request_kwargs,  # type: ignore
             )
 
             return self._serialize_response(response)
@@ -173,35 +173,35 @@ class LanguageModelsService(BaseService):
             ... )
         """
         try:
-            # Build request parameters
-            request_params: Dict[str, Any] = {
+            # Build SDK kwargs
+            request_kwargs: Dict[str, Any] = {
                 "messages": messages,
-                "maxTokens": max_tokens,
+                "max_tokens": max_tokens,
+                "preview": preview,
             }
 
             # Add optional parameters if provided
             if system is not None:
-                request_params["system"] = system
+                request_kwargs["system"] = system
             if temperature is not None:
-                request_params["temperature"] = temperature
+                request_kwargs["temperature"] = temperature
             if thinking is not None:
-                request_params["thinking"] = thinking
+                request_kwargs["thinking"] = thinking
             if tools is not None:
-                request_params["tools"] = tools
+                request_kwargs["tools"] = tools
             if tool_choice is not None:
-                request_params["toolChoice"] = tool_choice
+                request_kwargs["tool_choice"] = tool_choice
             if stop_sequences is not None:
-                request_params["stopSequences"] = stop_sequences
+                request_kwargs["stop_sequences"] = stop_sequences
             if top_k is not None:
-                request_params["topK"] = top_k
+                request_kwargs["top_k"] = top_k
             if top_p is not None:
-                request_params["topP"] = top_p
+                request_kwargs["top_p"] = top_p
 
             # Call SDK method
             response = self.service.AnthropicModel.messages(
                 model_id,
-                request=request_params,
-                preview=preview,  # type: ignore
+                **request_kwargs,  # type: ignore
             )
 
             return self._serialize_response(response)
