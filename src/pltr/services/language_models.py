@@ -4,6 +4,7 @@ Provides access to Anthropic Claude models and OpenAI embeddings.
 """
 
 from typing import Any, Dict, List, Optional, Union
+import json
 import requests
 from urllib.parse import quote
 from .base import BaseService
@@ -426,7 +427,11 @@ class LanguageModelsService(BaseService):
                 response = self._make_request("GET", endpoint)
                 payload = response.json() if response.text else {}
                 return self._normalize_single_model_status(model_id, payload)
-            except (requests.RequestException, RuntimeError, ValueError) as e:
+            except (
+                requests.RequestException,
+                RuntimeError,
+                json.JSONDecodeError,
+            ) as e:
                 last_error = e
                 continue
 
@@ -434,7 +439,11 @@ class LanguageModelsService(BaseService):
         try:
             response = self._make_request("GET", "/api/v2/llm/proxy/openai/v1/models")
             payload = response.json() if response.text else {}
-        except (requests.RequestException, RuntimeError, ValueError) as fallback_error:
+        except (
+            requests.RequestException,
+            RuntimeError,
+            json.JSONDecodeError,
+        ) as fallback_error:
             raise RuntimeError(
                 f"Failed to get model enrollment status for {model_id}. "
                 f"Primary endpoint error: {last_error}. "
@@ -446,7 +455,7 @@ class LanguageModelsService(BaseService):
                 return self._normalize_single_model_status(
                     model_id,
                     item,
-                    default_status="AVAILABLE",
+                    default_status="AVAILABLE_VIA_PROXY",
                     default_type="OPENAI",
                     default_display_name=model_id,
                 )
@@ -481,7 +490,11 @@ class LanguageModelsService(BaseService):
                 return self._normalize_single_model_status(
                     model_id, payload, default_status="ENROLLED"
                 )
-            except (requests.RequestException, RuntimeError, ValueError) as e:
+            except (
+                requests.RequestException,
+                RuntimeError,
+                json.JSONDecodeError,
+            ) as e:
                 last_error = e
                 continue
 

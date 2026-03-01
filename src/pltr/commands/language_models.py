@@ -197,7 +197,7 @@ def model_status(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Check enrollment status for a language model."""
+    """Check enrollment status for a language model via direct API fallback endpoints."""
     try:
         from ..services.language_models import LanguageModelsService
 
@@ -243,7 +243,7 @@ def enroll_model(
         None, "--output", "-o", help="Output file path"
     ),
 ):
-    """Enroll/enable a language model for API usage."""
+    """Enroll/enable a language model via direct API fallback endpoints."""
     try:
         from ..services.language_models import LanguageModelsService
 

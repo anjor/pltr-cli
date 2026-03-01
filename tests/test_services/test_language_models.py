@@ -1,5 +1,6 @@
 """Tests for LanguageModels service."""
 
+import json
 import pytest
 import requests
 from unittest.mock import Mock, patch
@@ -417,7 +418,7 @@ class TestLanguageModelsService:
             result = service.get_model_enrollment_status(model_id)
 
         assert result["model_rid"] == "gpt-4o"
-        assert result["status"] == "AVAILABLE"
+        assert result["status"] == "AVAILABLE_VIA_PROXY"
         assert result["type"] == "OPENAI"
         assert mock_req.call_args_list[-1].args == (
             "GET",
@@ -470,7 +471,9 @@ class TestLanguageModelsService:
         model_id = "gpt-4o"
         bad_primary_response = Mock()
         bad_primary_response.text = "not-json"
-        bad_primary_response.json.side_effect = ValueError("invalid json")
+        bad_primary_response.json.side_effect = json.JSONDecodeError(
+            "invalid json", "not-json", 0
+        )
 
         fallback_response = Mock()
         fallback_response.text = "ok"
@@ -488,7 +491,7 @@ class TestLanguageModelsService:
             result = service.get_model_enrollment_status(model_id)
 
         assert result["model_rid"] == "gpt-4o"
-        assert result["status"] == "AVAILABLE"
+        assert result["status"] == "AVAILABLE_VIA_PROXY"
 
     def test_enroll_model_success(self, service):
         """Test enrolling a language model."""
@@ -539,6 +542,7 @@ class TestLanguageModelsService:
             "/api/v2/llm/models/ri.language-model-service..language-model.gpt_4o/enroll",
         )
         assert mock_req.call_args_list[-1].kwargs == {"json_data": {}}
+        assert len(mock_req.call_args_list) == 2
 
     def test_enroll_model_error(self, service):
         """Test enrollment error handling when all endpoints fail."""
