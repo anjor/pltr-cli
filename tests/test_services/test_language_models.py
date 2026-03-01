@@ -1,6 +1,7 @@
 """Tests for LanguageModels service."""
 
 import pytest
+import requests
 from unittest.mock import Mock, patch
 from pltr.services.language_models import LanguageModelsService
 
@@ -284,6 +285,26 @@ class TestLanguageModelsService:
         assert mock_req.call_count == 2
         assert mock_req.call_args_list[0].args == ("GET", "/v2/languageModels")
         assert mock_req.call_args_list[1].args == (
+            "GET",
+            "/api/v2/llm/proxy/openai/v1/models",
+        )
+
+    def test_list_available_models_connection_error_fallback(self, service):
+        """Test fallback when the first endpoint fails with network error."""
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {"data": [{"id": "gpt-4.1"}]}
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[requests.ConnectionError("network down"), fallback_response],
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert len(result) == 1
+        assert result[0]["model_rid"] == "gpt-4.1"
+        assert mock_req.call_args_list[-1].args == (
             "GET",
             "/api/v2/llm/proxy/openai/v1/models",
         )

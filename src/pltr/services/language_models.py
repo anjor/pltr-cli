@@ -311,7 +311,7 @@ class LanguageModelsService(BaseService):
         for endpoint in self._MODEL_LIST_ENDPOINTS:
             try:
                 response = self._make_request("GET", endpoint)
-            except (requests.HTTPError, RuntimeError) as e:
+            except (requests.RequestException, RuntimeError) as e:
                 last_error = e
                 continue
 
