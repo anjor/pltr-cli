@@ -109,6 +109,98 @@ class TestLanguageModelsCommands:
         assert "Model list saved to" in result.output
         assert output_path.exists()
 
+    def test_language_models_status_success(self, runner, mock_service):
+        """Test successful language-models status command."""
+        model_id = (
+            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
+        )
+        mock_service.get_model_enrollment_status.return_value = {
+            "model_rid": model_id,
+            "status": "ENROLLED",
+            "type": "ANTHROPIC",
+            "display_name": "Claude 3.5 Sonnet",
+        }
+
+        result = runner.invoke(
+            app,
+            ["language-models", "status", model_id, "--format", "json"],
+        )
+
+        assert result.exit_code == 0
+        mock_service.get_model_enrollment_status.assert_called_once_with(model_id)
+        assert "model_rid" in result.output
+        assert "anthropic_claude_3_5_sonnet_v2" in result.output
+
+    def test_language_models_enroll_success(self, runner, mock_service):
+        """Test successful language-models enroll command."""
+        model_id = (
+            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
+        )
+        mock_service.enroll_model.return_value = {
+            "model_rid": model_id,
+            "status": "ENROLLED",
+            "type": "ANTHROPIC",
+            "display_name": "Claude 3.5 Sonnet",
+        }
+
+        result = runner.invoke(
+            app,
+            ["language-models", "enroll", model_id, "--format", "json"],
+        )
+
+        assert result.exit_code == 0
+        mock_service.enroll_model.assert_called_once_with(model_id)
+        assert "model_rid" in result.output
+        assert "anthropic_claude_3_5_sonnet_v2" in result.output
+
+    def test_language_models_status_auth_error(self, runner, mock_service):
+        """Test status command with auth error."""
+        from pltr.auth.base import ProfileNotFoundError
+
+        model_id = "ri.language-model-service..language-model.example"
+        mock_service.get_model_enrollment_status.side_effect = ProfileNotFoundError(
+            "Profile not found"
+        )
+
+        result = runner.invoke(app, ["language-models", "status", model_id])
+
+        assert result.exit_code == 1
+        assert "Authentication error" in result.output
+
+    def test_language_models_status_runtime_error(self, runner, mock_service):
+        """Test status command with runtime error."""
+        model_id = "ri.language-model-service..language-model.example"
+        mock_service.get_model_enrollment_status.side_effect = RuntimeError("boom")
+
+        result = runner.invoke(app, ["language-models", "status", model_id])
+
+        assert result.exit_code == 1
+        assert "Operation failed" in result.output
+
+    def test_language_models_enroll_auth_error(self, runner, mock_service):
+        """Test enroll command with auth error."""
+        from pltr.auth.base import MissingCredentialsError
+
+        model_id = "ri.language-model-service..language-model.example"
+        mock_service.enroll_model.side_effect = MissingCredentialsError(
+            "Missing credentials"
+        )
+
+        result = runner.invoke(app, ["language-models", "enroll", model_id])
+
+        assert result.exit_code == 1
+        assert "Authentication error" in result.output
+
+    def test_language_models_enroll_runtime_error(self, runner, mock_service):
+        """Test enroll command with runtime error."""
+        model_id = "ri.language-model-service..language-model.example"
+        mock_service.enroll_model.side_effect = RuntimeError("boom")
+
+        result = runner.invoke(app, ["language-models", "enroll", model_id])
+
+        assert result.exit_code == 1
+        assert "Operation failed" in result.output
+
     # ===== Anthropic Messages Tests =====
 
     def test_anthropic_messages_success(self, runner, mock_service):

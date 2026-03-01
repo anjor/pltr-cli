@@ -4,7 +4,9 @@ Provides access to Anthropic Claude models and OpenAI embeddings.
 """
 
 from typing import Any, Dict, List, Optional, Union
+import json
 import requests
+from urllib.parse import quote
 from .base import BaseService
 
 
@@ -14,6 +16,14 @@ class LanguageModelsService(BaseService):
     _MODEL_LIST_ENDPOINTS = [
         "/v2/languageModels",
         "/api/v2/llm/proxy/openai/v1/models",
+    ]
+    _MODEL_STATUS_ENDPOINTS = [
+        "/v2/languageModels/{model_id}",
+        "/api/v2/llm/models/{model_id}",
+    ]
+    _MODEL_ENROLL_ENDPOINTS = [
+        "/v2/languageModels/{model_id}/enroll",
+        "/api/v2/llm/models/{model_id}/enroll",
     ]
 
     def _get_service(self) -> Any:
@@ -393,3 +403,145 @@ class LanguageModelsService(BaseService):
 
         normalized.sort(key=lambda item: item["model_rid"])
         return normalized
+
+    def get_model_enrollment_status(self, model_id: str) -> Dict[str, Any]:
+        """
+        Get enrollment status for a language model.
+
+        Args:
+            model_id: Model RID or API name
+
+        Returns:
+            Dictionary with normalized keys:
+            - model_rid
+            - status
+            - type
+            - display_name
+        """
+        encoded_model_id = quote(model_id, safe="")
+        last_error: Optional[Exception] = None
+
+        for endpoint_template in self._MODEL_STATUS_ENDPOINTS:
+            endpoint = endpoint_template.format(model_id=encoded_model_id)
+            try:
+                response = self._make_request("GET", endpoint)
+                payload = response.json() if response.text else {}
+                return self._normalize_single_model_status(model_id, payload)
+            except (
+                requests.RequestException,
+                RuntimeError,
+                json.JSONDecodeError,
+            ) as e:
+                last_error = e
+                continue
+
+        # Fallback: infer availability from provider-compatible OpenAI models list.
+        try:
+            response = self._make_request("GET", "/api/v2/llm/proxy/openai/v1/models")
+            payload = response.json() if response.text else {}
+        except (
+            requests.RequestException,
+            RuntimeError,
+            json.JSONDecodeError,
+        ) as fallback_error:
+            raise RuntimeError(
+                f"Failed to get model enrollment status for {model_id}. "
+                f"Primary endpoint error: {last_error}. "
+                f"Fallback endpoint error: {fallback_error}"
+            )
+
+        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+            if isinstance(item, dict) and item.get("id") == model_id:
+                return self._normalize_single_model_status(
+                    model_id,
+                    item,
+                    default_status="AVAILABLE_VIA_PROXY",
+                    default_type="OPENAI",
+                    default_display_name=model_id,
+                )
+
+        raise RuntimeError(
+            f"Model '{model_id}' not found via any known endpoint. "
+            f"Last primary endpoint error: {last_error}"
+        )
+
+    def enroll_model(self, model_id: str) -> Dict[str, Any]:
+        """
+        Enroll or enable a language model for API usage.
+
+        Args:
+            model_id: Model RID or API name
+
+        Returns:
+            Enrollment result dictionary with normalized keys:
+            - model_rid
+            - status
+            - type
+            - display_name
+        """
+        encoded_model_id = quote(model_id, safe="")
+        last_error: Optional[Exception] = None
+
+        for endpoint_template in self._MODEL_ENROLL_ENDPOINTS:
+            endpoint = endpoint_template.format(model_id=encoded_model_id)
+            try:
+                response = self._make_request("POST", endpoint, json_data={})
+                payload = response.json() if response.text else {}
+                return self._normalize_single_model_status(
+                    model_id, payload, default_status="ENROLLED"
+                )
+            except (
+                requests.RequestException,
+                RuntimeError,
+                json.JSONDecodeError,
+            ) as e:
+                last_error = e
+                continue
+
+        raise RuntimeError(
+            f"Failed to enroll model {model_id}. "
+            f"Enrollment may require Model Catalog UI access for this model: {last_error}"
+        )
+
+    def _normalize_single_model_status(
+        self,
+        model_id: str,
+        payload: Dict[str, Any],
+        default_status: str = "UNKNOWN",
+        default_type: str = "UNKNOWN",
+        default_display_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Normalize status payloads from varying endpoints."""
+        model_data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(model_data, dict):
+            payload = model_data
+
+        if not isinstance(payload, dict):
+            payload = {}
+
+        return {
+            "model_rid": str(
+                payload.get("rid")
+                or payload.get("modelRid")
+                or payload.get("id")
+                or model_id
+            ),
+            "status": str(
+                payload.get("status")
+                or payload.get("enrollmentStatus")
+                or default_status
+            ),
+            "type": str(
+                payload.get("type")
+                or payload.get("provider")
+                or payload.get("modelType")
+                or default_type
+            ),
+            "display_name": str(
+                payload.get("displayName")
+                or payload.get("name")
+                or payload.get("id")
+                or default_display_name
+                or model_id
+            ),
+        }
