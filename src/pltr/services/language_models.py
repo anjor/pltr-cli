@@ -6,7 +6,6 @@ Provides access to Anthropic Claude models and OpenAI embeddings.
 from typing import Any, Dict, List, Optional, Union
 import requests
 from urllib.parse import quote
-import requests
 from .base import BaseService
 
 
