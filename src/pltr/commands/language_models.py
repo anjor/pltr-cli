@@ -373,9 +373,9 @@ def anthropic_messages_advanced(
         # conversation.json:
         # {
         #   "messages": [
-        #     {"role": "user", "content": [{"type": "text", "text": "Hi"}]},
-        #     {"role": "assistant", "content": [{"type": "text", "text": "Hello!"}]},
-        #     {"role": "user", "content": [{"type": "text", "text": "Help me"}]}
+        #     {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
+        #     {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
+        #     {"role": "USER", "content": [{"type": "text", "text": "Help me"}]}
         #   ],
         #   "maxTokens": 500
         # }
@@ -384,11 +384,11 @@ def anthropic_messages_advanced(
 
         # Inline JSON with system prompt
         pltr language-models anthropic messages-advanced ri.language-models.main.model.abc123 \\
-            --request '{"messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}], "maxTokens": 100, "system": [{"type": "text", "text": "Be concise"}]}'
+            --request '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}], "maxTokens": 100, "system": [{"type": "text", "text": "Be concise"}]}'
 
         # With extended thinking
         pltr language-models anthropic messages-advanced ri.language-models.main.model.abc123 \\
-            --request '{"messages": [{"role": "user", "content": [{"type": "text", "text": "Solve this problem"}]}], "maxTokens": 2000, "thinking": {"type": "enabled", "budget": 10000}}'
+            --request '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Solve this problem"}]}], "maxTokens": 2000, "thinking": {"type": "enabled", "budget": 10000}}'
     """
     try:
         # Parse request JSON

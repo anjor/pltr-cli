@@ -77,7 +77,7 @@ class LanguageModelsService(BaseService):
             # Transform simple message to SDK message format
             messages = [
                 {
-                    "role": "user",
+                    "role": "USER",
                     "content": [{"type": "text", "text": message}],
                 }
             ]
@@ -140,7 +140,7 @@ class LanguageModelsService(BaseService):
             model_id: Model Resource Identifier
                 Format: ri.language-models.main.model.<id>
             messages: List of message objects with role and content
-                Format: [{"role": "user|assistant", "content": [...]}]
+                Format: [{"role": "USER|ASSISTANT", "content": [...]}]
             max_tokens: Maximum tokens to generate
             system: Optional system prompt blocks
                 Format: [{"type": "text", "text": "..."}]
@@ -168,9 +168,9 @@ class LanguageModelsService(BaseService):
         Example:
             >>> service = LanguageModelsService()
             >>> messages = [
-            ...     {"role": "user", "content": [{"type": "text", "text": "Hi"}]},
-            ...     {"role": "assistant", "content": [{"type": "text", "text": "Hello!"}]},
-            ...     {"role": "user", "content": [{"type": "text", "text": "Help me"}]}
+            ...     {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
+            ...     {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
+            ...     {"role": "USER", "content": [{"type": "text", "text": "Help me"}]}
             ... ]
             >>> response = service.send_messages_advanced(
             ...     "ri.language-models.main.model.abc123",
@@ -179,9 +179,17 @@ class LanguageModelsService(BaseService):
             ... )
         """
         try:
+            normalized_messages: List[Dict[str, Any]] = []
+            for msg in messages:
+                normalized_msg = dict(msg)
+                role = normalized_msg.get("role")
+                if isinstance(role, str):
+                    normalized_msg["role"] = role.upper()
+                normalized_messages.append(normalized_msg)
+
             # Build SDK kwargs
             request_kwargs: Dict[str, Any] = {
-                "messages": messages,
+                "messages": normalized_messages,
                 "max_tokens": max_tokens,
                 "preview": preview,
             }

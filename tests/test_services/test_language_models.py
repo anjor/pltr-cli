@@ -60,7 +60,7 @@ class TestLanguageModelsService:
         assert "request" not in call_args[1]
         assert call_args[1]["max_tokens"] == 1024
         assert len(call_args[1]["messages"]) == 1
-        assert call_args[1]["messages"][0]["role"] == "user"
+        assert call_args[1]["messages"][0]["role"] == "USER"
         assert call_args[1]["messages"][0]["content"][0]["text"] == message
 
         # Check result
@@ -138,9 +138,9 @@ class TestLanguageModelsService:
         # Setup
         model_id = "ri.language-models.main.model.abc123"
         messages = [
-            {"role": "user", "content": [{"type": "text", "text": "Hi"}]},
-            {"role": "assistant", "content": [{"type": "text", "text": "Hello!"}]},
-            {"role": "user", "content": [{"type": "text", "text": "Help"}]},
+            {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
+            {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
+            {"role": "USER", "content": [{"type": "text", "text": "Help"}]},
         ]
         max_tokens = 500
         mock_response = Mock()
@@ -161,11 +161,28 @@ class TestLanguageModelsService:
         assert call_args[1]["preview"] is False
         assert result["role"] == "assistant"
 
+    def test_send_messages_advanced_normalizes_roles(self, service, mock_client):
+        """Test advanced messages role normalization to SDK enum casing."""
+        model_id = "ri.language-models.main.model.abc123"
+        messages = [
+            {"role": "user", "content": [{"type": "text", "text": "Hi"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "Hello!"}]},
+        ]
+        mock_response = Mock()
+        mock_response.dict.return_value = {"content": [], "role": "assistant"}
+        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
+
+        service.send_messages_advanced(model_id, messages, max_tokens=50)
+
+        call_args = mock_client.language_models.AnthropicModel.messages.call_args
+        assert call_args[1]["messages"][0]["role"] == "USER"
+        assert call_args[1]["messages"][1]["role"] == "ASSISTANT"
+
     def test_send_messages_advanced_with_thinking(self, service, mock_client):
         """Test sending messages with extended thinking."""
         # Setup
         model_id = "ri.language-models.main.model.abc123"
-        messages = [{"role": "user", "content": [{"type": "text", "text": "Solve"}]}]
+        messages = [{"role": "USER", "content": [{"type": "text", "text": "Solve"}]}]
         thinking = {"type": "enabled", "budget": 10000}
         mock_response = Mock()
         mock_response.dict.return_value = {"content": [], "role": "assistant"}
@@ -185,7 +202,7 @@ class TestLanguageModelsService:
         # Setup
         model_id = "ri.language-models.main.model.abc123"
         messages = [
-            {"role": "user", "content": [{"type": "text", "text": "Calculate"}]}
+            {"role": "USER", "content": [{"type": "text", "text": "Calculate"}]}
         ]
         tools = [
             {
@@ -217,7 +234,7 @@ class TestLanguageModelsService:
         """Test error handling in send_messages_advanced."""
         # Setup
         model_id = "ri.language-models.main.model.abc123"
-        messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+        messages = [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}]
         mock_client.language_models.AnthropicModel.messages.side_effect = Exception(
             "API error"
         )
