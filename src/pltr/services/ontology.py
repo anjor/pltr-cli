@@ -2,7 +2,9 @@
 Ontology service wrappers for Foundry SDK.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
+from urllib.parse import quote
+import requests
 
 from ..config.settings import Settings
 from ..utils.pagination import PaginationConfig, PaginationResult
@@ -62,6 +64,17 @@ class OntologyService(BaseService):
 class ObjectTypeService(BaseService):
     """Service wrapper for object type operations."""
 
+    _OBJECT_TYPE_CREATE_ENDPOINTS = [
+        "/v2/ontologies/{ontology}/objectTypes",
+        "/v1/ontologies/{ontology}/objectTypes",
+        "/ontology-manager/api/ontologies/{ontology}/objectTypes",
+    ]
+    _LINK_TYPE_CREATE_ENDPOINTS = [
+        "/v2/ontologies/{ontology}/linkTypes",
+        "/v1/ontologies/{ontology}/linkTypes",
+        "/ontology-manager/api/ontologies/{ontology}/linkTypes",
+    ]
+
     def _get_service(self) -> Any:
         """Get the Foundry ontologies service."""
         return self.client.ontologies
@@ -104,6 +117,106 @@ class ObjectTypeService(BaseService):
             return self._format_object_type_info(obj_type)
         except Exception as e:
             raise RuntimeError(f"Failed to get object type {object_type}: {e}")
+
+    def create_object_type(
+        self,
+        ontology_rid: str,
+        api_name: str,
+        display_name: str,
+        primary_key: str,
+        backing_dataset: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create an ontology object type via direct API calls.
+
+        Args:
+            ontology_rid: Ontology Resource Identifier
+            api_name: Object type API name
+            display_name: Object type display name
+            primary_key: Primary key property API name
+            backing_dataset: Backing dataset RID
+            description: Optional object type description
+
+        Returns:
+            API response dictionary
+        """
+        payload = {
+            "apiName": api_name,
+            "displayName": display_name,
+            "primaryKey": primary_key,
+            "backingDatasetRid": backing_dataset,
+        }
+        if description is not None:
+            payload["description"] = description
+
+        return self._create_schema_entity(
+            ontology_rid=ontology_rid,
+            endpoints=self._OBJECT_TYPE_CREATE_ENDPOINTS,
+            payload=payload,
+            entity_type="object type",
+            entity_id=api_name,
+        )
+
+    def create_link_type(
+        self,
+        ontology_rid: str,
+        api_name: str,
+        from_object_type: str,
+        to_object_type: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        reverse_api_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create an ontology link type via direct API calls.
+
+        Args:
+            ontology_rid: Ontology Resource Identifier
+            api_name: Link type API name
+            from_object_type: Source object type API name
+            to_object_type: Target object type API name
+            display_name: Optional link type display name
+            description: Optional link type description
+            reverse_api_name: Optional reverse direction API name
+
+        Returns:
+            API response dictionary
+        """
+        modern_payload = {
+            "apiName": api_name,
+            "fromObjectTypeApiName": from_object_type,
+            "toObjectTypeApiName": to_object_type,
+        }
+        legacy_payload = {
+            "apiName": api_name,
+            "linkTypeApiNameAtoB": api_name,
+            "aSideObjectTypeApiName": from_object_type,
+            "bSideObjectTypeApiName": to_object_type,
+        }
+
+        if display_name is not None:
+            modern_payload["displayName"] = display_name
+            legacy_payload["displayName"] = display_name
+        if description is not None:
+            modern_payload["description"] = description
+            legacy_payload["description"] = description
+        if reverse_api_name is not None:
+            modern_payload["reverseApiName"] = reverse_api_name
+            legacy_payload["linkTypeApiNameBtoA"] = reverse_api_name
+
+        def payload_for_endpoint(endpoint_template: str) -> Dict[str, Any]:
+            if endpoint_template.startswith("/v2/"):
+                return modern_payload
+            return legacy_payload
+
+        return self._create_schema_entity(
+            ontology_rid=ontology_rid,
+            endpoints=self._LINK_TYPE_CREATE_ENDPOINTS,
+            payload=payload_for_endpoint,
+            entity_type="link type",
+            entity_id=api_name,
+        )
 
     def list_outgoing_link_types(
         self, ontology_rid: str, object_type: str
@@ -149,6 +262,62 @@ class ObjectTypeService(BaseService):
             "object_type": getattr(link_type, "object_type", None),
             "linked_object_type": getattr(link_type, "linked_object_type", None),
         }
+
+    def _create_schema_entity(
+        self,
+        ontology_rid: str,
+        endpoints: List[str],
+        payload: Union[Dict[str, Any], Callable[[str], Dict[str, Any]]],
+        entity_type: str,
+        entity_id: str,
+    ) -> Dict[str, Any]:
+        """Post create requests across known schema management endpoints."""
+        encoded_ontology = quote(ontology_rid, safe="")
+        last_error: Optional[Exception] = None
+
+        for endpoint_template in endpoints:
+            endpoint = endpoint_template.format(ontology=encoded_ontology)
+            request_payload = (
+                payload(endpoint_template) if callable(payload) else payload
+            )
+            try:
+                response = self._make_request(
+                    "POST", endpoint, json_data=request_payload
+                )
+                result = response.json() if response.text else {}
+                if isinstance(result, dict):
+                    result.setdefault("apiName", entity_id)
+                    result.setdefault("ontologyRid", ontology_rid)
+                    return result
+                return {
+                    "apiName": entity_id,
+                    "ontologyRid": ontology_rid,
+                    "response": result,
+                }
+            except requests.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else None
+                if status_code not in (404, 405):
+                    raise RuntimeError(
+                        f"Failed to create {entity_type} {entity_id}: {e}"
+                    ) from e
+                last_error = e
+            except RuntimeError as e:
+                if "404" in str(e) or "405" in str(e):
+                    last_error = e
+                    continue
+                raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {e}")
+            except requests.RequestException as e:
+                raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {e}")
+            except ValueError as e:
+                raise RuntimeError(
+                    f"Failed to parse create {entity_type} response for {entity_id}: {e}"
+                ) from e
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create {entity_type} {entity_id}: {e}"
+                ) from e
+
+        raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {last_error}")
 
 
 class OntologyObjectService(BaseService):
