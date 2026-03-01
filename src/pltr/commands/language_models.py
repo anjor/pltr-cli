@@ -123,6 +123,56 @@ def display_openai_response(response: dict, format: str, output: Optional[str]):
         formatter.display(response, format)
 
 
+# ===== Shared Language Model Commands =====
+
+
+@app.command("list")
+def list_models(
+    profile: Optional[str] = typer.Option(
+        None,
+        "--profile",
+        "-p",
+        help="Profile name",
+        autocompletion=complete_profile,
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+):
+    """List available language models for the current enrollment."""
+    try:
+        from ..services.language_models import LanguageModelsService
+
+        service = LanguageModelsService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner("Fetching available models..."):
+            models = service.list_available_models()
+
+        formatter.format_table(
+            models,
+            columns=["model_rid", "status", "type", "display_name"],
+            format=format,
+            output=output,
+        )
+
+        if output:
+            formatter.print_success(f"Model list saved to {output}")
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Operation failed: {e}")
+        raise typer.Exit(1)
+
+
 # ===== Anthropic Commands =====
 
 

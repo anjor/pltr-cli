@@ -3,12 +3,18 @@ LanguageModels service wrapper for Foundry SDK.
 Provides access to Anthropic Claude models and OpenAI embeddings.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+import requests
 from .base import BaseService
 
 
 class LanguageModelsService(BaseService):
     """Service wrapper for Foundry LanguageModels operations."""
+
+    _MODEL_LIST_ENDPOINTS = [
+        "/v2/languageModels",
+        "/api/v2/llm/proxy/openai/v1/models",
+    ]
 
     def _get_service(self) -> Any:
         """Get the Foundry LanguageModels service."""
@@ -280,3 +286,102 @@ class LanguageModelsService(BaseService):
             raise RuntimeError(
                 f"Failed to generate embeddings with model {model_id}: {e}"
             )
+
+    def list_available_models(self) -> List[Dict[str, Any]]:
+        """
+        List language models available to the authenticated user.
+
+        Tries the platform language-model listing endpoint first, then falls back
+        to the provider-compatible OpenAI models endpoint.
+        Note: This currently reads a single response per endpoint and does not
+        follow pagination tokens.
+
+        Returns:
+            List of model dictionaries with normalized keys:
+            - model_rid
+            - status
+            - type
+            - display_name
+
+        Raises:
+            RuntimeError: If no listing endpoint succeeds
+        """
+        last_error: Optional[Exception] = None
+
+        for endpoint in self._MODEL_LIST_ENDPOINTS:
+            try:
+                response = self._make_request("GET", endpoint)
+            except (requests.RequestException, RuntimeError) as e:
+                last_error = e
+                continue
+
+            payload = response.json() if response.text else {}
+            return self._normalize_model_list(
+                payload,
+                is_openai_source=("openai/v1/models" in endpoint),
+            )
+
+        raise RuntimeError(f"Failed to list available language models: {last_error}")
+
+    def _normalize_model_list(
+        self, payload: Union[Dict[str, Any], List[Any]], is_openai_source: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Normalize varied model list payloads into a stable CLI schema."""
+        raw_models: List[Any] = []
+        if isinstance(payload, dict):
+            if "data" in payload:
+                data = payload.get("data")
+                if isinstance(data, list):
+                    raw_models = data
+            elif "models" in payload:
+                models = payload.get("models")
+                if isinstance(models, list):
+                    raw_models = models
+        elif isinstance(payload, list):
+            raw_models = payload
+
+        normalized: List[Dict[str, Any]] = []
+        for model in raw_models:
+            if not isinstance(model, dict):
+                continue
+
+            model_id = (
+                model.get("rid")
+                or model.get("modelRid")
+                or model.get("id")
+                or model.get("apiName")
+                or model.get("name")
+            )
+            if not model_id:
+                continue
+
+            status = (
+                model.get("status")
+                or model.get("enrollmentStatus")
+                or ("AVAILABLE" if is_openai_source else "UNKNOWN")
+            )
+
+            model_type = (
+                model.get("type")
+                or model.get("provider")
+                or model.get("modelType")
+                or model.get("family")
+                or ("OPENAI" if is_openai_source else "UNKNOWN")
+            )
+
+            normalized.append(
+                {
+                    "model_rid": str(model_id),
+                    "status": str(status),
+                    "type": str(model_type),
+                    "display_name": (
+                        model.get("displayName")
+                        or model.get("name")
+                        or model.get("id")
+                        or str(model_id)
+                    ),
+                }
+            )
+
+        normalized.sort(key=lambda item: item["model_rid"])
+        return normalized

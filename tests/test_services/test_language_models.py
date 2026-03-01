@@ -1,6 +1,7 @@
 """Tests for LanguageModels service."""
 
 import pytest
+import requests
 from unittest.mock import Mock, patch
 from pltr.services.language_models import LanguageModelsService
 
@@ -225,6 +226,129 @@ class TestLanguageModelsService:
         with pytest.raises(RuntimeError) as exc_info:
             service.send_messages_advanced(model_id, messages, max_tokens=100)
         assert "Failed to send messages" in str(exc_info.value)
+
+    # ===== Language Model Discovery Tests =====
+
+    def test_list_available_models_v2_endpoint(self, service):
+        """Test listing models from native language models endpoint."""
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "rid": "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2",
+                    "status": "ENROLLED",
+                    "provider": "ANTHROPIC",
+                    "displayName": "Claude 3.5 Sonnet",
+                }
+            ]
+        }
+
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert len(result) == 1
+        assert (
+            result[0]["model_rid"]
+            == "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
+        )
+        assert result[0]["status"] == "ENROLLED"
+        assert result[0]["type"] == "ANTHROPIC"
+        mock_req.assert_called_once_with("GET", "/v2/languageModels")
+
+    def test_list_available_models_openai_proxy_fallback(self, service):
+        """Test fallback to provider-compatible OpenAI models endpoint."""
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {
+            "data": [
+                {
+                    "id": "gpt-4o",
+                    "object": "model",
+                }
+            ]
+        }
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[RuntimeError("404"), fallback_response],
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert len(result) == 1
+        assert result[0]["model_rid"] == "gpt-4o"
+        assert result[0]["status"] == "AVAILABLE"
+        assert result[0]["type"] == "OPENAI"
+        assert mock_req.call_count == 2
+        assert mock_req.call_args_list[0].args == ("GET", "/v2/languageModels")
+        assert mock_req.call_args_list[1].args == (
+            "GET",
+            "/api/v2/llm/proxy/openai/v1/models",
+        )
+
+    def test_list_available_models_connection_error_fallback(self, service):
+        """Test fallback when the first endpoint fails with network error."""
+        fallback_response = Mock()
+        fallback_response.text = "ok"
+        fallback_response.json.return_value = {"data": [{"id": "gpt-4.1"}]}
+
+        with patch.object(
+            service,
+            "_make_request",
+            side_effect=[requests.ConnectionError("network down"), fallback_response],
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert len(result) == 1
+        assert result[0]["model_rid"] == "gpt-4.1"
+        assert mock_req.call_args_list[-1].args == (
+            "GET",
+            "/api/v2/llm/proxy/openai/v1/models",
+        )
+
+    def test_list_available_models_prefers_explicit_empty_data(self, service):
+        """Test that an explicit empty `data` list does not fall back to `models`."""
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.json.return_value = {
+            "data": [],
+            "models": [{"id": "should-not-be-used"}],
+        }
+
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert result == []
+        mock_req.assert_called_once_with("GET", "/v2/languageModels")
+
+    def test_list_available_models_json_error_not_swallowed(self, service):
+        """Test that JSON parsing errors are surfaced and do not trigger fallback."""
+        bad_response = Mock()
+        bad_response.text = "not-json"
+        bad_response.json.side_effect = ValueError("invalid json")
+
+        with patch.object(
+            service, "_make_request", return_value=bad_response
+        ) as mock_req:
+            with pytest.raises(ValueError, match="invalid json"):
+                service.list_available_models()
+
+        mock_req.assert_called_once_with("GET", "/v2/languageModels")
+
+    def test_list_available_models_error(self, service):
+        """Test error handling when all model listing endpoints fail."""
+        with patch.object(
+            service, "_make_request", side_effect=RuntimeError("unavailable")
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                service.list_available_models()
+
+        assert "Failed to list available language models" in str(exc_info.value)
 
     # ===== OpenAI Embeddings Tests =====
 
