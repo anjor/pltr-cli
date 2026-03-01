@@ -288,6 +288,37 @@ class TestLanguageModelsService:
             "/api/v2/llm/proxy/openai/v1/models",
         )
 
+    def test_list_available_models_prefers_explicit_empty_data(self, service):
+        """Test that an explicit empty `data` list does not fall back to `models`."""
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.json.return_value = {
+            "data": [],
+            "models": [{"id": "should-not-be-used"}],
+        }
+
+        with patch.object(
+            service, "_make_request", return_value=mock_response
+        ) as mock_req:
+            result = service.list_available_models()
+
+        assert result == []
+        mock_req.assert_called_once_with("GET", "/v2/languageModels")
+
+    def test_list_available_models_json_error_not_swallowed(self, service):
+        """Test that JSON parsing errors are surfaced and do not trigger fallback."""
+        bad_response = Mock()
+        bad_response.text = "not-json"
+        bad_response.json.side_effect = ValueError("invalid json")
+
+        with patch.object(
+            service, "_make_request", return_value=bad_response
+        ) as mock_req:
+            with pytest.raises(ValueError, match="invalid json"):
+                service.list_available_models()
+
+        mock_req.assert_called_once_with("GET", "/v2/languageModels")
+
     def test_list_available_models_error(self, service):
         """Test error handling when all model listing endpoints fail."""
         with patch.object(

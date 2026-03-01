@@ -3,7 +3,8 @@ LanguageModels service wrapper for Foundry SDK.
 Provides access to Anthropic Claude models and OpenAI embeddings.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+import requests
 from .base import BaseService
 
 
@@ -292,6 +293,8 @@ class LanguageModelsService(BaseService):
 
         Tries the platform language-model listing endpoint first, then falls back
         to the provider-compatible OpenAI models endpoint.
+        Note: This currently reads a single response per endpoint and does not
+        follow pagination tokens.
 
         Returns:
             List of model dictionaries with normalized keys:
@@ -308,25 +311,34 @@ class LanguageModelsService(BaseService):
         for endpoint in self._MODEL_LIST_ENDPOINTS:
             try:
                 response = self._make_request("GET", endpoint)
-                payload = response.json() if response.text else {}
-                return self._normalize_model_list(payload, endpoint)
-            except Exception as e:
+            except (requests.HTTPError, RuntimeError) as e:
                 last_error = e
+                continue
+
+            payload = response.json() if response.text else {}
+            return self._normalize_model_list(
+                payload,
+                is_openai_source=("openai/v1/models" in endpoint),
+            )
 
         raise RuntimeError(f"Failed to list available language models: {last_error}")
 
     def _normalize_model_list(
-        self, payload: Dict[str, Any], source_endpoint: str
+        self, payload: Union[Dict[str, Any], List[Any]], is_openai_source: bool = False
     ) -> List[Dict[str, Any]]:
         """Normalize varied model list payloads into a stable CLI schema."""
-        raw_models: Any = []
+        raw_models: List[Any] = []
         if isinstance(payload, dict):
-            raw_models = payload.get("data") or payload.get("models") or []
+            if "data" in payload:
+                data = payload.get("data")
+                if isinstance(data, list):
+                    raw_models = data
+            elif "models" in payload:
+                models = payload.get("models")
+                if isinstance(models, list):
+                    raw_models = models
         elif isinstance(payload, list):
             raw_models = payload
-
-        if not isinstance(raw_models, list):
-            return []
 
         normalized: List[Dict[str, Any]] = []
         for model in raw_models:
@@ -346,7 +358,7 @@ class LanguageModelsService(BaseService):
             status = (
                 model.get("status")
                 or model.get("enrollmentStatus")
-                or ("AVAILABLE" if "openai/v1/models" in source_endpoint else "UNKNOWN")
+                or ("AVAILABLE" if is_openai_source else "UNKNOWN")
             )
 
             model_type = (
@@ -354,7 +366,7 @@ class LanguageModelsService(BaseService):
                 or model.get("provider")
                 or model.get("modelType")
                 or model.get("family")
-                or ("OPENAI" if "openai/v1/models" in source_endpoint else "UNKNOWN")
+                or ("OPENAI" if is_openai_source else "UNKNOWN")
             )
 
             normalized.append(

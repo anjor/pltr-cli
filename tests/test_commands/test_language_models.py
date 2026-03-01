@@ -43,6 +43,71 @@ class TestLanguageModelsCommands:
 
         assert result.exit_code == 0
         mock_service.list_available_models.assert_called_once()
+        assert "model_rid" in result.output
+        assert "anthropic_claude_3_5_sonnet_v2" in result.output
+
+    def test_language_models_list_auth_error(self, runner, mock_service):
+        """Test list command with authentication error."""
+        from pltr.auth.base import ProfileNotFoundError
+
+        mock_service.list_available_models.side_effect = ProfileNotFoundError(
+            "Profile not found"
+        )
+
+        result = runner.invoke(app, ["language-models", "list"])
+
+        assert result.exit_code == 1
+        assert "Authentication error" in result.output
+
+    def test_language_models_list_missing_credentials_error(self, runner, mock_service):
+        """Test list command with missing credentials."""
+        from pltr.auth.base import MissingCredentialsError
+
+        mock_service.list_available_models.side_effect = MissingCredentialsError(
+            "Missing credentials"
+        )
+
+        result = runner.invoke(app, ["language-models", "list"])
+
+        assert result.exit_code == 1
+        assert "Authentication error" in result.output
+
+    def test_language_models_list_runtime_error(self, runner, mock_service):
+        """Test list command with service runtime error."""
+        mock_service.list_available_models.side_effect = RuntimeError("boom")
+
+        result = runner.invoke(app, ["language-models", "list"])
+
+        assert result.exit_code == 1
+        assert "Operation failed" in result.output
+
+    def test_language_models_list_output_file(self, runner, mock_service, tmp_path):
+        """Test list command with --output file flag."""
+        output_path = tmp_path / "models.json"
+        mock_service.list_available_models.return_value = [
+            {
+                "model_rid": "ri.language-model-service..language-model.example",
+                "status": "ENROLLED",
+                "type": "ANTHROPIC",
+                "display_name": "Example",
+            }
+        ]
+
+        result = runner.invoke(
+            app,
+            [
+                "language-models",
+                "list",
+                "--format",
+                "json",
+                "--output",
+                str(output_path),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Model list saved to" in result.output
+        assert output_path.exists()
 
     # ===== Anthropic Messages Tests =====
 
