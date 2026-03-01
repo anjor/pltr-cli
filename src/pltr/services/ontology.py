@@ -2,8 +2,9 @@
 Ontology service wrappers for Foundry SDK.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import quote
+import requests
 
 from ..config.settings import Settings
 from ..utils.pagination import PaginationConfig, PaginationResult
@@ -146,7 +147,7 @@ class ObjectTypeService(BaseService):
             "primaryKey": primary_key,
             "backingDatasetRid": backing_dataset,
         }
-        if description:
+        if description is not None:
             payload["description"] = description
 
         return self._create_schema_entity(
@@ -182,26 +183,37 @@ class ObjectTypeService(BaseService):
         Returns:
             API response dictionary
         """
-        payload = {
+        modern_payload = {
             "apiName": api_name,
             "fromObjectTypeApiName": from_object_type,
             "toObjectTypeApiName": to_object_type,
+        }
+        legacy_payload = {
+            "apiName": api_name,
             "linkTypeApiNameAtoB": api_name,
             "aSideObjectTypeApiName": from_object_type,
             "bSideObjectTypeApiName": to_object_type,
         }
-        if display_name:
-            payload["displayName"] = display_name
-        if description:
-            payload["description"] = description
-        if reverse_api_name:
-            payload["linkTypeApiNameBtoA"] = reverse_api_name
-            payload["reverseApiName"] = reverse_api_name
+
+        if display_name is not None:
+            modern_payload["displayName"] = display_name
+            legacy_payload["displayName"] = display_name
+        if description is not None:
+            modern_payload["description"] = description
+            legacy_payload["description"] = description
+        if reverse_api_name is not None:
+            modern_payload["reverseApiName"] = reverse_api_name
+            legacy_payload["linkTypeApiNameBtoA"] = reverse_api_name
+
+        def payload_for_endpoint(endpoint_template: str) -> Dict[str, Any]:
+            if endpoint_template.startswith("/v2/"):
+                return modern_payload
+            return legacy_payload
 
         return self._create_schema_entity(
             ontology_rid=ontology_rid,
             endpoints=self._LINK_TYPE_CREATE_ENDPOINTS,
-            payload=payload,
+            payload=payload_for_endpoint,
             entity_type="link type",
             entity_id=api_name,
         )
@@ -255,7 +267,7 @@ class ObjectTypeService(BaseService):
         self,
         ontology_rid: str,
         endpoints: List[str],
-        payload: Dict[str, Any],
+        payload: Union[Dict[str, Any], Callable[[str], Dict[str, Any]]],
         entity_type: str,
         entity_id: str,
     ) -> Dict[str, Any]:
@@ -265,8 +277,13 @@ class ObjectTypeService(BaseService):
 
         for endpoint_template in endpoints:
             endpoint = endpoint_template.format(ontology=encoded_ontology)
+            request_payload = (
+                payload(endpoint_template) if callable(payload) else payload
+            )
             try:
-                response = self._make_request("POST", endpoint, json_data=payload)
+                response = self._make_request(
+                    "POST", endpoint, json_data=request_payload
+                )
                 result = response.json() if response.text else {}
                 if isinstance(result, dict):
                     result.setdefault("apiName", entity_id)
@@ -277,8 +294,28 @@ class ObjectTypeService(BaseService):
                     "ontologyRid": ontology_rid,
                     "response": result,
                 }
-            except Exception as e:
+            except requests.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else None
+                if status_code not in (404, 405):
+                    raise RuntimeError(
+                        f"Failed to create {entity_type} {entity_id}: {e}"
+                    ) from e
                 last_error = e
+            except RuntimeError as e:
+                if "404" in str(e) or "405" in str(e):
+                    last_error = e
+                    continue
+                raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {e}")
+            except requests.RequestException as e:
+                raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {e}")
+            except ValueError as e:
+                raise RuntimeError(
+                    f"Failed to parse create {entity_type} response for {entity_id}: {e}"
+                ) from e
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create {entity_type} {entity_id}: {e}"
+                ) from e
 
         raise RuntimeError(f"Failed to create {entity_type} {entity_id}: {last_error}")
 

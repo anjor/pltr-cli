@@ -3,6 +3,7 @@ Tests for ontology services.
 """
 
 import pytest
+import requests
 from unittest.mock import Mock, patch
 
 from pltr.services.ontology import (
@@ -12,6 +13,13 @@ from pltr.services.ontology import (
     ActionService,
     QueryService,
 )
+
+
+def _http_error(status_code: int, message: str) -> requests.HTTPError:
+    """Create an HTTPError with an attached response status code."""
+    error = requests.HTTPError(message)
+    error.response = Mock(status_code=status_code)
+    return error
 
 
 @pytest.fixture
@@ -282,6 +290,27 @@ def test_create_object_type(mock_object_type_service):
     )
 
 
+def test_create_object_type_with_description(mock_object_type_service):
+    """Test creating an object type includes description when provided."""
+    service, _ = mock_object_type_service
+
+    mock_response = Mock()
+    mock_response.text = "ok"
+    mock_response.json.return_value = {"apiName": "TMAircraft"}
+
+    with patch.object(service, "_make_request", return_value=mock_response) as mock_req:
+        service.create_object_type(
+            ontology_rid="ri.ontology.main.ontology.test",
+            api_name="TMAircraft",
+            display_name="TM Aircraft",
+            primary_key="msn",
+            backing_dataset="ri.foundry.main.dataset.aircraft",
+            description="Aircraft entity",
+        )
+
+    assert mock_req.call_args.kwargs["json_data"]["description"] == "Aircraft entity"
+
+
 def test_create_link_type(mock_object_type_service):
     """Test creating a link type via direct API endpoint."""
     service, _ = mock_object_type_service
@@ -311,10 +340,6 @@ def test_create_link_type(mock_object_type_service):
             "apiName": "aircraftLease",
             "fromObjectTypeApiName": "TMAircraft",
             "toObjectTypeApiName": "TMLeaseAgreement",
-            "linkTypeApiNameAtoB": "aircraftLease",
-            "aSideObjectTypeApiName": "TMAircraft",
-            "bSideObjectTypeApiName": "TMLeaseAgreement",
-            "linkTypeApiNameBtoA": "leaseAircraft",
             "reverseApiName": "leaseAircraft",
         },
     )
@@ -328,7 +353,9 @@ def test_create_object_type_fallback_endpoint(mock_object_type_service):
     mock_response.text = ""
 
     with patch.object(
-        service, "_make_request", side_effect=[RuntimeError("404"), mock_response]
+        service,
+        "_make_request",
+        side_effect=[_http_error(404, "not found"), mock_response],
     ) as mock_req:
         result = service.create_object_type(
             ontology_rid="ri.ontology.main.ontology.test",
@@ -341,6 +368,79 @@ def test_create_object_type_fallback_endpoint(mock_object_type_service):
     assert result["apiName"] == "TMAircraft"
     assert result["ontologyRid"] == "ri.ontology.main.ontology.test"
     assert mock_req.call_count == 2
+
+
+def test_create_object_type_non_404_does_not_fallback(mock_object_type_service):
+    """Test non-404 errors fail immediately instead of trying all endpoints."""
+    service, _ = mock_object_type_service
+
+    with patch.object(
+        service, "_make_request", side_effect=_http_error(403, "forbidden")
+    ) as mock_req:
+        with pytest.raises(
+            RuntimeError, match="Failed to create object type TMAircraft"
+        ):
+            service.create_object_type(
+                ontology_rid="ri.ontology.main.ontology.test",
+                api_name="TMAircraft",
+                display_name="TM Aircraft",
+                primary_key="msn",
+                backing_dataset="ri.foundry.main.dataset.aircraft",
+            )
+
+    assert mock_req.call_count == 1
+
+
+def test_create_object_type_all_endpoints_fail(mock_object_type_service):
+    """Test object type creation failure after exhausting fallback endpoints."""
+    service, _ = mock_object_type_service
+
+    with patch.object(
+        service,
+        "_make_request",
+        side_effect=[
+            _http_error(404, "not found"),
+            _http_error(404, "not found"),
+            _http_error(404, "not found"),
+        ],
+    ):
+        with pytest.raises(
+            RuntimeError, match="Failed to create object type TMAircraft"
+        ):
+            service.create_object_type(
+                ontology_rid="ri.ontology.main.ontology.test",
+                api_name="TMAircraft",
+                display_name="TM Aircraft",
+                primary_key="msn",
+                backing_dataset="ri.foundry.main.dataset.aircraft",
+            )
+
+
+def test_create_link_type_fallback_uses_legacy_payload(mock_object_type_service):
+    """Test link type fallback uses legacy payload fields for legacy endpoints."""
+    service, _ = mock_object_type_service
+
+    mock_response = Mock()
+    mock_response.text = "ok"
+    mock_response.json.return_value = {"apiName": "aircraftLease"}
+
+    with patch.object(
+        service,
+        "_make_request",
+        side_effect=[_http_error(404, "not found"), mock_response],
+    ) as mock_req:
+        service.create_link_type(
+            ontology_rid="ri.ontology.main.ontology.test",
+            api_name="aircraftLease",
+            from_object_type="TMAircraft",
+            to_object_type="TMLeaseAgreement",
+            reverse_api_name="leaseAircraft",
+        )
+
+    fallback_payload = mock_req.call_args_list[-1].kwargs["json_data"]
+    assert "linkTypeApiNameAtoB" in fallback_payload
+    assert "aSideObjectTypeApiName" in fallback_payload
+    assert "fromObjectTypeApiName" not in fallback_payload
 
 
 # OntologyObjectService Tests
