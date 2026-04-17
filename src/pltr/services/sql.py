@@ -320,11 +320,35 @@ class SqlService(BaseService):
         if format == "raw":
             return results_bytes
 
-        # Try to decode as text first
+        # Foundry's SQL endpoint returns Arrow IPC stream format
+        # (starts with the 0xffffffff continuation marker). Decode into rows
+        # before falling back to text handling — otherwise callers only get
+        # a truncated hex dump and the query results are effectively lost.
+        if len(results_bytes) >= 4 and results_bytes[:4] == b"\xff\xff\xff\xff":
+            try:
+                import io as _io
+
+                import pyarrow.ipc as _ipc
+
+                reader = _ipc.open_stream(_io.BytesIO(results_bytes))
+                table = reader.read_all()
+                # list-of-dicts is ideal for both JSON and table formatting
+                return table.to_pylist()
+            except Exception as e:
+                return {
+                    "type": "binary",
+                    "size_bytes": len(results_bytes),
+                    "decode_error": f"Failed to decode Arrow IPC: {e}",
+                    "data": results_bytes.hex()[:200] + "..."
+                    if len(results_bytes) > 100
+                    else results_bytes.hex(),
+                }
+
+        # Try to decode as text (non-Arrow responses, if any)
         try:
             results_text = results_bytes.decode("utf-8")
         except UnicodeDecodeError:
-            # If it's binary data, return as base64 or hex
+            # If it's binary data that isn't Arrow IPC, return hex summary
             return {
                 "type": "binary",
                 "size_bytes": len(results_bytes),
