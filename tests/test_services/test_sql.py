@@ -298,6 +298,39 @@ class TestSqlService:
 
         assert result == {"text": "not valid json {"}
 
+    def test_format_query_results_arrow_ipc(self, service):
+        """Foundry SQL returns Arrow IPC stream bytes; decode into row dicts."""
+        import io
+
+        import pyarrow as pa
+        import pyarrow.ipc as ipc
+
+        table = pa.table({"n": [1, 2], "msg": ["hi", "there"]})
+        buf = io.BytesIO()
+        with ipc.new_stream(buf, table.schema) as writer:
+            writer.write_table(table)
+        arrow_bytes = buf.getvalue()
+        # Sanity: starts with Arrow IPC continuation marker.
+        assert arrow_bytes[:4] == b"\xff\xff\xff\xff"
+
+        result = service._format_query_results(arrow_bytes, "json")
+        assert result == [{"n": 1, "msg": "hi"}, {"n": 2, "msg": "there"}]
+
+        # Table format also yields list-of-dicts (formatter tabulates it).
+        result_table = service._format_query_results(arrow_bytes, "table")
+        assert result_table == [{"n": 1, "msg": "hi"}, {"n": 2, "msg": "there"}]
+
+    def test_format_query_results_arrow_decode_failure(self, service):
+        """If bytes start with the Arrow marker but are malformed, surface error."""
+        # Marker + trailing garbage -> pyarrow will raise during open_stream.
+        malformed = b"\xff\xff\xff\xff" + b"garbage"
+
+        result = service._format_query_results(malformed, "json")
+
+        assert result["type"] == "binary"
+        assert result["size_bytes"] == len(malformed)
+        assert "decode_error" in result
+
     def test_execute_query_with_fallback_branches(self, service, mock_client):
         """Test executing query with fallback branch IDs."""
         # Setup
