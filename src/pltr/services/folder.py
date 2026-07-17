@@ -57,6 +57,42 @@ class FolderService(BaseService):
             detail = self._format_error_detail(e)
             raise RuntimeError(f"Failed to get folder {folder_rid}: {detail}")
 
+    def move_folder(
+        self,
+        folder_rid: str,
+        parent_folder_rid: str,
+        display_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Move a folder to a new parent, optionally renaming it.
+
+        Args:
+            folder_rid: Folder Resource Identifier
+            parent_folder_rid: Destination parent folder RID
+            display_name: New display name (preserves the current name if omitted)
+
+        Returns:
+            Updated folder information
+        """
+        try:
+            current_folder = self.service.Folder.get(folder_rid, preview=True)
+            resolved_display_name = (
+                display_name
+                if display_name is not None
+                else current_folder.display_name
+            )
+
+            folder = self.service.Folder.replace(
+                folder_rid=folder_rid,
+                display_name=resolved_display_name,
+                parent_folder_rid=parent_folder_rid,
+                preview=True,
+            )
+            return self._format_folder_info(folder)
+        except Exception as e:
+            detail = self._format_error_detail(e)
+            raise RuntimeError(f"Failed to move folder {folder_rid}: {detail}")
+
     def list_children(
         self,
         folder_rid: str,

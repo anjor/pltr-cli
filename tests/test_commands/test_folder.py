@@ -141,6 +141,165 @@ def test_get_folder_json_output(runner, mock_folder_service, sample_folder):
     assert result.exit_code == 0
 
 
+def test_move_folder(runner, mock_folder_service, sample_folder):
+    """Test moving and renaming a folder."""
+    moved_folder = {
+        **sample_folder,
+        "display_name": "Renamed Folder",
+        "parent_folder_rid": "ri.compass.main.folder.new-parent",
+    }
+    mock_folder_service.move_folder.return_value = moved_folder
+
+    result = runner.invoke(
+        app,
+        [
+            "folder",
+            "move",
+            "ri.compass.main.folder.test-folder",
+            "--parent-folder",
+            "ri.compass.main.folder.new-parent",
+            "--name",
+            "Renamed Folder",
+            "--confirm",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Successfully moved folder" in result.stdout
+    assert "Renamed Folder" in result.stdout
+    assert "ri.compass.main.folder.new-parent" in result.stdout
+    mock_folder_service.move_folder.assert_called_once_with(
+        folder_rid="ri.compass.main.folder.test-folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+        display_name="Renamed Folder",
+    )
+
+
+def test_move_folder_requires_parent(runner, mock_folder_service):
+    """Test moving a folder requires a destination parent option."""
+    result = runner.invoke(
+        app,
+        ["folder", "move", "ri.compass.main.folder.test-folder", "--confirm"],
+    )
+
+    assert result.exit_code == 2
+    mock_folder_service.move_folder.assert_not_called()
+
+
+def test_move_folder_cancelled_before_service_creation(runner):
+    """Test declining confirmation does not construct the service."""
+    with patch("pltr.commands.folder.FolderService") as mock_service_class:
+        result = runner.invoke(
+            app,
+            [
+                "folder",
+                "move",
+                "ri.compass.main.folder.test-folder",
+                "--parent-folder",
+                "ri.compass.main.folder.new-parent",
+            ],
+            input="n\n",
+        )
+
+    assert result.exit_code == 0
+    assert "Folder move cancelled" in result.stdout
+    mock_service_class.assert_not_called()
+
+
+@pytest.mark.parametrize("output_format", ["json", "csv"])
+def test_move_folder_structured_output(
+    runner, mock_folder_service, sample_folder, output_format
+):
+    """Test move supports JSON and CSV success output."""
+    mock_folder_service.move_folder.return_value = sample_folder
+
+    result = runner.invoke(
+        app,
+        [
+            "folder",
+            "move",
+            "ri.compass.main.folder.test-folder",
+            "--parent-folder",
+            "ri.compass.main.folder.new-parent",
+            "--format",
+            output_format,
+            "--confirm",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Successfully moved folder" in result.stdout
+    assert "ri.compass.main.folder.test-folder" in result.stdout
+    mock_folder_service.move_folder.assert_called_once_with(
+        folder_rid="ri.compass.main.folder.test-folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+        display_name=None,
+    )
+
+
+def test_move_folder_caches_returned_rid(runner, mock_folder_service, sample_folder):
+    """Test move caches the RID returned by the service."""
+    mock_folder_service.move_folder.return_value = sample_folder
+
+    with patch("pltr.commands.folder.cache_rid") as mock_cache_rid:
+        result = runner.invoke(
+            app,
+            [
+                "folder",
+                "move",
+                "ri.compass.main.folder.test-folder",
+                "--parent-folder",
+                "ri.compass.main.folder.new-parent",
+                "--confirm",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_cache_rid.assert_called_once_with("ri.compass.main.folder.test-folder")
+
+
+def test_move_folder_uses_profile(runner, sample_folder):
+    """Test move passes the selected profile to the service."""
+    with patch("pltr.commands.folder.FolderService") as mock_service_class:
+        mock_service_class.return_value.move_folder.return_value = sample_folder
+        result = runner.invoke(
+            app,
+            [
+                "folder",
+                "move",
+                "ri.compass.main.folder.test-folder",
+                "--parent-folder",
+                "ri.compass.main.folder.new-parent",
+                "--profile",
+                "test-profile",
+                "--confirm",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_service_class.assert_called_once_with(profile="test-profile")
+
+
+def test_move_folder_error(runner, mock_folder_service):
+    """Test move maps service failures to the command error convention."""
+    mock_folder_service.move_folder.side_effect = RuntimeError("SDK move failed")
+
+    result = runner.invoke(
+        app,
+        [
+            "folder",
+            "move",
+            "ri.compass.main.folder.test-folder",
+            "--parent-folder",
+            "ri.compass.main.folder.new-parent",
+            "--confirm",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Failed to move folder: SDK move failed" in result.stdout
+
+
 def test_list_children(runner, mock_folder_service, sample_children):
     """Test listing folder children."""
     mock_folder_service.list_children.return_value = sample_children

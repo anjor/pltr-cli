@@ -130,6 +130,72 @@ def get_folder(
         raise typer.Exit(1)
 
 
+@app.command("move")
+def move_folder(
+    folder_rid: str = typer.Argument(
+        ..., help="Folder Resource Identifier", autocompletion=complete_rid
+    ),
+    parent_folder_rid: str = typer.Option(
+        ...,
+        "--parent-folder",
+        "-p",
+        help="Destination parent folder RID",
+        autocompletion=complete_rid,
+    ),
+    name: Optional[str] = typer.Option(None, "--name", help="New folder display name"),
+    profile: Optional[str] = typer.Option(
+        None, "--profile", help="Profile name", autocompletion=complete_profile
+    ),
+    format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format (table, json, csv)",
+        autocompletion=complete_output_format,
+    ),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+):
+    """Move a folder to a new parent, optionally renaming it."""
+    try:
+        if not confirm:
+            confirmed = typer.confirm(
+                f"Move folder {folder_rid} to {parent_folder_rid}?"
+            )
+            if not confirmed:
+                formatter.print_info("Folder move cancelled.")
+                return
+
+        service = FolderService(profile=profile)
+
+        with SpinnerProgressTracker().track_spinner(
+            f"Moving folder {folder_rid}..."
+        ):
+            folder = service.move_folder(
+                folder_rid=folder_rid,
+                parent_folder_rid=parent_folder_rid,
+                display_name=name,
+            )
+
+        if folder.get("rid"):
+            cache_rid(folder["rid"])
+
+        formatter.print_success(f"Successfully moved folder {folder_rid}")
+
+        if format == "json":
+            formatter.format_dict(folder, format=format)
+        elif format == "csv":
+            formatter.format_list([folder], format=format)
+        else:
+            _format_folder_table(folder)
+
+    except (ProfileNotFoundError, MissingCredentialsError) as e:
+        formatter.print_error(f"Authentication error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        formatter.print_error(f"Failed to move folder: {e}")
+        raise typer.Exit(1)
+
+
 @app.command("list")
 def list_children(
     folder_rid: str = typer.Argument(
@@ -334,5 +400,9 @@ def main():
 
         # Get folder information
         pltr folder get ri.compass.main.folder.xyz123
+
+        # Move a folder to a new parent
+        pltr folder move ri.compass.main.folder.xyz123 \
+            --parent-folder ri.compass.main.folder.parent
     """
     pass

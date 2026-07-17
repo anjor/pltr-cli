@@ -104,6 +104,71 @@ def test_get_folder(mock_folder_service, sample_folder):
     )
 
 
+def test_move_folder_preserves_current_name(mock_folder_service, sample_folder):
+    """Test moving a folder without renaming it."""
+    service, mock_folder_class = mock_folder_service
+    current_folder = Mock(display_name="Existing Folder")
+    mock_folder_class.get.return_value = current_folder
+    mock_folder_class.replace.return_value = sample_folder
+
+    result = service.move_folder(
+        folder_rid="ri.compass.main.folder.test-folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+    )
+
+    assert result["rid"] == "ri.compass.main.folder.test-folder"
+    assert result["display_name"] == "Test Folder"
+    mock_folder_class.get.assert_called_once_with(
+        "ri.compass.main.folder.test-folder", preview=True
+    )
+    mock_folder_class.replace.assert_called_once_with(
+        folder_rid="ri.compass.main.folder.test-folder",
+        display_name="Existing Folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+        preview=True,
+    )
+
+
+def test_move_folder_overrides_name_after_fetch(mock_folder_service, sample_folder):
+    """Test moving and renaming a folder still fetches before replacing it."""
+    service, mock_folder_class = mock_folder_service
+    mock_folder_class.get.return_value = Mock(display_name="Existing Folder")
+    mock_folder_class.replace.return_value = sample_folder
+
+    service.move_folder(
+        folder_rid="ri.compass.main.folder.test-folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+        display_name="Renamed Folder",
+    )
+
+    mock_folder_class.get.assert_called_once_with(
+        "ri.compass.main.folder.test-folder", preview=True
+    )
+    mock_folder_class.replace.assert_called_once_with(
+        folder_rid="ri.compass.main.folder.test-folder",
+        display_name="Renamed Folder",
+        parent_folder_rid="ri.compass.main.folder.new-parent",
+        preview=True,
+    )
+
+
+def test_move_folder_error(mock_folder_service):
+    """Test move errors use the standard service error formatting."""
+    service, mock_folder_class = mock_folder_service
+    mock_folder_class.get.side_effect = Exception("API error")
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to move folder ri.compass.main.folder.test-folder: API error",
+    ):
+        service.move_folder(
+            "ri.compass.main.folder.test-folder",
+            "ri.compass.main.folder.new-parent",
+        )
+
+    mock_folder_class.replace.assert_not_called()
+
+
 def test_list_children(mock_folder_service, sample_children):
     """Test listing folder children."""
     service, mock_folder_class = mock_folder_service
