@@ -969,9 +969,7 @@ class _Analyzer:
         return out
 
     @staticmethod
-    def _record(
-        context: _Context, **fields: Any
-    ) -> SdkCall:
+    def _record(context: _Context, **fields: Any) -> SdkCall:
         file, class_name, method, node = context
         fields.setdefault("resolved", False)
         fields.setdefault("beta", None)
@@ -984,9 +982,7 @@ class _Analyzer:
             **fields,
         )
 
-    def _http_record(
-        self, name: str, context: _Context
-    ) -> SdkCall:
+    def _http_record(self, name: str, context: _Context) -> SdkCall:
         file, class_name, method, _ = context
         function = f"{class_name}.{method}" if class_name else method
         label = self.labeled_http.get(f"{file}::{function}")
@@ -1003,9 +999,7 @@ class _Analyzer:
             context, sdk_path=name, kind="http", http_label=label, violations=violations
         )
 
-    def _sdk_record(
-        self, ref: _SdkRef, context: _Context
-    ) -> SdkCall:
+    def _sdk_record(self, ref: _SdkRef, context: _Context) -> SdkCall:
         target = ".".join(ref.path)
         obj, error = self.resolve(ref.path)
         if error is not None:
