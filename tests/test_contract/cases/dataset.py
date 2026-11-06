@@ -1,0 +1,37 @@
+"""Contract-test cases for src/pltr/commands/dataset.py (see __init__.py)."""
+
+# Not converted to the output/error contract yet. Delete a command's
+# entry when you convert it (and add its SUCCESS case).
+NOT_CONVERTED = {
+    "dataset branches create",
+    "dataset branches delete",
+    "dataset branches get",
+    "dataset branches list",
+    "dataset branches transactions",
+    "dataset create",
+    "dataset files delete",
+    "dataset files get",
+    "dataset files info",
+    "dataset files list",
+    "dataset files upload",
+    "dataset get",
+    "dataset jobs list",
+    "dataset preview",
+    "dataset schedules list",
+    "dataset schema apply",
+    "dataset schema get",
+    "dataset schema set",
+    "dataset transactions abort",
+    "dataset transactions build",
+    "dataset transactions commit",
+    "dataset transactions list",
+    "dataset transactions start",
+    "dataset transactions status",
+    "dataset views add-datasets",
+    "dataset views add-primary-key",
+    "dataset views create",
+    "dataset views get",
+    "dataset views list",
+    "dataset views remove-datasets",
+    "dataset views replace-datasets",
+}
