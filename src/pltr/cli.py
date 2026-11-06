@@ -35,6 +35,7 @@ from pltr.commands import (
     widgets,
 )
 from pltr.commands.cp import cp_command
+from pltr.commands import api as api_commands
 
 app = typer.Typer(
     name="pltr",
@@ -120,6 +121,8 @@ app.add_typer(alias.app, name="alias", help="Manage command aliases")
 app.command("cp", help="Copy datasets or folders into another Compass folder")(
     cp_command
 )
+# Generated commands for every SDK method, loaded lazily (see pltr.commands.api).
+app.add_typer(api_commands.app, name="api", help=api_commands.HELP)
 
 
 def version_callback(value: bool):
