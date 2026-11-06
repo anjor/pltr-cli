@@ -290,14 +290,19 @@ class CopyService:
             new_folder_rid = "<dry-run>"
         else:
             created = self.folder_service.create_folder(new_name, target_folder_rid)
-            new_folder_rid = created["rid"]
+            new_folder_rid = created.rid
             self._log_success(
                 f"Created folder '{new_name}' ({new_folder_rid}) in {target_folder_rid}"
             )
 
         self.stats.folders += 1
 
-        children = self.folder_service.list_children(folder_rid)
+        # FolderService returns SDK models; iterating the SDK iterator walks
+        # every page. Children are handled as dicts below.
+        children = [
+            {"rid": child.rid, "display_name": child.display_name, "type": child.type}
+            for child in self.folder_service.list_children(folder_rid)
+        ]
         if not children:
             self._log_info("  Folder has no children to copy.")
             return

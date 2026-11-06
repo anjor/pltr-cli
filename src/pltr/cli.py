@@ -35,11 +35,13 @@ from pltr.commands import (
     widgets,
 )
 from pltr.commands.cp import cp_command
+from pltr.contract import PltrRootGroup
 
 app = typer.Typer(
     name="pltr",
     help="Command-line interface for Palantir Foundry APIs",
     no_args_is_help=True,
+    cls=PltrRootGroup,
 )
 
 # Add subcommands

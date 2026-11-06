@@ -71,7 +71,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get widget set" in result.stdout
+        assert "Failed to get widget set" in result.stderr
 
     # ===== Dev Mode Get Command Tests =====
 
@@ -116,7 +116,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get dev mode settings" in result.stdout
+        assert "Failed to get dev mode settings" in result.stderr
 
     # ===== Dev Mode Enable Command Tests =====
 
@@ -159,7 +159,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to enable dev mode" in result.stdout
+        assert "Failed to enable dev mode" in result.stderr
 
     # ===== Dev Mode Disable Command Tests =====
 
@@ -184,7 +184,7 @@ class TestWidgetsCommands:
         # Assert
         assert result.exit_code == 0
         mock_service.disable_dev_mode.assert_called_once()
-        assert "disabled" in result.stdout.lower()
+        assert "disabled" in result.stderr.lower()
 
     # ===== Dev Mode Pause Command Tests =====
 
@@ -258,7 +258,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 0
-        assert "No releases found" in result.stdout
+        assert "No releases found" in result.stderr
 
     def test_release_list_with_page_size(self, runner, mock_service) -> None:
         """Test list releases command with page size."""
@@ -301,7 +301,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to list releases" in result.stdout
+        assert "Failed to list releases" in result.stderr
 
     # ===== Release Get Command Tests =====
 
@@ -353,7 +353,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get release" in result.stdout
+        assert "Failed to get release" in result.stderr
 
     # ===== Release Delete Command Tests =====
 
@@ -380,7 +380,7 @@ class TestWidgetsCommands:
             widget_set_rid="ri.widgetregistry..widget-set.abc123",
             release_version="1.0.0",
         )
-        assert "deleted" in result.stdout.lower()
+        assert "deleted" in result.stderr.lower()
 
     def test_release_delete_cancelled(self, runner, mock_service) -> None:
         """Test delete release command cancelled by user."""
@@ -399,7 +399,7 @@ class TestWidgetsCommands:
         # Assert
         assert result.exit_code == 0
         mock_service.delete_release.assert_not_called()
-        assert "cancelled" in result.stdout.lower()
+        assert "cancelled" in result.stderr.lower()
 
     def test_release_delete_error(self, runner, mock_service) -> None:
         """Test delete release command with error."""
@@ -420,7 +420,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to delete release" in result.stdout
+        assert "Failed to delete release" in result.stderr
 
     # ===== Repository Get Command Tests =====
 
@@ -469,7 +469,7 @@ class TestWidgetsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get repository" in result.stdout
+        assert "Failed to get repository" in result.stderr
 
     # ===== Help Command Tests =====
 

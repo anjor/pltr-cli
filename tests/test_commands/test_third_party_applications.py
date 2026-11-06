@@ -120,7 +120,7 @@ class TestThirdPartyApplicationsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get third-party application" in result.stdout
+        assert "Failed to get third-party application" in result.stderr
 
     def test_help_command(self, runner) -> None:
         """Test help output for commands."""

@@ -2,6 +2,8 @@
 Tests for dataset CLI commands.
 """
 
+import json
+
 import pytest
 from unittest.mock import Mock, patch
 from typer.testing import CliRunner
@@ -92,7 +94,7 @@ def test_get_dataset_profile_not_found(mock_dataset_service):
     result = runner.invoke(app, ["get", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Profile not found" in result.stdout
+    assert "Profile not found" in result.stderr
 
 
 def test_get_dataset_missing_credentials(mock_dataset_service):
@@ -104,7 +106,7 @@ def test_get_dataset_missing_credentials(mock_dataset_service):
     result = runner.invoke(app, ["get", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Missing token" in result.stdout
+    assert "Missing token" in result.stderr
 
 
 def test_get_dataset_error(mock_dataset_service):
@@ -114,7 +116,7 @@ def test_get_dataset_error(mock_dataset_service):
     result = runner.invoke(app, ["get", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Failed to get dataset" in result.stdout
+    assert "Failed to get dataset" in result.stderr
 
 
 # Tests for 'create' command
@@ -127,7 +129,7 @@ def test_create_dataset_success(mock_dataset_service, sample_dataset):
     )
 
     assert result.exit_code == 0
-    assert "Successfully created dataset" in result.stdout
+    assert "Successfully created dataset" in result.stderr
     mock_dataset_service.create_dataset.assert_called_once_with(
         name="New Dataset", parent_folder_rid="ri.compass.main.folder.test"
     )
@@ -197,7 +199,7 @@ def test_create_dataset_profile_not_found(mock_dataset_service):
     )
 
     assert result.exit_code == 1
-    assert "Profile not found" in result.stdout
+    assert "Profile not found" in result.stderr
 
 
 def test_create_dataset_missing_credentials(mock_dataset_service):
@@ -211,7 +213,7 @@ def test_create_dataset_missing_credentials(mock_dataset_service):
     )
 
     assert result.exit_code == 1
-    assert "Missing token" in result.stdout
+    assert "Missing token" in result.stderr
 
 
 def test_create_dataset_error(mock_dataset_service):
@@ -223,7 +225,7 @@ def test_create_dataset_error(mock_dataset_service):
     )
 
     assert result.exit_code == 1
-    assert "Failed to create dataset" in result.stdout
+    assert "Failed to create dataset" in result.stderr
 
 
 # Tests for 'preview' command
@@ -320,7 +322,36 @@ def test_preview_dataset_with_output_file(mock_dataset_service, tmp_path):
     )
 
     assert result.exit_code == 0
-    assert "Preview saved to" in result.stdout
+    assert json.loads(output_file.read_text()) == [{"id": 1, "name": "test1"}]
+    # The data went to the file; in JSON mode informational messages such as
+    # "Preview saved to ..." are suppressed, so both streams stay empty.
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_preview_dataset_with_output_file_table_mode_reports_path(
+    mock_dataset_service, tmp_path
+):
+    """Outside JSON mode the saved-to message goes to stderr."""
+    mock_dataset_service.preview_data.return_value = [{"id": 1, "name": "test1"}]
+    output_file = tmp_path / "preview.csv"
+
+    result = runner.invoke(
+        app,
+        [
+            "preview",
+            "ri.foundry.main.dataset.test",
+            "--format",
+            "csv",
+            "--output",
+            str(output_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Preview saved to" in result.stderr
+    assert result.stdout == ""
+    assert "test1" in output_file.read_text()
 
 
 def test_preview_dataset_empty(mock_dataset_service):
@@ -330,7 +361,7 @@ def test_preview_dataset_empty(mock_dataset_service):
     result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 0
-    assert "Dataset is empty" in result.stdout
+    assert "Dataset is empty" in result.stderr
 
 
 def test_preview_dataset_with_profile(mock_dataset_service):
@@ -355,7 +386,7 @@ def test_preview_dataset_profile_not_found(mock_dataset_service):
     result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Profile not found" in result.stdout
+    assert "Profile not found" in result.stderr
 
 
 def test_preview_dataset_missing_credentials(mock_dataset_service):
@@ -367,7 +398,7 @@ def test_preview_dataset_missing_credentials(mock_dataset_service):
     result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Missing token" in result.stdout
+    assert "Missing token" in result.stderr
 
 
 def test_preview_dataset_error(mock_dataset_service):
@@ -377,4 +408,4 @@ def test_preview_dataset_error(mock_dataset_service):
     result = runner.invoke(app, ["preview", "ri.foundry.main.dataset.test"])
 
     assert result.exit_code == 1
-    assert "Failed to preview dataset" in result.stdout
+    assert "Failed to preview dataset" in result.stderr

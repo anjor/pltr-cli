@@ -1,5 +1,7 @@
 """Tests for Functions commands."""
 
+import json
+
 import pytest
 from unittest.mock import Mock, patch, mock_open
 from typer.testing import CliRunner
@@ -151,7 +153,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get query" in result.stdout
+        assert "Failed to get query" in result.stderr
 
     # ===== Query Get-By-RID Tests =====
 
@@ -202,7 +204,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get query" in result.stdout
+        assert "Failed to get query" in result.stderr
 
     # ===== Query Execute Tests =====
 
@@ -344,7 +346,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Invalid JSON in parameters" in result.stdout
+        assert "Invalid JSON in parameters" in result.stderr
 
     def test_query_execute_file_not_found(self, runner, mock_service):
         """Test execute query with non-existent parameter file."""
@@ -364,7 +366,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Parameter file not found" in result.stdout
+        assert "Parameter file not found" in result.stderr
 
     def test_query_execute_permission_denied(self, runner, mock_service):
         """Test execute query with permission denied error."""
@@ -388,7 +390,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to execute query" in result.stdout
+        assert "Failed to execute query" in result.stderr
 
     def test_query_execute_no_parameters(self, runner, mock_service):
         """Test execute query without parameters."""
@@ -522,7 +524,7 @@ class TestFunctionsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get value type" in result.stdout
+        assert "Failed to get value type" in result.stderr
 
     def test_value_type_get_with_profile(self, runner, mock_service):
         """Test get value type with profile option."""
@@ -609,21 +611,43 @@ class TestFunctionsCommands:
         query_result = {"rid": "ri.functions.main.query.abc123", "apiName": "myQuery"}
         mock_service.get_query.return_value = query_result
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--output",
-                "output.json",
-                "--format",
-                "json",
-            ],
-        )
+        # Execute (in a temporary directory: the command writes output.json)
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                app,
+                [
+                    "functions",
+                    "query",
+                    "get",
+                    "myQuery",
+                    "--output",
+                    "output.json",
+                    "--format",
+                    "json",
+                ],
+            )
 
-        # Assert
+            # Assert
+            assert result.exit_code == 0
+            with open("output.json") as saved:
+                assert json.load(saved) == query_result
+        # The data went to the file. In JSON mode informational messages such
+        # as "saved to output.json" are suppressed: both streams stay empty.
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_query_get_with_output_file_reports_path_in_table_mode(
+        self, runner, mock_service
+    ):
+        """Outside JSON mode the saved-to message goes to stderr."""
+        mock_service.get_query.return_value = {"rid": "ri.functions.main.query.abc123"}
+
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                app,
+                ["functions", "query", "get", "myQuery", "--output", "output.txt"],
+            )
+
         assert result.exit_code == 0
-        assert "saved to output.json" in result.stdout
+        assert "saved to output.txt" in result.stderr
+        assert result.stdout == ""

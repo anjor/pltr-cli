@@ -15,8 +15,14 @@ from rich.progress import (
     FileSizeColumn,
     TotalFileSizeColumn,
     TransferSpeedColumn,
-    SpinnerColumn,
 )
+
+from ..contract.runtime import is_json, spinner, stderr_console
+
+
+def _progress_kwargs() -> dict:
+    """Progress display settings: always stderr (stdout is data only), off in JSON mode."""
+    return {"console": stderr_console(), "disable": is_json()}
 
 
 class FileProgressTracker:
@@ -62,7 +68,7 @@ class FileProgressTracker:
         if self.show_speed:
             columns.append(TransferSpeedColumn())
 
-        with Progress(*columns) as progress:
+        with Progress(*columns, **_progress_kwargs()) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total_size)
 
@@ -113,7 +119,7 @@ class FileProgressTracker:
             if self.show_speed:
                 columns.append(TransferSpeedColumn())
 
-        with Progress(*columns) as progress:
+        with Progress(*columns, **_progress_kwargs()) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total_size)
 
@@ -149,7 +155,7 @@ class FileProgressTracker:
         if total:
             columns.append(TimeRemainingColumn())
 
-        with Progress(*columns) as progress:
+        with Progress(*columns, **_progress_kwargs()) as progress:
             self._progress = progress
             task_id = progress.add_task(description, total=total)
 
@@ -164,7 +170,11 @@ class FileProgressTracker:
 
 
 class SpinnerProgressTracker:
-    """Simple spinner for indeterminate operations."""
+    """Simple spinner for indeterminate operations.
+
+    Delegates to :func:`pltr.contract.spinner`: the spinner is drawn on
+    stderr, and not at all in JSON mode or when stderr is not a terminal.
+    """
 
     def __init__(self):
         """Initialize spinner tracker."""
@@ -181,19 +191,8 @@ class SpinnerProgressTracker:
         Yields:
             None (operation runs in context)
         """
-        columns = [
-            SpinnerColumn(),
-            TextColumn("[bold cyan]{task.description}"),
-        ]
-
-        with Progress(*columns, transient=True) as progress:
-            self._progress = progress
-            progress.add_task(description)
-
-            try:
-                yield
-            finally:
-                self._progress = None
+        with spinner(description):
+            yield
 
 
 def create_file_chunks(

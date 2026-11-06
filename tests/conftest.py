@@ -6,15 +6,47 @@ import pytest
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import httpx
+import requests
+import requests.adapters
+import requests.structures
 from foundry_sdk import FoundryClient, UserTokenAuth
 
 from pltr.auth.storage import CredentialStorage
 from pltr.config.settings import Settings
 from pltr.config.profiles import ProfileManager
+
+
+STUB_HOSTNAME = "test.palantirfoundry.com"
+STUB_TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True)
+def _clean_output_environment(monkeypatch):
+    """Keep the caller's PLTR_FORMAT / PLTR_DEBUG from changing test results."""
+    monkeypatch.delenv("PLTR_FORMAT", raising=False)
+    monkeypatch.delenv("PLTR_DEBUG", raising=False)
+
+
+@pytest.fixture
+def isolated_home(monkeypatch, tmp_path) -> Path:
+    """Point the home and config directories at a temporary directory.
+
+    Commands write a RID completion cache (~/.cache/pltr) and read profiles
+    from ~/.config/pltr; this keeps CLI tests away from the real ones. Also
+    widens Rich's console so tables aren't folded at 80 columns.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("COLUMNS", "200")
+    return home
 
 
 @dataclass
@@ -24,10 +56,26 @@ class StubFoundryHttp:
     client: Any
     requests: List[httpx.Request] = field(default_factory=list)
     _queued: List[Tuple[int, Dict[str, Any]]] = field(default_factory=list)
+    _default: Optional[Tuple[int, Dict[str, Any]]] = None
 
     def respond(self, status_code: int = 200, **response_kwargs: Any) -> None:
         """Queue the response for the next request (kwargs go to httpx.Response)."""
         self._queued.append((status_code, response_kwargs))
+
+    def respond_always(self, status_code: int = 200, **response_kwargs: Any) -> None:
+        """Answer every request that has no queued response with this response.
+
+        Queued responses (``respond``) are still used first.
+        """
+        self._default = (status_code, response_kwargs)
+
+    def next_response(self, request: httpx.Request) -> Tuple[int, Dict[str, Any]]:
+        """Pop the queued response, else the default one, else fail the test."""
+        if self._queued:
+            return self._queued.pop(0)
+        if self._default is not None:
+            return self._default
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
 
 @pytest.fixture
@@ -37,25 +85,56 @@ def stub_foundry_http(monkeypatch) -> StubFoundryHttp:
     Unlike Mock()-based clients, calls to SDK methods or keyword arguments that
     don't exist fail, SDK argument validation runs, responses are decoded into
     real SDK models, and SDK warnings (e.g. about `preview`) surface.
+
+    Requests made with the ``requests`` library (the labeled direct-HTTP
+    commands) are answered from the same queue and recorded in
+    ``stub.requests`` as ``httpx.Request`` objects too, so no test can reach
+    the network through either client.
     """
     stub = StubFoundryHttp(
         client=FoundryClient(
-            auth=UserTokenAuth(token="test-token"),
-            hostname="test.palantirfoundry.com",
+            auth=UserTokenAuth(token=STUB_TOKEN), hostname=STUB_HOSTNAME
         )
     )
 
     def fake_send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
         request.read()
         stub.requests.append(request)
-        if not stub._queued:
-            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
-        status_code, response_kwargs = stub._queued.pop(0)
+        status_code, response_kwargs = stub.next_response(request)
         return httpx.Response(status_code, request=request, **response_kwargs)
 
+    def fake_requests_send(
+        self, prepared: requests.PreparedRequest, **kwargs: Any
+    ) -> requests.Response:
+        body = prepared.body
+        content = body.encode() if isinstance(body, str) else (body or b"")
+        request = httpx.Request(
+            prepared.method or "GET",
+            prepared.url or "",
+            headers=dict(prepared.headers),
+            content=content,
+        )
+        stub.requests.append(request)
+        status_code, response_kwargs = stub.next_response(request)
+        canned = httpx.Response(status_code, request=request, **response_kwargs)
+        response = requests.Response()
+        response.status_code = status_code
+        response._content = canned.content
+        response.headers = requests.structures.CaseInsensitiveDict(canned.headers)
+        response.url = prepared.url or ""
+        response.reason = canned.reason_phrase
+        response.encoding = "utf-8"
+        response.request = prepared
+        return response
+
     monkeypatch.setattr(httpx.Client, "send", fake_send)
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_requests_send)
     auth_manager = Mock()
     auth_manager.return_value.get_client.return_value = stub.client
+    # For direct-HTTP code (BaseService._make_request): host and token.
+    auth_manager.return_value.get_auth_context.return_value = SimpleNamespace(
+        base_url=f"https://{STUB_HOSTNAME}", get_token=lambda: STUB_TOKEN
+    )
     monkeypatch.setattr("pltr.services.base.AuthManager", auth_manager)
     return stub
 
