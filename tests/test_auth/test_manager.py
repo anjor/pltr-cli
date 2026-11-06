@@ -10,8 +10,33 @@ from pltr.auth.token import TokenAuthProvider
 from pltr.auth.oauth import OAuthClientProvider
 
 
+@pytest.fixture(autouse=True)
+def no_auth_environment(monkeypatch):
+    """AuthManager falls back to FOUNDRY_* variables; keep the caller's out."""
+    for name in (
+        "PLTR_PROFILE",
+        "FOUNDRY_HOST",
+        "FOUNDRY_HOSTNAME",
+        "FOUNDRY_TOKEN",
+        "FOUNDRY_CLIENT_ID",
+        "FOUNDRY_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 class TestAuthManager:
     """Tests for AuthManager."""
+
+    def test_init_reads_nothing(self):
+        """Creating a manager touches neither the keyring nor the config files."""
+        with (
+            patch("pltr.auth.manager.CredentialStorage") as mock_storage_class,
+            patch("pltr.auth.manager.ProfileManager") as mock_profile_class,
+        ):
+            AuthManager()
+
+            mock_storage_class.assert_not_called()
+            mock_profile_class.assert_not_called()
 
     def test_init(self):
         """Test initialization."""

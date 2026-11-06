@@ -6,6 +6,25 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 
 
+def normalize_host(host: str) -> str:
+    """
+    Normalise a Foundry host the way the SDK does.
+
+    Accepts ``stack.palantirfoundry.com``, ``https://stack.palantirfoundry.com``
+    and ``https://stack.palantirfoundry.com/`` alike and returns the bare host
+    (plus any path the user gave), without scheme or surrounding slashes. The SDK
+    client always talks HTTPS to this host.
+
+    Args:
+        host: Host as typed by the user, stored in a profile or set in the
+            environment
+
+    Returns:
+        Host without scheme, e.g. ``stack.palantirfoundry.com``
+    """
+    return host.strip().split("://", 1)[-1].strip("/")
+
+
 class AuthProvider(ABC):
     """Abstract base class for authentication providers."""
 
@@ -39,6 +58,18 @@ class InvalidCredentialsError(AuthError):
 
 class MissingCredentialsError(AuthError):
     """Raised when required credentials are missing."""
+
+    pass
+
+
+class KeyringUnavailableError(MissingCredentialsError):
+    """
+    Raised when the system keyring can't be used to read or store credentials.
+
+    The keyring backend may be missing (common in CI, containers and agent
+    sandboxes), fail, or not answer in time. The message points to
+    environment-variable authentication, which needs no keyring.
+    """
 
     pass
 

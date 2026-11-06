@@ -3,16 +3,27 @@ Configuration commands for pltr CLI.
 """
 
 import typer
-from typing import Optional
+from typing import NoReturn, Optional
 from rich.console import Console
+from rich.markup import escape
 from rich.prompt import Prompt, Confirm
 
 from ..auth.storage import CredentialStorage
-from ..auth.base import ProfileNotFoundError
+from ..auth.base import KeyringUnavailableError, ProfileNotFoundError
 from ..config.profiles import ProfileManager
 
 app = typer.Typer()
 console = Console()
+err_console = Console(stderr=True)
+
+# Exit code for authentication/credential problems (roadmap decision 6).
+EXIT_AUTH = 3
+
+
+def _keyring_unavailable(error: KeyringUnavailableError) -> NoReturn:
+    """Explain that the keyring can't be used (pointing to env-var auth) and exit."""
+    err_console.print(f"[red]Error:[/red] {escape(str(error))}", soft_wrap=True)
+    raise typer.Exit(EXIT_AUTH)
 
 
 @app.command()
@@ -42,8 +53,13 @@ def configure(
     if not profile:
         profile = "default"
 
-    # Check if profile already exists
-    if storage.profile_exists(profile):
+    # Check if profile already exists (this also fails fast, before any prompt,
+    # when there is no usable keyring)
+    try:
+        profile_exists = storage.profile_exists(profile)
+    except KeyringUnavailableError as e:
+        _keyring_unavailable(e)
+    if profile_exists:
         if not Confirm.ask(f"Profile '{profile}' already exists. Overwrite?"):
             console.print("[yellow]Configuration cancelled.[/yellow]")
             raise typer.Exit()
@@ -79,7 +95,10 @@ def configure(
         credentials["client_secret"] = client_secret
 
     # Save credentials
-    storage.save_profile(profile, credentials)
+    try:
+        storage.save_profile(profile, credentials)
+    except KeyringUnavailableError as e:
+        _keyring_unavailable(e)
     profile_manager.add_profile(profile)
 
     # Set as default if it's the first profile
@@ -146,6 +165,8 @@ def delete(
         storage.delete_profile(profile)
         profile_manager.remove_profile(profile)
         console.print(f"[green]✓[/green] Profile '{profile}' deleted")
+    except KeyringUnavailableError as e:
+        _keyring_unavailable(e)
     except ProfileNotFoundError:
         console.print(f"[red]Error:[/red] Could not delete profile '{profile}'")
         raise typer.Exit(1)

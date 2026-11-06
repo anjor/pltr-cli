@@ -8,7 +8,7 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 81+ 
 
 ## ✨ Key Features
 
-- 🔐 **Secure Authentication**: Token and OAuth2 support with encrypted credential storage
+- 🔐 **Secure Authentication**: Token and OAuth2 support, with profiles in the system keyring or environment variables for CI and agents (no keyring or setup needed)
 - 📊 **Dataset Operations**: Complete dataset management with branches, files, transactions, and views (RID-based API)
 - 📁 **Filesystem Management**: Complete filesystem operations including folders, projects, spaces, and resources
 - 🏗️ **Project Management**: Create, update, and manage Foundry projects within spaces
@@ -65,6 +65,9 @@ Follow the interactive prompts to enter:
 - Authentication method (token or OAuth2)
 - Your credentials
 
+Running in CI, a container or an AI agent? Skip `configure` and export
+`FOUNDRY_HOST` and `FOUNDRY_TOKEN` instead (see [Authentication](#-authentication)).
+
 ### 2. Verify Connection
 
 Test your setup:
@@ -72,6 +75,9 @@ Test your setup:
 ```bash
 pltr verify
 ```
+
+`verify` fetches your user from Foundry and shows which credentials it used
+(`pltr verify --format json` for scripts).
 
 ### 3. Start Exploring
 
@@ -417,24 +423,56 @@ pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
 
 pltr-cli stores configuration securely using industry best practices:
 
-- **Profile Configuration**: `~/.config/pltr/profiles.json`
+- **Profile Configuration**: `~/.config/pltr/profiles.json` (or `$XDG_CONFIG_HOME/pltr/`)
 - **Credentials**: Encrypted in system keyring (never stored in plain text)
 - **Shell History**: `~/.config/pltr/repl_history` (for interactive mode)
 
-### Environment Variables
+pltr only creates the configuration directory when it saves something (for
+example `pltr configure`); reading configuration never needs it.
 
-For CI/CD and automation, use environment variables:
+## 🔐 Authentication
+
+Every command authenticates the same way, including the few that call Foundry
+endpoints directly. pltr uses the **first** of these that applies:
+
+1. `--profile NAME` on the command line
+2. the `PLTR_PROFILE` environment variable (a profile name)
+3. the default profile (the first profile you configure, or `pltr configure set-default NAME`)
+4. environment variables, when no profile is selected by 1–3:
+   - token: `FOUNDRY_HOST` and `FOUNDRY_TOKEN`
+   - OAuth2 client credentials: `FOUNDRY_HOST`, `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`
+
+An exported `FOUNDRY_*` variable never overrides, or fills gaps in, a stored
+profile. `PLTR_PROFILE` naming a profile that doesn't exist is an error, not a
+fallback. Hosts work with or without `https://`. `pltr verify` reports which
+source it used.
+
+### Headless use: CI, containers and AI agents
+
+With environment variables there is nothing to set up: no `pltr configure`, no
+configuration directory and no system keyring.
 
 ```bash
 # Token authentication
-export FOUNDRY_TOKEN="your-api-token"
 export FOUNDRY_HOST="foundry.company.com"
+export FOUNDRY_TOKEN="your-api-token"
 
-# OAuth2 authentication
+# Or OAuth2 client credentials (used when FOUNDRY_TOKEN isn't set)
+export FOUNDRY_HOST="foundry.company.com"
 export FOUNDRY_CLIENT_ID="your-client-id"
 export FOUNDRY_CLIENT_SECRET="your-client-secret"
-export FOUNDRY_HOST="foundry.company.com"
+
+pltr verify --format json   # {"authSource": {...}, "user": {...}}
 ```
+
+These variables are only used when no profile is selected, so on a machine
+that also has a default profile, that profile wins. `FOUNDRY_HOSTNAME` (the
+Foundry SDK's name for the host) is accepted when `FOUNDRY_HOST` isn't set.
+
+Stored profiles keep their credentials in the system keyring. If a profile is
+needed and the keyring is missing, broken or doesn't answer within 30 seconds
+(`PLTR_KEYRING_TIMEOUT`), pltr stops with an error that points to the
+environment variables instead of hanging.
 
 See **[Authentication Setup](docs/user-guide/authentication.md)** for complete configuration options.
 

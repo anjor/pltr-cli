@@ -7,7 +7,69 @@ pltr-cli supports multiple authentication methods for connecting to Palantir Fou
 pltr-cli supports two authentication methods:
 
 1. **Token Authentication** - Simple API token-based auth (recommended for most users)
-2. **OAuth2 Authentication** - Client credentials flow for advanced scenarios
+2. **OAuth2 Authentication** - Client credentials flow for service users and automation
+
+You can provide either one in two ways:
+
+- **Profiles**, created with `pltr configure configure`. The host is stored in
+  `~/.config/pltr/profiles.json`; the token or client secret is stored in the
+  system keyring.
+- **Environment variables** (`FOUNDRY_HOST` plus `FOUNDRY_TOKEN`, or
+  `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`). Nothing to set up and no
+  keyring needed, which suits CI, containers and AI agents. See
+  [Headless use](#-headless-use-ci-containers-and-ai-agents).
+
+## 🧭 How pltr Chooses Credentials
+
+Every command authenticates the same way, including `pltr verify` and the few
+commands that call Foundry endpoints directly. pltr uses the **first** of these
+that applies:
+
+1. `--profile NAME` on the command line
+2. the `PLTR_PROFILE` environment variable (a profile name)
+3. the default profile (the first profile you configure, or
+   `pltr configure set-default NAME`)
+4. environment variables, only when no profile is selected by 1–3:
+   - token: `FOUNDRY_HOST` and `FOUNDRY_TOKEN`
+   - OAuth2: `FOUNDRY_HOST`, `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`
+     (used when `FOUNDRY_TOKEN` isn't set)
+
+Rules worth knowing:
+
+- An exported `FOUNDRY_*` variable never overrides a stored profile, and never
+  fills in a value missing from one.
+- `PLTR_PROFILE` naming a profile that doesn't exist is an error. pltr does not
+  fall back to the default profile, so a typo can't send a command to the wrong
+  stack.
+- Hosts work with or without `https://` and a trailing slash, in profiles and
+  environment variables alike. pltr always connects over HTTPS.
+- `FOUNDRY_HOSTNAME` (the name the Foundry SDK uses) is accepted when
+  `FOUNDRY_HOST` isn't set.
+
+`pltr verify` reports which source it used:
+
+```bash
+$ pltr verify --format json
+{
+  "authSource": {
+    "kind": "profile",
+    "profile": "production",
+    "selectedBy": "default",
+    "authType": "token",
+    "host": "foundry.company.com"
+  },
+  "user": {
+    "id": "...",
+    "username": "jane.doe@company.com",
+    ...
+  }
+}
+```
+
+`authSource.kind` is `profile` or `environment`. For a profile, `selectedBy` is
+`--profile`, `PLTR_PROFILE` or `default`. For environment variables,
+`variables` lists the ones used. `user` is the Foundry user object, with the
+API's field names.
 
 ## 📋 Prerequisites
 
@@ -36,10 +98,12 @@ pltr configure configure
 ```
 
 You'll be prompted for:
-- **Foundry hostname**: Enter your Foundry domain (e.g., `foundry.company.com`)
 - **Authentication type**: Choose `token`
+- **Foundry hostname**: Enter your Foundry domain (e.g., `foundry.company.com`)
 - **API token**: Paste your token
-- **Profile name**: Enter a name (e.g., `production`)
+
+The profile is called `default` unless you pass `--profile NAME`. The first
+profile you configure becomes the default profile.
 
 ### Step 3: Verify Setup
 
@@ -49,7 +113,10 @@ Test your configuration:
 pltr verify
 ```
 
-You should see: `✅ Authentication successful!`
+`verify` fetches your user from Foundry (`admin.User.get_current`) through the
+same client every other command uses, prints your user details, and ends with
+`✓ Authentication successful` on stderr. It exits with a non-zero code when
+authentication fails (see [Troubleshooting](#-troubleshooting)).
 
 ## 🔧 Advanced Setup
 
@@ -83,6 +150,9 @@ pltr configure set-default production
 # Use specific profile for a command
 pltr verify --profile development
 pltr sql execute "SELECT 1" --profile staging
+
+# Use a profile for every command in this shell
+export PLTR_PROFILE=staging
 ```
 
 ### Command-Line Configuration
@@ -106,6 +176,9 @@ pltr configure configure \
   --client-secret "your-client-secret"
 ```
 
+Profiles need a working system keyring. In CI and other headless environments,
+use environment variables instead of `pltr configure`.
+
 ## 🔑 OAuth2 Authentication
 
 ### When to Use OAuth2
@@ -122,6 +195,10 @@ You'll need:
 - OAuth2 client ID and secret from your Foundry administrator
 - Appropriate OAuth2 scopes configured for your client
 - Understanding of your organization's OAuth2 setup
+
+pltr requests a token with all the scopes granted to the client. `pltr verify`
+reads the current user, which needs the `api:admin-read` scope; without it,
+verify reports "Permission denied (HTTP 403)" even though the credentials work.
 
 ### Setup Process
 
@@ -145,15 +222,20 @@ You'll need:
    pltr verify --profile oauth-profile
    ```
 
-## 🌍 Environment Variables
+pltr requests the access token itself and refreshes it as needed, for SDK
+commands and direct-HTTP commands alike.
 
-For CI/CD pipelines and automated scripts, you can use environment variables instead of stored profiles:
+## 🤖 Headless Use: CI, Containers and AI Agents
+
+Environment variables are enough to run every command. pltr then never touches
+the system keyring and doesn't need (or create) a configuration directory, so it
+works with a read-only or missing home directory.
 
 ### Token Authentication
 
 ```bash
-export FOUNDRY_TOKEN="your-api-token"
 export FOUNDRY_HOST="foundry.company.com"
+export FOUNDRY_TOKEN="your-api-token"
 
 # Now pltr commands will use these credentials
 pltr verify
@@ -170,22 +252,33 @@ export FOUNDRY_CLIENT_SECRET="your-client-secret"
 pltr verify
 ```
 
-### Environment Variable Priority
+If both `FOUNDRY_TOKEN` and the client credentials are set, the token is used.
+If only some of the variables are set (for example `FOUNDRY_TOKEN` without
+`FOUNDRY_HOST`), pltr says which one is missing.
 
-pltr-cli uses this priority order:
-1. Command-line `--profile` option
-2. Environment variables (if no profile specified)
-3. Default profile (if no env vars or profile specified)
+### Machines That Also Have Profiles
+
+Environment variables are only used when no profile is selected. If the machine
+has a default profile (from an earlier `pltr configure`), that profile wins over
+`FOUNDRY_*` variables. `pltr verify` shows which one was used, and its errors
+name the file that sets the default profile.
+
+### Agents
+
+For an AI agent, set the variables in the agent's environment and have it run
+`pltr verify --format json` first: stdout is a single JSON document, and on
+failure stderr carries one JSON error object and the exit code tells the
+failure apart (3 authentication, 4 permission denied, 7 network or API error).
 
 ## 🔒 Security Best Practices
 
 ### Token Security
 
 - **Never commit tokens to version control**
-- **Use environment variables in CI/CD**
+- **Use your CI system's secret store** for `FOUNDRY_TOKEN` and `FOUNDRY_CLIENT_SECRET`
 - **Rotate tokens regularly**
 - **Use minimal permissions**
-- **Store tokens securely** (pltr-cli uses system keyring)
+- **Store tokens securely** (profiles keep them in the system keyring)
 
 ### Profile Management
 
@@ -201,7 +294,7 @@ pltr configure configure --profile development      # Development work
 
 ### Network Security
 
-- **Use HTTPS** (pltr-cli enforces this)
+- **Use HTTPS** (pltr-cli always connects over HTTPS)
 - **Verify SSL certificates** (enabled by default)
 - **Use VPN** when required by your organization
 - **Monitor network traffic** for suspicious activity
@@ -242,33 +335,42 @@ pltr configure delete old-profile --force
 
 Profiles are stored securely:
 - **Credentials**: System keyring (encrypted)
-- **Configuration**: `~/.config/pltr/profiles.json`
+- **Configuration**: `~/.config/pltr/profiles.json` (or `$XDG_CONFIG_HOME/pltr/profiles.json`)
 - **No plaintext secrets**: Tokens and secrets are never stored in plain text
 
 ## 🔧 Troubleshooting
 
+`pltr verify` exits with `0` on success, `3` when authentication fails (no
+usable credentials, rejected token or client credentials, unusable keyring),
+`4` when the credentials work but may not read the current user, and `7` for
+network and other API errors.
+
 ### Common Authentication Issues
 
-#### "Authentication failed" Error
+#### "Authentication failed (HTTP 401)" Error
 
 **Possible causes:**
 - Expired or invalid token
 - Wrong hostname
-- Network connectivity issues
-- Insufficient permissions
+- Credentials from a different source than you expected
 
 **Solutions:**
 ```bash
+# See which credentials were used
+pltr verify --format json
+
 # Verify token is still valid
 pltr verify --profile your-profile
 
 # Reconfigure with new token
 pltr configure configure --profile your-profile
-
-# Check hostname format (should not include https://)
-# Correct: foundry.company.com
-# Incorrect: https://foundry.company.com
 ```
+
+#### "No profile specified and no default profile configured" Error
+
+Nothing is configured: no `--profile`, no `PLTR_PROFILE`, no default profile and
+no `FOUNDRY_*` variables. Run `pltr configure configure`, or export
+`FOUNDRY_HOST` and `FOUNDRY_TOKEN`.
 
 #### "Profile not found" Error
 
@@ -277,11 +379,31 @@ pltr configure configure --profile your-profile
 # List existing profiles
 pltr configure list-profiles
 
+# Check PLTR_PROFILE: it must name an existing profile
+echo "$PLTR_PROFILE"
+
 # Create the missing profile
 pltr configure configure --profile missing-profile
 ```
 
-#### "Network timeout" Error
+#### "The system keyring could not read the credentials" Error
+
+A stored profile was needed, but the system keyring is missing (common in
+containers and CI), failed, or didn't answer in time (for example the macOS
+Keychain over SSH, where it can't show its unlock prompt).
+
+**Solutions:**
+- Use environment variables instead (`FOUNDRY_HOST` with `FOUNDRY_TOKEN`, or
+  with `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`). They are only used when
+  no profile is selected, so drop `--profile`, unset `PLTR_PROFILE`, and make
+  sure no default profile is set (the error names the file that sets it).
+- If the keyring just needs longer (for example while you type a keychain
+  password), raise the time limit: `export PLTR_KEYRING_TIMEOUT=120`. The
+  default is 30 seconds; `0` waits indefinitely.
+- On Linux without a desktop keyring, install a keyring backend (see the
+  [keyring documentation](https://pypi.org/project/keyring/)).
+
+#### "Network timeout" or "Could not reach" Error
 
 **Solutions:**
 - Check VPN connection
@@ -291,18 +413,18 @@ pltr configure configure --profile missing-profile
 
 ### OAuth2 Specific Issues
 
-#### "Invalid client credentials" Error
+#### "The OAuth token request ... failed" Error
 
 **Solutions:**
 - Verify client ID and secret with administrator
 - Ensure OAuth2 client is properly configured in Foundry
 - Check that required scopes are assigned
 
-#### "Insufficient scope" Error
+#### "Permission denied (HTTP 403)" from `pltr verify`
 
-**Solutions:**
-- Contact Foundry administrator to review OAuth2 scopes
-- Ensure client has permissions for intended operations
+The credentials work, but the client may not read the current user. Ask your
+administrator to grant the `api:admin-read` scope, or check the client with a
+command that uses the scopes it has.
 
 ### Token Specific Issues
 
@@ -326,20 +448,33 @@ pltr configure configure --profile your-profile --token "new-token"
 
 ### Custom Configuration Directory
 
-Override default config location:
+pltr follows the XDG convention: profiles and settings live in
+`$XDG_CONFIG_HOME/pltr` when `XDG_CONFIG_HOME` is set, otherwise in
+`~/.config/pltr`. The directory is only created when pltr saves something.
 
 ```bash
-export PLTR_CONFIG_HOME="/custom/path"
-pltr configure configure
+export XDG_CONFIG_HOME="/custom/path"
+pltr configure configure   # writes /custom/path/pltr/profiles.json
 ```
+
+### Environment Variable Reference
+
+| Variable | Purpose |
+|---|---|
+| `PLTR_PROFILE` | Profile to use when `--profile` isn't given |
+| `FOUNDRY_HOST` | Foundry host for environment-variable auth (`FOUNDRY_HOSTNAME` also works) |
+| `FOUNDRY_TOKEN` | Token for environment-variable auth |
+| `FOUNDRY_CLIENT_ID`, `FOUNDRY_CLIENT_SECRET` | OAuth2 client credentials for environment-variable auth |
+| `PLTR_KEYRING_TIMEOUT` | Seconds to wait for the system keyring (default 30; `0` waits indefinitely) |
+| `XDG_CONFIG_HOME` | Parent of pltr's configuration directory |
 
 ### Debugging Authentication
 
-Enable verbose output:
-
 ```bash
-# Most commands support debug output through error messages
-# For authentication debugging, check the verify command output
+# Which credentials were used, and who you are
+pltr verify --format json
+
+# Check a specific profile
 pltr verify --profile your-profile
 ```
 
@@ -347,15 +482,13 @@ pltr verify --profile your-profile
 
 #### Docker/Containers
 
-```dockerfile
-# In Dockerfile
-ENV FOUNDRY_TOKEN="your-token"
-ENV FOUNDRY_HOST="foundry.company.com"
+Pass credentials at run time; don't bake tokens into images:
 
-# Or use secrets
-RUN --mount=type=secret,id=foundry_token \
-    FOUNDRY_TOKEN=$(cat /run/secrets/foundry_token) \
-    pltr verify
+```bash
+docker run --rm \
+  -e FOUNDRY_HOST=foundry.company.com \
+  -e FOUNDRY_TOKEN \
+  my-image pltr verify
 ```
 
 #### CI/CD Examples

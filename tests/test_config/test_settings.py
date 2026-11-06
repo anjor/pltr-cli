@@ -117,24 +117,26 @@ class TestSettings:
         assert settings.get("custom_setting") is None
 
     def test_config_dir_creation(self, temp_config_dir):
-        """Test that config directory is created."""
-        # Mock the config dir path
-        with pytest.raises(FileNotFoundError):
-            # Directory shouldn't exist initially
-            list((temp_config_dir / "nonexistent").iterdir())
+        """The config directory is created when settings are saved, not read.
 
-        # Create settings which should create the directory
+        Reading settings must work where the directory doesn't exist and can't
+        be created (CI, containers, agent sandboxes with a read-only HOME).
+        """
+        config_dir = temp_config_dir / "test_config"
+
         with pytest.MonkeyPatch.context() as m:
-            m.setattr(
-                Settings,
-                "_get_config_dir",
-                lambda self: temp_config_dir / "test_config",
-            )
-            Settings()
+            m.setattr(Settings, "_get_config_dir", lambda self: config_dir)
+            settings = Settings()
 
-            # Directory should now exist
-            assert (temp_config_dir / "test_config").exists()
-            assert (temp_config_dir / "test_config").is_dir()
+            # Reading uses the defaults and creates nothing
+            assert settings.get("page_size") == 20
+            assert not config_dir.exists()
+
+            settings.set("page_size", 50)
+
+            # Saving creates the directory and the settings file
+            assert config_dir.is_dir()
+            assert (config_dir / "settings.json").exists()
 
     def test_settings_persistence(self, temp_config_dir):
         """Test that settings are persisted to file."""
