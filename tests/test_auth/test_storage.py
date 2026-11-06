@@ -4,8 +4,16 @@ Tests for credential storage.
 
 import pytest
 import json
+
+import keyring
+import keyring.errors
+
 from pltr.auth.storage import CredentialStorage
-from pltr.auth.base import ProfileNotFoundError
+from pltr.auth.base import (
+    KeyringUnavailableError,
+    MissingCredentialsError,
+    ProfileNotFoundError,
+)
 
 
 class TestCredentialStorage:
@@ -60,15 +68,19 @@ class TestCredentialStorage:
         ):
             storage.get_profile("nonexistent")
 
-    def test_get_profile_invalid_json(self, mock_keyring):
-        """Test retrieving profile with corrupted JSON data."""
+    @pytest.mark.parametrize("stored", ["invalid json {", '"a string"', "[1, 2]"])
+    def test_get_profile_invalid_json(self, mock_keyring, stored):
+        """Corrupted stored credentials give a clear error, not a JSON traceback."""
         storage = CredentialStorage()
 
-        # Setup mock to return invalid JSON
-        mock_keyring["get"].return_value = "invalid json {"
+        # The fixture's keyring reads this dict (its side_effect wins over
+        # return_value, so setting return_value would not reach get_profile).
+        mock_keyring["storage"]["pltr-cli:corrupted_profile"] = stored
 
-        # Should raise ProfileNotFoundError when JSON is corrupted
-        with pytest.raises(ProfileNotFoundError):
+        with pytest.raises(
+            MissingCredentialsError,
+            match="stored credentials of profile 'corrupted_profile' are unreadable",
+        ):
             storage.get_profile("corrupted_profile")
 
     def test_delete_profile_success(self, mock_keyring):
@@ -157,3 +169,73 @@ class TestCredentialStorage:
         # Verify both exist
         assert storage.profile_exists("profile1") is True
         assert storage.profile_exists("profile2") is True
+
+
+def _get_work_profile(storage):
+    return storage.get_profile("work")
+
+
+def _check_work_profile(storage):
+    return storage.profile_exists("work")
+
+
+def _save_work_profile(storage):
+    return storage.save_profile("work", {"auth_type": "token"})
+
+
+def _delete_work_profile(storage):
+    return storage.delete_profile("work")
+
+
+class TestCredentialStorageWithoutKeyring:
+    """A missing or failing keyring gives an error that points to env-var auth."""
+
+    @pytest.fixture
+    def no_backend(self, monkeypatch):
+        def fail(*args):
+            raise keyring.errors.NoKeyringError("No recommended backend was available.")
+
+        for name in ("get_password", "set_password", "delete_password"):
+            monkeypatch.setattr(keyring, name, fail)
+
+    @pytest.mark.parametrize(
+        "action, call",
+        [
+            ("read", _get_work_profile),
+            ("read", _check_work_profile),
+            ("save", _save_work_profile),
+            ("delete", _delete_work_profile),
+        ],
+    )
+    def test_missing_backend(self, no_backend, action, call):
+        with pytest.raises(KeyringUnavailableError) as excinfo:
+            call(CredentialStorage())
+
+        message = str(excinfo.value)
+        assert f"could not {action} the credentials of profile 'work'" in message
+        assert "No recommended backend was available." in message
+        assert "set FOUNDRY_HOST and FOUNDRY_TOKEN" in message
+        assert "FOUNDRY_CLIENT_ID and FOUNDRY_CLIENT_SECRET" in message
+        assert isinstance(excinfo.value.__cause__, keyring.errors.NoKeyringError)
+
+    def test_backend_errors_of_any_kind_are_wrapped(self, monkeypatch):
+        def fail(*args):
+            raise OSError("D-Bus connection refused")
+
+        monkeypatch.setattr(keyring, "get_password", fail)
+
+        with pytest.raises(KeyringUnavailableError, match="D-Bus connection refused"):
+            CredentialStorage().get_profile("work")
+
+    def test_delete_of_a_missing_profile_is_still_not_found(self, monkeypatch):
+        def fail(*args):
+            raise keyring.errors.PasswordDeleteError("missing")
+
+        monkeypatch.setattr(keyring, "delete_password", fail)
+
+        with pytest.raises(ProfileNotFoundError, match="Profile 'work' not found"):
+            CredentialStorage().delete_profile("work")
+
+    def test_keyring_errors_are_reported_as_auth_errors(self):
+        """Commands that catch MissingCredentialsError report it as an auth error."""
+        assert issubclass(KeyringUnavailableError, MissingCredentialsError)

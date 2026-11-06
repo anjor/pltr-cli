@@ -12,10 +12,15 @@ class Settings:
     """Manages application settings and configuration."""
 
     def __init__(self):
-        """Initialize settings manager."""
+        """
+        Initialize settings manager.
+
+        Reading settings never creates the configuration directory; it is
+        created when settings are saved. pltr can then run where the home
+        directory is missing or read-only (CI, containers, agent sandboxes).
+        """
         self.config_dir = self._get_config_dir()
         self.settings_file = self.config_dir / "settings.json"
-        self._ensure_config_dir()
         self._settings = self._load_settings()
 
     def _get_config_dir(self) -> Path:
@@ -33,14 +38,11 @@ class Settings:
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
     def _load_settings(self) -> Dict[str, Any]:
-        """Load settings from file."""
-        if not self.settings_file.exists():
-            return self._get_default_settings()
-
+        """Load settings from file (defaults if it's missing or unreadable)."""
         try:
             with open(self.settings_file, "r") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError):
             return self._get_default_settings()
 
     def _get_default_settings(self) -> Dict[str, Any]:
@@ -55,7 +57,8 @@ class Settings:
         }
 
     def save(self) -> None:
-        """Save settings to file."""
+        """Save settings to file, creating the configuration directory if needed."""
+        self._ensure_config_dir()
         with open(self.settings_file, "w") as f:
             json.dump(self._settings, f, indent=2)
 

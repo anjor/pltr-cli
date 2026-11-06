@@ -2,10 +2,14 @@
 OAuth2 client authentication for Palantir Foundry.
 """
 
-import os
 from typing import Dict, Optional, Any
 
-from .base import AuthProvider, InvalidCredentialsError, MissingCredentialsError
+from .base import (
+    AuthProvider,
+    InvalidCredentialsError,
+    MissingCredentialsError,
+    normalize_host,
+)
 
 
 class OAuthClientProvider(AuthProvider):
@@ -21,16 +25,23 @@ class OAuthClientProvider(AuthProvider):
         """
         Initialize OAuth2 client authentication.
 
+        The provider uses exactly the values it is given. Environment variables
+        are read by ``AuthManager``, never here, so they can't fill gaps in (or
+        silently override) a stored profile.
+
         Args:
             client_id: OAuth2 client ID
             client_secret: OAuth2 client secret
-            host: Foundry host URL (e.g., 'https://your-stack.palantirfoundry.com')
-            scopes: List of scopes to request
+            host: Foundry host, with or without ``https://``
+                (e.g., 'your-stack.palantirfoundry.com')
+            scopes: List of scopes to request (default: all scopes granted to
+                the client)
         """
-        self.client_id = client_id or os.environ.get("FOUNDRY_CLIENT_ID")
-        self.client_secret = client_secret or os.environ.get("FOUNDRY_CLIENT_SECRET")
-        self.host = host or os.environ.get("FOUNDRY_HOST")
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.host = host
         self.scopes = scopes or []
+        self._auth: Optional[Any] = None
 
         if not self.client_id:
             raise MissingCredentialsError(
@@ -40,38 +51,43 @@ class OAuthClientProvider(AuthProvider):
             raise MissingCredentialsError(
                 "Client secret is required for OAuth authentication"
             )
-        if not self.host:
+        if not self.host or not normalize_host(self.host):
             raise MissingCredentialsError(
                 "Host URL is required for OAuth authentication"
             )
 
+    def get_auth(self) -> Any:
+        """
+        Return the foundry_sdk auth object (created once) that clients use.
+
+        It gets its hostname from the FoundryClient it is given to, and shares
+        one token (requested on first use, then refreshed) across its clients.
+        """
+        if self._auth is None:
+            from foundry_sdk import ConfidentialClientAuth
+
+            self._auth = ConfidentialClientAuth(
+                client_id=self.client_id,  # type: ignore[arg-type]
+                client_secret=self.client_secret,  # type: ignore[arg-type]
+                scopes=self.scopes,
+            )
+        return self._auth
+
     def get_client(self) -> Any:
         """Return an authenticated Foundry client."""
-        from foundry_sdk import FoundryClient, ConfidentialClientAuth
+        from foundry_sdk import FoundryClient
 
-        auth = ConfidentialClientAuth(
-            client_id=self.client_id,  # type: ignore
-            client_secret=self.client_secret,  # type: ignore
-            scopes=self.scopes,
+        return FoundryClient(
+            auth=self.get_auth(),
+            hostname=normalize_host(self.host),  # type: ignore[arg-type]
         )
-        # Newer SDKs may support client-level preview mode while older ones do not.
-        # Try the preview-aware constructor first, then fall back for compatibility.
-        try:
-            return FoundryClient(  # type: ignore[call-arg]
-                auth=auth, hostname=self.host, preview=True
-            )
-        except TypeError as e:
-            if "preview" not in str(e):
-                raise
-            return FoundryClient(auth=auth, hostname=self.host)
 
     def validate(self) -> bool:
         """Validate authentication credentials."""
         try:
+            # Builds the client only; this does not contact Foundry.
+            # `pltr verify` checks credentials against the API (User.get_current).
             self.get_client()
-            # Try to make a simple API call to validate the credentials
-            # This would need to be replaced with an actual validation call
-            # when the SDK provides one
             return True
         except Exception as e:
             raise InvalidCredentialsError(f"OAuth validation failed: {e}")

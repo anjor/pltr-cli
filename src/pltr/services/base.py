@@ -8,8 +8,6 @@ import json
 import requests
 
 from ..auth.manager import AuthManager
-from ..auth.storage import CredentialStorage
-from ..config.profiles import ProfileManager
 from ..utils.pagination import (
     PaginationConfig,
     PaginationResult,
@@ -82,6 +80,11 @@ class BaseService(ABC):
         """
         Make a direct HTTP request to Foundry API.
 
+        Only for the labeled direct-HTTP exceptions (endpoints the SDK doesn't
+        cover). The host and bearer token come from the same auth object as
+        this service's SDK client, so token profiles, OAuth profiles and
+        environment-variable auth all work.
+
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
             endpoint: API endpoint path (e.g., '/foundry-schema-inference/api/...')
@@ -94,27 +97,15 @@ class BaseService(ABC):
 
         Raises:
             requests.HTTPError: If request fails
+            AuthError: If no usable credentials are configured (a subclass
+                from pltr.auth.base), or Foundry rejects OAuth client credentials
         """
-        # Get credentials for authentication
-        storage = CredentialStorage()
-        profile_manager = ProfileManager()
-        profile_name = self.profile or profile_manager.get_active_profile()
-        if not profile_name:
-            from ..auth.base import ProfileNotFoundError
-
-            raise ProfileNotFoundError(
-                "No profile specified and no default profile configured. "
-                "Run 'pltr configure configure' to set up authentication."
-            )
-        credentials = storage.get_profile(profile_name)
-
-        # Build full URL
-        host = credentials.get("host", "").rstrip("/")
-        url = f"{host}{endpoint}"
+        auth_context = self.auth_manager.get_auth_context(self.profile)
+        url = f"{auth_context.base_url}{endpoint}"
 
         # Set up headers with authentication
         request_headers = {
-            "Authorization": f"Bearer {credentials.get('token')}",
+            "Authorization": f"Bearer {auth_context.get_token()}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
