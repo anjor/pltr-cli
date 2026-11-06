@@ -416,11 +416,24 @@ def _epilog(spec: Dict[str, Any], context: Dict[str, Any]) -> str:
 
 
 class ApiCommand(_JsonUsageErrorsMixin, click.Command):
-    """A generated command; documents its positional arguments too."""
+    """A generated command; documents its positional arguments too.
 
-    def __init__(self, *args: Any, argument_help: Dict[str, str], **kwargs: Any):
+    `spec` is the generated method spec and `sdk_method` the dotted SDK path
+    (e.g. "admin.User.list"), for coverage reports and the command manifest.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        argument_help: Dict[str, str],
+        spec: Dict[str, Any],
+        sdk_method: str,
+        **kwargs: Any,
+    ):
         super().__init__(*args, **kwargs)
         self.argument_help = argument_help
+        self.spec = spec
+        self.sdk_method = sdk_method
 
     def format_options(
         self, ctx: click.Context, formatter: click.HelpFormatter
@@ -460,6 +473,8 @@ def build_method_command(
         short_help=beta + (spec.get("summary") or description.splitlines()[0]),
         epilog=_epilog(spec, context),
         argument_help=argument_help,
+        spec=spec,
+        sdk_method=".".join(context["sdk_path"]),
     )
 
 

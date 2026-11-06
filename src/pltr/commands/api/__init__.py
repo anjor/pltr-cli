@@ -36,6 +36,7 @@ class ApiGroup(_runtime._JsonUsageErrorsMixin, TyperGroup):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self.short_help = HELP
         self.help = DESCRIPTION
         self._built: Dict[str, click.Command] = {}
 
