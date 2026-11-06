@@ -189,6 +189,26 @@ def test_single_object_table_output(api_stub, pltr_api):
     assert any("status" in row and "ACTIVE" in row for row in rows)
 
 
+def test_non_paged_result_with_a_data_field_shows_every_field(api_stub, pltr_api):
+    api_stub.respond(
+        200,
+        json={
+            "data": [[0.25, 0.5]],
+            "model": "text-embedding-3-small",
+            "usage": {"promptTokens": 1},
+        },
+    )
+
+    result = pltr_api(
+        "language-models", "open-ai-model", "embeddings", "m", "--input", "hi"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "text-embedding-3-small" in result.stdout
+    assert '{"promptTokens":1}' in result.stdout
+    assert "--page-token" not in result.stderr
+
+
 @pytest.mark.filterwarnings("error::UserWarning")
 def test_non_model_results_use_the_sdk_serialization(api_stub, pltr_api):
     """dict[str, Long] serializes Longs as strings, as the SDK's models do."""

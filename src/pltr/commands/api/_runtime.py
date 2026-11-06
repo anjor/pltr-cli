@@ -737,7 +737,7 @@ def run_paged(
     fetch = _page_fetcher(spec, resource, method, context["sdk_path"][-1])
     page = fetch(**kwargs)
     if not fetch_all:
-        adapter.emit_result(page, fmt=fmt, output=output)
+        adapter.emit_result(page, fmt=fmt, output=output, paged=True)
         return
     data = list(page.get("data") or [])
     seen = set()
@@ -754,4 +754,4 @@ def run_paged(
         page = fetch(**kwargs)
         data.extend(page.get("data") or [])
         token = page.get("nextPageToken")
-    adapter.emit_result({"data": data}, fmt=fmt, output=output)
+    adapter.emit_result({"data": data}, fmt=fmt, output=output, paged=True)

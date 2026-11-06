@@ -148,9 +148,9 @@ def _cell(value: Any) -> str:
     return str(value)
 
 
-def _rows(document: Any) -> Optional[List[Any]]:
-    """The list a table/CSV should show: a paged result's data, or a list."""
-    if isinstance(document, dict) and isinstance(document.get("data"), list):
+def _rows(document: Any, paged: bool) -> Optional[List[Any]]:
+    """The list a table/CSV should show: a page's data, or a list result."""
+    if paged and isinstance(document, dict) and isinstance(document.get("data"), list):
         return document["data"]
     if isinstance(document, list):
         return document
@@ -167,11 +167,11 @@ def _columns(rows: List[Any]) -> List[str]:
     return columns
 
 
-def _table_text(document: Any, width: Optional[int]) -> str:
+def _table_text(document: Any, width: Optional[int], paged: bool) -> str:
     from rich.console import Console
     from rich.table import Table
 
-    rows = _rows(document)
+    rows = _rows(document, paged)
     if rows is not None and all(isinstance(row, dict) for row in rows):
         columns = _columns(rows)
         table = Table(show_lines=False)
@@ -200,8 +200,8 @@ def _table_text(document: Any, width: Optional[int]) -> str:
     return buffer.getvalue()
 
 
-def _csv_text(document: Any) -> str:
-    rows = _rows(document)
+def _csv_text(document: Any, paged: bool) -> str:
+    rows = _rows(document, paged)
     if rows is None:
         rows = [document] if isinstance(document, dict) else [{"value": document}]
     if rows and not all(isinstance(row, dict) for row in rows):
@@ -216,17 +216,17 @@ def _csv_text(document: Any) -> str:
     return buffer.getvalue()
 
 
-def _render(document: Any, fmt: str) -> str:
+def _render(document: Any, fmt: str, paged: bool) -> str:
     if is_json(fmt):
         return json.dumps(document, indent=2, ensure_ascii=True) + "\n"
     if fmt == "csv":
-        return _csv_text(document)
+        return _csv_text(document, paged)
     width = None
     if stdout_is_terminal():
         import shutil
 
         width = shutil.get_terminal_size().columns
-    return _table_text(document, width)
+    return _table_text(document, width, paged)
 
 
 def emit_result(
@@ -234,24 +234,26 @@ def emit_result(
     *,
     fmt: str,
     output: Optional[str],
+    paged: bool = False,
     empty_message: Optional[str] = None,
 ) -> None:
     """Write one already JSON-safe result to stdout (or `output`).
 
     `None` means the API returned no content: JSON mode prints `null`, the other
-    formats print nothing and say so on stderr.
+    formats print nothing and say so on stderr. For a page (`paged`), tables and
+    CSV show the rows of its `data`.
     """
     if document is None and not is_json(fmt):
         info(empty_message or "Done (the API returned no content).", fmt=fmt)
         return
-    text = _render(document, fmt)
+    text = _render(document, fmt, paged)
     if output:
         with open(output, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         info(f"Wrote {fmt} output to {output}", fmt=fmt)
         return
     click.echo(text, nl=False)
-    if isinstance(document, dict) and document.get("nextPageToken"):
+    if paged and isinstance(document, dict) and document.get("nextPageToken"):
         info(
             "More results are available: rerun with --page-token "
             f"{document['nextPageToken']} or use --all.",
