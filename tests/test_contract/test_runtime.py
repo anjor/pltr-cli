@@ -218,6 +218,17 @@ def test_legacy_data_output_stays_on_stdout(capsys):
     assert json.loads(out) == [{"a": 1}] and err == ""
 
 
+def test_format_does_not_leak_to_the_next_command_in_a_shell_session(capsys):
+    """`pltr shell` runs commands under one long-lived parent context."""
+    group = typer.main.get_command(make_app())
+    session = click.Context(group, info_name="pltr")
+    for name, args in (("with-format", ["-f", "json"]), ("without-format", [])):
+        command = group.get_command(session, name)
+        with command.make_context(name, args, parent=session) as ctx:
+            command.invoke(ctx)
+    assert capsys.readouterr().out == "json\ntable\n"
+
+
 def test_click_context_without_format_option_uses_fallback():
     set_output_format("csv")
     with click.Context(click.Command("x")):

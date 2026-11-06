@@ -24,11 +24,13 @@ from typing_extensions import Annotated
 
 from ..utils.completion import complete_output_format, complete_profile
 from .errors import Aborted, ConfirmationRequired
-from .runtime import FORMAT_ENVVAR, FORMAT_META_KEY, FORMATS, warn
+from .runtime import FORMAT_ENVVAR, FORMATS, remember_format, warn
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-_YES_META_KEY = "pltr.contract.yes"
+# Set on the command's own context when a deprecated --yes alias is used
+# (not ctx.meta, which click shares with longer-lived parent contexts).
+_YES_ATTR = "_pltr_contract_yes"
 
 _FORMAT_HELP = "Output format: table, json or csv."
 _OUTPUT_HELP = "Write the output to FILE instead of stdout."
@@ -53,14 +55,14 @@ def _format_callback(
     """
     if value is not None:
         value = value.lower()
-        ctx.meta[FORMAT_META_KEY] = value
+        remember_format(ctx, value)
     return value
 
 
 def _yes_alias_callback(flag: str) -> Callable[..., bool]:
     def callback(ctx: click.Context, param: click.Parameter, value: bool) -> bool:
         if value and not ctx.resilient_parsing:
-            ctx.meta[_YES_META_KEY] = True
+            setattr(ctx, _YES_ATTR, True)
             warn(
                 f"{flag} is deprecated and will be removed in a future release; use --yes."
             )
@@ -277,7 +279,7 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
     ``prompt`` is a question such as ``"Delete space ri.compass.main.space.x?"``.
     """
     ctx = click.get_current_context(silent=True)
-    if yes or (ctx is not None and ctx.meta.get(_YES_META_KEY)):
+    if yes or (ctx is not None and getattr(ctx, _YES_ATTR, False)):
         return
     if not stdin_is_interactive():
         raise ConfirmationRequired(

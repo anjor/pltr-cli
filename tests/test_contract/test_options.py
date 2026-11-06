@@ -252,6 +252,28 @@ def test_anything_but_yes_aborts(interactive, answer):
     assert "Aborted" in result.stderr
 
 
+def run_in_shell_session(group: click.Group, *invocations: list) -> list:
+    """Run commands under one long-lived parent context, as `pltr shell` does."""
+    session = click.Context(group, info_name="pltr")
+    exit_codes = []
+    for args in invocations:
+        name, *rest = args
+        command = group.get_command(session, name)
+        try:
+            with command.make_context(name, rest, parent=session) as ctx:
+                command.invoke(ctx)
+            exit_codes.append(0)
+        except click.exceptions.Exit as exc:
+            exit_codes.append(exc.exit_code)
+    return exit_codes
+
+
+def test_yes_alias_does_not_leak_to_the_next_command_in_a_shell_session(capsys):
+    group = typer.main.get_command(APP)
+    assert run_in_shell_session(group, ["drop", "--confirm"], ["drop"]) == [0, 2]
+    assert "Confirmation is required" in capsys.readouterr().err
+
+
 def test_confirm_destructive_outside_a_command():
     confirm_destructive("ok?", yes=True)  # no context needed
     from pltr.contract import ConfirmationRequired

@@ -31,8 +31,10 @@ FORMAT_ENVVAR = "PLTR_FORMAT"
 DEBUG_ENVVAR = "PLTR_DEBUG"
 
 
-#: ``ctx.meta`` key where the eager ``--format`` callback records the format.
-FORMAT_META_KEY = "pltr.contract.format"
+#: Attribute the eager ``--format`` callback sets on the command's own click
+#: context. Not ``ctx.meta``: click shares that dict with parent contexts,
+#: which outlive one command in ``pltr shell``.
+_FORMAT_ATTR = "_pltr_contract_format"
 
 
 class _State:
@@ -86,12 +88,17 @@ def _normalize(value: Any) -> Optional[str]:
     return None
 
 
+def remember_format(ctx: click.Context, value: Optional[str]) -> None:
+    """Record the format on the command's context while it is parsed."""
+    setattr(ctx, _FORMAT_ATTR, value)
+
+
 def format_from_context(ctx: Optional[click.Context]) -> Optional[str]:
     """The format of the command running in ``ctx``, if known.
 
     Reads the parsed value of the command's ``--format`` option, or else the
-    value the eager ``--format`` callback recorded in ``ctx.meta`` (which is
-    shared by every context of an invocation) while arguments were parsed.
+    value the eager ``--format`` callback recorded on ``ctx`` while the
+    arguments were parsed (so a later parse error can already be JSON).
     """
     if ctx is None:
         return None
@@ -100,7 +107,7 @@ def format_from_context(ctx: Optional[click.Context]) -> Optional[str]:
             if param.name in ctx.params:
                 return _normalize(ctx.params[param.name])
             break
-    return _normalize(ctx.meta.get(FORMAT_META_KEY))
+    return _normalize(getattr(ctx, _FORMAT_ATTR, None))
 
 
 def set_output_format(value: Optional[str]) -> None:
