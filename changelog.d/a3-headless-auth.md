@@ -1,6 +1,6 @@
 ### Breaking
 
-- **`PLTR_PROFILE` naming a profile that doesn't exist is now an error** ("Profile 'x' not found (selected by PLTR_PROFILE)"). It used to fall back silently to the default profile.
+- **`PLTR_PROFILE` naming a profile that doesn't exist is now an error** ("Profile 'x' not found (selected by PLTR_PROFILE)"). It used to fall back silently to the default profile. This includes `pltr shell --profile NAME`, which sets `PLTR_PROFILE`.
 - **`pltr verify` output and exit codes changed.** It now calls `admin.User.get_current()` through the SDK (not `/multipass/api/me`):
   - table output shows the auth source, auth type, host and the `admin.User` fields (username, name, email, user ID, organization, realm, status); the groups row is gone;
   - status lines ("Verifying ...", "✓ Authentication successful") and errors go to stderr; stdout carries only the result;
@@ -14,7 +14,7 @@
 
 - **Environment-variable auth without a stored profile.** When no profile is selected, pltr uses `FOUNDRY_HOST` with `FOUNDRY_TOKEN`, or `FOUNDRY_HOST` with `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET` (the token wins if both are set). `FOUNDRY_HOSTNAME`, the Foundry SDK's name, is accepted when `FOUNDRY_HOST` isn't set. Hosts work with or without `https://`. This path needs no configuration directory and never touches the system keyring (#190, #144).
 - Documented precedence: `--profile`, then `PLTR_PROFILE`, then the default profile, then the environment variables. An environment variable never overrides, or fills gaps in, a stored profile.
-- `pltr verify --format table|json|csv` (`-f`; default from `PLTR_FORMAT`). JSON output is `{"authSource": {...}, "user": {...}}`: `authSource` has `kind` (`profile` or `environment`), `profile` and `selectedBy` (`--profile`, `PLTR_PROFILE` or `default`) for profiles, `authType` (`token` or `oauth`), `host`, and `variables` for environment auth; `user` is the SDK `User` model in API field names. In JSON mode a failure writes one JSON error object to stderr.
+- `pltr verify --format table|json|csv` (`-f`; the default comes from `PLTR_FORMAT`, ignored if it isn't one of these, else `table`). JSON output is `{"authSource": {...}, "user": {...}}`: `authSource` has `kind` (`profile` or `environment`), `profile` and `selectedBy` (`--profile`, `PLTR_PROFILE` or `default`) for profiles, `authType` (`token` or `oauth`), `host`, and `variables` for environment auth; `user` is the SDK `User` model in API field names. In JSON mode a failure writes one JSON error object to stderr.
 - `PLTR_KEYRING_TIMEOUT`: seconds to wait for the system keyring (default 30; `0` waits indefinitely).
 - `AuthManager.resolve_auth_source(profile)` (which credentials a command would use, without reading secrets) and `AuthManager.get_auth_context(profile)` (`AuthContext`: source, SDK client, SDK auth object, `base_url`, `get_token()`).
 

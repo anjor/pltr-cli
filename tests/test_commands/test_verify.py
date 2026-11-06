@@ -169,6 +169,26 @@ class TestVerifySuccess:
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["user"]["username"] == USER_JSON["username"]
 
+    def test_format_option_beats_pltr_format(self, fake_http, monkeypatch):
+        env_token(monkeypatch)
+        monkeypatch.setenv("PLTR_FORMAT", "json")
+        fake_http.route("GET", GET_CURRENT_USER_PATH, body=USER_JSON)
+
+        result = invoke("--format", "csv")
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout.startswith("Auth source,")
+
+    def test_invalid_pltr_format_is_ignored(self, fake_http, monkeypatch):
+        env_token(monkeypatch)
+        monkeypatch.setenv("PLTR_FORMAT", "yaml")
+        fake_http.route("GET", GET_CURRENT_USER_PATH, body=USER_JSON)
+
+        result = invoke()
+
+        assert result.exit_code == 0, result.output
+        assert "Authentication verified" in result.stdout
+
     def test_csv_output(self, fake_http, monkeypatch):
         env_token(monkeypatch)
         fake_http.route("GET", GET_CURRENT_USER_PATH, body=USER_JSON)

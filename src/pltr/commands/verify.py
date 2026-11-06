@@ -15,6 +15,7 @@ object to stderr.
 import csv
 import io
 import json
+import os
 import sys
 from typing import Any, Dict, List, NoReturn, Optional, Tuple
 
@@ -57,12 +58,11 @@ def verify(
         "-p",
         help="Profile to verify (default: whatever other commands would use)",
     ),
-    output_format: str = typer.Option(
-        "table",
+    output_format: Optional[str] = typer.Option(
+        None,
         "--format",
         "-f",
-        envvar="PLTR_FORMAT",
-        help="Output format (table, json, csv)",
+        help="Output format: table, json or csv (default: PLTR_FORMAT, else table)",
     ),
 ):
     """
@@ -76,6 +76,10 @@ def verify(
     if ctx.invoked_subcommand is not None:
         return
 
+    if output_format is None:
+        # PLTR_FORMAT sets the default; a value that isn't a format is ignored.
+        env_format = os.environ.get("PLTR_FORMAT", "").strip().lower()
+        output_format = env_format if env_format in FORMATS else "table"
     output_format = output_format.strip().lower()
     if output_format not in FORMATS:
         raise typer.BadParameter(
