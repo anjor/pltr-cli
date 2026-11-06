@@ -440,6 +440,10 @@ parallel conversions don't conflict:
   or a temporary file.
 - `LOCAL` (only in `local.py`): commands that make no API call, each with a
   reason.
+- `SUCCESS_EXEMPT`: `{prefix: reason}`, command-path prefixes whose commands
+  don't need a `SUCCESS` case. The error checks still run. It's meant for
+  the generated `pltr api` tree, whose generator tests the success path.
+  Curated commands don't use it.
 
 ## Changelog fragment
 

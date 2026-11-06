@@ -21,6 +21,11 @@ module may define any of:
     synthesized required arguments, for commands whose required arguments
     need specific values (JSON input, several options, ...).
 
+``SUCCESS_EXEMPT``: dict of command-path prefix -> reason. Commands under a
+    prefix (e.g. ``"api"``, the generated tree whose generator tests the
+    success path) don't need a ``SUCCESS`` case; the 404/400 error checks
+    still run. Use sparingly; a ``SUCCESS`` case, when present, still runs.
+
 Use ``CONTRACT_RID`` (below) wherever a case needs the RID the contract test
 passes for RID-like arguments.
 """
@@ -40,6 +45,7 @@ class Cases:
     local: Dict[str, str] = field(default_factory=dict)
     success: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     args: Dict[str, List[str]] = field(default_factory=dict)
+    success_exempt: Dict[str, str] = field(default_factory=dict)
     duplicates: List[str] = field(default_factory=list)
 
 
@@ -53,6 +59,7 @@ def load_cases() -> Cases:
             ("LOCAL", cases.local),
             ("SUCCESS", cases.success),
             ("ARGS", cases.args),
+            ("SUCCESS_EXEMPT", cases.success_exempt),
         ):
             values = getattr(module, attr, None) or {}
             for key in values:

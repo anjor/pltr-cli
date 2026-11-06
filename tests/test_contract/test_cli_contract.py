@@ -39,6 +39,18 @@ CASES = load_cases()
 API_COMMANDS = sorted(path for path in ENTRIES if path not in CASES.local)
 CONVERTED = [path for path in API_COMMANDS if path not in CASES.not_converted]
 
+
+def _success_exempt(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(prefix + " ")
+        for prefix in CASES.success_exempt
+    )
+
+
+NEEDS_SUCCESS = [
+    path for path in CONVERTED if path in CASES.success or not _success_exempt(path)
+]
+
 ERROR_INSTANCE_ID = "00000000-0000-4000-8000-00000000c0de"
 SCENARIOS = [
     # status, errorCode, errorName, expected type, expected exit code
@@ -199,7 +211,7 @@ def test_api_errors_are_structured(path, contract_env, tmp_path):
     assert not problems, f"'{path}' breaks the error contract:\n" + "\n".join(problems)
 
 
-@pytest.mark.parametrize("path", CONVERTED)
+@pytest.mark.parametrize("path", NEEDS_SUCCESS)
 def test_success_prints_exactly_one_json_document(path, contract_env, tmp_path):
     assert path in CASES.success, (
         f"'{path}' is converted but has no SUCCESS case in tests/test_contract/cases/"
@@ -215,9 +227,23 @@ def test_success_prints_exactly_one_json_document(path, contract_env, tmp_path):
     assert all(line.get("type") == "warning" for line in lines), lines
 
 
+def test_success_exempt_matches_whole_path_segments(monkeypatch):
+    monkeypatch.setitem(CASES.success_exempt, "folder", "test")
+    assert _success_exempt("folder") and _success_exempt("folder get")
+    assert not _success_exempt("folders get") and not _success_exempt("space get")
+
+
 def test_case_modules_name_real_commands():
     named = set(CASES.not_converted) | set(CASES.local) | set(CASES.success)
     named |= set(CASES.args)
+    stale_prefixes = [
+        prefix
+        for prefix in CASES.success_exempt
+        if not any(p == prefix or p.startswith(prefix + " ") for p in ENTRIES)
+    ]
+    assert not stale_prefixes, (
+        f"SUCCESS_EXEMPT prefixes matching no command: {stale_prefixes}"
+    )
     stale = sorted(path for path in named if path not in ENTRIES)
     assert not stale, f"case entries for commands that don't exist: {stale}"
     assert not CASES.duplicates, CASES.duplicates
