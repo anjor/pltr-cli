@@ -8,10 +8,6 @@
 # Format: <file>::<Class.method>::<SDK path or HTTP call>::<rule>[<n>]  # <reason>
 # Rewrite (keeps existing reasons): uv run python scripts/check_sdk_calls.py --write-allowlist
 
-# src/pltr/commands/verify.py
-commands/verify.py::verify::requests.get::direct-http  # #190: verify moves to admin.User.get_current() (agent A3); GET /multipass/api/me with requests
-commands/verify.py::verify::requests.post::direct-http  # #190: verify moves to admin.User.get_current() (agent A3); OAuth token call made with requests
-
 # src/pltr/services/admin.py
 services/admin.py::AdminService.create_group::admin.Group.create::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Group.create requires attributes= and organizations=, organization_rid isn't a parameter
 services/admin.py::AdminService.create_marking::admin.Marking.create::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Marking.create requires initial_members= and initial_role_assignments=; also preview= on GA (#184)
