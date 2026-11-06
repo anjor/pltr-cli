@@ -127,6 +127,66 @@ pltr completion install
 
 📖 **Need more help?** See the **[Quick Start Guide](docs/user-guide/quick-start.md)** for detailed setup instructions.
 
+## Output, errors and exit codes
+
+pltr is built to be scripted, by people and by agents.
+
+- **stdout is data only.** It carries the result and nothing else, in every
+  format. Spinners, progress, success and info messages, warnings,
+  confirmation prompts and errors go to stderr.
+- **Choose the format** with `--format table|json|csv` (`-f`). The default is
+  `table`, whether or not stdout is a terminal. Set `PLTR_FORMAT=json` to
+  change the default, for example for agents and CI.
+- **`--format json` prints exactly one JSON document**: the Foundry SDK's own
+  serialization of the result.
+  - Field names are the Foundry API's (camelCase, as in Foundry's REST
+    docs), null fields are left out, and times are ISO-8601 strings.
+  - Lists use the API's paged shape,
+    `{"data": [...], "nextPageToken": "..."}`. `nextPageToken` is left out on
+    the last page; pass it to `--page-token` to continue. List commands fetch
+    one page by default; use `--all` for every page.
+  - A command that returns nothing (for example a delete) prints `null`.
+- **In JSON mode stderr carries only JSON Lines.** Informational messages are
+  suppressed, and warnings look like
+  `{"type": "warning", "message": "..."}`. When a command fails, the last
+  stderr line is one structured error:
+
+  ```json
+  {"type": "not_found", "message": "FolderNotFound: The given Folder could not be found. (folderRid=ri.compass.main.folder.x)", "exitCode": 5, "statusCode": 404, "errorCode": "NOT_FOUND", "errorName": "FolderNotFound", "errorInstanceId": "…", "parameters": {"folderRid": "ri.compass.main.folder.x"}}
+  ```
+
+  Keys that don't apply are left out. In table and CSV mode the same error is
+  printed as readable text, including the Foundry `errorName`.
+
+| Exit code | Meaning | Error `type` |
+|---|---|---|
+| 0 | Success | |
+| 1 | Unexpected error, or "no" at a confirmation prompt | `unexpected_error`, `aborted` |
+| 2 | Usage error: bad or missing arguments, invalid JSON input, or `--yes` required | `usage_error`, `confirmation_required` |
+| 3 | Authentication: no usable credentials, or HTTP 401 | `auth_error` |
+| 4 | Permission denied (HTTP 403) | `permission_denied` |
+| 5 | Not found (HTTP 404) | `not_found`, `api_not_found` |
+| 6 | API validation error (HTTP 400, 422) | `validation_error` |
+| 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` |
+
+**Destructive commands ask first.** Commands that delete, remove, revoke,
+reset, cancel, abort or replace something ask for confirmation, and
+`--yes` (`-y`) skips the prompt. pltr never prompts when stdin is not a
+terminal: without `--yes` such a command fails with exit code 2 and tells
+you to pass `--yes`. The old `--confirm` and `--force` flags still work for
+one release as deprecated aliases of `--yes`.
+
+**Beta endpoints** work without extra flags, and their commands are labeled
+`[beta]` in `--help`. `--preview` is no longer needed; where it existed it is
+accepted and ignored, with a warning, for one release.
+
+Set `PLTR_DEBUG=1` to see a Python traceback for an unexpected error.
+
+> Commands are being moved to this contract module by module (`folder` and
+> `space` first). Until a module is converted, some of its status messages
+> may still appear on stdout, and its commands may exit with code 1 for every
+> error, use their own JSON keys and confirm in their own way.
+
 ## 📚 Documentation
 
 pltr-cli provides comprehensive documentation to help you get the most out of the tool:
