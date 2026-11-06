@@ -544,7 +544,12 @@ def response_kind(method: MethodInfo, shape: RequestShape) -> Dict[str, Any]:
     if isinstance(stripped, type) and issubclass(stripped, bytes):
         return {"binary": True}
     has_page_token = "page_token" in signature.parameters
-    if origin is ResourceIterator and has_page_token:
+    if origin is ResourceIterator:
+        if not has_page_token:
+            raise GeneratorError(
+                f"{method.dotted} returns a ResourceIterator but takes no page_token; "
+                "the runtime can't page it. Decide how to expose it (or exclude it)."
+            )
         return {"paged": "iterator"}
     if (
         has_page_token
