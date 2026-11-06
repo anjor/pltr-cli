@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import print as rich_print
 
+from ..contract.runtime import is_json, stderr_console, write_json_line
+
 # Type checking import to avoid circular dependencies
 from typing import TYPE_CHECKING
 
@@ -325,21 +327,36 @@ class OutputFormatter:
         else:
             return f"{size_bytes / (1024**3):.1f} GB"
 
+    # Status messages go to stderr: stdout carries data only. In JSON mode
+    # (pltr.contract.runtime.is_json) informational messages are suppressed
+    # and warnings/errors become JSON Lines. New code uses pltr.contract's
+    # info/success/warn and structured errors instead of these methods.
+
     def print_success(self, message: str):
-        """Print success message with formatting."""
-        self.console.print(f"✅ {message}", style="green")
+        """Print a success message to stderr (suppressed in JSON mode)."""
+        if is_json():
+            return
+        stderr_console().print(f"✅ {message}", style="green")
 
     def print_error(self, message: str):
-        """Print error message with formatting."""
-        self.console.print(f"❌ {message}", style="red")
+        """Print an error message to stderr (a JSON line in JSON mode)."""
+        if is_json():
+            write_json_line({"type": "error", "message": message})
+            return
+        stderr_console().print(f"❌ {message}", style="red")
 
     def print_warning(self, message: str):
-        """Print warning message with formatting."""
-        self.console.print(f"⚠️  {message}", style="yellow")
+        """Print a warning to stderr (a JSON line in JSON mode)."""
+        if is_json():
+            write_json_line({"type": "warning", "message": message})
+            return
+        stderr_console().print(f"⚠️  {message}", style="yellow")
 
     def print_info(self, message: str):
-        """Print info message with formatting."""
-        self.console.print(f"ℹ️  {message}", style="blue")
+        """Print an informational message to stderr (suppressed in JSON mode)."""
+        if is_json():
+            return
+        stderr_console().print(f"ℹ️  {message}", style="blue")
 
     def format_table(
         self,

@@ -192,15 +192,11 @@ class ResponsePaginationHandler:
                 # Include the error information in metadata for user awareness
                 if all_items:
                     # We have partial results - return what we got so far
-                    import sys
+                    from ..contract.runtime import warn
 
-                    print(
-                        f"\nWarning: Error fetching page {page_num + 1}: {e}",
-                        file=sys.stderr,
-                    )
-                    print(
-                        f"Returning partial results ({len(all_items)} items from {page_num} pages)",
-                        file=sys.stderr,
+                    warn(
+                        f"Error fetching page {page_num + 1}: {e}. Returning partial "
+                        f"results ({len(all_items)} items from {page_num} pages)"
                     )
 
                     metadata = PaginationMetadata(
@@ -295,15 +291,11 @@ class IteratorPaginationHandler:
             # Error occurred during iteration - return partial results
             if all_items:
                 # We have partial results
-                import sys
+                from ..contract.runtime import warn
 
-                print(
-                    f"\nWarning: Error during iteration: {e}",
-                    file=sys.stderr,
-                )
-                print(
-                    f"Returning partial results ({len(all_items)} items)",
-                    file=sys.stderr,
+                warn(
+                    f"Error during iteration: {e}. Returning partial results "
+                    f"({len(all_items)} items)"
                 )
 
                 # Try to get next_page_token if available

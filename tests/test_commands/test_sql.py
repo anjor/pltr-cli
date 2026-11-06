@@ -136,7 +136,7 @@ class TestSqlCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to execute query" in result.stdout
+        assert "Failed to execute query" in result.stderr
 
     def test_submit_command_success(self, runner, mock_service):
         """Test submit command success."""
@@ -415,8 +415,8 @@ class TestSqlCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to execute query" in result.stdout
-        assert "Database connection failed" in result.stdout
+        assert "Failed to execute query" in result.stderr
+        assert "Database connection failed" in result.stderr
 
     def test_service_initialization_with_profile(self, runner, mock_service):
         """Test service initialization with custom profile."""

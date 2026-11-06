@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from pltr.services.copy import CopyService
+from tests import foundry_json as fj
 
 
 def _setup_service_mocks():
@@ -158,3 +159,49 @@ def test_upload_dataset_file_adds_branch_when_no_transaction(tmp_path: Path):
 
     upload_kwargs = service.dataset_service.service.Dataset.File.upload.call_args.kwargs
     assert upload_kwargs["branch_name"] == "feature"
+
+
+def test_copy_folder_recursively_uses_folder_service_models(stub_foundry_http):
+    """FolderService returns SDK models; every page of children is copied."""
+    source = "ri.compass.main.folder.source"
+    target = "ri.compass.main.folder.target"
+    sub = "ri.compass.main.folder.sub"
+    stub_foundry_http.respond(
+        json=fj.folder("ri.compass.main.folder.new", "Source-copy")
+    )
+    stub_foundry_http.respond(
+        json={
+            "data": [fj.resource(sub, "Sub", "COMPASS_FOLDER")],
+            "nextPageToken": "p2",
+        }
+    )
+    stub_foundry_http.respond(json={"data": []})
+    stub_foundry_http.respond(
+        json=fj.folder("ri.compass.main.folder.new-sub", "Sub-copy")
+    )
+    stub_foundry_http.respond(json={"data": []})
+
+    with (
+        patch("pltr.services.copy.DatasetService"),
+        patch("pltr.services.copy.ResourceService") as MockResourceService,
+    ):
+        MockResourceService.return_value.get_resource.return_value = {
+            "rid": source,
+            "display_name": "Source",
+            "type": "COMPASS_FOLDER",
+        }
+        summary = CopyService(console=Mock()).copy_resource(
+            source, target, recursive=True
+        )
+
+    assert summary["folders_copied"] == 2
+    assert [
+        (request.method, request.url.path, request.url.params.get("pageToken"))
+        for request in stub_foundry_http.requests
+    ] == [
+        ("POST", "/api/v2/filesystem/folders", None),
+        ("GET", f"/api/v2/filesystem/folders/{source}/children", None),
+        ("GET", f"/api/v2/filesystem/folders/{source}/children", "p2"),
+        ("POST", "/api/v2/filesystem/folders", None),
+        ("GET", f"/api/v2/filesystem/folders/{sub}/children", None),
+    ]

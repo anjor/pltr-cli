@@ -78,12 +78,6 @@ services/dataset.py::DatasetService.read_table::datasets.read_table::missing-met
 services/dataset.py::DatasetService.remove_backing_datasets::datasets.Dataset.View.remove_backing_datasets::missing-method  # #182 dataset views remove-datasets: use datasets.View.remove_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.replace_backing_datasets::datasets.Dataset.View.replace_backing_datasets::missing-method  # #182 dataset views replace-datasets: use datasets.View.replace_backing_datasets(view_dataset_rid, backing_datasets=)
 
-# src/pltr/services/folder.py
-services/folder.py::FolderService.create_folder::filesystem.Folder.create::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/folder.py::FolderService.get_folder::filesystem.Folder.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/folder.py::FolderService.get_folders_batch::filesystem.Folder.get_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/folder.py::FolderService.list_children::filesystem.Folder.children::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
 # src/pltr/services/functions.py
 services/functions.py::FunctionsService.execute_query::functions.Query.execute::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/functions.py::FunctionsService.execute_query_by_rid::functions.Query.execute_by_rid::missing-method  # #182 functions query execute-by-rid: no execute_by_rid; resolve with get_by_rid then execute, or remove
@@ -186,11 +180,6 @@ services/resource_role.py::ResourceRoleService.get_principal_roles::filesystem.R
 services/resource_role.py::ResourceRoleService.grant_role::filesystem.ResourceRole.grant::missing-method  # #182 resource-role grant: use filesystem.Resource.Role.add(resource_rid, roles=[...])
 services/resource_role.py::ResourceRoleService.list_resource_roles::filesystem.ResourceRole.list::missing-method  # #182 resource-role list: use filesystem.Resource.Role.list(resource_rid, include_inherited=...)
 services/resource_role.py::ResourceRoleService.revoke_role::filesystem.ResourceRole.revoke::missing-method  # #182 resource-role revoke: use filesystem.Resource.Role.remove(resource_rid, roles=[...])
-
-# src/pltr/services/space.py
-services/space.py::SpaceService.create_space::filesystem.Space.create::unknown-keyword(default_roles)  # #182 space create: Space.create has no default_roles/role_grants (it has default_role_set_id)
-services/space.py::SpaceService.create_space::filesystem.Space.create::unknown-keyword(role_grants)  # #182 space create: Space.create has no default_roles/role_grants (it has default_role_set_id)
-services/space.py::SpaceService.list_spaces::filesystem.Space.list::unchecked-kwargs  # #185/#184: dict-built; carries preview=True to GA Space.list; not in #182: --organization-rid passes organization_rid, which Space.list rejects
 
 # src/pltr/services/sql.py
 services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=

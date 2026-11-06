@@ -1,296 +1,144 @@
-"""Tests for space service."""
+"""Tests for SpaceService against a real FoundryClient (only HTTP is faked).
+
+Space.create/get/replace/delete are beta: every request must carry
+preview=true. Space.list is GA: passing preview= would make the SDK emit a
+UserWarning, which the module-level filter turns into a failure.
+"""
+
+import json
 
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.filesystem.models import Space
 
 from pltr.services.space import SpaceService
+from tests.foundry_json import ENROLLMENT_RID, ORG_A, ORG_B, SPACE_RID
+from tests.foundry_json import USAGE_ACCOUNT_RID as USAGE_ACCOUNT
+from tests.foundry_json import space as space_json
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
 
-class TestSpaceService:
-    """Test cases for SpaceService."""
+def test_create_space_sends_required_fields_with_preview(stub_foundry_http):
+    stub_foundry_http.respond(json=space_json())
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.filesystem = Mock()
-        client.filesystem.Space = Mock()
-        return client
+    space = SpaceService().create_space(
+        display_name="Test Space",
+        enrollment_rid=ENROLLMENT_RID,
+        organizations=[ORG_A, ORG_B],
+        deletion_policy_organizations=[ORG_A],
+        description="Test description",
+    )
 
-    @pytest.fixture
-    def mock_auth_manager(self, mock_client):
-        """Create a mock auth manager."""
-        with patch("pltr.services.base.AuthManager") as MockAuthManager:
-            mock_auth_manager = Mock()
-            mock_auth_manager.get_client.return_value = mock_client
-            MockAuthManager.return_value = mock_auth_manager
-            yield mock_auth_manager
+    assert isinstance(space, Space)
+    assert space.rid == SPACE_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", "/api/v2/filesystem/spaces")
+    assert request.url.params["preview"] == "true"
+    assert json.loads(request.content) == {
+        "displayName": "Test Space",
+        "enrollmentRid": ENROLLMENT_RID,
+        "organizations": [ORG_A, ORG_B],
+        "deletionPolicyOrganizations": [ORG_A],
+        "description": "Test description",
+    }
 
-    @pytest.fixture
-    def space_service(self, mock_auth_manager):
-        """Create a SpaceService instance with mocked dependencies."""
-        return SpaceService()
 
-    def test_get_service(self, space_service, mock_client):
-        """Test _get_service returns filesystem service."""
-        space_service._client = mock_client
-        assert space_service._get_service() == mock_client.filesystem
+def test_create_space_optional_fields(stub_foundry_http):
+    stub_foundry_http.respond(json=space_json())
 
-    def test_create_space_basic(self, space_service, mock_client):
-        """Test creating a space with required parameters."""
-        mock_space = Mock()
-        mock_space.rid = "ri.compass.main.space.123"
-        mock_space.display_name = "Test Space"
-        mock_space.organization_rid = "ri.compass.main.organization.456"
-        mock_space.root_folder_rid = "ri.compass.main.folder.789"
+    SpaceService().create_space(
+        display_name="Test Space",
+        enrollment_rid=ENROLLMENT_RID,
+        organizations=[ORG_A],
+        deletion_policy_organizations=[ORG_A],
+        default_role_set_id="role-set-2",
+        file_system_id="fs-2",
+        usage_account_rid=USAGE_ACCOUNT,
+    )
 
-        mock_client.filesystem.Space.create.return_value = mock_space
-        space_service._client = mock_client
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body["defaultRoleSetId"] == "role-set-2"
+    assert body["fileSystemId"] == "fs-2"
+    assert body["usageAccountRid"] == USAGE_ACCOUNT
+    assert "description" not in body
 
-        result = space_service.create_space(
-            display_name="Test Space",
-            enrollment_rid="ri.enrollment.main.enrollment.456",
-            organizations=["ri.compass.main.organization.456"],
-            deletion_policy_organizations=["ri.compass.main.organization.456"],
-        )
 
-        mock_client.filesystem.Space.create.assert_called_once_with(
-            display_name="Test Space",
-            enrollment_rid="ri.enrollment.main.enrollment.456",
-            organizations=["ri.compass.main.organization.456"],
-            deletion_policy_organizations=["ri.compass.main.organization.456"],
-            description=None,
-            default_roles=[],
-            role_grants=[],
-            preview=True,
-        )
+def test_get_space_uses_preview(stub_foundry_http):
+    stub_foundry_http.respond(json=space_json())
 
-        assert result["rid"] == "ri.compass.main.space.123"
-        assert result["display_name"] == "Test Space"
-        assert result["organization_rid"] == "ri.compass.main.organization.456"
-        assert result["root_folder_rid"] == "ri.compass.main.folder.789"
+    space = SpaceService().get_space(SPACE_RID)
 
-    def test_create_space_with_all_params(self, space_service, mock_client):
-        """Test creating a space with all optional parameters."""
-        mock_space = Mock()
-        mock_space.rid = "ri.compass.main.space.123"
+    assert space.organizations == [ORG_A]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/filesystem/spaces/{SPACE_RID}",
+    )
+    assert request.url.params["preview"] == "true"
 
-        mock_client.filesystem.Space.create.return_value = mock_space
-        space_service._client = mock_client
 
-        space_service.create_space(
-            display_name="Test Space",
-            enrollment_rid="ri.enrollment.main.enrollment.456",
-            organizations=["ri.compass.main.organization.456"],
-            deletion_policy_organizations=["ri.compass.main.organization.456"],
-            description="Test description",
-            default_roles=["viewer"],
-            role_grants=[
-                {
-                    "principal_id": "user1",
-                    "principal_type": "User",
-                    "role_name": "owner",
-                }
-            ],
-        )
+def test_list_spaces_fetches_one_page_without_preview(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [space_json(), space_json("ri.compass.main.folder.s2", "Two")]}
+    )
 
-        mock_client.filesystem.Space.create.assert_called_once_with(
-            display_name="Test Space",
-            enrollment_rid="ri.enrollment.main.enrollment.456",
-            organizations=["ri.compass.main.organization.456"],
-            deletion_policy_organizations=["ri.compass.main.organization.456"],
-            description="Test description",
-            default_roles=["viewer"],
-            role_grants=[
-                {
-                    "principal_id": "user1",
-                    "principal_type": "User",
-                    "role_name": "owner",
-                }
-            ],
-            preview=True,
-        )
+    page = SpaceService().list_spaces(page_size=10, page_token="tok")
 
-    def test_create_space_failure(self, space_service, mock_client):
-        """Test handling space creation failure."""
-        mock_client.filesystem.Space.create.side_effect = Exception("Creation failed")
-        space_service._client = mock_client
+    assert [space.display_name for space in page.data] == ["Test Space", "Two"]
+    assert page.next_page_token is None
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", "/api/v2/filesystem/spaces")
+    assert dict(request.url.params) == {"pageSize": "10", "pageToken": "tok"}
 
-        with pytest.raises(
-            RuntimeError, match="Failed to create space 'Test Space': Creation failed"
-        ):
-            space_service.create_space(
-                display_name="Test Space",
-                enrollment_rid="ri.enrollment.main.enrollment.456",
-                organizations=["ri.compass.main.organization.456"],
-                deletion_policy_organizations=["ri.compass.main.organization.456"],
-            )
 
-    def test_get_space(self, space_service, mock_client):
-        """Test getting a space."""
-        mock_space = Mock()
-        mock_space.rid = "ri.compass.main.space.123"
-        mock_space.display_name = "Test Space"
+def test_update_space_keeps_fields_it_does_not_change(stub_foundry_http):
+    """Space.replace resets omitted fields, so current values are sent back."""
+    stub_foundry_http.respond(json=space_json())
+    stub_foundry_http.respond(json=space_json(name="Renamed"))
 
-        mock_client.filesystem.Space.get.return_value = mock_space
-        space_service._client = mock_client
+    space = SpaceService().update_space(SPACE_RID, display_name="Renamed")
 
-        result = space_service.get_space("ri.compass.main.space.123")
+    assert space.display_name == "Renamed"
+    get_request, put_request = stub_foundry_http.requests
+    assert (get_request.method, get_request.url.params["preview"]) == ("GET", "true")
+    assert (put_request.method, put_request.url.path) == (
+        "PUT",
+        f"/api/v2/filesystem/spaces/{SPACE_RID}",
+    )
+    assert put_request.url.params["preview"] == "true"
+    assert json.loads(put_request.content) == {
+        "displayName": "Renamed",
+        "description": "Test description",
+        "defaultRoleSetId": "role-set-1",
+        "usageAccountRid": USAGE_ACCOUNT,
+    }
 
-        mock_client.filesystem.Space.get.assert_called_once_with(
-            "ri.compass.main.space.123", preview=True
-        )
-        assert result["rid"] == "ri.compass.main.space.123"
-        assert result["display_name"] == "Test Space"
 
-    def test_get_space_failure(self, space_service, mock_client):
-        """Test handling space get failure."""
-        mock_client.filesystem.Space.get.side_effect = Exception("Not found")
-        space_service._client = mock_client
+def test_update_space_description_only(stub_foundry_http):
+    stub_foundry_http.respond(json=space_json())
+    stub_foundry_http.respond(json=space_json(description="New"))
 
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get space ri.compass.main.space.123: Not found",
-        ):
-            space_service.get_space("ri.compass.main.space.123")
+    SpaceService().update_space(SPACE_RID, description="New")
 
-    def test_list_spaces(self, space_service, mock_client):
-        """Test listing spaces."""
-        mock_spaces = [Mock(), Mock()]
-        mock_spaces[0].rid = "ri.compass.main.space.123"
-        mock_spaces[1].rid = "ri.compass.main.space.456"
+    body = json.loads(stub_foundry_http.requests[1].content)
+    assert body["displayName"] == "Test Space"
+    assert body["description"] == "New"
 
-        mock_client.filesystem.Space.list.return_value = iter(mock_spaces)
-        space_service._client = mock_client
 
-        result = space_service.list_spaces()
+def test_update_space_requires_a_field(stub_foundry_http):
+    with pytest.raises(ValueError, match="At least one field"):
+        SpaceService().update_space(SPACE_RID)
+    assert stub_foundry_http.requests == []
 
-        mock_client.filesystem.Space.list.assert_called_once_with(preview=True)
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.space.123"
-        assert result[1]["rid"] == "ri.compass.main.space.456"
 
-    def test_list_spaces_with_filters(self, space_service, mock_client):
-        """Test listing spaces with filters."""
-        mock_spaces = [Mock()]
-        mock_spaces[0].rid = "ri.compass.main.space.123"
+def test_delete_space_uses_preview(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-        mock_client.filesystem.Space.list.return_value = iter(mock_spaces)
-        space_service._client = mock_client
+    assert SpaceService().delete_space(SPACE_RID) is None
 
-        space_service.list_spaces(
-            organization_rid="ri.compass.main.organization.789",
-            page_size=10,
-            page_token="token123",
-        )
-
-        mock_client.filesystem.Space.list.assert_called_once_with(
-            preview=True,
-            organization_rid="ri.compass.main.organization.789",
-            page_size=10,
-            page_token="token123",
-        )
-
-    def test_update_space(self, space_service, mock_client):
-        """Test updating a space."""
-        mock_space = Mock()
-        mock_space.rid = "ri.compass.main.space.123"
-        mock_space.display_name = "Updated Space"
-
-        mock_client.filesystem.Space.replace.return_value = mock_space
-        space_service._client = mock_client
-
-        result = space_service.update_space(
-            space_rid="ri.compass.main.space.123",
-            display_name="Updated Space",
-            description="Updated description",
-        )
-
-        mock_client.filesystem.Space.replace.assert_called_once_with(
-            space_rid="ri.compass.main.space.123",
-            display_name="Updated Space",
-            description="Updated description",
-            preview=True,
-        )
-        assert result["display_name"] == "Updated Space"
-
-    def test_update_space_without_display_name(self, space_service, mock_client):
-        """Test updating a space when display_name not provided - fetches current."""
-        mock_current_space = Mock()
-        mock_current_space.display_name = "Current Name"
-
-        mock_updated_space = Mock()
-        mock_updated_space.rid = "ri.compass.main.space.123"
-        mock_updated_space.display_name = "Current Name"
-        mock_updated_space.description = "New description"
-
-        mock_client.filesystem.Space.get.return_value = mock_current_space
-        mock_client.filesystem.Space.replace.return_value = mock_updated_space
-        space_service._client = mock_client
-
-        result = space_service.update_space(
-            space_rid="ri.compass.main.space.123",
-            description="New description",
-        )
-
-        mock_client.filesystem.Space.get.assert_called_once_with(
-            "ri.compass.main.space.123", preview=True
-        )
-        mock_client.filesystem.Space.replace.assert_called_once_with(
-            space_rid="ri.compass.main.space.123",
-            display_name="Current Name",
-            description="New description",
-            preview=True,
-        )
-        assert result["display_name"] == "Current Name"
-
-    def test_update_space_no_fields(self, space_service):
-        """Test update space with no fields raises error."""
-        with pytest.raises(
-            ValueError, match="At least one field must be provided for update"
-        ):
-            space_service.update_space("ri.compass.main.space.123")
-
-    def test_delete_space(self, space_service, mock_client):
-        """Test deleting a space."""
-        space_service._client = mock_client
-
-        space_service.delete_space("ri.compass.main.space.123")
-
-        mock_client.filesystem.Space.delete.assert_called_once_with(
-            "ri.compass.main.space.123", preview=True
-        )
-
-    def test_delete_space_failure(self, space_service, mock_client):
-        """Test handling space deletion failure."""
-        mock_client.filesystem.Space.delete.side_effect = Exception("Deletion failed")
-        space_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to delete space ri.compass.main.space.123: Deletion failed",
-        ):
-            space_service.delete_space("ri.compass.main.space.123")
-
-    def test_format_space_info(self, space_service):
-        """Test formatting space information."""
-        mock_space = Mock()
-        mock_space.rid = "ri.compass.main.space.123"
-        mock_space.display_name = "Test Space"
-        mock_space.description = "Test description"
-        mock_space.organization_rid = "ri.compass.main.organization.456"
-        mock_space.root_folder_rid = "ri.compass.main.folder.789"
-        mock_space.created_by = "user123"
-        mock_space.created_time = Mock()
-        mock_space.created_time.time = "2023-01-01T00:00:00Z"
-
-        result = space_service._format_space_info(mock_space)
-
-        assert result["rid"] == "ri.compass.main.space.123"
-        assert result["display_name"] == "Test Space"
-        assert result["description"] == "Test description"
-        assert result["organization_rid"] == "ri.compass.main.organization.456"
-        assert result["root_folder_rid"] == "ri.compass.main.folder.789"
-        assert result["created_by"] == "user123"
-        assert result["created_time"] == "2023-01-01T00:00:00Z"
-        assert result["type"] == "space"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "DELETE",
+        f"/api/v2/filesystem/spaces/{SPACE_RID}",
+    )
+    assert request.url.params["preview"] == "true"

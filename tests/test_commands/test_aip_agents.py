@@ -126,7 +126,7 @@ class TestAipAgentsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get agent" in result.stdout
+        assert "Failed to get agent" in result.stderr
 
     def test_list_sessions_success(self, runner, mock_service):
         """Test successful list sessions command."""
@@ -265,7 +265,7 @@ class TestAipAgentsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to list sessions" in result.stdout
+        assert "Failed to list sessions" in result.stderr
 
     def test_get_session_success(self, runner, mock_service):
         """Test successful get session command."""
@@ -316,7 +316,7 @@ class TestAipAgentsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get session" in result.stdout
+        assert "Failed to get session" in result.stderr
 
     def test_list_versions_success(self, runner, mock_service):
         """Test successful list versions command."""
@@ -414,7 +414,7 @@ class TestAipAgentsCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to list versions" in result.stdout
+        assert "Failed to list versions" in result.stderr
 
     def test_help_commands(self, runner):
         """Test help output for commands."""

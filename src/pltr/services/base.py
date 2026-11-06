@@ -181,6 +181,15 @@ class BaseService(ABC):
         """
         Convert response object to serializable dictionary.
 
+        .. deprecated::
+            Don't use this in new or converted code. It calls pydantic's
+            deprecated ``.dict()`` and produces snake_case keys with nulls,
+            which is not pltr's JSON contract. Return the SDK model from the
+            service and print it with ``pltr.contract.emit`` (JSON output is
+            then ``pltr.contract.to_jsonable``: the SDK's own camelCase
+            serialization without nulls). Kept unchanged for modules that
+            haven't been converted yet.
+
         This handles various SDK response types including Pydantic models,
         regular objects, and primitives.
 

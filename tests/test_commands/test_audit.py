@@ -112,7 +112,7 @@ class TestAuditCommands:
 
         # Assert
         assert result.exit_code == 0
-        assert "No audit log files found" in result.stdout
+        assert "No audit log files found" in result.stderr
 
     def test_list_command_with_page_size(self, runner, mock_service) -> None:
         """Test list command with page size."""
@@ -177,7 +177,7 @@ class TestAuditCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to list audit log files" in result.stdout
+        assert "Failed to list audit log files" in result.stderr
 
     # ===== Get Command Tests =====
 
@@ -225,7 +225,7 @@ class TestAuditCommands:
         # Assert
         assert result.exit_code == 0
         assert output_file.read_bytes() == b"binary content here"
-        assert "saved to" in result.stdout
+        assert "saved to" in result.stderr
 
     def test_get_command_binary_content_no_output(self, runner, mock_service) -> None:
         """Test get command with binary content but no output file."""
@@ -244,7 +244,7 @@ class TestAuditCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "binary content" in result.stdout.lower()
+        assert "binary content" in result.stderr.lower()
 
     def test_get_command_with_profile(self, runner, mock_service) -> None:
         """Test get command with custom profile."""
@@ -283,7 +283,7 @@ class TestAuditCommands:
 
         # Assert
         assert result.exit_code == 1
-        assert "Failed to get audit log file" in result.stdout
+        assert "Failed to get audit log file" in result.stderr
 
     # ===== Help Command Tests =====
 

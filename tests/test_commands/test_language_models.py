@@ -106,7 +106,44 @@ class TestLanguageModelsCommands:
         )
 
         assert result.exit_code == 0
-        assert "Model list saved to" in result.output
+        assert output_path.exists()
+        assert "ri.language-model-service..language-model.example" in (
+            output_path.read_text()
+        )
+        # The data went to the file. In JSON mode informational messages such
+        # as "Model list saved to ..." are suppressed: both streams stay empty.
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_language_models_list_output_file_reports_path_in_table_mode(
+        self, runner, mock_service, tmp_path
+    ):
+        """Outside JSON mode the saved-to message goes to stderr."""
+        output_path = tmp_path / "models.csv"
+        mock_service.list_available_models.return_value = [
+            {
+                "model_rid": "ri.language-model-service..language-model.example",
+                "status": "ENROLLED",
+                "type": "ANTHROPIC",
+                "display_name": "Example",
+            }
+        ]
+
+        result = runner.invoke(
+            app,
+            [
+                "language-models",
+                "list",
+                "--format",
+                "csv",
+                "--output",
+                str(output_path),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Model list saved to" in result.stderr
+        assert result.stdout == ""
         assert output_path.exists()
 
     def test_language_models_status_success(self, runner, mock_service):
