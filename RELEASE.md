@@ -161,3 +161,34 @@ git stash
 3. **Follow semantic versioning**: patch for bug fixes, minor for features, major for breaking changes
 4. **Keep working directory clean** before creating releases
 5. **Monitor GitHub Actions** after pushing to ensure successful publishing
+6. **Bump `foundry-platform-sdk` in its own PR**, following the checklist below
+
+## Checklist: bumping foundry-platform-sdk
+
+Upstream release notes mostly say "No documented user-facing changes", and pltr makes more
+than 200 SDK calls. The SDK call check ([docs/development/sdk-guardrail.md](docs/development/sdk-guardrail.md))
+is the real changelog for those calls. When you bump the SDK:
+
+1. **Record what pltr calls today:**
+   `uv run python scripts/check_sdk_calls.py --json > sdk-calls-before.json`
+2. **Bump the SDK:** raise the lower bound in `pyproject.toml` if pltr needs the new version,
+   then `uv lock --upgrade-package foundry-platform-sdk` and `uv sync --dev`.
+3. **Run the check:** `uv run python scripts/check_sdk_calls.py`
+   - New violations are calls the new SDK broke: a method renamed or removed, an argument
+     renamed or made required, or an endpoint that moved between beta and GA (a GA promotion
+     turns `preview=True` into `preview-on-ga`). Fix them in the bump PR, or remove the
+     command if the SDK dropped its endpoint. Don't allowlist them.
+   - Stale allowlist entries are violations the new SDK no longer has. Delete those lines.
+4. **Diff the call records:**
+   `uv run python scripts/check_sdk_calls.py --json > sdk-calls-after.json`, then
+   `diff sdk-calls-before.json sdk-calls-after.json`. A changed `signature` or `beta` shows
+   every change to a method pltr calls, including changes that still bind, such as a new
+   optional argument a curated command should expose. (Don't commit the JSON files.)
+5. **Regenerate the generated API commands** (`scripts/generate_api_commands.py`) and the
+   coverage report, and review the diff: new methods, removed methods, changed arguments,
+   and beta/GA changes.
+6. **Run the full test suite:** `uv run pytest`. The service tests built on the
+   `stub_foundry_http` fixture run against the new SDK's real client and models, so changes
+   to response models show up there.
+7. **Record it:** add a changelog entry with the new SDK version and every user-visible change
+   (commands added, removed or changed, beta labels).

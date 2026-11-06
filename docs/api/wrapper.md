@@ -304,24 +304,26 @@ def new_command(
 
 ### Step 3: Add Tests
 
-Create comprehensive tests:
+Create comprehensive tests. Test services with the `stub_foundry_http` fixture
+(`tests/conftest.py`), not a `Mock()` client: it runs the real `FoundryClient` with only HTTP
+faked, so a method or argument the SDK doesn't have fails the test. CI also checks every SDK
+call statically; see the [SDK call guardrail](../development/sdk-guardrail.md).
 
 ```python
 # tests/test_services/test_ontology.py
-def test_new_operation(mock_auth_manager, mock_client):
-    """Test new ontology operation."""
-    service = OntologyService(mock_auth_manager)
+import pytest
 
-    # Mock the SDK response
-    mock_client.ontology.some_new_method.return_value = {"result": "success"}
+@pytest.mark.filterwarnings("error::UserWarning")  # fails if a GA call gets preview=
+def test_new_operation(stub_foundry_http):
+    """Test new ontology operation against the real SDK client."""
+    stub_foundry_http.respond(json={...})  # a realistic Foundry API response (camelCase)
 
-    result = service.new_operation("test-rid", "test-param")
+    result = OntologyService().new_operation(ONTOLOGY_RID, "test-param")
 
-    assert result == {"result": "success"}
-    mock_client.ontology.some_new_method.assert_called_once_with(
-        ontology_rid="test-rid",
-        parameter="test-param"
-    )
+    [request] = stub_foundry_http.requests
+    assert request.method == "GET"
+    assert request.url.path == f"/api/v2/ontologies/{ONTOLOGY_RID}/..."
+    assert result[...] == ...  # read from the decoded SDK model
 
 # tests/test_commands/test_ontology.py
 def test_new_command(runner, mock_auth_manager):
@@ -377,24 +379,15 @@ console.print(formatted_output)
 ### Test Structure
 
 ```python
-# conftest.py - Shared test fixtures
-@pytest.fixture
-def mock_auth_manager():
-    """Mock authentication manager."""
-    manager = Mock(spec=AuthManager)
-    manager.get_client.return_value = Mock()
-    return manager
-
-@pytest.fixture
-def mock_client():
-    """Mock Foundry client."""
-    return Mock(spec=FoundryClient)
-
-# Service tests
-def test_service_method(mock_auth_manager, mock_client):
+# Service tests: a real FoundryClient with only HTTP faked (fixture in tests/conftest.py).
+# Assert on the outgoing request; for beta endpoints, assert preview=true in the query.
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_service_method(stub_foundry_http):
     """Test service layer."""
-    service = YourService(mock_auth_manager)
-    # Test implementation
+    stub_foundry_http.respond(json={...})  # realistic Foundry API JSON
+    result = YourService().your_method("ri.foundry.main.dataset.abc")
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", "/api/v2/...")
 
 # Command tests
 def test_command(runner):

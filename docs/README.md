@@ -16,6 +16,10 @@ Welcome to the pltr-cli documentation! This CLI tool provides a command-line int
 - **[API Wrapper](api/wrapper.md)** - Developer guide for extending the CLI
 - **[Service Layer](api/services.md)** - Understanding the service architecture
 
+### Development
+- **[SDK Call Guardrail](development/sdk-guardrail.md)** - The CI check that every SDK call exists and binds, and how service tests use the real SDK client
+- **[Release Process](../RELEASE.md)** - Releasing, and the checklist for bumping `foundry-platform-sdk`
+
 ### Examples
 - **[Examples Gallery](examples/gallery.md)** - Real-world use cases and patterns
 - **[Data Analysis Examples](examples/data-analysis.md)** - Complete analysis workflows
