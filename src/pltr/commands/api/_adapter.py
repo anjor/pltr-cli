@@ -31,6 +31,7 @@ __all__ = [
     "FORMATS",
     "ApiCommandError",
     "confirm",
+    "confirmation_unavailable",
     "describe_error",
     "emit_binary",
     "emit_result",
@@ -292,15 +293,20 @@ def emit_binary(chunks: Iterable[bytes], *, output_file: Optional[str]) -> int:
 # ---------------------------------------------------------------------------
 
 
+def confirmation_unavailable() -> ApiCommandError:
+    """A destructive command without --yes and no terminal to ask on (exit 2)."""
+    return usage_error(
+        "This command is destructive and stdin is not a terminal, so pltr can't "
+        "ask for confirmation. Pass --yes to run it."
+    )
+
+
 def confirm(message: str, *, yes: bool, fmt: str) -> None:
     """Ask before a destructive call. `--yes` skips it; no terminal means exit 2."""
     if yes:
         return
     if not stdin_is_terminal():
-        raise usage_error(
-            "This command is destructive and stdin is not a terminal, so pltr can't "
-            "ask for confirmation. Pass --yes to run it."
-        )
+        raise confirmation_unavailable()
     try:
         accepted = click.confirm(message, default=False, err=True)
     except click.Abort:
@@ -454,9 +460,17 @@ def fail(exc: BaseException, *, fmt: Optional[str]) -> NoReturn:
 
 def fail_usage(exc: click.UsageError) -> NoReturn:
     """Report a click usage error as a JSON error object (JSON mode only)."""
-    message = exc.format_message()
-    if exc.ctx is not None:
-        message = f"{message} (usage: {exc.ctx.get_usage().strip()})"
+    ctx = exc.ctx
+    if type(exc).__name__ == "NoArgsIsHelpError" and ctx is not None:
+        # A group run without a subcommand: name the subcommands, not the help.
+        message = f"Missing command for '{ctx.command_path}'."
+        if isinstance(ctx.command, click.Group):
+            names = ctx.command.list_commands(ctx)
+            message += f" Commands: {', '.join(names)}."
+    else:
+        message = exc.format_message()
+        if ctx is not None:
+            message = f"{message} ({ctx.get_usage().strip()})"
     details = {"type": "usage_error", "message": message, "exitCode": EXIT_USAGE}
     click.echo(json.dumps(details, separators=(",", ":")), err=True)
     raise click.exceptions.Exit(EXIT_USAGE)

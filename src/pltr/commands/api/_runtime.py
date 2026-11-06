@@ -154,7 +154,7 @@ class SpecGroup(_JsonUsageErrorsMixin, click.Group):
     def format_help_text(
         self, ctx: click.Context, formatter: click.HelpFormatter
     ) -> None:
-        self.spec  # load the help text
+        _ = self.spec  # loading the spec sets self.help
         super().format_help_text(ctx, formatter)
 
 
@@ -636,7 +636,8 @@ def run_method(
         kwargs = build_kwargs(spec, values)
         destructive = bool(spec.get("destructive"))
         if destructive and not yes and not adapter.stdin_is_terminal():
-            adapter.confirm("", yes=False, fmt=fmt)  # raises the usage error
+            # Fail before authenticating: there is no way to ask.
+            raise adapter.confirmation_unavailable()
         if spec.get("binary") and not output and adapter.stdout_is_terminal():
             raise adapter.usage_error(
                 "This command returns binary data. Pass --output-file FILE, or "

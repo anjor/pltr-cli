@@ -178,6 +178,65 @@ def test_profile_is_passed_to_auth_manager(api_stub, pltr_api):
     api_stub.auth_manager.return_value.get_client.assert_called_once_with("prod")
 
 
+def test_single_object_table_output(api_stub, pltr_api):
+    api_stub.respond(200, json=user(USER_ID, "jdoe"))
+
+    result = pltr_api("admin", "user", "get", USER_ID)
+
+    assert result.exit_code == 0, result.output
+    rows = result.stdout.splitlines()
+    assert any("username" in row and "jdoe" in row for row in rows)
+    assert any("status" in row and "ACTIVE" in row for row in rows)
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_non_model_results_use_the_sdk_serialization(api_stub, pltr_api):
+    """dict[str, Long] serializes Longs as strings, as the SDK's models do."""
+    stream_args = (DATASET_RID, "master", "subscriber-1")
+    api_stub.respond(200, json={"0": 42, "1": "7"})
+
+    result = pltr_api(
+        "streams",
+        "dataset",
+        "stream",
+        "subscriber",
+        "get-read-position",
+        *stream_args,
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert dict(api_stub.requests[0].url.params) == {"preview": "true"}
+    assert json.loads(result.stdout) == {"0": "42", "1": "7"}
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_string_result(api_stub, pltr_api):
+    media_set_rid = "ri.mio.main.media-set.6a5b4c3d-2e1f-4a0b-9c8d-7e6f5a4b3c2d"
+    api_stub.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
+
+    as_json = pltr_api(
+        "media-sets", "media-set", "create", media_set_rid, "--format", "json"
+    )
+    assert as_json.exit_code == 0, as_json.output
+    assert json.loads(as_json.stdout) == "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e"
+
+    api_stub.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
+    as_table = pltr_api("media-sets", "media-set", "create", media_set_rid)
+    assert as_table.stdout.strip() == "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e"
+
+
+def test_group_without_subcommand_in_json_mode_lists_commands(pltr_api):
+    result = pltr_api("admin", "user", env={"PLTR_FORMAT": "json"})
+
+    assert result.exit_code == 2
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "usage_error"
+    assert "Missing command for 'pltr api admin user'" in error["message"]
+    assert "get-markings" in error["message"]
+
+
 # ---------------------------------------------------------------------------
 # Beta
 # ---------------------------------------------------------------------------
