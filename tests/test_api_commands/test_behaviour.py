@@ -591,6 +591,36 @@ def test_json_option_accepts_a_file(api_stub, pltr_api, tmp_path):
     assert body == {"where": {"type": "queryString", "value": "jd"}}
 
 
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_required_list_parameters_default_to_empty(api_stub, pltr_api):
+    """`select` is required by the SDK, and [] means every property."""
+    objects = {
+        "data": [
+            {"__apiName": "Aircraft", "__primaryKey": "N123", "tailNumber": "N123"}
+        ],
+        "totalCount": "1",
+    }
+    api_stub.respond(200, json=objects)
+    api_stub.respond(200, json=objects)
+    where = '{"type": "eq", "field": "tailNumber", "value": "N123"}'
+    search = ("ontologies", "ontology-object", "search", "flights", "Aircraft")
+
+    everything = pltr_api(*search, "--where", where, "--format", "json")
+    some = pltr_api(
+        *search, "--where", where, "--select", "tailNumber", "--format", "json"
+    )
+
+    assert everything.exit_code == 0, everything.output
+    assert some.exit_code == 0, some.output
+    first, second = (json.loads(r.content) for r in api_stub.requests)
+    assert first == {
+        "select": [],
+        "where": {"type": "eq", "field": "tailNumber", "value": "N123"},
+    }
+    assert second["select"] == ["tailNumber"]
+    assert json.loads(everything.stdout) == objects
+
+
 def test_invalid_json_input_is_a_usage_error(api_stub, pltr_api):
     result = pltr_api(
         "admin", "user", "search", "--where", "{not json", "--format", "json"

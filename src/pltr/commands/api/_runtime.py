@@ -281,6 +281,8 @@ def _option_help(param: Dict[str, Any]) -> str:
         parts.append(_TYPE_HINTS[kind])
     if param.get("multiple"):
         parts.append("Repeat the option to pass several values.")
+        if param.get("required"):
+            parts.append("The API requires this list; leave it out to send [].")
     if param.get("auto") == "body_length":
         parts.append("Defaults to the size of --body.")
     return " ".join(part for part in parts if part)
@@ -299,7 +301,10 @@ def sdk_parameter(param: Dict[str, Any]) -> click.Parameter:
     name = param["name"]
     if param["in"] == "path":
         return click.Argument([name], type=_click_type(param), required=True)
-    required = bool(param.get("required"))
+    # A repeatable option can't express an empty list, which many required list
+    # parameters accept (e.g. `select`: all properties), so it is never required;
+    # leaving it out sends [].
+    required = bool(param.get("required")) and not param.get("multiple")
     declaration = option_name(param)
     help_text = _option_help(param)
     if param["type"] == "bool":
@@ -577,6 +582,8 @@ def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]
         if param.get("multiple"):
             if value:
                 kwargs[name] = list(value)
+            elif param.get("required"):
+                kwargs[name] = []
             continue
         if value is None:
             continue
