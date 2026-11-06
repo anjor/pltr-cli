@@ -1,7 +1,6 @@
 """Fixtures for the generated `pltr api` commands (on top of `stub_foundry_http`)."""
 
-import json
-from typing import Any, List, Optional
+from typing import Any, Optional
 from unittest.mock import Mock
 
 import pytest
@@ -33,10 +32,3 @@ class Invoker:
 def pltr_api():
     """Run `pltr api ...` through the real root Typer app."""
     return Invoker()
-
-
-def stderr_json(result) -> Any:
-    """The structured error: the last stderr line, parsed."""
-    lines: List[str] = [line for line in result.stderr.splitlines() if line.strip()]
-    assert lines, "expected a JSON error on stderr"
-    return json.loads(lines[-1])
