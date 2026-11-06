@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -350,7 +350,7 @@ name = "exceptiongroup"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0b/9f/a65090624ecf468cdca03533906e7c69ed7588582240cfe7cc9e770b50eb/exceptiongroup-1.3.0.tar.gz", hash = "sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88", size = 29749, upload-time = "2025-05-10T17:42:51.123Z" }
 wheels = [
@@ -368,20 +368,21 @@ wheels = [
 
 [[package]]
 name = "foundry-platform-sdk"
-version = "1.95.0"
+version = "1.111.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-types" },
     { name = "h11" },
     { name = "httpx" },
+    { name = "httpx-sse" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "retrying" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/97/70952ef9d53799899b68f2b7ec03d890b649d562cb33c3770a6ffac10c31/foundry_platform_sdk-1.95.0.tar.gz", hash = "sha256:18c8375030b4020f8c998efd9b9872216d2c8d4eef19c7ed6288ad9339a3e4d9", size = 652551, upload-time = "2026-06-22T15:12:18.736Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/d8/8c36a278b73b04dd3311a168e6f6b865ecf9c3a3a42fc711bbfcc30d309e/foundry_platform_sdk-1.111.0.tar.gz", hash = "sha256:ad60a79b3c3159c0b9d96de42dc1de9abcdb817ba9aa5a2b8a0b7c6aab580c77", size = 768423, upload-time = "2026-10-20T13:19:14.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/4f/b090c369a9dcef1a2f756c26156dff3ab3514915070e7790254a55ca72d5/foundry_platform_sdk-1.95.0-py3-none-any.whl", hash = "sha256:d90dfc434c9fe1882b0ce8e15186f708889ce102f279710c03f602baa17ebc81", size = 842518, upload-time = "2026-06-22T15:12:20.046Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/64/d6e3966c3c136f468790573c0c596c79f7060320c47dead0da19a9af0b8e/foundry_platform_sdk-1.111.0-py3-none-any.whl", hash = "sha256:7a4f4556e3c00aa8e48e59172365999f1bb4468e862a25490f665c2a5b6f78b1", size = 991656, upload-time = "2026-10-20T13:19:15.715Z" },
 ]
 
 [[package]]
@@ -422,6 +423,15 @@ wheels = [
 ]
 
 [[package]]
+name = "httpx-sse"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.13"
 source = { registry = "https://pypi.org/simple" }
@@ -444,7 +454,7 @@ name = "importlib-metadata"
 version = "8.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.12'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
@@ -899,7 +909,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click-repl", specifier = ">=0.3.0" },
-    { name = "foundry-platform-sdk", specifier = ">=1.95.0,<2.0.0" },
+    { name = "foundry-platform-sdk", specifier = ">=1.111.0,<2.0.0" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pyarrow", specifier = ">=15.0.0" },

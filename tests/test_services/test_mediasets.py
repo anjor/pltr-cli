@@ -369,3 +369,112 @@ def test_format_thumbnail_status_missing_attrs(mock_mediasets_service):
     assert result["status"] == "unknown"
     assert result["transformation_id"] is None
     assert result["media_item_rid"] is None
+
+
+# Tests against the real foundry_sdk client (only HTTP is stubbed).
+# These catch SDK signature drift that Mock()-based tests cannot, such as
+# passing `preview=` to an endpoint that has left beta.
+
+MEDIA_SET_RID = "ri.mio.main.media-set.6b57b513-6e54-4f04-b779-2a3a3f9e6f45"
+MEDIA_ITEM_RID = "ri.mio.main.media-item.001ec98b-1620-4814-9e17-8e9c4e536225"
+MEDIA_ITEM_PATH = f"/api/v2/mediasets/{MEDIA_SET_RID}/items/{MEDIA_ITEM_RID}"
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_get_media_set_info_requests_item_without_preview_warning(
+    stub_foundry_http,
+):
+    stub_foundry_http.respond(
+        json={
+            "viewRid": "ri.mio.main.view.2b4ebd9e-2b2c-4e4e-8d3c-0b0e2d2bf0a1",
+            "logicalTimestamp": 1,
+            "sizeBytesLong": 3,
+        }
+    )
+
+    MediaSetsService().get_media_set_info(MEDIA_SET_RID, MEDIA_ITEM_RID)
+
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", MEDIA_ITEM_PATH)
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+@pytest.mark.parametrize(
+    "original, path_suffix", [(False, "/content"), (True, "/original")]
+)
+def test_download_media_writes_sdk_bytes_to_file(
+    stub_foundry_http, tmp_path, original, path_suffix
+):
+    stub_foundry_http.respond(content=b"\x89PNG fake image bytes")
+    output = tmp_path / "nested" / "image.png"
+
+    result = MediaSetsService().download_media(
+        MEDIA_SET_RID, MEDIA_ITEM_RID, str(output), original=original
+    )
+
+    assert output.read_bytes() == b"\x89PNG fake image bytes"
+    assert result["file_size"] == 21
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        MEDIA_ITEM_PATH + path_suffix,
+    )
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_upload_temp_media_puts_file_contents_without_preview_warning(
+    stub_foundry_http, tmp_path
+):
+    stub_foundry_http.respond(
+        json={
+            "mimeType": "image/png",
+            "reference": {
+                "type": "mediaSetViewItem",
+                "mediaSetViewItem": {
+                    "mediaSetRid": MEDIA_SET_RID,
+                    "mediaSetViewRid": "ri.mio.main.view.2b4ebd9e-2b2c-4e4e-8d3c-0b0e2d2bf0a1",
+                    "mediaItemRid": MEDIA_ITEM_RID,
+                },
+            },
+        }
+    )
+    source = tmp_path / "photo.png"
+    source.write_bytes(b"png-bytes")
+
+    MediaSetsService().upload_temp_media(str(source))
+
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "PUT",
+        "/api/v2/mediasets/media/upload",
+    )
+    assert request.url.params["filename"] == "photo.png"
+    assert request.content == b"png-bytes"
+
+
+def test_upload_media_posts_file_contents_to_media_set(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(
+        json={
+            "mediaItemRid": MEDIA_ITEM_RID,
+            "mediaSetViewRid": "ri.mio.main.view.2b4ebd9e-2b2c-4e4e-8d3c-0b0e2d2bf0a1",
+        }
+    )
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"%PDF-1.7 fake")
+
+    result = MediaSetsService().upload_media(
+        MEDIA_SET_RID,
+        str(source),
+        "docs/scan.pdf",
+        "3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f",
+    )
+
+    assert result["file_size"] == 13
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"/api/v2/mediasets/{MEDIA_SET_RID}/items",
+    )
+    assert request.url.params["mediaItemPath"] == "docs/scan.pdf"
+    assert request.url.params["transactionId"] == "3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f"
+    assert request.content == b"%PDF-1.7 fake"

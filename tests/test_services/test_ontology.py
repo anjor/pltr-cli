@@ -513,23 +513,6 @@ def test_aggregate_objects(mock_ontology_object_service):
     mock_ontology_object_class.aggregate.assert_called_once()
 
 
-def test_list_linked_objects(mock_ontology_object_service, sample_object):
-    """Test listing linked objects."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.list_linked_objects.return_value = [sample_object]
-
-    result = service.list_linked_objects(
-        "ri.ontology.main.ontology.test",
-        "Employee",
-        "EMP001",
-        "manages",
-    )
-
-    assert len(result) == 1
-    assert result[0]["employee_id"] == "EMP001"
-    mock_ontology_object_class.list_linked_objects.assert_called_once()
-
-
 def test_count_objects(mock_ontology_object_service):
     """Test counting objects."""
     service, mock_ontology_object_class = mock_ontology_object_service
@@ -705,3 +688,41 @@ def test_execute_query_with_objects_result(mock_query_service):
     assert "objects" in result
     assert len(result["objects"]) == 1
     mock_query_class.execute.assert_called_once()
+
+
+# Tests against the real foundry_sdk client (only HTTP is stubbed).
+
+ONTOLOGY_RID = "ri.ontology.main.ontology.c61d9ab5-2919-4127-a0a1-ac64c0ce6367"
+
+
+def test_list_linked_objects_returns_linked_object_properties(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
+            "data": [
+                {
+                    "__apiName": "Employee",
+                    "__primaryKey": "EMP002",
+                    "employee_id": "EMP002",
+                    "name": "Jane Roe",
+                }
+            ]
+        }
+    )
+
+    result = OntologyObjectService().list_linked_objects(
+        ONTOLOGY_RID, "Employee", "EMP001", "manages"
+    )
+
+    assert result == [
+        {
+            "__apiName": "Employee",
+            "__primaryKey": "EMP002",
+            "employee_id": "EMP002",
+            "name": "Jane Roe",
+        }
+    ]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/ontologies/{ONTOLOGY_RID}/objects/Employee/EMP001/links/manages",
+    )

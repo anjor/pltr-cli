@@ -4,13 +4,60 @@ Pytest configuration and fixtures for pltr tests.
 
 import pytest
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import Mock, patch
-from typing import Generator
+from typing import Any, Dict, Generator, List, Tuple
+
+import httpx
+from foundry_sdk import FoundryClient, UserTokenAuth
 
 from pltr.auth.storage import CredentialStorage
 from pltr.config.settings import Settings
 from pltr.config.profiles import ProfileManager
+
+
+@dataclass
+class StubFoundryHttp:
+    """A real foundry_sdk FoundryClient whose network layer returns canned responses."""
+
+    client: Any
+    requests: List[httpx.Request] = field(default_factory=list)
+    _queued: List[Tuple[int, Dict[str, Any]]] = field(default_factory=list)
+
+    def respond(self, status_code: int = 200, **response_kwargs: Any) -> None:
+        """Queue the response for the next request (kwargs go to httpx.Response)."""
+        self._queued.append((status_code, response_kwargs))
+
+
+@pytest.fixture
+def stub_foundry_http(monkeypatch) -> StubFoundryHttp:
+    """Give services a real FoundryClient, faking only HTTP.
+
+    Unlike Mock()-based clients, calls to SDK methods or keyword arguments that
+    don't exist fail, SDK argument validation runs, responses are decoded into
+    real SDK models, and SDK warnings (e.g. about `preview`) surface.
+    """
+    stub = StubFoundryHttp(
+        client=FoundryClient(
+            auth=UserTokenAuth(token="test-token"),
+            hostname="test.palantirfoundry.com",
+        )
+    )
+
+    def fake_send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        request.read()
+        stub.requests.append(request)
+        if not stub._queued:
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+        status_code, response_kwargs = stub._queued.pop(0)
+        return httpx.Response(status_code, request=request, **response_kwargs)
+
+    monkeypatch.setattr(httpx.Client, "send", fake_send)
+    auth_manager = Mock()
+    auth_manager.return_value.get_client.return_value = stub.client
+    monkeypatch.setattr("pltr.services.base.AuthManager", auth_manager)
+    return stub
 
 
 @pytest.fixture

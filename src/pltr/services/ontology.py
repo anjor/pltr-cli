@@ -488,7 +488,7 @@ class OntologyObjectService(BaseService):
             List of linked object dictionaries
         """
         try:
-            result = self.service.OntologyObject.list_linked_objects(
+            result = self.service.LinkedObject.list_linked_objects(
                 ontology_rid,
                 object_type,
                 primary_key,
@@ -576,6 +576,9 @@ class OntologyObjectService(BaseService):
 
     def _format_object(self, obj: Any) -> Dict[str, Any]:
         """Format object for consistent output."""
+        # The SDK returns ontology objects as plain dicts of property values
+        if isinstance(obj, dict):
+            return dict(obj)
         # Objects may have various properties - extract them dynamically
         result = {}
         if hasattr(obj, "__dict__"):
