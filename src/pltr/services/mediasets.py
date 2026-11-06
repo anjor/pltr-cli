@@ -17,7 +17,7 @@ class MediaSetsService(BaseService):
         return self.client.media_sets
 
     def get_media_set_info(
-        self, media_set_rid: str, media_item_rid: str, preview: bool = False
+        self, media_set_rid: str, media_item_rid: str
     ) -> Dict[str, Any]:
         """
         Get information about a specific media item in a media set.
@@ -25,7 +25,6 @@ class MediaSetsService(BaseService):
         Args:
             media_set_rid: Media Set Resource Identifier
             media_item_rid: Media Item Resource Identifier
-            preview: Enable preview mode
 
         Returns:
             Media item information dictionary
@@ -34,7 +33,6 @@ class MediaSetsService(BaseService):
             response = self.service.MediaSet.info(
                 media_set_rid=media_set_rid,
                 media_item_rid=media_item_rid,
-                preview=preview,
             )
             return self._format_media_item_info(response)
         except Exception as e:
@@ -169,14 +167,13 @@ class MediaSetsService(BaseService):
             if not file_path_obj.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
-            with open(file_path_obj, "rb") as file:
-                self.service.MediaSet.upload(
-                    media_set_rid=media_set_rid,
-                    media_item_path=media_item_path,
-                    body=file,
-                    transaction_id=transaction_id,
-                    preview=preview,
-                )
+            self.service.MediaSet.upload(
+                media_set_rid=media_set_rid,
+                media_item_path=media_item_path,
+                body=file_path_obj.read_bytes(),
+                transaction_id=transaction_id,
+                preview=preview,
+            )
 
             return {
                 "media_set_rid": media_set_rid,
@@ -194,7 +191,6 @@ class MediaSetsService(BaseService):
         media_item_rid: str,
         output_path: str,
         original: bool = False,
-        preview: bool = False,
     ) -> Dict[str, Any]:
         """
         Download a media item from a media set.
@@ -204,7 +200,6 @@ class MediaSetsService(BaseService):
             media_item_rid: Media Item Resource Identifier
             output_path: Local path where file should be saved
             original: Whether to download original version (vs processed)
-            preview: Enable preview mode
 
         Returns:
             Download response information
@@ -217,13 +212,11 @@ class MediaSetsService(BaseService):
                 response = self.service.MediaSet.read_original(
                     media_set_rid=media_set_rid,
                     media_item_rid=media_item_rid,
-                    preview=preview,
                 )
             else:
                 response = self.service.MediaSet.read(
                     media_set_rid=media_set_rid,
                     media_item_rid=media_item_rid,
-                    preview=preview,
                 )
 
             file_size = self._write_response_to_file(response, output_path_obj)
@@ -296,7 +289,9 @@ class MediaSetsService(BaseService):
             File size in bytes
         """
         with open(output_path, "wb") as file:
-            if hasattr(response, "content"):
+            if isinstance(response, (bytes, bytearray)):
+                file.write(response)
+            elif hasattr(response, "content"):
                 file.write(response.content)
             else:
                 # Handle streaming response
@@ -385,7 +380,6 @@ class MediaSetsService(BaseService):
         file_path: str,
         filename: Optional[str] = None,
         attribution: Optional[str] = None,
-        preview: bool = False,
     ) -> Dict[str, Any]:
         """
         Upload temporary media (auto-deleted after 1 hour if not persisted).
@@ -394,7 +388,6 @@ class MediaSetsService(BaseService):
             file_path: Local path to the file to upload
             filename: Optional filename override
             attribution: Optional attribution string
-            preview: Enable preview mode
 
         Returns:
             Media reference information
@@ -407,13 +400,11 @@ class MediaSetsService(BaseService):
             # Use provided filename or default to file name
             upload_filename = filename or file_path_obj.name
 
-            with open(file_path_obj, "rb") as file:
-                response = self.service.MediaSet.upload_media(
-                    body=file,
-                    filename=upload_filename,
-                    attribution=attribution,
-                    preview=preview,
-                )
+            response = self.service.MediaSet.upload_media(
+                body=file_path_obj.read_bytes(),
+                filename=upload_filename,
+                attribution=attribution,
+            )
 
             return self._format_media_reference(response)
         except Exception as e:

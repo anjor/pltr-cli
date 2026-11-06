@@ -44,7 +44,6 @@ def get_media_item(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
 ):
     """Get detailed information about a specific media item."""
     try:
@@ -55,9 +54,7 @@ def get_media_item(
         with SpinnerProgressTracker().track_spinner(
             f"Fetching media item {media_item_rid}..."
         ):
-            media_info = service.get_media_set_info(
-                media_set_rid, media_item_rid, preview=preview
-            )
+            media_info = service.get_media_set_info(media_set_rid, media_item_rid)
 
         formatter.format_media_item_info(media_info, format, output)
 
@@ -311,7 +308,6 @@ def download_media(
     original: bool = typer.Option(
         False, "--original", help="Download original version instead of processed"
     ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
     overwrite: bool = typer.Option(
         False, "--overwrite", help="Overwrite existing file"
     ),
@@ -338,7 +334,6 @@ def download_media(
                 media_item_rid,
                 output_path,
                 original=original,
-                preview=preview,
             )
 
         formatter.print_success("Successfully downloaded media item")
@@ -533,7 +528,6 @@ def upload_temp(
     output: Optional[str] = typer.Option(
         None, "--output", "-o", help="Output file path"
     ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
 ):
     """Upload temporary media (auto-deleted after 1 hour if not persisted)."""
     try:
@@ -555,7 +549,6 @@ def upload_temp(
                 file_path,
                 filename=filename,
                 attribution=attribution,
-                preview=preview,
             )
 
         formatter.print_success("Successfully uploaded temporary media")
