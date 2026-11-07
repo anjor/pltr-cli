@@ -187,6 +187,16 @@ def render_option_names(options: Sequence[Mapping[str, Any]]) -> str:
     return "- Options: " + ", ".join(names)
 
 
+def _binary_target(entry: Mapping[str, Any]) -> str:
+    """Where a binary command writes: `--output FILE`, or its path argument."""
+    if any("--output" in option["flags"] for option in entry["options"]):
+        return "to `--output FILE` or a pipe"
+    for argument in entry["arguments"]:
+        if "output" in argument["name"]:
+            return f"to `{argument['name'].upper()}`, `-` for stdout"
+    return "to a pipe"
+
+
 def render_facts(entry: Mapping[str, Any]) -> str:
     """The labels line: beta, destructive, paged, output, SDK/HTTP/local."""
     facts = []
@@ -198,7 +208,7 @@ def render_facts(entry: Mapping[str, Any]) -> str:
         facts.append("paged")
     formats = entry.get("outputFormats")
     if formats == ["binary"]:
-        facts.append("output: binary (to `--output FILE` or a pipe)")
+        facts.append(f"output: binary ({_binary_target(entry)})")
     elif formats == []:
         facts.append("output: text (no `--format`)")
     if entry.get("local"):
@@ -391,8 +401,11 @@ def render_index(
         "- **paged**: prints one page, with `nextPageToken` in JSON. "
         "`--page-token TOKEN` continues, `--max-pages N` and `--all` fetch more, "
         "`--page-size N` sets the page size.",
-        "- **output: binary**: writes raw bytes to `--output FILE` or to a "
-        "pipe, never to a terminal. **output: text**: no `--format` option.",
+        "- **output: binary**: writes raw bytes (file content, Arrow, Parquet, "
+        "images), not a table, JSON or CSV: to the file the label names, or to "
+        "stdout when it isn't a terminal (or when the file is `-`). "
+        "`--format json` still gives JSON errors. **output: text**: no "
+        "`--format` option.",
         "- **SDK**: the Foundry Platform SDK method it calls, as "
         "`FoundryClient.<path>`.",
         "- **HTTP (direct, labeled exception)**: one of the few commands that "

@@ -10,7 +10,7 @@ Each entry gives the command's description, its usage line, its arguments, the o
 - **beta**: calls a beta Foundry endpoint. pltr passes `preview=true` itself; the endpoint may still change.
 - **destructive**: deletes or overwrites something. It asks for confirmation on a terminal; `--yes` skips the question. Without a terminal it fails with exit code 2 unless `--yes` is given.
 - **paged**: prints one page, with `nextPageToken` in JSON. `--page-token TOKEN` continues, `--max-pages N` and `--all` fetch more, `--page-size N` sets the page size.
-- **output: binary**: writes raw bytes to `--output FILE` or to a pipe, never to a terminal. **output: text**: no `--format` option.
+- **output: binary**: writes raw bytes (file content, Arrow, Parquet, images), not a table, JSON or CSV: to the file the label names, or to stdout when it isn't a terminal (or when the file is `-`). `--format json` still gives JSON errors. **output: text**: no `--format` option.
 - **SDK**: the Foundry Platform SDK method it calls, as `FoundryClient.<path>`.
 - **HTTP (direct, labeled exception)**: one of the few commands that call a Foundry endpoint without the SDK.
 - **local**: makes no Foundry call.

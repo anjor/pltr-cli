@@ -399,7 +399,7 @@ class ApiCommand(click.Command):
     `spec` is the generated method spec and `sdk_method` the dotted SDK path
     (e.g. "admin.User.list"). The command's `pltr.contract` CommandMeta (read
     with `get_command_meta`) carries the same SDK path and the beta,
-    destructive and paged flags.
+    destructive, paged and binary flags.
     """
 
     def __init__(
@@ -457,6 +457,7 @@ def build_method_command(
         beta=bool(spec.get("beta")),
         destructive=bool(spec.get("destructive")),
         paged=bool(spec.get("paged")),
+        binary=bool(spec.get("binary")),
     )(run)
     return ApiCommand(
         spec["name"],

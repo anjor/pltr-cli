@@ -126,7 +126,20 @@ def test_to_dict():
         "beta": False,
         "destructive": False,
         "paged": True,
+        "binary": False,
     }
+
+
+def test_binary_metadata():
+    @click.command()
+    @pltr_command(sdk="datasets.Dataset.File.content", binary=True)
+    def cmd():
+        """Write the file's bytes."""
+
+    assert get_command_meta(cmd) == CommandMeta(
+        sdk=("datasets.Dataset.File.content",), binary=True
+    )
+    assert get_command_meta(cmd).to_dict()["binary"] is True
 
 
 @pytest.mark.parametrize(

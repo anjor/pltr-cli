@@ -4,7 +4,7 @@
 ``@click.command(...)`` (click). It
 
 * records :class:`CommandMeta` (SDK method paths, direct-HTTP endpoints,
-  beta / destructive / paged) on the callback, where it survives Typer's
+  beta / destructive / paged / binary) on the callback, where it survives Typer's
   callback wrapping and can be read back from the click command tree with
   :func:`get_command_meta` / :func:`iter_commands`;
 * prefixes the help (the docstring) of beta commands with ``[beta]``;
@@ -72,6 +72,9 @@ class CommandMeta:
         destructive: the command deletes/overwrites; it asks for
             confirmation and has ``--yes``.
         paged: the command returns a paged list and has the paging options.
+        binary: the command writes raw bytes (file content, Arrow, Parquet,
+            images) to a file or stdout, not table/JSON/CSV; its
+            ``--format`` only changes how errors are reported.
     """
 
     sdk: Tuple[str, ...] = ()
@@ -79,6 +82,7 @@ class CommandMeta:
     beta: bool = False
     destructive: bool = False
     paged: bool = False
+    binary: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -87,6 +91,7 @@ class CommandMeta:
             "beta": self.beta,
             "destructive": self.destructive,
             "paged": self.paged,
+            "binary": self.binary,
         }
 
 
@@ -115,6 +120,7 @@ def pltr_command(
     beta: bool = False,
     destructive: bool = False,
     paged: bool = False,
+    binary: bool = False,
 ) -> Callable[[F], F]:
     """Declare a command's metadata and give it the error/output contract.
 
@@ -135,6 +141,7 @@ def pltr_command(
         beta=beta,
         destructive=destructive,
         paged=paged,
+        binary=binary,
     )
 
     def decorate(func: F) -> F:

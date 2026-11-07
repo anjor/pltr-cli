@@ -204,7 +204,7 @@ def command_entry(entry: CommandEntry) -> Dict[str, Any]:
     document["generated"] = bool(segments) and segments[0] == "api"
     document["local"] = is_local(segments, meta)
     document["hidden"] = bool(command.hidden)
-    formats = output_formats(command)
+    formats = output_formats(command, meta)
     if formats is not None:
         document["outputFormats"] = formats
     if meta is not None:
@@ -224,15 +224,18 @@ def is_local(segments: Sequence[str], meta: Optional[CommandMeta]) -> bool:
     return bool(segments) and segments[0] in LOCAL_GROUPS
 
 
-def output_formats(command: click.Command) -> Optional[List[str]]:
+def output_formats(
+    command: click.Command, meta: Optional[CommandMeta] = None
+) -> Optional[List[str]]:
     """The formats a command prints its data in; ``None`` when unknown.
 
-    ``["binary"]`` for commands that write raw bytes, the choices of a
-    validated ``--format`` option, ``[]`` for a command without ``--format``
-    (it prints text), and ``None`` for a free-text ``--format`` (a command
-    not yet converted to the output contract).
+    ``["binary"]`` for commands that write raw bytes (``meta.binary``; their
+    ``--format`` only shapes errors), the choices of a validated ``--format``
+    option, ``[]`` for a command without ``--format`` (it prints text), and
+    ``None`` for a free-text ``--format`` (a command not yet converted to the
+    output contract).
     """
-    if _writes_binary(command):
+    if meta is not None and meta.binary:
         return [BINARY_FORMAT]
     option = next(
         (
@@ -247,12 +250,6 @@ def output_formats(command: click.Command) -> Optional[List[str]]:
     if isinstance(option.type, click.Choice):
         return [str(choice) for choice in option.type.choices]
     return None
-
-
-def _writes_binary(command: click.Command) -> bool:
-    from .commands.api._runtime import ApiCommand
-
-    return isinstance(command, ApiCommand) and bool(command.spec.get("binary"))
 
 
 def _argument_help(command: click.Command, param: click.Argument) -> str:

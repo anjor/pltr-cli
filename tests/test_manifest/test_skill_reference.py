@@ -151,6 +151,15 @@ def test_entries(rendered):
         "- output: binary (to `--output FILE` or a pipe) · SDK: `datasets.Dataset.File.content`"
         in content
     )
+    # Curated binary commands: by @pltr_command(binary=True).
+    assert (
+        "- output: binary (to `--output FILE` or a pipe) · SDK: `audit.Organization.LogFile.content`"
+        in rendered["curated/audit.md"]
+    )
+    assert (
+        "- beta · output: binary (to `OUTPUT_PATH`, `-` for stdout) · SDK: `media_sets.MediaSet.retrieve`"
+        in rendered["curated/media-sets.md"]
+    )
     assert "- local (no Foundry call)" in rendered["curated/commands.md"]
     # Large namespaces are split by resource.
     assert "api/ontologies/action.md" in rendered

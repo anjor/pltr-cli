@@ -305,7 +305,7 @@ output is byte-identical on Python 3.10 to 3.13 and on every OS.
 - Output, errors, exit codes, confirmation and the shared options come from
   `pltr.contract`, like for the curated commands
   (`docs/development/command-contract.md`). Each command records its
-  `CommandMeta` (SDK method, beta, destructive, paged) through `@pltr_command`, so
+  `CommandMeta` (SDK method, beta, destructive, paged, binary) through `@pltr_command`, so
   `pltr.contract.iter_commands` lists the generated tree with complete metadata.
 - Commands get their SDK client the way the services do, from
   `pltr.services.base.AuthManager`, so tests serve them with `stub_foundry_http`.

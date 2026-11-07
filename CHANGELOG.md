@@ -144,7 +144,10 @@ can search. See Added.
   - Each entry has `path`, `usage`, `description`, `beta`, `destructive`,
     `paged`, `generated`, `local`, `hidden`, `outputFormats`, `sdkMethods`,
     `httpEndpoints` (direct-HTTP commands only), `arguments`, `options`
-    (hidden deprecated aliases left out) and `help`.
+    (hidden deprecated aliases left out) and `help`. `outputFormats` is
+    `["binary"]` for commands that write raw bytes, such as `audit get`,
+    `media-sets download` and the `pltr api` file-content commands; their
+    `--format` only changes how errors are reported.
 - The README has a section on using pltr from agents (headless auth, finding
   commands with `pltr commands`, JSON output, exit codes, `--yes`).
 - Environment-variable authentication, as described under Breaking changes.

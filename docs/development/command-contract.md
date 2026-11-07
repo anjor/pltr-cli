@@ -268,9 +268,10 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
   returns a page token that was already sent in the same listing (the next
   request would read a page already read); that token is returned.
 
-**Binary output.** For file content, Arrow/Parquet results and images, call
-`check_binary_output(output)` before the request and
-`emit_bytes(chunks, output=output)` after it. `chunks` is `bytes` or an
+**Binary output.** For file content, Arrow/Parquet results and images, mark
+the command `@pltr_command(..., binary=True)` (the manifest then reports
+`outputFormats: ["binary"]`), call `check_binary_output(output)` before the
+request and `emit_bytes(chunks, output=output)` after it. `chunks` is `bytes` or an
 iterable of `bytes` (an SDK streamed response's `iter_bytes()`, so large
 files aren't held in memory). The data goes to `--output FILE` (`-` means
 stdout), or to stdout, but never to a terminal (a usage error, exit code 2).
@@ -414,6 +415,7 @@ def delete_space(
     beta=True,          # calls a beta endpoint
     destructive=False,  # asks for confirmation, has --yes
     paged=False,        # returns a paged list, has the paging options
+    binary=False,       # writes raw bytes (emit_bytes), not table/JSON/CSV
 )
 ```
 
