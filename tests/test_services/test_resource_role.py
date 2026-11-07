@@ -1,371 +1,130 @@
-"""Tests for resource role service."""
+"""Tests for ResourceRoleService against a real FoundryClient (only HTTP is faked).
+
+The previous Mock()-based tests asserted calls to ``filesystem.ResourceRole``,
+which doesn't exist in the SDK (#182); these assert the real
+``Resource.Role.add/remove/list`` requests instead. Every endpoint is GA, so a
+stray ``preview=`` would raise a UserWarning (turned into a failure here).
+"""
+
+import json
 
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk import NotFoundError
+from foundry_sdk.v2.filesystem.models import Everyone, PrincipalWithId, ResourceRole
 
-from pltr.services.resource_role import ResourceRoleService
+from pltr.services.resource_role import ResourceRoleService, role_identifier
+from tests import foundry_json as fj
+from tests import foundry_json_filesystem as fs
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+RID = fs.DATASET_RID
+ROLES_PATH = f"/api/v2/filesystem/resources/{RID}/roles"
 
 
-class TestResourceRoleService:
-    """Test cases for ResourceRoleService."""
+def test_grant_role_to_a_principal_posts_a_role_identifier(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.filesystem = Mock()
-        client.filesystem.ResourceRole = Mock()
-        return client
+    result = ResourceRoleService().grant_role(
+        RID, "compass:read", principal_id=fj.USER_ID
+    )
 
-    @pytest.fixture
-    def mock_auth_manager(self, mock_client):
-        """Create a mock auth manager."""
-        with patch("pltr.services.base.AuthManager") as MockAuthManager:
-            mock_auth_manager = Mock()
-            mock_auth_manager.get_client.return_value = mock_client
-            MockAuthManager.return_value = mock_auth_manager
-            yield mock_auth_manager
-
-    @pytest.fixture
-    def resource_role_service(self, mock_auth_manager):
-        """Create a ResourceRoleService instance with mocked dependencies."""
-        return ResourceRoleService()
-
-    def test_get_service(self, resource_role_service, mock_client):
-        """Test _get_service returns filesystem service."""
-        resource_role_service._client = mock_client
-        assert resource_role_service._get_service() == mock_client.filesystem
-
-    def test_grant_role(self, resource_role_service, mock_client):
-        """Test granting a role."""
-        mock_role_grant = Mock()
-        mock_role_grant.resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grant.principal_id = "user123"
-        mock_role_grant.principal_type = "User"
-        mock_role_grant.role_name = "viewer"
-
-        mock_client.filesystem.ResourceRole.grant.return_value = mock_role_grant
-        resource_role_service._client = mock_client
-
-        result = resource_role_service.grant_role(
-            resource_rid="ri.compass.main.dataset.123",
-            principal_id="user123",
-            principal_type="User",
-            role_name="viewer",
-        )
-
-        expected_role_grant = {
-            "principal_id": "user123",
-            "principal_type": "User",
-            "role_name": "viewer",
-        }
-
-        mock_client.filesystem.ResourceRole.grant.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body=expected_role_grant,
-            preview=True,
-        )
-
-        assert result["resource_rid"] == "ri.compass.main.dataset.123"
-        assert result["principal_id"] == "user123"
-        assert result["principal_type"] == "User"
-        assert result["role_name"] == "viewer"
-
-    def test_grant_role_failure(self, resource_role_service, mock_client):
-        """Test handling role grant failure."""
-        mock_client.filesystem.ResourceRole.grant.side_effect = Exception(
-            "Grant failed"
-        )
-        resource_role_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to grant role 'viewer' to User 'user123' on resource ri.compass.main.dataset.123: Grant failed",
-        ):
-            resource_role_service.grant_role(
-                resource_rid="ri.compass.main.dataset.123",
-                principal_id="user123",
-                principal_type="User",
-                role_name="viewer",
-            )
-
-    def test_revoke_role(self, resource_role_service, mock_client):
-        """Test revoking a role."""
-        resource_role_service._client = mock_client
-
-        resource_role_service.revoke_role(
-            resource_rid="ri.compass.main.dataset.123",
-            principal_id="user123",
-            principal_type="User",
-            role_name="viewer",
-        )
-
-        expected_role_revocation = {
-            "principal_id": "user123",
-            "principal_type": "User",
-            "role_name": "viewer",
-        }
-
-        mock_client.filesystem.ResourceRole.revoke.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body=expected_role_revocation,
-            preview=True,
-        )
-
-    def test_revoke_role_failure(self, resource_role_service, mock_client):
-        """Test handling role revoke failure."""
-        mock_client.filesystem.ResourceRole.revoke.side_effect = Exception(
-            "Revoke failed"
-        )
-        resource_role_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to revoke role 'viewer' from User 'user123' on resource ri.compass.main.dataset.123: Revoke failed",
-        ):
-            resource_role_service.revoke_role(
-                resource_rid="ri.compass.main.dataset.123",
-                principal_id="user123",
-                principal_type="User",
-                role_name="viewer",
-            )
-
-    def test_list_resource_roles(self, resource_role_service, mock_client):
-        """Test listing resource roles."""
-        mock_role_grants = [Mock(), Mock()]
-        mock_role_grants[0].resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grants[0].principal_id = "user123"
-        mock_role_grants[0].role_name = "viewer"
-        mock_role_grants[1].resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grants[1].principal_id = "group456"
-        mock_role_grants[1].role_name = "editor"
-
-        mock_client.filesystem.ResourceRole.list.return_value = iter(mock_role_grants)
-        resource_role_service._client = mock_client
-
-        result = resource_role_service.list_resource_roles(
-            "ri.compass.main.dataset.123"
-        )
-
-        mock_client.filesystem.ResourceRole.list.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["principal_id"] == "user123"
-        assert result[0]["role_name"] == "viewer"
-        assert result[1]["principal_id"] == "group456"
-        assert result[1]["role_name"] == "editor"
-
-    def test_list_resource_roles_with_filters(self, resource_role_service, mock_client):
-        """Test listing resource roles with filters."""
-        mock_role_grants = [Mock()]
-        mock_role_grants[0].resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grants[0].principal_id = "user123"
-
-        mock_client.filesystem.ResourceRole.list.return_value = iter(mock_role_grants)
-        resource_role_service._client = mock_client
-
-        resource_role_service.list_resource_roles(
-            resource_rid="ri.compass.main.dataset.123",
-            principal_type="User",
-            page_size=10,
-            page_token="token123",
-        )
-
-        mock_client.filesystem.ResourceRole.list.assert_called_once_with(
-            "ri.compass.main.dataset.123",
-            preview=True,
-            principal_type="User",
-            page_size=10,
-            page_token="token123",
-        )
-
-    def test_get_principal_roles(self, resource_role_service, mock_client):
-        """Test getting principal roles."""
-        mock_role_grants = [Mock(), Mock()]
-        mock_role_grants[0].resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grants[0].role_name = "viewer"
-        mock_role_grants[1].resource_rid = "ri.compass.main.dataset.456"
-        mock_role_grants[1].role_name = "editor"
-
-        mock_client.filesystem.ResourceRole.get_principal_roles.return_value = iter(
-            mock_role_grants
-        )
-        resource_role_service._client = mock_client
-
-        result = resource_role_service.get_principal_roles(
-            principal_id="user123", principal_type="User"
-        )
-
-        mock_client.filesystem.ResourceRole.get_principal_roles.assert_called_once_with(
-            principal_id="user123", principal_type="User", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["resource_rid"] == "ri.compass.main.dataset.123"
-        assert result[0]["role_name"] == "viewer"
-        assert result[1]["resource_rid"] == "ri.compass.main.dataset.456"
-        assert result[1]["role_name"] == "editor"
-
-    def test_get_principal_roles_with_filters(self, resource_role_service, mock_client):
-        """Test getting principal roles with filters."""
-        mock_role_grants = [Mock()]
-        mock_role_grants[0].resource_rid = "ri.compass.main.dataset.123"
-
-        mock_client.filesystem.ResourceRole.get_principal_roles.return_value = iter(
-            mock_role_grants
-        )
-        resource_role_service._client = mock_client
-
-        resource_role_service.get_principal_roles(
-            principal_id="user123",
-            principal_type="User",
-            resource_rid="ri.compass.main.dataset.123",
-            page_size=10,
-            page_token="token123",
-        )
-
-        mock_client.filesystem.ResourceRole.get_principal_roles.assert_called_once_with(
-            principal_id="user123",
-            principal_type="User",
-            preview=True,
-            resource_rid="ri.compass.main.dataset.123",
-            page_size=10,
-            page_token="token123",
-        )
-
-    def test_bulk_grant_roles(self, resource_role_service, mock_client):
-        """Test bulk granting roles."""
-        role_grants = [
+    assert result is None
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{ROLES_PATH}/add")
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "roles": [
             {
-                "principal_id": "user123",
-                "principal_type": "User",
-                "role_name": "viewer",
-            },
-            {
-                "principal_id": "group456",
-                "principal_type": "Group",
-                "role_name": "editor",
-            },
+                "resourceRolePrincipal": {
+                    "type": "principalIdOnly",
+                    "principalId": fj.USER_ID,
+                },
+                "roleId": "compass:read",
+            }
         ]
+    }
 
-        mock_result = Mock()
-        mock_result.role_grants = [Mock(), Mock()]
-        mock_result.role_grants[0].principal_id = "user123"
-        mock_result.role_grants[0].role_name = "viewer"
-        mock_result.role_grants[1].principal_id = "group456"
-        mock_result.role_grants[1].role_name = "editor"
 
-        mock_client.filesystem.ResourceRole.bulk_grant.return_value = mock_result
-        resource_role_service._client = mock_client
+def test_grant_role_to_everyone(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-        result = resource_role_service.bulk_grant_roles(
-            "ri.compass.main.dataset.123", role_grants
-        )
+    ResourceRoleService().grant_role(RID, "compass:discover")
 
-        mock_client.filesystem.ResourceRole.bulk_grant.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body={"role_grants": role_grants},
-            preview=True,
-        )
-        assert len(result) == 2
-        assert result[0]["principal_id"] == "user123"
-        assert result[0]["role_name"] == "viewer"
-
-    def test_bulk_revoke_roles(self, resource_role_service, mock_client):
-        """Test bulk revoking roles."""
-        role_revocations = [
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body == {
+        "roles": [
             {
-                "principal_id": "user123",
-                "principal_type": "User",
-                "role_name": "viewer",
-            },
-            {
-                "principal_id": "group456",
-                "principal_type": "Group",
-                "role_name": "editor",
-            },
+                "resourceRolePrincipal": {"type": "everyone"},
+                "roleId": "compass:discover",
+            }
         ]
+    }
 
-        resource_role_service._client = mock_client
 
-        resource_role_service.bulk_revoke_roles(
-            "ri.compass.main.dataset.123", role_revocations
+def test_revoke_role_posts_to_remove(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    ResourceRoleService().revoke_role(RID, "compass:edit", principal_id=fs.GROUP_ID)
+
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{ROLES_PATH}/remove")
+    assert json.loads(request.content)["roles"][0] == {
+        "resourceRolePrincipal": {
+            "type": "principalIdOnly",
+            "principalId": fs.GROUP_ID,
+        },
+        "roleId": "compass:edit",
+    }
+
+
+def test_list_roles_fetches_one_page_and_decodes_principals(stub_foundry_http):
+    stub_foundry_http.respond(
+        json=fs.page(
+            [fs.user_role(), fs.group_role(), fs.everyone_role()], token="page-2"
         )
+    )
 
-        mock_client.filesystem.ResourceRole.bulk_revoke.assert_called_once_with(
-            resource_rid="ri.compass.main.dataset.123",
-            body={"role_revocations": role_revocations},
-            preview=True,
-        )
+    page = ResourceRoleService().list_roles(
+        RID, include_inherited=True, page_size=3, page_token="page-1"
+    )
 
-    def test_get_available_roles(self, resource_role_service, mock_client):
-        """Test getting available roles."""
-        mock_roles = [Mock(), Mock()]
-        mock_roles[0].name = "viewer"
-        mock_roles[0].display_name = "Viewer"
-        mock_roles[0].description = "Can view resource"
-        mock_roles[0].is_owner_like = False
-        mock_roles[1].name = "owner"
-        mock_roles[1].display_name = "Owner"
-        mock_roles[1].description = "Can manage resource"
-        mock_roles[1].is_owner_like = True
+    assert all(isinstance(role, ResourceRole) for role in page.data)
+    user, group, everyone = page.data
+    assert isinstance(user.resource_role_principal, PrincipalWithId)
+    assert user.resource_role_principal.principal_type == "USER"
+    assert group.resource_role_principal.principal_id == fs.GROUP_ID
+    assert isinstance(everyone.resource_role_principal, Everyone)
+    assert everyone.role_id == "compass:discover"
+    assert page.next_page_token == "page-2"
+    [request] = stub_foundry_http.requests  # constructing the iterator = one page
+    assert (request.method, request.url.path) == ("GET", ROLES_PATH)
+    assert dict(request.url.params) == {
+        "includeInherited": "true",
+        "pageSize": "3",
+        "pageToken": "page-1",
+    }
 
-        mock_client.filesystem.ResourceRole.get_available_roles.return_value = iter(
-            mock_roles
-        )
-        resource_role_service._client = mock_client
 
-        result = resource_role_service.get_available_roles(
-            "ri.compass.main.dataset.123"
-        )
+def test_list_roles_sends_no_optional_parameters_by_default(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([]))
 
-        mock_client.filesystem.ResourceRole.get_available_roles.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["name"] == "viewer"
-        assert result[0]["display_name"] == "Viewer"
-        assert result[0]["is_owner_like"] is False
-        assert result[1]["name"] == "owner"
-        assert result[1]["display_name"] == "Owner"
-        assert result[1]["is_owner_like"] is True
+    ResourceRoleService().list_roles(RID)
 
-    def test_format_role_grant(self, resource_role_service):
-        """Test formatting role grant information."""
-        mock_role_grant = Mock()
-        mock_role_grant.resource_rid = "ri.compass.main.dataset.123"
-        mock_role_grant.principal_id = "user123"
-        mock_role_grant.principal_type = "User"
-        mock_role_grant.role_name = "viewer"
-        mock_role_grant.granted_by = "admin"
-        mock_role_grant.granted_time = Mock()
-        mock_role_grant.granted_time.time = "2023-01-01T00:00:00Z"
-        mock_role_grant.expires_at = Mock()
-        mock_role_grant.expires_at.time = "2024-01-01T00:00:00Z"
+    assert dict(stub_foundry_http.requests[0].url.params) == {}
 
-        result = resource_role_service._format_role_grant(mock_role_grant)
 
-        assert result["resource_rid"] == "ri.compass.main.dataset.123"
-        assert result["principal_id"] == "user123"
-        assert result["principal_type"] == "User"
-        assert result["role_name"] == "viewer"
-        assert result["granted_by"] == "admin"
-        assert result["granted_time"] == "2023-01-01T00:00:00Z"
-        assert result["expires_at"] == "2024-01-01T00:00:00Z"
+def test_role_identifier_validates_the_principal_id():
+    with pytest.raises(ValueError):  # pydantic: a principal ID is a UUID
+        role_identifier("compass:read", "john.doe")
 
-    def test_format_role_info(self, resource_role_service):
-        """Test formatting role information."""
-        mock_role = Mock()
-        mock_role.name = "viewer"
-        mock_role.display_name = "Viewer"
-        mock_role.description = "Can view resource"
-        mock_role.permissions = ["read"]
-        mock_role.is_owner_like = False
 
-        result = resource_role_service._format_role_info(mock_role)
+def test_sdk_errors_propagate_unchanged(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("ResourceNotFound", parameters={"resourceRid": RID})
+    )
 
-        assert result["name"] == "viewer"
-        assert result["display_name"] == "Viewer"
-        assert result["description"] == "Can view resource"
-        assert result["permissions"] == ["read"]
-        assert result["is_owner_like"] is False
+    with pytest.raises(NotFoundError) as excinfo:
+        ResourceRoleService().list_roles(RID)
+
+    assert excinfo.value.name == "ResourceNotFound"

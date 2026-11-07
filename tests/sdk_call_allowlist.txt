@@ -172,15 +172,6 @@ services/resource.py::ResourceService.remove_markings::filesystem.Resource.remov
 services/resource.py::ResourceService.restore_resource::filesystem.Resource.restore::preview-on-ga  # #184: GA endpoint; stop passing preview=
 services/resource.py::ResourceService.search_resources::filesystem.Folder.children::preview-on-ga  # #184: GA endpoint; stop passing preview=
 
-# src/pltr/services/resource_role.py
-services/resource_role.py::ResourceRoleService.bulk_grant_roles::filesystem.ResourceRole.bulk_grant::missing-method  # #182: unused bulk_grant_roles; delete
-services/resource_role.py::ResourceRoleService.bulk_revoke_roles::filesystem.ResourceRole.bulk_revoke::missing-method  # #182: unused bulk_revoke_roles; delete
-services/resource_role.py::ResourceRoleService.get_available_roles::filesystem.ResourceRole.get_available_roles::missing-method  # #182 resource-role get-available-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.get_principal_roles::filesystem.ResourceRole.get_principal_roles::missing-method  # #182 resource-role get-principal-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.grant_role::filesystem.ResourceRole.grant::missing-method  # #182 resource-role grant: use filesystem.Resource.Role.add(resource_rid, roles=[...])
-services/resource_role.py::ResourceRoleService.list_resource_roles::filesystem.ResourceRole.list::missing-method  # #182 resource-role list: use filesystem.Resource.Role.list(resource_rid, include_inherited=...)
-services/resource_role.py::ResourceRoleService.revoke_role::filesystem.ResourceRole.revoke::missing-method  # #182 resource-role revoke: use filesystem.Resource.Role.remove(resource_rid, roles=[...])
-
 # src/pltr/services/sql.py
 services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
 services/sql.py::SqlService.cancel_query::sql_queries.SqlQuery.cancel::preview-on-ga  # #184: GA endpoint; stop passing preview=
