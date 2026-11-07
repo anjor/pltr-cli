@@ -34,13 +34,6 @@ services/connectivity.py::ConnectivityService.list_table_imports::table_imports.
 # src/pltr/services/copy.py
 services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
 
-# src/pltr/services/data_health.py
-services/data_health.py::DataHealthService.create_check::data_health.Check.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.delete_check::data_health.Check.delete::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check::data_health.Check.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check_report::data_health.CheckReport.get::missing-method  # #182 data-health report get: use Check.CheckReport.get(check_rid, check_report_rid, preview=True) (beta)
-services/data_health.py::DataHealthService.replace_check::data_health.Check.replace::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/dataset.py
 services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.add_primary_key::datasets.Dataset.View.add_primary_key::missing-method  # #182 dataset views add-primary-key: use datasets.View.add_primary_key(view_dataset_rid, primary_key=)
@@ -60,15 +53,6 @@ services/dataset.py::DatasetService.read_table::datasets.read_table::missing-met
 services/dataset.py::DatasetService.remove_backing_datasets::datasets.Dataset.View.remove_backing_datasets::missing-method  # #182 dataset views remove-datasets: use datasets.View.remove_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.replace_backing_datasets::datasets.Dataset.View.replace_backing_datasets::missing-method  # #182 dataset views replace-datasets: use datasets.View.replace_backing_datasets(view_dataset_rid, backing_datasets=)
 
-# src/pltr/services/functions.py
-services/functions.py::FunctionsService.execute_query::functions.Query.execute::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.execute_query_by_rid::functions.Query.execute_by_rid::missing-method  # #182 functions query execute-by-rid: no execute_by_rid; resolve with get_by_rid then execute, or remove
-services/functions.py::FunctionsService.get_query::functions.Query.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::missing-required(rid)  # #182 functions query get-by-rid: rid is keyword-only; Query.get_by_rid(rid=..., preview=True)
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::too-many-positional  # #182 functions query get-by-rid: rid is keyword-only; Query.get_by_rid(rid=..., preview=True)
-services/functions.py::FunctionsService.get_value_type::functions.ValueType.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/language_models.py
 services/language_models.py::LanguageModelsService.generate_embeddings::language_models.OpenAiModel.embeddings::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta OpenAiModel.embeddings
 services/language_models.py::LanguageModelsService.send_message::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
@@ -84,12 +68,6 @@ services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet
 services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/models.py
-services/models.py::ModelsService.create_model::models.Model.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model::models.Model.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model_version::models.ModelVersion.get::missing-method  # #182 models version get: use models.Model.Version.get(model_rid, model_version_rid, preview=True) (beta)
-services/models.py::ModelsService.list_model_versions::models.ModelVersion.list::missing-method  # #182 models version list: use models.Model.Version.list(model_rid, preview=True) (beta)
-
 # src/pltr/services/ontology.py
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::too-many-positional  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
@@ -101,18 +79,6 @@ services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.Ontolo
 services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(filter)  # #182 ontology object-aggregate: OntologyObject.aggregate filters with where=, not filter=
 services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
 services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
-
-# src/pltr/services/orchestration.py
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs[2]  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService.create_build::orchestration.Build.create::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.create_schedule::orchestration.Schedule.create::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.create is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_build_jobs::orchestration.Build.jobs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.get_job::orchestration.Job.get::beta-without-preview  # #182 orchestration jobs get: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_jobs_batch::orchestration.Job.get_batch::beta-without-preview  # #182 orchestration jobs get-batch: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule::orchestration.Schedule.get::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.get is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule_runs::orchestration.Schedule.runs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.replace_schedule::orchestration.Schedule.replace::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.replace is beta: pass preview=True
 
 # src/pltr/services/project.py
 services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
