@@ -8,14 +8,32 @@
   `builds get-batch` and `jobs get-batch` print the API response,
   `{"data": {"<RID>": {...}}}`. `builds cancel`, `schedules delete`,
   `schedules pause` and `schedules unpause` print `null`.
-- **`orchestration`: status messages go to stderr and errors are structured**,
-  with the documented exit codes (2 usage, 3 authentication, 4 permission
-  denied, 5 not found, 6 validation, 7 other API or network error). Every
-  error used to exit with 1.
+- **`data-health`: `--format json` prints the SDK's own serialization**
+  (camelCase API field names such as `createdBy`, `updatedTime`,
+  `statusCheckConfig`; null fields left out) instead of snake_case keys with
+  nulls. `report latest` prints the API response `{"data": [...]}`;
+  `check delete` prints `null`.
+- **`orchestration` and `data-health`: status messages go to stderr and
+  errors are structured**, with the documented exit codes (2 usage,
+  3 authentication, 4 permission denied, 5 not found, 6 validation, 7 other
+  API or network error). Every error used to exit with 1. `data-health
+  report get` no longer prints a colored status line to stdout; the status
+  and message are columns of its table.
 - **`orchestration builds cancel` and `orchestration schedules replace` ask
   for confirmation.** `--yes`/`-y` skips it. When stdin is not a terminal
   they (and `schedules delete`) fail with exit code 2 unless `--yes` is
   given; `schedules delete` used to prompt.
+- **`data-health check replace` asks for confirmation**, and
+  `data-health check delete` no longer prompts when stdin is not a terminal:
+  without `--yes`/`-y` both fail with exit code 2.
+- **`data-health check delete --force`/`-f` is replaced by `--yes`/`-y`.**
+  `--force` still works for one release as a hidden, deprecated alias of
+  `--yes`. Its short form `-f` is gone: `-f` is now `--format`, as on every
+  converted command.
+- **`data-health report get` takes the check RID first:**
+  `pltr data-health report get <CHECK_RID> <CHECK_REPORT_RID>`. The API
+  addresses a report through its check; the old one-argument form could
+  never succeed. Find report RIDs with the new `data-health report latest`.
 - **`orchestration builds search` requires a filter** (`--where` or one of
   the new filter options; see Added). The API requires one; the command
   could never succeed without it.
@@ -27,8 +45,13 @@
   and were always empty.
 - **`orchestration schedules run` prints the schedule run** (its result and
   the build it started) instead of only a success message.
-- **`orchestration` validates `--format`/`-f`:** only table, json and csv are
-  accepted (case-insensitive).
+- **`data-health` table and CSV output use curated columns** (check: RID,
+  type, intent, groups, created by, updated, config; report: RID, status,
+  message, created, check, check type) instead of every key of the
+  serialized response.
+- **`orchestration` and `data-health` validate `--format`/`-f`:** only
+  table, json and csv are accepted (case-insensitive). `-f` is new on
+  `data-health` commands.
 
 ### Added
 
@@ -51,13 +74,23 @@
   `jobs get-batch`, `schedules get`, `schedules create` and
   `schedules replace`: they call beta Foundry endpoints, always with
   `preview=true`.
-- `PLTR_FORMAT` sets the default `--format` of every `orchestration` command.
+- `data-health report latest <CHECK_RID> [--limit N]`
+  (`Check.CheckReport.get_latest`): a check's most recent reports, the way
+  to find the report RIDs that `report get` needs.
+- `[beta]` label in the help of every `data-health` command (all data
+  health endpoints are beta; they are always called with `preview=true`).
+- `PLTR_FORMAT` sets the default `--format` of every `orchestration` and
+  `data-health` command.
 
 ### Deprecated
 
-- `--preview` on `orchestration schedules get`, `create` and `replace` is a
-  hidden no-op that prints a deprecation warning; it will be removed in a
-  future release. The beta endpoints are always called with `preview=true`.
+- `--preview` on `orchestration schedules get`, `create` and `replace` and
+  on `data-health check get`, `create`, `replace`, `delete` and
+  `report get` is a hidden no-op that prints a deprecation warning; it will
+  be removed in a future release. The beta endpoints are always called with
+  `preview=true`.
+- `data-health check delete --force` is a hidden, deprecated alias of
+  `--yes`.
 
 ### Fixed
 
@@ -71,6 +104,13 @@
   without `preview=true`, so the server rejected them.
 - `orchestration schedules get`, `create` and `replace` only worked with
   `--preview`; they now always send `preview=true`.
+- `data-health report get` could never succeed: it called
+  `data_health.CheckReport.get`, which doesn't exist. It now calls
+  `Check.CheckReport.get(check_rid, check_report_rid)`.
+- `data-health check create`, `get`, `replace` and `delete` only worked
+  with `--preview`; they now always send `preview=true`.
+- The `data-health check create` help example used the severity `WARNING`,
+  which the API rejects; severities are `MODERATE` and `CRITICAL`.
 
 ### Docs to update
 

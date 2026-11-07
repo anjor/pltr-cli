@@ -1,212 +1,84 @@
 """
-DataHealth service wrapper for Foundry SDK.
-Provides access to data quality check operations (create, get, update, delete).
+Data health service wrapper for the Foundry SDK (checks and check reports).
+
+Every data health endpoint is beta, so every call passes ``preview=True``.
+Methods return SDK models unchanged and let SDK exceptions propagate so the
+error layer can classify them.
 """
 
 from typing import Any, Dict, Optional
+
 from .base import BaseService
 
 
 class DataHealthService(BaseService):
-    """Service wrapper for Foundry DataHealth operations."""
+    """Service wrapper for Foundry data health (``client.data_health``)."""
 
     def _get_service(self) -> Any:
-        """Get the Foundry DataHealth service."""
+        """Get the Foundry data health service."""
         return self.client.data_health
 
-    # ===== Check Operations =====
+    # ------------------------------------------------------------------ checks
 
     def create_check(
-        self,
-        config: Dict[str, Any],
-        intent: Optional[str] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Create a new data health check.
+        self, *, config: Dict[str, Any], intent: Optional[str] = None
+    ) -> Any:
+        """Create a check (``Check.create``, beta); returns the ``Check``.
 
         Args:
-            config: Check configuration dictionary specifying the check type and parameters.
-                    Must include a 'type' field indicating the check type.
-            intent: Optional note about why the check was set up
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            Check information dictionary containing:
-            - rid: Check resource identifier
-            - groups: List of check group RIDs
-            - config: Check configuration
-            - intent: Check intent (if provided)
-            - createdBy: User who created the check
-            - updatedTime: Last update timestamp
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = DataHealthService()
-            >>> check = service.create_check(
-            ...     config={
-            ...         "type": "buildStatus",
-            ...         "subject": {
-            ...             "datasetRid": "ri.foundry.main.dataset.xxx",
-            ...             "branchId": "master"
-            ...         },
-            ...         "statusCheckConfig": {"severity": "WARNING"}
-            ...     },
-            ...     intent="Monitor build health"
-            ... )
+            config: The check configuration in the API's JSON shape; its
+                ``type`` picks the kind of check, e.g.
+                ``{"type": "buildStatus", "subject": {...},
+                "statusCheckConfig": {"severity": "MODERATE"}}``. The SDK
+                validates it.
+            intent: Why the check was set up.
         """
-        try:
-            check = self.service.Check.create(
-                config=config,
-                intent=intent,
-                preview=preview,
-            )
-            return self._serialize_response(check)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create check: {e}")
+        return self.service.Check.create(config=config, intent=intent, preview=True)
 
-    def get_check(
-        self,
-        check_rid: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Get information about a data health check.
-
-        Args:
-            check_rid: Check RID (e.g., ri.data-health.main.check.xxx)
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            Check information dictionary
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = DataHealthService()
-            >>> check = service.get_check(
-            ...     check_rid="ri.data-health.main.check.abc123"
-            ... )
-        """
-        try:
-            check = self.service.Check.get(
-                check_rid=check_rid,
-                preview=preview,
-            )
-            return self._serialize_response(check)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get check '{check_rid}': {e}")
+    def get_check(self, check_rid: str) -> Any:
+        """Get a check (``Check.get``, beta); returns a ``Check``."""
+        return self.service.Check.get(check_rid, preview=True)
 
     def replace_check(
-        self,
-        check_rid: str,
-        config: Dict[str, Any],
-        intent: Optional[str] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Replace/update a data health check.
+        self, check_rid: str, *, config: Dict[str, Any], intent: Optional[str] = None
+    ) -> Any:
+        """Replace a check's configuration (``Check.replace``, beta).
 
-        Note: Changing the type of a check after creation is not supported.
+        ``config`` has the shape of the create config without its
+        ``subject``; a check's type and subject can't be changed. Returns
+        the updated ``Check``.
+        """
+        return self.service.Check.replace(
+            check_rid, config=config, intent=intent, preview=True
+        )
+
+    def delete_check(self, check_rid: str) -> None:
+        """Delete a check (``Check.delete``, beta)."""
+        self.service.Check.delete(check_rid, preview=True)
+
+    # ----------------------------------------------------------- check reports
+
+    def get_check_report(self, check_rid: str, check_report_rid: str) -> Any:
+        """Get one report of a check (``Check.CheckReport.get``, beta).
+
+        Returns a ``CheckReport`` (the result and a snapshot of the check).
+        """
+        return self.service.Check.CheckReport.get(
+            check_rid, check_report_rid, preview=True
+        )
+
+    def get_latest_check_reports(
+        self, check_rid: str, limit: Optional[int] = None
+    ) -> Any:
+        """Get a check's most recent reports (``Check.CheckReport.get_latest``, beta).
 
         Args:
-            check_rid: Check RID (e.g., ri.data-health.main.check.xxx)
-            config: New check configuration dictionary
-            intent: Optional updated note about the check
-            preview: Enable preview mode (default: False)
+            limit: Maximum number of reports (the API's default is 10, its
+                maximum 100).
 
         Returns:
-            Updated check information dictionary
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = DataHealthService()
-            >>> check = service.replace_check(
-            ...     check_rid="ri.data-health.main.check.abc123",
-            ...     config={"type": "buildStatus", ...},
-            ...     intent="Updated monitoring parameters"
-            ... )
+            ``GetLatestCheckReportsResponse`` (``.data``: ``CheckReport`` list).
         """
-        try:
-            check = self.service.Check.replace(
-                check_rid=check_rid,
-                config=config,
-                intent=intent,
-                preview=preview,
-            )
-            return self._serialize_response(check)
-        except Exception as e:
-            raise RuntimeError(f"Failed to replace check '{check_rid}': {e}")
-
-    def delete_check(
-        self,
-        check_rid: str,
-        preview: bool = False,
-    ) -> None:
-        """
-        Delete a data health check.
-
-        Args:
-            check_rid: Check RID (e.g., ri.data-health.main.check.xxx)
-            preview: Enable preview mode (default: False)
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = DataHealthService()
-            >>> service.delete_check(
-            ...     check_rid="ri.data-health.main.check.abc123"
-            ... )
-        """
-        try:
-            self.service.Check.delete(
-                check_rid=check_rid,
-                preview=preview,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to delete check '{check_rid}': {e}")
-
-    # ===== CheckReport Operations =====
-
-    def get_check_report(
-        self,
-        check_report_rid: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Get a data health check report.
-
-        Args:
-            check_report_rid: CheckReport RID (e.g., ri.data-health.main.check-report.xxx)
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            CheckReport information dictionary containing:
-            - rid: CheckReport resource identifier
-            - check: Snapshot of the check configuration when report was created
-            - result: Check result with status and message
-            - createdTime: When the report was created
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = DataHealthService()
-            >>> report = service.get_check_report(
-            ...     check_report_rid="ri.data-health.main.check-report.abc123"
-            ... )
-        """
-        try:
-            report = self.service.CheckReport.get(
-                check_report_rid=check_report_rid,
-                preview=preview,
-            )
-            return self._serialize_response(report)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get check report '{check_report_rid}': {e}")
+        return self.service.Check.CheckReport.get_latest(
+            check_rid, limit=limit, preview=True
+        )

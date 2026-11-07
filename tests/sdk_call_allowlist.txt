@@ -52,13 +52,6 @@ services/connectivity.py::ConnectivityService.list_table_imports::table_imports.
 # src/pltr/services/copy.py
 services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
 
-# src/pltr/services/data_health.py
-services/data_health.py::DataHealthService.create_check::data_health.Check.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.delete_check::data_health.Check.delete::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check::data_health.Check.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check_report::data_health.CheckReport.get::missing-method  # #182 data-health report get: use Check.CheckReport.get(check_rid, check_report_rid, preview=True) (beta)
-services/data_health.py::DataHealthService.replace_check::data_health.Check.replace::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/dataset.py
 services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.add_primary_key::datasets.Dataset.View.add_primary_key::missing-method  # #182 dataset views add-primary-key: use datasets.View.add_primary_key(view_dataset_rid, primary_key=)
