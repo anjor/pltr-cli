@@ -7,6 +7,11 @@
   schema). A source without a schema (`SchemaNotFound`) is still copied
   without one. Pass `--no-schema` to copy only the files.
 
+### Added
+
+- Error type `invalid_response` (exit code 7): the API's response can't be
+  read, because it doesn't match the SDK's model or isn't JSON.
+
 ### Changed
 
 - `pltr cp` reads the source's schema from `--branch` (it read the default
@@ -39,6 +44,20 @@
 - `pltr cp`: listing the source's files is part of the file-copy step, so a
   listing failure also cleans up the new dataset with the context "Failed to
   copy the files of ...".
+- A response that doesn't match the SDK's model (for example a field the
+  installed SDK requires but a newer stack no longer sends) was reported as
+  a usage error (exit 2, "Invalid argument"). It is now `invalid_response`
+  (exit 7), and the message names the model and the mismatched fields and
+  suggests upgrading pltr and the SDK. Invalid arguments (a bad RID, invalid
+  JSON input) are still usage errors.
+- A success response whose body isn't JSON (for example a proxy's sign-in
+  page) was reported as "Invalid JSON input" (exit 2) by `dataset schema
+  apply` and the `ontology object-type-create`/`link-type-create` fallback,
+  and as an unexpected error (exit 1) by SDK calls. Both are now
+  `invalid_response` (exit 7).
+- Unexpected failures inside the SDK (`SDKInternalError` that isn't an HTTP
+  or OAuth failure) say "foundry-platform-sdk failed unexpectedly: ..." with
+  a hint to report them (still `unexpected_error`, exit 1).
 
 ### Docs to update
 
@@ -46,6 +65,9 @@
   schema now works" with the cp schema entry above (the fix needs both), and
   drop `b1-dataset.md`'s Deprecated entry for the `DatasetService` compat
   methods (they are removed now).
+- `README.md` exit-code table (and any other list of error types, e.g. in
+  `claude_skill/`): add `invalid_response` to exit code 7 ("the API's
+  response doesn't match the SDK's model or isn't JSON; upgrade pltr").
 - `README.md`, `docs/user-guide/commands.md` and
   `claude_skill/reference/dataset-commands.md` (cp sections): a dataset copy
   copies the schema after the files and fails (trashing the copy) when the
@@ -62,6 +84,10 @@
 - That `putSchema` with `dataframeReader: CSV` makes Foundry read copied CSV
   files (it depends on the copied files having a header row the reader
   expects), and that the PARQUET default fits datasets built by transforms.
+- That decode failures look the same on a real stack: the rule reads where
+  the pydantic error was raised (SDK code after `validate_call` means the
+  response) and was checked against foundry-platform-sdk 1.111.0 and
+  pydantic 2.11 only.
 - `pltr cp --branch X` for a branch other than the new dataset's default
   branch: `Dataset.create` makes only the default branch, so starting the
   transaction on `X` may fail with `BranchNotFound` (behaviour unchanged).

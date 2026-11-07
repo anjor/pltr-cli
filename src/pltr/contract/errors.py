@@ -36,7 +36,7 @@ class ExitCode(IntEnum):
     PERMISSION_DENIED = 4  # HTTP 403
     NOT_FOUND = 5  # HTTP 404
     VALIDATION = 6  # HTTP 400, 422
-    API = 7  # other API or network errors: 409, 413, 429, 5xx, timeouts
+    API = 7  # other API/network errors: 409, 413, 429, 5xx, bad responses, timeouts
 
 
 class PltrError(Exception):
@@ -139,8 +139,18 @@ _HINTS = {
         "Check the RID (Foundry RIDs look like ri.<service>.<instance>.<type>.<id>) "
         "and that your account can see the resource."
     ),
+    "invalid_response": (
+        "Upgrade with `uv tool upgrade pltr-cli` (or `pipx upgrade pltr-cli`). "
+        "If the error persists, report it with PLTR_DEBUG=1 output."
+    ),
     "unexpected_error": "Re-run with PLTR_DEBUG=1 to see the traceback.",
 }
+
+#: Hint for an ``SDKInternalError`` that isn't an HTTP or OAuth failure.
+_SDK_BUG_HINT = (
+    "This looks like a bug in foundry-platform-sdk or pltr. Re-run with "
+    "PLTR_DEBUG=1 to see the traceback, and report it."
+)
 
 # pydantic error types that mean pltr called the SDK with a wrong signature.
 _SIGNATURE_ERRORS = {
@@ -329,11 +339,17 @@ def _from_http_response(response: Any, fallback: str) -> ErrorInfo:
     )
 
 
-def _describe_validation_error(exc: Any) -> Tuple[str, bool]:
-    """Return (message, is_signature_error) for a pydantic ValidationError."""
+def _describe_validation_error(
+    exc: Any, *, limit: Optional[int] = None
+) -> Tuple[str, bool]:
+    """Return (message, is_signature_error) for a pydantic ValidationError.
+
+    ``limit`` caps the number of problems listed ("and N more").
+    """
     parts: List[str] = []
     signature_error = False
-    for error in exc.errors():
+    errors = exc.errors()
+    for error in errors:
         if error.get("type") in _SIGNATURE_ERRORS:
             signature_error = True
         location = ".".join(str(part) for part in error.get("loc", ()))
@@ -345,7 +361,115 @@ def _describe_validation_error(exc: Any) -> Tuple[str, bool]:
                 "(expected ri.<service>.<instance>.<type>.<locator>)"
             )
         parts.append(f"{location}: {message}" if location else message)
+    if limit is not None and len(parts) > limit:
+        parts = parts[:limit] + [f"and {len(parts) - limit} more"]
     return "; ".join(parts) or str(exc), signature_error
+
+
+def _package_dir(module: Any) -> str:
+    import os
+
+    return os.path.dirname(os.path.abspath(module.__file__)) + os.sep
+
+
+def _is_response_decode_error(exc: BaseException) -> bool:
+    """True when the SDK raised a ValidationError while reading a response.
+
+    The SDK checks a method's arguments with ``pydantic.validate_call``
+    before the method runs; the error's title is the method (e.g.
+    ``FolderClient.get``) and the innermost frames are pydantic's. Anything
+    the SDK validates once the method runs is the API's response, decoded
+    with ``Model.model_validate`` or a ``TypeAdapter`` (the title names the
+    type, e.g. ``Folder``). So an error raised from SDK code inside the
+    ``validate_call`` wrapper, or from SDK code without one (fetching the
+    next page of an iterator), is a response the SDK's model doesn't fit.
+    pltr's own validation of user input has no SDK frames at all.
+    """
+    import os
+
+    import foundry_sdk
+    import pydantic
+
+    sdk_dir = _package_dir(foundry_sdk)
+    pydantic_dir = _package_dir(pydantic)
+    deepest_sdk = deepest_validate_call = -1
+    depth = 0
+    tb = exc.__traceback__
+    while tb is not None:
+        filename = os.path.abspath(tb.tb_frame.f_code.co_filename)
+        if filename.startswith(sdk_dir):
+            deepest_sdk = depth
+        elif filename.startswith(pydantic_dir) and "validate_call" in filename:
+            deepest_validate_call = depth
+        tb = tb.tb_next
+        depth += 1
+    return deepest_sdk > deepest_validate_call
+
+
+def _sdk_version() -> str:
+    import foundry_sdk
+
+    return str(getattr(foundry_sdk, "__version__", "") or "unknown")
+
+
+def _invalid_response(exc: Any) -> ErrorInfo:
+    """A response the installed SDK can't decode into its model (exit 7)."""
+    title = getattr(exc, "title", None) or "response"
+    problems, _ = _describe_validation_error(exc, limit=3)
+    return ErrorInfo(
+        "invalid_response",
+        f"The API response doesn't match the SDK's {title} model ({problems}). "
+        f"The Foundry stack may be newer than foundry-platform-sdk "
+        f"{_sdk_version()}: upgrading pltr and the SDK may fix it.",
+        ExitCode.API,
+    )
+
+
+def _invalid_json_response(exc: Any) -> ErrorInfo:
+    """A response body that isn't JSON where JSON was expected (exit 7)."""
+    detail = getattr(exc, "msg", None) or str(exc)
+    line, column = getattr(exc, "lineno", None), getattr(exc, "colno", None)
+    if line is not None and column is not None:
+        detail = f"{detail} at line {line}, column {column}"
+    return ErrorInfo(
+        "invalid_response",
+        f"The API returned a response that isn't valid JSON ({detail}). A proxy "
+        "or sign-in page may have answered instead of Foundry; check the host.",
+        ExitCode.API,
+        hint="Check the profile's host with `pltr verify`.",
+    )
+
+
+def _from_sdk_internal_error(exc: Any) -> ErrorInfo:
+    """Classify the SDK's ``SDKInternalError`` (never a usage error).
+
+    The SDK raises it for an error response whose body isn't a Foundry error
+    (classified by the HTTP status in its message), a failed OAuth token
+    request (an authentication error), a success body that isn't JSON (an
+    invalid response) and for anything else that went wrong inside the SDK
+    (an unexpected error: a bug in the SDK or in how pltr calls it).
+    """
+    import json
+
+    token_response = _oauth_token_failure(exc)
+    if token_response is not None:
+        return _oauth_error(token_response)
+    detail = str(getattr(exc, "msg", "") or type(exc).__name__)
+    match = re.search(r"error response with status code (\d{3})", detail)
+    if match:
+        status = int(match.group(1))
+        error_type, exit_code = _status_info(status)
+        return ErrorInfo(error_type, detail[:500], exit_code, status_code=status)
+    for candidate in _chain(exc)[1:]:
+        if isinstance(candidate, json.JSONDecodeError):
+            return _invalid_json_response(candidate)
+    first_line = detail.strip().splitlines()[0] if detail.strip() else detail
+    return ErrorInfo(
+        "unexpected_error",
+        f"foundry-platform-sdk failed unexpectedly: {first_line[:500]}",
+        ExitCode.UNEXPECTED,
+        hint=_SDK_BUG_HINT,
+    )
 
 
 def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
@@ -397,16 +521,7 @@ def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
     if isinstance(exc, (sdk.NotAuthenticated, sdk.EnvironmentNotConfigured)):
         return ErrorInfo("auth_error", str(exc) or type(exc).__name__, ExitCode.AUTH)
     if isinstance(exc, sdk.SDKInternalError):
-        token_response = _oauth_token_failure(exc)
-        if token_response is not None:
-            return _oauth_error(token_response)
-        detail = exc.msg
-        match = re.search(r"error response with status code (\d{3})", detail)
-        if match:
-            status = int(match.group(1))
-            error_type, exit_code = _status_info(status)
-            return ErrorInfo(error_type, detail[:500], exit_code, status_code=status)
-        return ErrorInfo("unexpected_error", detail[:500], ExitCode.UNEXPECTED)
+        return _from_sdk_internal_error(exc)
 
     # requests (the labeled direct-HTTP commands)
     if isinstance(exc, requests.HTTPError) and exc.response is not None:
@@ -417,8 +532,12 @@ def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
         return ErrorInfo(
             "network_error", f"Could not connect to Foundry: {exc}", ExitCode.API
         )
+    if isinstance(exc, requests.exceptions.JSONDecodeError):
+        # Response.json() of a success body that isn't JSON. Stop here: the
+        # json.JSONDecodeError in its context is not invalid user input.
+        return _invalid_json_response(exc)
     if isinstance(exc, requests.RequestException):
-        return None  # e.g. a JSON decode error of a response: unexpected
+        return None
 
     # httpx errors that escaped the SDK's own wrapping (httpx is an SDK dependency)
     import httpx
@@ -440,6 +559,8 @@ def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
         )
 
     if isinstance(exc, pydantic.ValidationError):
+        if _is_response_decode_error(exc):
+            return _invalid_response(exc)
         message, signature_error = _describe_validation_error(exc)
         if signature_error:
             return ErrorInfo(

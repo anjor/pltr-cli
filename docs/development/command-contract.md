@@ -271,13 +271,13 @@ Commands contain no `try/except` for reporting.
 | Exit | `type` | When |
 |---|---|---|
 | 0 | | success |
-| 1 | `unexpected_error`, `aborted` | a bug or unknown failure; "no" at a confirmation prompt |
+| 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
 | 2 | `usage_error`, `confirmation_required` | bad or missing arguments, invalid JSON input, an invalid RID, a destructive command without `--yes` when stdin is not a terminal |
 | 3 | `auth_error` | no usable profile or credentials, an OAuth token failure, HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
 | 5 | `not_found`, `api_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack) |
 | 6 | `validation_error` | HTTP 400, 422 |
-| 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, connection and timeout errors |
+| 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
 
 JSON mode prints one compact object as the last stderr line, and leaves out
 keys that don't apply:
@@ -293,13 +293,30 @@ Text mode prints `Error: <message>`, then the details and a hint.
     Typed errors have an empty `str()` and no `error_code`, so the message is
     built from `errorName`, the description and the parameters, and
     `errorCode` is derived from the HTTP status where that is unambiguous.
+  - The SDK's `SDKInternalError`, which is never a usage error: an error
+    response whose body isn't a Foundry error is classified by its HTTP
+    status, a failed OAuth token request is an `auth_error`, a success body
+    that isn't JSON is an `invalid_response` (exit 7), and anything else is
+    an `unexpected_error` (exit 1, "foundry-platform-sdk failed
+    unexpectedly", with a hint to report it).
   - `requests.HTTPError`, including the Foundry error body, for the labeled
-    direct-HTTP commands.
+    direct-HTTP commands. A success body that isn't JSON
+    (`requests.JSONDecodeError` from `response.json()`) is an
+    `invalid_response` (exit 7), not invalid user input.
   - pltr `AuthError` and its subclasses.
   - Click usage errors.
-  - pydantic validation errors from SDK argument checks. A bad RID becomes a
-    usage error; a wrong SDK signature is reported as a pltr bug (exit 1).
-  - `json.JSONDecodeError`.
+  - pydantic validation errors. Where one was raised decides what it means:
+    - in the SDK's argument check (`pydantic.validate_call`; the error's
+      title is the method, e.g. `FolderClient.get`): a bad RID or value is a
+      usage error, a wrong SDK signature is reported as a pltr bug (exit 1);
+    - in SDK code after that check, i.e. while decoding the response (the
+      title names the model, e.g. `Folder`): an `invalid_response` (exit 7)
+      whose message names the model and the mismatched fields and suggests
+      upgrading pltr and the SDK (the stack may be newer than the SDK);
+    - in pltr's own code (no SDK frames): a usage error. Prefer wrapping
+      such validation in `typer.BadParameter`.
+  - `json.JSONDecodeError` on its own: a usage error ("Invalid JSON input").
+    Parse JSON options with `load_json_input`, which reports the option.
 - **Exception chains.** The `__cause__`/`__context__` chain is searched from
   the outside in. The first exception with a known meaning decides the
   classification, and the outer exception's first line is kept as context.

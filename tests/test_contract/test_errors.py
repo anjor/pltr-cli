@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import click
+import foundry_sdk
 import httpx
 import pydantic
 import pytest
@@ -170,6 +171,12 @@ def body(code: str = "X") -> dict:
         (click.UsageError("bad usage"), "usage_error", 2, None),
         (click.BadParameter("bad value"), "usage_error", 2, None),
         (json.JSONDecodeError("Expecting value", "x", 0), "usage_error", 2, None),
+        (
+            requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0),
+            "invalid_response",
+            7,
+            None,
+        ),
         (ConfirmationRequired("pass --yes"), "confirmation_required", 2, None),
         (Aborted("no"), "aborted", 1, None),
         (KeyError("x"), "unexpected_error", 1, None),
@@ -290,6 +297,147 @@ def test_wrong_sdk_signature_is_a_pltr_bug(stub_foundry_http):
     info = classify_error(excinfo.value)
     assert (info.type, info.exit_code) == ("unexpected_error", 1)
     assert "pltr bug" in info.message
+
+
+def test_response_that_does_not_fit_the_model_is_an_invalid_response(
+    stub_foundry_http,
+):
+    """Not a usage error: the user's input was fine, the response wasn't."""
+    stub_foundry_http.respond(json={"rid": fj.FOLDER_RID})  # most fields missing
+    with pytest.raises(pydantic.ValidationError) as excinfo:
+        stub_foundry_http.client.filesystem.Folder.get(fj.FOLDER_RID)
+    assert excinfo.value.title == "Folder"
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code, info.status_code) == (
+        "invalid_response",
+        7,
+        None,
+    )
+    assert info.message.startswith(
+        "The API response doesn't match the SDK's Folder model (displayName: Field "
+        "required; path: Field required; type: Field required; and "
+    )
+    assert f"foundry-platform-sdk {foundry_sdk.__version__}" in info.message
+    assert "upgrading pltr" in info.message
+    assert "uv tool upgrade pltr-cli" in info.hint
+
+
+def test_response_of_a_non_model_type_that_does_not_fit(stub_foundry_http):
+    """Responses that aren't models are decoded with a TypeAdapter."""
+    stub_foundry_http.respond(json=12)  # Transaction.build returns a build RID
+    with pytest.raises(pydantic.ValidationError) as excinfo:
+        stub_foundry_http.client.datasets.Dataset.Transaction.build(
+            "ri.foundry.main.dataset.d", "ri.foundry.main.transaction.t", preview=True
+        )
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code) == ("invalid_response", 7)
+    assert info.message.startswith("The API response doesn't match the SDK's str")
+
+
+def test_next_page_that_does_not_fit_the_model(stub_foundry_http):
+    """Later pages are fetched without validate_call (iterating the iterator)."""
+    stub_foundry_http.respond(json={"data": [fj.folder()], "nextPageToken": "p2"})
+    stub_foundry_http.respond(json={"data": [{"rid": 1}]})
+    iterator = stub_foundry_http.client.filesystem.Folder.children(fj.FOLDER_RID)
+    with pytest.raises(pydantic.ValidationError) as excinfo:
+        list(iterator)
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code) == ("invalid_response", 7)
+    assert "ListChildrenOfFolderResponse" in info.message
+
+
+def test_wrapped_response_decode_error_keeps_the_context(stub_foundry_http):
+    stub_foundry_http.respond(json={"rid": fj.FOLDER_RID})
+    try:
+        try:
+            stub_foundry_http.client.filesystem.Folder.get(fj.FOLDER_RID)
+        except pydantic.ValidationError as decode_error:
+            raise RuntimeError("Failed to get the folder") from decode_error
+    except RuntimeError as wrapper:
+        info = classify_error(wrapper)
+
+    assert (info.type, info.exit_code) == ("invalid_response", 7)
+    assert info.message.startswith("Failed to get the folder: The API response")
+
+
+def test_pltr_validating_user_input_into_a_model_is_still_a_usage_error():
+    """No SDK frames: pltr validated something itself (e.g. JSON input)."""
+    from foundry_sdk.v2.core.models import DatasetSchema
+
+    with pytest.raises(pydantic.ValidationError) as excinfo:
+        DatasetSchema.model_validate({"fieldSchemaList": [{"name": "x"}]})
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code) == ("usage_error", 2)
+
+
+# --------------------------------------------- responses that aren't JSON
+
+
+def test_sdk_success_body_that_is_not_json_is_an_invalid_response(
+    stub_foundry_http,
+):
+    """The SDK wraps the JSONDecodeError in SDKInternalError."""
+    stub_foundry_http.respond(
+        content=b"<html>Sign in</html>", headers={"Content-Type": "application/json"}
+    )
+    with pytest.raises(SDKInternalError) as excinfo:
+        stub_foundry_http.client.filesystem.Folder.get(fj.FOLDER_RID)
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code) == ("invalid_response", 7)
+    assert info.message.startswith(
+        "The API returned a response that isn't valid JSON (Expecting value at "
+        "line 1, column 1)."
+    )
+
+
+def test_direct_http_success_body_that_is_not_json_is_an_invalid_response(
+    stub_foundry_http,
+):
+    """requests' JSONDecodeError must not reach the json.JSONDecodeError
+    in its context, which would make it a usage error (invalid JSON input)."""
+    stub_foundry_http.respond(content=b"<html>Sign in</html>")
+    response = requests.get("https://test.palantirfoundry.com/api/thing")
+    with pytest.raises(requests.exceptions.JSONDecodeError) as excinfo:
+        response.json()
+    assert isinstance(excinfo.value.__context__, json.JSONDecodeError)
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code) == ("invalid_response", 7)
+    assert "isn't valid JSON" in info.message
+
+
+def test_unexpected_sdk_failure_is_reported_as_a_bug():
+    info = classify_error(raised(SDKInternalError("'NoneType' object is not iterable")))
+
+    assert (info.type, info.exit_code) == ("unexpected_error", 1)
+    assert info.message == (
+        "foundry-platform-sdk failed unexpectedly: 'NoneType' object is not iterable"
+    )
+    assert info.hint is not None and "bug in foundry-platform-sdk or pltr" in info.hint
+
+
+def test_sdk_internal_error_is_never_a_usage_error():
+    """Even when it wraps an exception that alone would be a usage error."""
+    try:
+        try:
+            raise ValueError("bad value")
+        except ValueError as inner:
+            raise SDKInternalError(str(inner)) from inner
+    except SDKInternalError as outer:
+        info = classify_error(outer)
+
+    assert (info.type, info.exit_code) == ("unexpected_error", 1)
 
 
 # --------------------------------------------------------- exception chains
