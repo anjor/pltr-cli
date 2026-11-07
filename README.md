@@ -1,32 +1,47 @@
 # pltr-cli
 
-A comprehensive command-line interface for Palantir Foundry APIs, providing 81+ commands for data analysis, dataset management, ontology operations, orchestration, SQL queries, folder management, and administrative tasks.
+A command-line interface for the Palantir Foundry Platform API, for people,
+scripts and AI agents. Curated commands cover datasets, ontologies, SQL,
+builds and schedules, the filesystem, admin and more; `pltr api` adds a
+command for every method of the Foundry Platform SDK.
 
 ## Overview
 
-`pltr-cli` provides a powerful and intuitive way to interact with Palantir Foundry from the command line. Built on top of the official `foundry-platform-sdk`, it offers comprehensive access to Foundry's capabilities with a focus on productivity and ease of use.
+pltr is built on the official
+[foundry-platform-sdk](https://github.com/palantir/foundry-platform-python).
+Every command follows the same rules: `--format json` prints the API's own
+JSON, stdout carries only data, errors are structured with documented exit
+codes, and destructive commands ask before they change anything.
+
+Foundry's API addresses almost everything by RID (Resource Identifier), for
+example `ri.foundry.main.dataset.<uuid>`. Most commands take RIDs, not
+names; find them in Foundry's web interface, or with commands such as
+`pltr folder list`, `pltr resource get-by-path` and `pltr ontology list`.
 
 ## ✨ Key Features
 
-- 🔐 **Secure Authentication**: Token and OAuth2 support, with profiles in the system keyring or environment variables for CI and agents (no keyring or setup needed)
-- 📊 **Dataset Operations**: Complete dataset management with branches, files, transactions, and views (RID-based API)
-- 📁 **Filesystem Management**: Complete filesystem operations including folders, projects, spaces, and resources
-- 🏗️ **Project Management**: Create, update, and manage Foundry projects within spaces
-- 🌐 **Space Management**: Administer spaces, manage members, and control access
-- 🔐 **Resource Permissions**: Grant, revoke, and manage role-based access to resources
-- 🔗 **Connectivity & Imports**: Manage external connections and import files/tables from various data sources
-- 🎯 **Comprehensive Ontology Access**: 13 commands for objects, actions, and queries
-- 🏗️ **Orchestration Management**: Create, manage, and monitor builds, jobs, and schedules
-- 🎬 **MediaSets Operations**: Upload, download, and manage media content with transaction support
-- 🤖 **Models Management**: Create and inspect ML models and versions in the model registry
-- 🌊 **Streams Management**: Manage streaming datasets and publish real-time data
-- 💬 **Language Models**: Interact with Claude and OpenAI embeddings for LLM operations
-- 📝 **Full SQL Support**: Execute, submit, monitor, and export query results
-- 👥 **Admin Operations**: User, group, role, and organization management (16 commands)
-- 💻 **Interactive Shell**: REPL mode with tab completion and command history
-- ⚡ **Shell Completion**: Auto-completion for bash, zsh, and fish
-- 🎨 **Rich Output**: Beautiful terminal formatting with multiple export formats (table, JSON, CSV)
-- 👤 **Multi-Profile Support**: Manage multiple Foundry environments seamlessly
+- **Authentication**: token and OAuth2 profiles with credentials in the
+  system keyring, or environment variables for CI and agents (no keyring or
+  setup needed).
+- **Datasets**: branches, files (upload and download, including whole
+  directories), transactions, schemas, views and previews.
+- **Filesystem**: folders, projects, spaces and resources, including the
+  trash, markings and role grants; `pltr cp` copies datasets and folders.
+- **Ontology**: object types, objects (list, search, aggregate, count, linked
+  objects), actions and queries.
+- **Orchestration**: builds, jobs and schedules.
+- **SQL**: run queries, wait for them and export their results.
+- **More areas**: media sets, streams, functions, models, language models
+  (Anthropic Claude, OpenAI embeddings), data health, AIP agents, widgets,
+  connectivity (connections and imports), audit logs, and admin (users,
+  groups, roles, organizations and markings).
+- **Every SDK endpoint**: `pltr api` has a generated command for each method
+  of the SDK's V2 client.
+- **Built for agents**: JSON output in the API's shape, structured errors,
+  exit codes, `--yes` for destructive commands, and `pltr commands`, a
+  searchable manifest of every command.
+- **Interactive shell** with completion and history, shell completion for
+  bash, zsh and fish, command aliases, and multiple profiles.
 
 ## Installation
 
@@ -95,44 +110,45 @@ pltr verify
 ### 3. Start Exploring
 
 ```bash
-# Check current user
+# Who am I?
 pltr admin user current
 
-# List available ontologies
+# The ontologies you can see
 pltr ontology list
 
-# Search for builds
-pltr orchestration builds search
+# Failed builds on master
+pltr orchestration builds search --status FAILED --branch master
 
-# Create a new folder
-pltr folder create "My Project"
-
-# List root folder contents
-pltr folder list ri.compass.main.folder.0
-
-# Manage spaces and projects
+# Spaces, the projects in a space, and a project's or folder's contents
 pltr space list
-pltr project create "My Project" ri.compass.main.space.123
-pltr project list --space-rid ri.compass.main.space.123
+pltr project list --space-rid <space-rid>
+pltr folder list <project-or-folder-rid>
 
-# Manage resource permissions
-pltr resource-role grant ri.compass.main.dataset.123 user123 User viewer
-pltr resource-role list ri.compass.main.dataset.123
+# Look up a resource by its path
+pltr resource get-by-path "/My Space/My Project/sales"
 
-# Execute a simple SQL query
-pltr sql execute "SELECT 1 as test"
+# Create a folder inside a project or another folder
+pltr folder create "Analysis" --parent-folder <project-or-folder-rid>
 
-# Explore dataset operations (requires dataset RID)
-pltr dataset get ri.foundry.main.dataset.abc123
-pltr dataset branches list ri.foundry.main.dataset.abc123
-pltr dataset files list ri.foundry.main.dataset.abc123
+# Run a SQL query
+pltr sql execute "SELECT 1 AS test"
 
-# Dataset transaction management
-pltr dataset transactions start ri.foundry.main.dataset.abc123
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 <transaction-rid>
-pltr dataset files upload myfile.csv ri.foundry.main.dataset.abc123 --transaction-rid <rid>
+# Datasets are addressed by RID
+pltr dataset get <dataset-rid>
+pltr dataset branches list <dataset-rid>
+pltr dataset files list <dataset-rid>
 
-# Start interactive mode for exploration
+# Upload files in one transaction, then commit it
+TXN=$(pltr dataset transactions start <dataset-rid> --format json | jq -r .rid)
+pltr dataset files upload data.csv <dataset-rid> --transaction-rid "$TXN"
+pltr dataset transactions commit <dataset-rid> "$TXN"
+
+# Grant a role on a resource (user and group IDs are UUIDs; role IDs come
+# from the space's role set)
+pltr resource-role list <resource-rid>
+pltr resource-role grant <resource-rid> --principal-id <user-or-group-id> --role <role-id>
+
+# Interactive mode
 pltr shell
 ```
 
@@ -200,11 +216,6 @@ one release as deprecated aliases of `--yes`.
 accepted and ignored, with a warning, for one release.
 
 Set `PLTR_DEBUG=1` to see a Python traceback for an unexpected error.
-
-> Commands are being moved to this contract module by module (`folder` and
-> `space` first). Until a module is converted, some of its status messages
-> may still appear on stdout, and its commands may exit with code 1 for every
-> error, use their own JSON keys and confirm in their own way.
 
 ## Every endpoint: `pltr api`
 
@@ -301,300 +312,186 @@ these rules for agents, with a command reference generated from the manifest.
 
 ## 📚 Documentation
 
-pltr-cli provides comprehensive documentation to help you get the most out of the tool:
-
 ### 📖 User Guides
-- **[Quick Start Guide](docs/user-guide/quick-start.md)** - Get up and running in 5 minutes
-- **[Authentication Setup](docs/user-guide/authentication.md)** - Complete guide to token and OAuth2 setup
-- **[Command Reference](docs/user-guide/commands.md)** - Complete reference for all 70+ commands
-- **[Common Workflows](docs/user-guide/workflows.md)** - Real-world data analysis patterns
-- **[Troubleshooting](docs/user-guide/troubleshooting.md)** - Solutions to common issues
+- **[Quick Start Guide](docs/user-guide/quick-start.md)**: install, authenticate and run your first commands
+- **[Authentication Setup](docs/user-guide/authentication.md)**: profiles, token and OAuth2, environment variables
+- **[Command Reference](docs/user-guide/commands.md)**: every curated command, by group
+- **[`pltr api` commands](docs/api-commands.md)**: the generated commands for every SDK method
+- **[Common Workflows](docs/user-guide/workflows.md)**: multi-step tasks
+- **[Pagination](docs/pagination.md)**: paging options and the paged JSON shape
+- **[Command Aliases](docs/user-guide/aliases.md)**: shortcuts for long commands
+- **[Claude Code skill](docs/user-guide/claude-skill.md)**: using pltr from Claude Code
+- **[Troubleshooting](docs/user-guide/troubleshooting.md)**: common problems and their fixes
 
 ### 🔧 Developer Resources
-- **[API Wrapper Documentation](docs/api/wrapper.md)** - Architecture and extension guide
-- **[Examples Gallery](docs/examples/gallery.md)** - Real-world use cases and automation scripts
+- **[The command contract](docs/development/command-contract.md)**: how commands handle output, errors, confirmation and beta endpoints
+- **[SDK call check](docs/development/sdk-guardrail.md)**: the CI check of every SDK call
+- **[Service layer](docs/api/wrapper.md)**: architecture and how to add a command
+- **[Examples Gallery](docs/examples/gallery.md)**: scripts and automation examples
 
 ### 🎯 Quick Command Overview
 
-**Most Common Commands:**
 ```bash
-# Authentication & Setup
-pltr configure configure        # Set up authentication
-pltr verify                    # Test connection
+# Setup
+pltr configure configure                  # create a profile
+pltr verify                               # check authentication
+pltr commands search "list dataset files" # find the command for a task
 
-# Data Analysis
-pltr sql execute "SELECT * FROM table"  # Run SQL queries
-pltr ontology list             # List ontologies
-pltr dataset get <rid>         # Get dataset info
+# Data
+pltr sql execute "SELECT 1 AS test"       # run a SQL query
+pltr ontology list                        # list ontologies
+pltr dataset get <dataset-rid>            # a dataset's metadata
 
-# Filesystem Management
-pltr folder create "My Project"         # Create folders
-pltr space create "Team Space" <org-rid> # Create spaces
-pltr project create "New Project" <space-rid> # Create projects
-pltr resource search "dataset name"     # Search resources
-pltr resource-role grant <resource-rid> <user-id> User viewer # Grant permissions
+# Filesystem
+pltr folder create "Reports" --parent-folder <project-or-folder-rid>
+pltr project create "New Project" --space-rid <space-rid>
+pltr resource search "sales" --folder-rid <folder-rid>
+pltr resource-role grant <resource-rid> --principal-id <user-or-group-id> --role <role-id>
 
 # Orchestration
-pltr orchestration builds search       # Search builds
-pltr orchestration jobs get <job-rid>  # Get job details
-pltr orchestration schedules create   # Create schedule
+pltr orchestration builds search --status FAILED --branch master
+pltr orchestration jobs get <job-rid>
+pltr orchestration schedules get <schedule-rid>
 
-# MediaSets
-pltr media-sets get <set-rid> <item-rid>  # Get media item info
-pltr media-sets upload <set-rid> file.jpg "/path/file.jpg" <txn-id>  # Upload media
-pltr media-sets download <set-rid> <item-rid> output.jpg  # Download media
+# Media sets
+pltr media-sets get <media-set-rid> <media-item-rid>
+pltr media-sets upload <media-set-rid> photo.jpg /images/photo.jpg
+pltr media-sets download <media-set-rid> <media-item-rid> photo.jpg
 
-# Connectivity & Data Imports
-pltr connectivity connection list              # List available connections
-pltr connectivity connection get <conn-rid>    # Get connection details
-pltr connectivity import file <conn-rid> <source-path> <dataset-rid> --execute  # Import file
-pltr connectivity import table <conn-rid> <table-name> <dataset-rid> --execute  # Import table
+# Connectivity
+pltr connectivity connection get <connection-rid>
+pltr connectivity import file <connection-rid> <dataset-rid> --name "Daily sales" --mode SNAPSHOT
+pltr connectivity import execute-file <connection-rid> <file-import-rid>
 
-# Administrative
-pltr admin user current        # Current user info
-pltr admin user list          # List users
-pltr third-party-apps get <rid>  # Get third-party application details
+# Admin
+pltr admin user current
+pltr admin user search jane
 
-# Interactive & Tools
-pltr shell                    # Interactive mode
-pltr completion install       # Enable tab completion
+# Everything else
+pltr api --help                           # a command for every SDK method
+pltr shell                                # interactive mode
+pltr completion install                   # tab completion
 ```
 
-💡 **Tip**: Use `pltr --help` or `pltr <command> --help` for detailed command help.
+💡 **Tip**: `pltr <command> --help` lists every option of a command. Commands
+that call beta Foundry endpoints say `[beta]` at the start of their help.
 
-For the complete command reference with examples, see **[Command Reference](docs/user-guide/commands.md)**.
+### 🏗️ Orchestration
 
-### 🏗️ Orchestration Commands
-
-pltr-cli provides comprehensive support for Foundry's Orchestration module:
-
-#### Build Management
 ```bash
-# Search for builds
-pltr orchestration builds search
+# Find builds (at least one filter is required)
+pltr orchestration builds search --status FAILED --branch master
+pltr orchestration builds search --started-after 2026-01-31T00:00:00Z --format json
 
-# Get build details
-pltr orchestration builds get ri.orchestration.main.build.12345
+# Start a build of a dataset, follow it, cancel it
+pltr orchestration builds create \
+  '{"type": "manual", "targetRids": ["<dataset-rid>"]}' --branch master
+pltr orchestration builds get <build-rid>
+pltr orchestration builds jobs <build-rid>
+pltr orchestration builds cancel <build-rid> --yes
 
-# Create a new build
-pltr orchestration builds create '{"dataset_rid": "ri.foundry.main.dataset.abc"}' --branch main
+# Jobs
+pltr orchestration jobs get <job-rid>
+pltr orchestration jobs get-batch <job-rid> <job-rid>
 
-# Cancel a running build
-pltr orchestration builds cancel ri.orchestration.main.build.12345
-
-# List jobs in a build
-pltr orchestration builds jobs ri.orchestration.main.build.12345
+# Schedules
+pltr orchestration schedules create \
+  '{"target": {"type": "manual", "targetRids": ["<dataset-rid>"]}}' \
+  --name "Nightly build" \
+  --trigger '{"type": "time", "cronExpression": "0 2 * * *", "timeZone": "UTC"}'
+pltr orchestration schedules get <schedule-rid>
+pltr orchestration schedules pause <schedule-rid>
+pltr orchestration schedules unpause <schedule-rid>
+pltr orchestration schedules run <schedule-rid>
+pltr orchestration schedules runs <schedule-rid>
+pltr orchestration schedules delete <schedule-rid> --yes
 ```
 
-#### Job Management
+`builds search`, `jobs get`, `jobs get-batch` and `schedules get`, `create`
+and `replace` call beta endpoints and are labeled `[beta]`.
+
+### 🎬 Media Sets
+
+Media set RIDs look like `ri.mio.main.media-set.<uuid>` and media item RIDs
+like `ri.mio.main.media-item.<uuid>`.
+
 ```bash
-# Get job details
-pltr orchestration jobs get ri.orchestration.main.job.12345
+# A media item's metadata, its RID by path, and its media reference
+pltr media-sets get <media-set-rid> <media-item-rid>
+pltr media-sets get-by-path <media-set-rid> /images/photo.jpg
+pltr media-sets reference <media-set-rid> <media-item-rid>
 
-# Get multiple jobs in batch
-pltr orchestration jobs get-batch "rid1,rid2,rid3"
+# Upload; a transactional media set needs a transaction
+TXN=$(pltr media-sets create <media-set-rid> --format json | jq -r .)
+pltr media-sets upload <media-set-rid> photo.jpg /images/photo.jpg "$TXN"
+pltr media-sets commit <media-set-rid> "$TXN"     # or: abort ... --yes
+
+# Download the processed or the original file (- writes to stdout)
+pltr media-sets download <media-set-rid> <media-item-rid> photo.jpg
+pltr media-sets download <media-set-rid> <media-item-rid> - --original > original.jpg
+
+# Soft-delete the item at a path
+pltr media-sets clear <media-set-rid> /images/photo.jpg --yes
 ```
 
-#### Schedule Management
+### 🤖 Models
+
+Models in the model registry, distinct from `pltr language-models` (LLM chat
+and embeddings). The API can't list models, so keep the RID `model create`
+prints. Creating model versions isn't supported from the CLI; use the
+Python SDK.
+
 ```bash
-# Get schedule information
-pltr orchestration schedules get ri.orchestration.main.schedule.12345
-
-# Create a new schedule
-pltr orchestration schedules create '{"type": "BUILD", "target": "dataset-rid"}' \
-  --name "Daily Build" --description "Automated daily build"
-
-# Pause/unpause schedules
-pltr orchestration schedules pause ri.orchestration.main.schedule.12345
-pltr orchestration schedules unpause ri.orchestration.main.schedule.12345
-
-# Execute schedule immediately
-pltr orchestration schedules run ri.orchestration.main.schedule.12345
-
-# Delete a schedule
-pltr orchestration schedules delete ri.orchestration.main.schedule.12345 --yes
+pltr models model create "fraud-detector" --folder <folder-rid>
+pltr models model get <model-rid>
+pltr models version list <model-rid> --all
+pltr models version get <model-rid> <model-version-rid> --format json
 ```
 
-**All orchestration commands support:**
-- Multiple output formats (table, JSON, CSV)
-- File output (`--output filename`)
-- Profile selection (`--profile production`)
-- Preview mode for schedules (`--preview`)
+### 📊 Dataset Transactions
 
-### 🎬 MediaSets Commands
+A transaction groups file changes so they become visible together when you
+commit it, or not at all if you abort it. A branch has at most one open
+transaction.
 
-pltr-cli provides full support for Foundry's MediaSets module for managing media content:
-
-#### Media Item Operations
 ```bash
-# Get media item information
-pltr media-sets get ri.mediasets.main.media-set.abc ri.mediasets.main.media-item.123
+# Start a transaction (APPEND, UPDATE, SNAPSHOT or DELETE) and keep its RID
+TXN=$(pltr dataset transactions start <dataset-rid> --type UPDATE --format json | jq -r .rid)
 
-# Get media item RID by path
-pltr media-sets get-by-path ri.mediasets.main.media-set.abc "/images/photo.jpg"
+# Upload files in it
+pltr dataset files upload data1.csv <dataset-rid> --transaction-rid "$TXN"
+pltr dataset files upload data2.csv <dataset-rid> --transaction-rid "$TXN"
 
-# Get a reference for embedding
-pltr media-sets reference ri.mediasets.main.media-set.abc ri.mediasets.main.media-item.123
+# Check it, then commit it (or abort it)
+pltr dataset transactions status <dataset-rid> "$TXN"
+pltr dataset transactions commit <dataset-rid> "$TXN"
+pltr dataset transactions abort <dataset-rid> "$TXN" --yes
+
+# A dataset's transactions, newest first (every branch unless --branch)
+pltr dataset transactions list <dataset-rid> --branch master
 ```
 
-#### Transaction Management
-```bash
-# Create a new upload transaction
-pltr media-sets create ri.mediasets.main.media-set.abc --branch main
-
-# Commit transaction (makes uploads available)
-pltr media-sets commit ri.mediasets.main.media-set.abc transaction-id-12345
-
-# Abort transaction (deletes uploads)
-pltr media-sets abort ri.mediasets.main.media-set.abc transaction-id-12345 --yes
-```
-
-#### Upload and Download
-```bash
-# Upload a file to media set
-pltr media-sets upload ri.mediasets.main.media-set.abc \
-  /local/path/image.jpg "/media/images/image.jpg" transaction-id-12345
-
-# Download media item (processed version)
-pltr media-sets download ri.mediasets.main.media-set.abc \
-  ri.mediasets.main.media-item.123 /local/download/image.jpg
-
-# Download original version
-pltr media-sets download ri.mediasets.main.media-set.abc \
-  ri.mediasets.main.media-item.123 /local/download/original.jpg --original
-```
-
-**All MediaSets commands support:**
-- Multiple output formats (table, JSON, CSV)
-- File output (`--output filename`)
-- Profile selection (`--profile production`)
-- Preview mode (`--preview`)
-- Transaction-based upload workflow
-
-### 🤖 Models Commands
-
-pltr-cli provides support for managing ML models and versions in the Foundry model registry. This is distinct from the LanguageModels module, which handles LLM chat and embeddings.
-
-**Note**: The SDK does not provide a way to list all models. Use the Foundry web UI or Ontology API to discover models.
-
-#### Model Operations
-```bash
-# Create a new model
-pltr models model create "fraud-detector" --folder ri.compass.main.folder.xxx
-
-# Get model details
-pltr models model get ri.foundry.main.model.abc123
-
-# Get model as JSON
-pltr models model get ri.foundry.main.model.abc123 --format json
-```
-
-#### Model Version Operations
-```bash
-# List all versions of a model
-pltr models version list ri.foundry.main.model.abc123
-
-# List with pagination
-pltr models version list ri.foundry.main.model.abc123 --page-size 50
-
-# Get next page
-pltr models version list ri.foundry.main.model.abc123 \
-  --page-size 50 --page-token <token-from-previous-response>
-
-# Get specific version details
-pltr models version get ri.foundry.main.model.abc123 v1.0.0
-
-# Save version details to file
-pltr models version get ri.foundry.main.model.abc123 v1.0.0 \
-  --format json --output version-details.json
-```
-
-**All Models commands support:**
-- Multiple output formats (table, JSON, CSV)
-- File output (`--output filename`)
-- Profile selection (`--profile production`)
-- Preview mode (`--preview`)
-
-**Note**: Model version creation requires specialized ML tooling and is not provided via CLI. Use the Python SDK directly for version creation with dill-serialized models.
-
-### 📊 Dataset Transaction Management
-
-pltr-cli provides comprehensive transaction management for datasets, allowing atomic operations with rollback capability:
-
-#### Transaction Lifecycle
-```bash
-# Start a new transaction
-pltr dataset transactions start ri.foundry.main.dataset.abc123 --branch master --type APPEND
-# Returns transaction RID for use in subsequent operations
-
-# Check transaction status
-pltr dataset transactions status ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
-
-# List all transactions for a dataset
-pltr dataset transactions list ri.foundry.main.dataset.abc123 --branch master
-
-# Commit a transaction (make changes permanent)
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
-
-# Abort a transaction (discard all changes)
-pltr dataset transactions abort ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz --yes
-```
-
-#### File Operations with Transactions
-```bash
-# Upload files within a transaction
-pltr dataset files upload data.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid ri.foundry.main.transaction.xyz
-
-# Multiple file uploads in same transaction
-pltr dataset files upload file1.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid ri.foundry.main.transaction.xyz
-pltr dataset files upload file2.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid ri.foundry.main.transaction.xyz
-
-# Commit when ready
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 ri.foundry.main.transaction.xyz
-```
-
-#### Transaction Types
-- **APPEND**: Add new files to dataset
-- **UPDATE**: Add new files and overwrite existing ones
-- **SNAPSHOT**: Replace entire dataset with new files
-- **DELETE**: Remove files from dataset
-
-#### Example Workflow
-```bash
-# Start a transaction for bulk data update
-TRANSACTION=$(pltr dataset transactions start ri.foundry.main.dataset.abc123 \
-  --type UPDATE --format json | jq -r '.transaction_rid')
-
-# Upload multiple files
-pltr dataset files upload data1.csv ri.foundry.main.dataset.abc123 --transaction-rid $TRANSACTION
-pltr dataset files upload data2.csv ri.foundry.main.dataset.abc123 --transaction-rid $TRANSACTION
-
-# Check status before committing
-pltr dataset transactions status ri.foundry.main.dataset.abc123 $TRANSACTION
-
-# Commit if everything looks good
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
-```
-
-**Benefits:**
-- **Data Integrity**: Atomic operations with rollback capability
-- **Error Recovery**: Clean rollback from failed operations
-- **Collaboration**: Better concurrent modification handling
-- **Automation**: Reliable data pipeline operations
+`dataset files upload` of a directory opens and commits a transaction for
+you. `--branch` defaults to the dataset's default branch.
 
 ## ⚙️ Configuration
 
-pltr-cli stores configuration securely using industry best practices:
-
-- **Profile Configuration**: `~/.config/pltr/profiles.json` (or `$XDG_CONFIG_HOME/pltr/`)
-- **Credentials**: Encrypted in system keyring (never stored in plain text)
-- **Shell History**: `~/.config/pltr/repl_history` (for interactive mode)
+- **Profiles**: `~/.config/pltr/profiles.json` (or `$XDG_CONFIG_HOME/pltr/`).
+  Credentials are stored in the system keyring, never in this file.
+- **Settings and aliases**: `settings.json` and `aliases.json` in the same
+  directory.
+- **Shell history**: `~/.config/pltr/repl_history` (for `pltr shell`).
 
 pltr only creates the configuration directory when it saves something (for
 example `pltr configure`); reading configuration never needs it.
+
+| Environment variable | Effect |
+|---|---|
+| `PLTR_PROFILE` | Profile to use when `--profile` isn't given |
+| `PLTR_FORMAT` | Default `--format`: `table`, `json` or `csv` |
+| `PLTR_DEBUG=1` | Show the Python traceback of an unexpected error |
+| `PLTR_KEYRING_TIMEOUT` | Seconds to wait for the system keyring (default 30) |
+| `FOUNDRY_HOST`, `FOUNDRY_TOKEN`, `FOUNDRY_CLIENT_ID`, `FOUNDRY_CLIENT_SECRET` | Credentials when no profile is selected (see below) |
 
 ## 🔐 Authentication
 
@@ -646,7 +543,7 @@ See **[Authentication Setup](docs/user-guide/authentication.md)** for complete c
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - [uv](https://github.com/astral-sh/uv) for dependency management
 
 ### Quick Development Setup
@@ -657,69 +554,63 @@ git clone https://github.com/anjor/pltr-cli.git
 cd pltr-cli
 
 # Install dependencies and development tools
-uv sync
-
-# Install pre-commit hooks
+uv sync --dev
 uv run pre-commit install
 
-# Run tests
+# Tests, lint, format and type checks (CI runs the same)
 uv run pytest
-
-# Run linting and formatting
-uv run ruff check src/
-uv run ruff format src/
-uv run mypy src/
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/pltr
 ```
+
+`uv run pytest` also runs the checks that keep pltr honest about the SDK and
+its own docs: every SDK call is checked against the installed SDK's real
+signatures and preview rules, the generated `pltr api` commands and the
+agent skill's reference must be up to date, every command is run against
+stubbed API errors to check its output contract, and every `pltr` example in
+the README, `docs/` and `claude_skill/` must name real commands and options.
 
 ### Project Architecture
 
-pltr-cli uses a layered architecture:
+- **Commands** (`src/pltr/commands/`): one Typer module per command group.
+  They declare their options and metadata (beta, destructive, paged, SDK
+  methods) and print through `pltr.contract`.
+- **Contract** (`src/pltr/contract/`): output (JSON, tables, CSV), structured
+  errors and exit codes, confirmations, paging and command metadata.
+- **Services** (`src/pltr/services/`): thin wrappers around
+  `foundry-platform-sdk` that return SDK models.
+- **Generated commands** (`src/pltr/commands/api/`): `pltr api`, generated
+  from the SDK by `scripts/generate_api_commands.py`.
+- **Auth and config** (`src/pltr/auth/`, `src/pltr/config/`): profiles,
+  keyring access and environment-variable credentials.
 
-- **CLI Layer** (Typer): Command-line interface and argument parsing
-- **Command Layer**: Command implementations with validation
-- **Service Layer**: Business logic and foundry-platform-sdk integration
-- **Auth Layer**: Secure authentication and credential management
-- **Utils Layer**: Formatting, progress, and helper functions
+Service and command tests run against a real `FoundryClient` with only HTTP
+faked (the `stub_foundry_http` fixture in `tests/conftest.py`). See
+**[the command contract](docs/development/command-contract.md)**,
+**[the SDK call check](docs/development/sdk-guardrail.md)** and
+**[the service layer guide](docs/api/wrapper.md)**.
 
-See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed architecture information and extension guides.
+## 📊 Status
 
-## 📊 Current Status
-
-pltr-cli is **production-ready** with comprehensive features:
-
-- ✅ **81+ Commands** across 11 command groups
-- ✅ **273 Unit Tests** with 67% code coverage
-- ✅ **Published on PyPI** with automated releases
-- ✅ **Cross-Platform** support (Windows, macOS, Linux)
-- ✅ **Comprehensive Documentation** (Quick start, guides, examples)
-- ✅ **Interactive Shell** with tab completion and history
-- ✅ **CI/CD Ready** with environment variable support
-
-**Latest Release**: Available on [PyPI](https://pypi.org/project/pltr-cli/)
+pltr is published on [PyPI](https://pypi.org/project/pltr-cli/) as
+`pltr-cli`. It is 0.x: a minor release can contain breaking changes, and
+[CHANGELOG.md](CHANGELOG.md) lists each one. Tests run against the real SDK
+with stubbed HTTP; behaviour against a live Foundry stack is checked on a
+best-effort basis.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation.
+Contributions are welcome: bug fixes, new commands and documentation.
 
-### Getting Started
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following the existing patterns
-4. Add tests for new functionality
-5. Run the test suite and linting
-6. Commit using conventional commit format (`feat:`, `fix:`, `docs:`, etc.)
-7. Push to your branch and create a Pull Request
-
-### Development Guidelines
-
-- Follow existing code patterns and architecture
-- Add tests for new functionality
-- Update documentation for user-facing changes
-- Use type hints throughout
-- Follow the existing error handling patterns
-
-See **[API Wrapper Documentation](docs/api/wrapper.md)** for detailed development guidelines.
+1. Fork the repository and create a branch.
+2. Make your change following [the command contract](docs/development/command-contract.md):
+   new commands go through `foundry-platform-sdk`, label beta endpoints, and
+   ask before destructive operations.
+3. Add tests that use `stub_foundry_http`.
+4. Record user-visible changes under `## [Unreleased]` in
+   [CHANGELOG.md](CHANGELOG.md), and update the README and `docs/`.
+5. Run the checks above and open a pull request.
 
 ## License
 
