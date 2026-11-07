@@ -299,14 +299,6 @@ def _split(value: Optional[str]) -> Optional[List[str]]:
     return names or None
 
 
-def _next_page_hint(next_page_token: Optional[str]) -> None:
-    if next_page_token:
-        info(
-            f"More results available. Next page: --page-token {next_page_token} "
-            "(or --all to fetch every page)."
-        )
-
-
 # ------------------------------------------------------- typed JSON input
 #
 # --where, --aggregation, --group-by, --order-by and the batch requests are
@@ -910,7 +902,8 @@ def search_objects(
     """Search the objects of an object type with a typed query.
 
     --where takes the Foundry API's search query (SearchJsonQueryV2) as JSON,
-    inline or as @file.json, using Foundry API field names. Each query has a
+    inline, as @file.json or as @- (stdin), using Foundry API field names.
+    Each query has a
     "type", such as eq, gt, gte, lt, lte, in, isNull, contains,
     containsAnyTerm, containsAllTerms, startsWith, regex, and, or and not (an
     unknown type is rejected with the full list). Most queries name a property
@@ -973,16 +966,17 @@ def search_objects(
 
     from foundry_sdk.v2.ontologies.models import SearchObjectsResponseV2
 
-    # The pages merged into the API's own response shape (totalCount included).
+    # The pages merged into the API's own response shape (totalCount
+    # included). emit prints it whole in JSON, and one row per object (with
+    # the next-page hint) in table and CSV.
     result = SearchObjectsResponseV2(
         data=page.data,
         next_page_token=page.next_page_token,
         total_count=total_counts[0],
     )
-    emit(result, format=format, output=output, rows=lambda response: response.data)
+    emit(result, format=format, output=output)
     if result.data:
         info(f"{len(result.data)} of {result.total_count} matching objects.")
-    _next_page_hint(result.next_page_token)
 
 
 @app.command("object-aggregate")
@@ -1059,7 +1053,8 @@ def aggregate_objects(
     """Aggregate objects: counts, sums, averages and more, optionally grouped.
 
     --aggregation, --group-by and --where take the Foundry API's typed
-    objects as JSON, inline or as @file.json, using Foundry API field names.
+    objects as JSON, inline, as @file.json or as @- (stdin), using Foundry API
+    field names.
     Aggregation types: count, sum, avg, min, max, approximateDistinct,
     exactDistinct, approximatePercentile. Group-by types: exact, fixedWidth,
     ranges, duration.
@@ -1215,8 +1210,8 @@ ParametersArg = Annotated[
     str,
     typer.Argument(
         help=(
-            "Action parameters: a JSON object keyed by parameter ID, inline or "
-            f"@file.json, e.g. {PARAMETERS_EXAMPLE}."
+            "Action parameters: a JSON object keyed by parameter ID, inline, "
+            f"@file.json or @- (stdin), e.g. {PARAMETERS_EXAMPLE}."
         ),
         show_default=False,
     ),
@@ -1343,7 +1338,7 @@ def apply_action_batch(
         typer.Argument(
             help=(
                 'The actions to apply: a JSON list of {"parameters": {...}} objects, '
-                f"inline or @file.json, e.g. {BATCH_EXAMPLE}."
+                f"inline, @file.json or @- (stdin), e.g. {BATCH_EXAMPLE}."
             ),
             show_default=False,
         ),
@@ -1413,8 +1408,8 @@ def execute_query(
         typer.Option(
             "--parameters",
             help=(
-                "Query parameters: a JSON object keyed by parameter ID, inline or "
-                "@file.json."
+                "Query parameters: a JSON object keyed by parameter ID, inline, "
+                "@file.json or @- (stdin)."
             ),
             show_default=False,
         ),

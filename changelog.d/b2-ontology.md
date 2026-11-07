@@ -96,8 +96,9 @@
   `--all`.
 - `ontology action-apply --return-edits ALL|ALL_V2_WITH_DELETIONS|NONE`,
   `--attribution` and `--scenario-rid`.
-- Action and query parameters (`PARAMETERS`, `--parameters`) accept
-  `@file.json`.
+- Action and query parameters (`PARAMETERS`, `--parameters`) and batch
+  `REQUESTS` accept `@file.json`; every ontology JSON input (also `--where`,
+  `--aggregation`, `--group-by`, `--order-by`) accepts `@-` to read stdin.
 - `[beta]` label on `ontology object-count`, which calls a beta endpoint
   (always with `preview=true`).
 - The ontology argument of the read, action and query commands accepts the

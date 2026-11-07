@@ -25,8 +25,8 @@ OBJECTS = f"{API}/{fo.ONTOLOGY}/objects/Employee"
 ACTIONS = f"{API}/{fo.ONTOLOGY}/actions/transferEmployee"
 
 
-def invoke(*args: str):
-    return runner.invoke(app, ["ontology", *args])
+def invoke(*args: str, input=None):
+    return runner.invoke(app, ["ontology", *args], input=input)
 
 
 def json_error(result) -> dict:
@@ -717,6 +717,34 @@ def test_search_table_hints_at_the_next_page(stub_foundry_http):
     assert "1 of 9 matching objects." in result.stderr
     assert "--page-token tok-2" in result.stderr
     assert "tok-2" not in result.stdout
+
+
+def test_search_csv_has_a_row_per_object(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.search_response([EMP1, EMP2], "tok-2", 5))
+
+    result = invoke("object-search", fo.ONTOLOGY, "Employee", "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    rows = csv_rows(result)
+    assert [row["fullName"] for row in rows] == ["Jane Doe", "John Roe"]
+    assert "totalCount" not in rows[0]
+    assert "--page-token tok-2" in result.stderr
+
+
+def test_search_where_from_stdin(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.search_response([EMP1]))
+
+    result = invoke(
+        "object-search",
+        fo.ONTOLOGY,
+        "Employee",
+        "--where",
+        "@-",
+        input=json.dumps(WHERE),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert body(stub_foundry_http.requests[0])["where"] == WHERE
 
 
 def test_search_options(stub_foundry_http, tmp_path):
