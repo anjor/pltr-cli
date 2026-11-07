@@ -12,13 +12,6 @@ with ``serializationFormat`` CSV.
 import time
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-from foundry_sdk.v2.sql_queries.models import (
-    CanceledQueryStatus,
-    FailedQueryStatus,
-    RunningQueryStatus,
-    SucceededQueryStatus,
-)
-
 from ..contract import ExitCode, PltrError
 from .base import BaseService
 
@@ -45,6 +38,11 @@ class QueryNotSucceeded(PltrError):
 
 def query_id_of(status: Any) -> Optional[str]:
     """The query ID in a ``QueryStatus`` (failed/canceled statuses have none)."""
+    from foundry_sdk.v2.sql_queries.models import (
+        RunningQueryStatus,
+        SucceededQueryStatus,
+    )
+
     if isinstance(status, (RunningQueryStatus, SucceededQueryStatus)):
         return status.query_id
     return None
@@ -57,6 +55,11 @@ def check_not_failed(status: Any, query_id: Optional[str] = None) -> Any:
         QueryNotSucceeded: for a ``FailedQueryStatus`` (with the API's error
             message) or a ``CanceledQueryStatus``.
     """
+    from foundry_sdk.v2.sql_queries.models import (
+        CanceledQueryStatus,
+        FailedQueryStatus,
+    )
+
     label = f"Query {query_id}" if query_id else "The query"
     if isinstance(status, FailedQueryStatus):
         raise QueryNotSucceeded(f"{label} failed: {status.error_message}")
@@ -149,6 +152,8 @@ class SqlService(BaseService):
             PltrError: (``timeout``, exit code 7) the query was still running
                 after ``timeout`` seconds; it keeps running.
         """
+        from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
+
         deadline = time.monotonic() + timeout
         if status is None:
             status = self.service.get_status(query_id)

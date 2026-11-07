@@ -5,7 +5,7 @@
 
 ### pltr cp
 
-Copy datasets or folders into another Compass folder
+Copy a dataset, or a folder with its contents, into another folder.
 
 `pltr cp SOURCE_RID TARGET_FOLDER_RID [OPTIONS]`
 

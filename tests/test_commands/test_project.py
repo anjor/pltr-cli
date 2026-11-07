@@ -42,10 +42,13 @@ def interactive(monkeypatch):
 
 def test_only_update_is_labeled_beta():
     lines = invoke("project", "--help").stdout.splitlines()
+    # The Commands panel's rows (the group's description mentions [beta] too).
+    start = next(i for i, line in enumerate(lines) if "─ Commands ─" in line)
+    rows = [line.strip("│ ") for line in lines[start + 1 :] if line.startswith("│")]
 
-    update = next(line for line in lines if " update " in line)
+    update = next(row for row in rows if row.startswith("update "))
     assert "[beta]" in update
-    assert sum("[beta]" in line for line in lines) == 1
+    assert sum("[beta]" in row for row in rows) == 1
 
 
 # ------------------------------------------------------------------ create

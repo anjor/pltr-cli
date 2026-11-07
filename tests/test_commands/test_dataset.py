@@ -580,6 +580,19 @@ def test_schema_apply_without_inferred_schema(stub):
     assert len(stub.requests) == 1
 
 
+def test_schema_apply_success_body_that_is_not_json(stub):
+    """An API problem (exit 7), not invalid user input (exit 2)."""
+    stub.respond(content=b"<html>Sign in</html>")
+
+    result = invoke("dataset", "schema", "apply", DATASET, "-y", "-f", "json")
+
+    assert result.exit_code == 7
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "invalid_response"
+    assert "isn't valid JSON" in error["message"]
+
+
 def test_schema_apply_http_error_is_structured(stub):
     stub.respond(
         403,

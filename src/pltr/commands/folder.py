@@ -200,12 +200,14 @@ def main():
     project with 'pltr project list'.
 
     Examples:
+
+    \b
         # Create a folder inside a project
         pltr folder create "My Folder" --parent-folder ri.compass.main.folder.xyz123
-
+    \b
         # List a folder's contents (one page; --all for every page)
         pltr folder list ri.compass.main.folder.xyz123
-
+    \b
         # Get folder information as JSON
         pltr folder get ri.compass.main.folder.xyz123 --format json
     """

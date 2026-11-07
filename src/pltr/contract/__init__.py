@@ -67,6 +67,8 @@ from .output import (
     emit,
     emit_bytes,
     format_cell,
+    table_rows,
+    write_bytes_atomically,
 )
 from .runtime import (
     FORMAT_ENVVAR,
@@ -118,10 +120,12 @@ __all__ = [
     "emit",
     "emit_bytes",
     "check_binary_output",
+    "write_bytes_atomically",
     "Columns",
     "ColumnError",
     "column_value",
     "format_cell",
+    "table_rows",
     "Page",
     "collect_pages",
     "to_jsonable",

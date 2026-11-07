@@ -8,8 +8,6 @@ import os
 from typing import Any
 
 import typer
-from foundry_sdk.v2.datasets.models import Dataset
-from foundry_sdk.v2.filesystem.models import Folder
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -30,6 +28,9 @@ class CopyIncomplete(RuntimeError):
 
 
 def _item_type(item: Any) -> str:
+    from foundry_sdk.v2.datasets.models import Dataset
+    from foundry_sdk.v2.filesystem.models import Folder
+
     if isinstance(item, Dataset):
         return DATASET_TYPE
     if isinstance(item, Folder):
@@ -38,6 +39,8 @@ def _item_type(item: Any) -> str:
 
 
 def _item_name(item: Any) -> str:
+    from foundry_sdk.v2.datasets.models import Dataset
+
     return item.name if isinstance(item, Dataset) else item.display_name
 
 
@@ -137,11 +140,23 @@ def cp_command(
 ):
     """Copy a dataset, or a folder with its contents, into another folder.
 
-    Copies get the name of the source plus --name-suffix. A dataset copy gets
-    the files of --branch, committed in one SNAPSHOT transaction; with
-    --schema (the default) pltr also tries to copy the schema and warns if it
-    can't. A folder copy (--recursive) recreates its subfolders and datasets;
-    other resource types are skipped with a warning.
+    SOURCE_RID and TARGET_FOLDER_RID are RIDs, e.g.
+    ri.foundry.main.dataset.<id> and ri.compass.main.folder.<id> (a project
+    RID works as the target too). Copies get the name of the source plus
+    --name-suffix.
+
+    A dataset copy gets the files of --branch, committed in one SNAPSHOT
+    transaction on the same branch of the copy. With --schema (the default)
+    the source's schema on that branch is then put on the committed copy; a
+    source without a schema is copied without one. The API doesn't report the
+    source's dataframe reader: the schema gets CSV when every file is a .csv
+    file, AVRO when every file is .avro, otherwise PARQUET (the API default).
+    A source without files on the branch gives an empty copy with no schema.
+    If any step fails, the partial copy is moved to the trash and pltr exits
+    with the error; use --no-schema to copy only the files.
+
+    A folder copy (--recursive) recreates its subfolders and datasets; other
+    resource types are skipped with a warning.
 
     Prints the resources created: {"data": [...]} in JSON, with the API's
     Folder and Dataset fields. With --dry-run nothing is created and it

@@ -10,13 +10,8 @@ called with a literal ``preview=True``; GA endpoints never get ``preview``.
 ``apply_schema`` is a labeled direct-HTTP exception: schema inference has no
 public API, so it calls Foundry's schema-inference and foundry-metadata
 endpoints through ``BaseService._make_request``.
-
-The methods under "Compat for services/copy.py" keep the dict results that
-``CopyService`` reads; they are removed when ``pltr cp`` moves to the
-model-returning methods.
 """
 
-import base64
 import csv
 import re
 from contextlib import contextmanager
@@ -34,7 +29,7 @@ from typing import (
 )
 from urllib.parse import quote
 
-from ..contract import ExitCode, PltrError
+from ..contract import ExitCode, PltrError, write_bytes_atomically
 from .base import BaseService
 
 #: Types of a dataset transaction.
@@ -115,28 +110,28 @@ class DatasetService(BaseService):
             end_transaction_rid=end_transaction_rid,
         )
 
-    def preview_rows(
+    def preview_table(
         self,
         dataset_rid: str,
         *,
         limit: int = 10,
         branch: Optional[str] = None,
         columns: Optional[List[str]] = None,
-    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+    ) -> Any:
         """Read up to ``limit`` rows (``Dataset.read_table`` in Arrow format).
 
         Returns:
-            ``(column names, rows)``; each row maps column name to value.
-            BINARY values are base64-encoded strings.
+            A ``pyarrow.Table`` (one without columns for an empty response);
+            ``pltr.contract.table_rows`` turns it into JSON-safe rows.
         """
-        table = self.read_table(
+        response = self.read_table(
             dataset_rid,
             format="ARROW",
             branch=branch,
             columns=columns,
             row_limit=limit,
         )
-        return decode_arrow_rows(table)
+        return arrow_table(response)
 
     # ------------------------------------------------------------- schema
 
@@ -440,7 +435,7 @@ class DatasetService(BaseService):
             start_transaction_rid=start_transaction_rid,
             end_transaction_rid=end_transaction_rid,
         ) as chunks:
-            return _write_atomically(output, chunks)
+            return write_bytes_atomically(output, chunks)
 
     def delete_file(
         self,
@@ -750,68 +745,6 @@ class DatasetService(BaseService):
             )
         return DatasetSchema(field_schema_list=fields)
 
-    # --------------------------------------- compat for services/copy.py
-    #
-    # CopyService (services/copy.py) reads dict-shaped results from these
-    # methods. They return the SDK's own serialization (``model.to_dict()``:
-    # API field names). Compat for services/copy.py; remove when cp migrates
-    # to the model-returning methods named in each docstring.
-
-    def create_dataset(self, name: str, parent_folder_rid: str) -> Dict[str, Any]:
-        """Create a dataset; returns ``Dataset.to_dict()``.
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`create`).
-        """
-        return self.create(name, parent_folder_rid).to_dict()
-
-    def get_schema(self, dataset_rid: str) -> Dict[str, Any]:
-        """Get a dataset's schema; returns ``GetDatasetSchemaResponse.to_dict()``.
-
-        Its ``"schema"`` key can be passed to :meth:`put_schema`. Compat for
-        services/copy.py; remove when cp migrates (use
-        :meth:`get_dataset_schema`).
-        """
-        return self.get_dataset_schema(dataset_rid).to_dict()
-
-    def list_files(
-        self, dataset_rid: str, branch: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Every file on a branch (all pages), each as ``File.to_dict()``.
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`list_dataset_files`).
-        """
-        return [
-            file.to_dict()
-            for file in self.service.Dataset.File.list(dataset_rid, branch_name=branch)
-        ]
-
-    def create_transaction(
-        self,
-        dataset_rid: str,
-        branch: Optional[str] = None,
-        transaction_type: str = "APPEND",
-    ) -> Dict[str, Any]:
-        """Open a transaction; returns ``Transaction.to_dict()`` (``"rid"`` key).
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`start_transaction`).
-        """
-        return self.start_transaction(
-            dataset_rid, transaction_type=transaction_type, branch=branch
-        ).to_dict()
-
-    def delete_dataset(self, dataset_rid: str) -> None:
-        """Move a dataset to the trash (``filesystem.Resource.delete``, GA).
-
-        The datasets API can't delete datasets; a dataset is a Compass
-        resource, so it is trashed (restorable) like any other resource.
-        Used only for cp's cleanup of a partially copied dataset. Compat for
-        services/copy.py; remove when cp migrates.
-        """
-        self.client.filesystem.Resource.delete(dataset_rid)
-
 
 # ------------------------------------------------------------------ helpers
 
@@ -832,38 +765,19 @@ def _view_backing_datasets(backing_datasets: Sequence[BackingDataset]) -> List[A
     ]
 
 
-def decode_arrow_rows(table: Any) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Decode a ``read_table`` Arrow response into (column names, rows).
+def arrow_table(response: Any) -> Any:
+    """The ``pyarrow.Table`` of a ``read_table`` Arrow response.
 
-    ``table`` is the SDK's ``TableResponse`` (or raw Arrow IPC stream bytes),
-    or ``None`` for an empty response. BINARY values become base64 strings so
-    every row is JSON-safe.
+    ``response`` is the SDK's ``TableResponse`` (or raw Arrow IPC stream
+    bytes); ``None`` or an empty body gives a table without columns.
     """
-    if not table:
-        return [], []
-    if hasattr(table, "to_pyarrow"):
-        arrow = table.to_pyarrow()
-    else:
-        import pyarrow as pa
+    import pyarrow as pa
 
-        arrow = pa.ipc.open_stream(bytes(table)).read_all()
-    rows = [
-        {name: _json_safe(value) for name, value in row.items()}
-        for row in arrow.to_pylist()
-    ]
-    return list(arrow.column_names), rows
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, (bytes, bytearray)):
-        return base64.b64encode(bytes(value)).decode("ascii")
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe(item) for item in value]
-    return value
+    if not response:
+        return pa.table({})
+    if hasattr(response, "to_pyarrow"):
+        return response.to_pyarrow()
+    return pa.ipc.open_stream(bytes(response)).read_all()
 
 
 _DATE_PATTERNS = (
@@ -902,31 +816,3 @@ def _all_parse(values: List[str], kind: Any) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _write_atomically(output: Path, chunks: Any) -> int:
-    """Write ``chunks`` to a temporary file, then move it to ``output``."""
-    import os
-    import tempfile
-
-    handle = tempfile.NamedTemporaryFile(
-        mode="wb",
-        dir=str(output.parent),
-        prefix=f".{output.name}.",
-        suffix=".part",
-        delete=False,
-    )
-    written = 0
-    try:
-        with handle:
-            for chunk in chunks:
-                handle.write(chunk)
-                written += len(chunk)
-        os.replace(handle.name, output)
-    except BaseException:
-        try:
-            os.remove(handle.name)
-        except OSError:
-            pass
-        raise
-    return written

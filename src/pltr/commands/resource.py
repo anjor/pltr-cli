@@ -6,7 +6,6 @@ import difflib
 from typing import Any, List, Optional
 
 import typer
-from foundry_sdk.v2.filesystem.models import Organization
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -33,10 +32,10 @@ from ..contract import (
 from ..services.resource import (
     DEFAULT_MAX_SEARCH_FOLDERS,
     MAX_BATCH_SIZE,
-    RESOURCE_TYPES,
     ROOT_FOLDER_RID,
     ResourceService,
     normalize_resource_type,
+    resource_types,
 )
 from ..utils.completion import cache_rid, complete_rid
 
@@ -73,10 +72,14 @@ MARKING_COLUMNS: Columns = {"Marking ID": lambda marking_id: marking_id}
 
 
 def _requirement(item: Any) -> str:
+    from foundry_sdk.v2.filesystem.models import Organization
+
     return "organization" if isinstance(item, Organization) else "marking"
 
 
 def _requirement_organization(item: Any) -> Optional[str]:
+    from foundry_sdk.v2.filesystem.models import Organization
+
     return item.organization_rid if isinstance(item, Organization) else None
 
 
@@ -150,7 +153,7 @@ def _resource_type(value: Optional[str]) -> Optional[str]:
         return normalize_resource_type(value)
     except ValueError:
         close = difflib.get_close_matches(
-            value.strip().upper(), RESOURCE_TYPES, n=3, cutoff=0.6
+            value.strip().upper(), resource_types(), n=3, cutoff=0.6
         )
         suggestion = f" Did you mean {', '.join(close)}?" if close else ""
         raise typer.BadParameter(
@@ -595,21 +598,23 @@ def main():
     ri.compass.main.folder.<id>, datasets ri.foundry.main.dataset.<id>.
 
     Examples:
+
+    \b
         # Get a resource by RID, or by path
         pltr resource get ri.foundry.main.dataset.xyz123
         pltr resource get-by-path "/My Space/My Project/Sales"
-
+    \b
         # List a folder's datasets (one page; --all for every page)
         pltr resource list --folder-rid ri.compass.main.folder.abc456 --type dataset
-
+    \b
         # Search a project for "sales" (scans its folders)
         pltr resource search "sales" --folder-rid ri.compass.main.folder.abc456
-
+    \b
         # Trash, restore, permanently delete (asks for confirmation; --yes skips it)
         pltr resource delete ri.foundry.main.dataset.xyz123
         pltr resource restore ri.foundry.main.dataset.xyz123
         pltr resource permanently-delete ri.foundry.main.dataset.xyz123
-
+    \b
         # Markings and access requirements
         pltr resource add-markings ri.foundry.main.dataset.xyz123 -m <MARKING_ID>
         pltr resource list-markings ri.foundry.main.dataset.xyz123

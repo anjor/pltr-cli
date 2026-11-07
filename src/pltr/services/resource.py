@@ -6,16 +6,11 @@ Methods return SDK models (or SDK iterators) unchanged and let SDK exceptions
 propagate so the error layer can classify them.
 """
 
+import functools
 import typing
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Set
-
-from foundry_sdk.v2.filesystem.models import (
-    GetByPathResourcesBatchRequestElement,
-    GetResourcesBatchRequestElement,
-    ResourceType,
-)
+from typing import Any, List, Optional, Set, Tuple
 
 from ..contract import Page
 from .base import BaseService
@@ -47,8 +42,12 @@ def _literal_values(tp: Any) -> List[str]:
     return values
 
 
-#: Every resource type the installed SDK knows (``ResourceType``).
-RESOURCE_TYPES = tuple(_literal_values(ResourceType))
+@functools.lru_cache(maxsize=None)
+def resource_types() -> Tuple[str, ...]:
+    """Every resource type the installed SDK knows (``ResourceType``)."""
+    from foundry_sdk.v2.filesystem.models import ResourceType
+
+    return tuple(_literal_values(ResourceType))
 
 
 def normalize_resource_type(value: str) -> str:
@@ -62,7 +61,7 @@ def normalize_resource_type(value: str) -> str:
     """
     name = value.strip().upper().replace("-", "_")
     name = TYPE_ALIASES.get(name, name)
-    if name not in RESOURCE_TYPES:
+    if name not in resource_types():
         raise ValueError(name)
     return name
 
@@ -145,6 +144,8 @@ class ResourceService(BaseService):
         """
         if len(resource_rids) > MAX_BATCH_SIZE:
             raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} resources")
+        from foundry_sdk.v2.filesystem.models import GetResourcesBatchRequestElement
+
         elements = [
             GetResourcesBatchRequestElement(resource_rid=rid) for rid in resource_rids
         ]
@@ -160,6 +161,10 @@ class ResourceService(BaseService):
         """
         if len(paths) > MAX_BATCH_SIZE:
             raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} paths")
+        from foundry_sdk.v2.filesystem.models import (
+            GetByPathResourcesBatchRequestElement,
+        )
+
         elements = [GetByPathResourcesBatchRequestElement(path=path) for path in paths]
         return self.service.Resource.get_by_path_batch(body=elements)
 

@@ -13,7 +13,6 @@ exceptions propagate so the error layer can classify them.
 
 from typing import Any, Dict, List, Optional
 
-from foundry_sdk.v2.filesystem.models import PrincipalWithId
 from typing_extensions import Literal
 
 from ..contract import Page
@@ -65,6 +64,8 @@ class ProjectService(BaseService):
         to ``owner_id`` (a user or group ID of type ``owner_type``), or to
         the calling user when ``owner_id`` is ``None``.
         """
+        from foundry_sdk.v2.filesystem.models import PrincipalWithId
+
         if owner_id is None:
             owner_id = self.get_current_user_id()
             owner_type = "USER"

@@ -815,15 +815,17 @@ def main():
     in a folder with 'pltr folder list FOLDER_RID'.
 
     Examples:
+
+    \b
         # Inspect a connection and its configuration
         pltr connectivity connection get <CONNECTION_RID>
         pltr connectivity connection get-config <CONNECTION_RID>
-
+    \b
         # Create a file import and run it
         pltr connectivity import file <CONNECTION_RID> <DATASET_RID> \\
             --name "Daily drop" --mode APPEND
         pltr connectivity import execute-file <CONNECTION_RID> <FILE_IMPORT_RID>
-
+    \b
         # List a connection's table imports as JSON
         pltr connectivity import list-table <CONNECTION_RID> --format json
     """

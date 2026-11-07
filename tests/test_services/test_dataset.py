@@ -7,7 +7,6 @@ filter turns into a failure. Transactions and uploads are covered in
 test_dataset_transactions.py.
 """
 
-import base64
 import json
 
 import pytest
@@ -22,7 +21,7 @@ from foundry_sdk.v2.datasets.models import (
 )
 
 from pltr.contract import PltrError
-from pltr.services.dataset import DatasetService, decode_arrow_rows
+from pltr.services.dataset import DatasetService, arrow_table
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -107,36 +106,33 @@ def test_read_table_sends_every_option(stub_foundry_http):
     assert params["endTransactionRid"] == dj.OTHER_TRANSACTION_RID
 
 
-def test_preview_rows_reads_arrow_and_decodes_rows(stub_foundry_http):
+def test_preview_table_reads_arrow(stub_foundry_http):
     stub_foundry_http.respond(
         content=dj.arrow_stream({"id": [1, 2], "region": ["EMEA", None]})
     )
 
-    columns, rows = DatasetService().preview_rows(DATASET, limit=2, columns=["id"])
+    table = DatasetService().preview_table(DATASET, limit=2, columns=["id"])
 
-    assert columns == ["id", "region"]
-    assert rows == [{"id": 1, "region": "EMEA"}, {"id": 2, "region": None}]
+    assert table.column_names == ["id", "region"]
+    assert table.to_pylist() == [
+        {"id": 1, "region": "EMEA"},
+        {"id": 2, "region": None},
+    ]
     params = only_request(stub_foundry_http).url.params
     assert dict(params) == {"format": "ARROW", "columns": "id", "rowLimit": "2"}
 
 
-def test_decode_arrow_rows_base64_encodes_binary_values():
-    columns, rows = decode_arrow_rows(
-        dj.arrow_stream({"blob": [b"\xff\x00"], "nested": [[b"ok"]]})
-    )
+def test_arrow_table_of_raw_ipc_bytes():
+    table = arrow_table(dj.arrow_stream({"blob": [b"\xff\x00"]}))
 
-    assert columns == ["blob", "nested"]
-    assert rows == [
-        {
-            "blob": base64.b64encode(b"\xff\x00").decode(),
-            "nested": [base64.b64encode(b"ok").decode()],
-        }
-    ]
+    assert table.column_names == ["blob"]
+    assert table.to_pylist() == [{"blob": b"\xff\x00"}]
 
 
-def test_decode_arrow_rows_of_an_empty_response():
-    assert decode_arrow_rows(None) == ([], [])
-    assert decode_arrow_rows(b"") == ([], [])
+def test_arrow_table_of_an_empty_response():
+    for empty in (None, b""):
+        table = arrow_table(empty)
+        assert (table.column_names, table.num_rows) == ([], 0)
 
 
 # -------------------------------------------------------------- schema
@@ -625,111 +621,3 @@ def test_list_jobs_defaults_to_newest_started_first(stub_foundry_http):
     assert json.loads(only_request(stub_foundry_http).content) == {
         "orderBy": [{"sortType": "BY_STARTED_TIME", "sortDirection": "DESCENDING"}]
     }
-
-
-# ------------------------------------------- compat for services/copy.py
-#
-# CopyService (services/copy.py) reads these dict results; keep them
-# working until cp migrates to the model-returning methods.
-
-
-def test_compat_create_dataset_returns_the_sdk_dict(stub_foundry_http):
-    stub_foundry_http.respond(json=dj.dataset())
-
-    result = DatasetService().create_dataset("sales", dj.FOLDER_RID)
-
-    assert result == dj.dataset()
-    assert result["rid"] == DATASET  # what CopyService reads
-
-
-def test_compat_get_schema_round_trips_into_put_schema(stub_foundry_http):
-    stub_foundry_http.respond(json=dj.schema_response())
-    stub_foundry_http.respond(json=dj.schema_response())
-    service = DatasetService()
-
-    schema = service.get_schema(DATASET).get("schema")  # what CopyService does
-    service.put_schema(dj.OTHER_DATASET_RID, schema)
-
-    _, put = stub_foundry_http.requests
-    assert put.url.path == f"{API}/{dj.OTHER_DATASET_RID}/putSchema"
-    assert json.loads(put.content)["schema"] == dj.schema_response()["schema"]
-
-
-def test_compat_list_files_reads_every_page(stub_foundry_http):
-    stub_foundry_http.respond(json=dj.page([dj.file("a.csv")], "t2"))
-    stub_foundry_http.respond(json=dj.page([dj.file("b.csv")]))
-
-    files = DatasetService().list_files(DATASET, branch="master")
-
-    assert [f.get("path") for f in files] == ["a.csv", "b.csv"]
-    first, second = stub_foundry_http.requests
-    assert dict(first.url.params) == {"branchName": "master"}
-    assert dict(second.url.params) == {"branchName": "master", "pageToken": "t2"}
-
-
-def test_compat_create_transaction_has_a_rid_key(stub_foundry_http):
-    stub_foundry_http.respond(json=dj.transaction(transaction_type="SNAPSHOT"))
-
-    result = DatasetService().create_transaction(
-        DATASET, branch="master", transaction_type="SNAPSHOT"
-    )
-
-    assert result.get("transaction_rid") or result.get("rid") == dj.TRANSACTION_RID
-    request = only_request(stub_foundry_http)
-    assert json.loads(request.content) == {"transactionType": "SNAPSHOT"}
-    assert dict(request.url.params) == {"branchName": "master"}
-
-
-def test_compat_delete_dataset_moves_it_to_the_trash(stub_foundry_http):
-    stub_foundry_http.respond(204)
-
-    DatasetService().delete_dataset(DATASET)
-
-    request = only_request(stub_foundry_http)
-    assert (request.method, request.url.path) == (
-        "DELETE",
-        f"/api/v2/filesystem/resources/{DATASET}",
-    )
-    assert "preview" not in request.url.params
-
-
-def test_cp_copies_a_dataset_through_the_compat_methods(stub_foundry_http):
-    """`pltr cp` end to end over the real compat methods (not patched)."""
-    from pltr.services.copy import CopyService
-
-    copy_rid = dj.OTHER_DATASET_RID
-    stub_foundry_http.respond(json=fj.resource(DATASET, "sales", "FOUNDRY_DATASET"))
-    stub_foundry_http.respond(json=dj.dataset(copy_rid, "sales-copy"))
-    stub_foundry_http.respond(json=dj.schema_response())  # get_schema
-    stub_foundry_http.respond(json=dj.schema_response())  # put_schema
-    stub_foundry_http.respond(json=dj.page([dj.file("data/a.csv")]))
-    stub_foundry_http.respond(json=dj.transaction(transaction_type="SNAPSHOT"))
-    stub_foundry_http.respond(content=b"id\n1\n")  # File.content
-    stub_foundry_http.respond(json=dj.file("data/a.csv"))  # File.upload
-    stub_foundry_http.respond(
-        json=dj.transaction(status="COMMITTED", closed_time=dj.CLOSED_TIME)
-    )
-
-    result = CopyService().copy_resource(DATASET, dj.FOLDER_RID)
-
-    assert [item.rid for item in result.items] == [copy_rid]
-    assert [(r.method, r.url.path) for r in stub_foundry_http.requests] == [
-        ("GET", f"/api/v2/filesystem/resources/{DATASET}"),
-        ("POST", API),
-        ("GET", f"{API}/{DATASET}/getSchema"),
-        ("PUT", f"{API}/{copy_rid}/putSchema"),
-        ("GET", f"{API}/{DATASET}/files"),
-        ("POST", f"{API}/{copy_rid}/transactions"),
-        ("GET", f"{API}/{DATASET}/files/data/a.csv/content"),
-        ("POST", f"{API}/{copy_rid}/files/data/a.csv/upload"),
-        ("POST", f"{API}/{copy_rid}/transactions/{dj.TRANSACTION_RID}/commit"),
-    ]
-    requests = stub_foundry_http.requests
-    assert json.loads(requests[1].content) == {
-        "name": "sales-copy",
-        "parentFolderRid": dj.FOLDER_RID,
-    }
-    assert json.loads(requests[3].content)["schema"] == dj.schema_response()["schema"]
-    assert json.loads(requests[5].content) == {"transactionType": "SNAPSHOT"}
-    assert dict(requests[7].url.params) == {"transactionRid": dj.TRANSACTION_RID}
-    assert requests[7].content == b"id\n1\n"

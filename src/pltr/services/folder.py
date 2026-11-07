@@ -8,7 +8,6 @@ the error layer can classify them.
 
 from typing import Any, List, Optional
 
-from foundry_sdk.v2.filesystem.models import GetFoldersBatchRequestElement
 
 from .base import BaseService
 
@@ -68,6 +67,8 @@ class FolderService(BaseService):
         """
         if len(folder_rids) > MAX_BATCH_SIZE:
             raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} folders")
+        from foundry_sdk.v2.filesystem.models import GetFoldersBatchRequestElement
+
         elements = [
             GetFoldersBatchRequestElement(folder_rid=rid) for rid in folder_rids
         ]

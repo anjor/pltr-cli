@@ -10,11 +10,6 @@ error layer can classify them.
 
 from typing import Any, Dict, List, Optional
 
-from foundry_sdk.v2.orchestration.models import (
-    GetBuildsBatchRequestElement,
-    GetJobsBatchRequestElement,
-)
-
 from .base import BaseService
 
 #: Maximum number of builds ``Build.get_batch`` accepts in one request.
@@ -122,6 +117,8 @@ class OrchestrationService(BaseService):
         """
         if len(build_rids) > MAX_BUILDS_BATCH:
             raise ValueError(f"Maximum batch size is {MAX_BUILDS_BATCH} builds")
+        from foundry_sdk.v2.orchestration.models import GetBuildsBatchRequestElement
+
         return self.service.Build.get_batch(
             body=[GetBuildsBatchRequestElement(build_rid=rid) for rid in build_rids]
         )
@@ -140,6 +137,8 @@ class OrchestrationService(BaseService):
         """
         if len(job_rids) > MAX_JOBS_BATCH:
             raise ValueError(f"Maximum batch size is {MAX_JOBS_BATCH} jobs")
+        from foundry_sdk.v2.orchestration.models import GetJobsBatchRequestElement
+
         return self.service.Job.get_batch(
             body=[GetJobsBatchRequestElement(job_rid=rid) for rid in job_rids],
             preview=True,

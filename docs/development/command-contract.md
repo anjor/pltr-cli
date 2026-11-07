@@ -230,6 +230,11 @@ emit(result, *, format, output=None, columns=None, rows=None, title=None)
 - Without `columns`, `auto_columns` uses every set model field, named by its
   API name. That suits generated commands; curated commands should declare
   columns.
+- **Tabular results** (a `pyarrow.Table`, such as an SQL query result or
+  dataset rows read as Arrow): `columns, rows = table_rows(table)` gives one
+  dict per row in the table's column order, binary values (also nested)
+  base64-encoded and duplicate column names suffixed `_2`, `_3` (with a
+  warning); then `emit(rows, format=format, output=output, columns=columns)`.
 
 **Paging.** A paged command has `paged=True`, the four paging options and:
 
@@ -248,6 +253,12 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 - The default is one page. `--all` fetches every page, and
   `--max-pages N` stops after N pages.
 - In JSON, `nextPageToken` says where to resume.
+- Some endpoints return a `nextPageToken` on every page, even when there is
+  nothing more yet (audit log files without an end date: clients poll for
+  new files), so `--all` would never end. Pass `stop_at_empty_page=True`:
+  paging then also stops at the first page without items, and that page's
+  `nextPageToken` is returned for picking up new items later
+  (`pltr audit list`).
 
 **Binary output.** For file content, Arrow/Parquet results and images, call
 `check_binary_output(output)` before the request and
@@ -255,7 +266,17 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 iterable of `bytes` (an SDK streamed response's `iter_bytes()`, so large
 files aren't held in memory). The data goes to `--output FILE` (`-` means
 stdout), or to stdout, but never to a terminal (a usage error, exit code 2).
-A partially written file is deleted when the stream fails.
+When the output path is an optional argument rather than `--output` (`None`
+meaning stdout), pass `output_hint=` (for example `"an OUTPUT_PATH (or - for
+stdout)"`) to both, so the message names it.
+
+A file is written through `write_bytes_atomically(path, chunks)`: the data
+goes to a temporary file next to it, which replaces the file only once the
+stream is complete. A failed download leaves no partial file and keeps an
+existing one. The file gets the permissions `open(path, "wb")` would give
+it, a symlink's target is replaced, and a path that isn't a regular file
+(`/dev/null`, a FIFO) is written directly. Services that download to a path
+use the same function.
 
 **Messages.** `success(msg)`, `info(msg)`, `warn(msg)` and
 `with spinner(msg): ...` all write to stderr. The first two are suppressed in
@@ -271,13 +292,13 @@ Commands contain no `try/except` for reporting.
 | Exit | `type` | When |
 |---|---|---|
 | 0 | | success |
-| 1 | `unexpected_error`, `aborted` | a bug or unknown failure; "no" at a confirmation prompt |
+| 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
 | 2 | `usage_error`, `confirmation_required` | bad or missing arguments, invalid JSON input, an invalid RID, a destructive command without `--yes` when stdin is not a terminal |
 | 3 | `auth_error` | no usable profile or credentials, an OAuth token failure, HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
 | 5 | `not_found`, `api_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack) |
 | 6 | `validation_error` | HTTP 400, 422 |
-| 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, connection and timeout errors |
+| 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
 
 JSON mode prints one compact object as the last stderr line, and leaves out
 keys that don't apply:
@@ -293,13 +314,30 @@ Text mode prints `Error: <message>`, then the details and a hint.
     Typed errors have an empty `str()` and no `error_code`, so the message is
     built from `errorName`, the description and the parameters, and
     `errorCode` is derived from the HTTP status where that is unambiguous.
+  - The SDK's `SDKInternalError`, which is never a usage error: an error
+    response whose body isn't a Foundry error is classified by its HTTP
+    status, a failed OAuth token request is an `auth_error`, a success body
+    that isn't JSON is an `invalid_response` (exit 7), and anything else is
+    an `unexpected_error` (exit 1, "foundry-platform-sdk failed
+    unexpectedly", with a hint to report it).
   - `requests.HTTPError`, including the Foundry error body, for the labeled
-    direct-HTTP commands.
+    direct-HTTP commands. A success body that isn't JSON
+    (`requests.JSONDecodeError` from `response.json()`) is an
+    `invalid_response` (exit 7), not invalid user input.
   - pltr `AuthError` and its subclasses.
   - Click usage errors.
-  - pydantic validation errors from SDK argument checks. A bad RID becomes a
-    usage error; a wrong SDK signature is reported as a pltr bug (exit 1).
-  - `json.JSONDecodeError`.
+  - pydantic validation errors. Where one was raised decides what it means:
+    - in the SDK's argument check (`pydantic.validate_call`; the error's
+      title is the method, e.g. `FolderClient.get`): a bad RID or value is a
+      usage error, a wrong SDK signature is reported as a pltr bug (exit 1);
+    - in SDK code after that check, i.e. while decoding the response (the
+      title names the model, e.g. `Folder`): an `invalid_response` (exit 7)
+      whose message names the model and the mismatched fields and suggests
+      upgrading pltr and the SDK (the stack may be newer than the SDK);
+    - in pltr's own code (no SDK frames): a usage error. Prefer wrapping
+      such validation in `typer.BadParameter`.
+  - `json.JSONDecodeError` on its own: a usage error ("Invalid JSON input").
+    Parse JSON options with `load_json_input`, which reports the option.
 - **Exception chains.** The `__cause__`/`__context__` chain is searched from
   the outside in. The first exception with a known meaning decides the
   classification, and the outer exception's first line is kept as context.
@@ -482,9 +520,13 @@ End with `### Docs to update` and `### Not verified live`.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page
   of: iterating it fetches every page.
-- The legacy `OutputFormatter` still works for unconverted modules. Its
-  `print_*` methods now write to stderr; in JSON mode `print_info` and
-  `print_success` are suppressed and `print_warning`/`print_error` become
-  `{"type": "warning"|"error"}` lines. Don't use it in converted code, and
-  don't use `BaseService._serialize_response` (deprecated: snake_case with
-  nulls).
+- Import foundry-platform-sdk (models, errors) inside the functions that use
+  it, not at module level: `pltr --help` and every shell completion import
+  every command module, and the SDK's model packages take about half a
+  second to import. `tests/test_startup.py` fails if startup imports
+  `foundry_sdk`. Under `if TYPE_CHECKING:` is fine.
+- Every command is converted, so the legacy helpers are gone:
+  `pltr.utils.formatting.OutputFormatter`, `pltr.utils.progress`
+  (`SpinnerProgressTracker`, ...), `pltr.utils.pagination` and
+  `BaseService._serialize_response`/`_paginate_*`. The "Before" example above
+  shows how they were used; use `emit`, `spinner` and `collect_pages`.

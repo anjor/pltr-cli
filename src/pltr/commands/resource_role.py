@@ -7,7 +7,6 @@ from typing import Any, Optional
 
 import click
 import typer
-from foundry_sdk.v2.filesystem.models import Everyone, PrincipalWithId
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -39,6 +38,8 @@ app = typer.Typer()
 
 def principal_type(role: Any) -> str:
     """USER, GROUP or EVERYONE for a ``ResourceRole`` (table/CSV only)."""
+    from foundry_sdk.v2.filesystem.models import Everyone, PrincipalWithId
+
     principal = role.resource_role_principal
     if isinstance(principal, PrincipalWithId):
         return principal.principal_type
@@ -49,6 +50,8 @@ def principal_type(role: Any) -> str:
 
 def principal_id(role: Any) -> Optional[str]:
     """The user or group ID of a ``ResourceRole`` (none for everyone)."""
+    from foundry_sdk.v2.filesystem.models import PrincipalWithId
+
     principal = role.resource_role_principal
     if isinstance(principal, PrincipalWithId):
         return principal.principal_id
@@ -284,17 +287,19 @@ def main():
     IDs come from the role set of the resource's space.
 
     Examples:
+
+    \b
         # List the role grants on a dataset
         pltr resource-role list ri.foundry.main.dataset.xyz123
-
+    \b
         # Include inherited roles, as JSON
         pltr resource-role list ri.foundry.main.dataset.xyz123 \\
             --include-inherited --format json
-
+    \b
         # Grant a role to a user or group (by ID)
         pltr resource-role grant ri.compass.main.folder.abc456 \\
             --principal-id 6f2a1b3c-0000-4000-8000-000000000001 --role compass:manage
-
+    \b
         # Revoke it (asks for confirmation; --yes skips it)
         pltr resource-role revoke ri.compass.main.folder.abc456 \\
             --principal-id 6f2a1b3c-0000-4000-8000-000000000001 --role compass:manage

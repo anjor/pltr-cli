@@ -3,7 +3,7 @@ Dataset commands (Foundry datasets API).
 """
 
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import click
 import typer
@@ -29,6 +29,7 @@ from ..contract import (
     pltr_command,
     spinner,
     success,
+    table_rows,
     warn,
 )
 from ..services.dataset import (
@@ -155,15 +156,6 @@ SCHEDULE_COLUMNS: Columns = {"Schedule RID": _identity}
 
 #: Table/CSV columns for ``dataset transactions build`` (a build RID).
 BUILD_COLUMNS: Columns = {"Build RID": _identity}
-
-
-def _row_columns(names: List[str]) -> Columns:
-    """Columns for ``preview`` rows (dicts keyed by the dataset's columns)."""
-
-    def getter(name: str) -> Callable[[Dict[str, Any]], Any]:
-        return lambda row: row.get(name)
-
-    return {name: getter(name) for name in names}
 
 
 # -------------------------------------------------------------- arguments
@@ -320,11 +312,12 @@ def preview_dataset(
     Datasets that aren't stored as Parquet can be read up to 1,000,000 rows.
     """
     with spinner(f"Reading up to {limit} rows of {dataset_rid}..."):
-        names, rows = DatasetService(profile=profile).preview_rows(
+        table = DatasetService(profile=profile).preview_table(
             dataset_rid, limit=limit, branch=branch, columns=columns or None
         )
     cache_rid(dataset_rid)
-    emit(rows, format=format, output=output, columns=_row_columns(names))
+    row_columns, rows = table_rows(table)
+    emit(rows, format=format, output=output, columns=row_columns)
 
 
 # --------------------------------------------------------------- schema
@@ -1708,14 +1701,16 @@ def main():
     Foundry endpoints.
 
     Examples:
+
+    \b
         # Show a dataset and read its first rows
         pltr dataset get ri.foundry.main.dataset.abc123
         pltr dataset preview ri.foundry.main.dataset.abc123 --limit 20
-
+    \b
         # Upload a directory in one transaction, then list the files
         pltr dataset files upload ./exports ri.foundry.main.dataset.abc123
         pltr dataset files list ri.foundry.main.dataset.abc123 --all
-
+    \b
         # Several uploads in one transaction you commit yourself
         pltr dataset transactions start ri.foundry.main.dataset.abc123 --type SNAPSHOT
         pltr dataset files upload a.csv ri.foundry.main.dataset.abc123 \\

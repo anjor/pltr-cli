@@ -24,7 +24,7 @@ The polished commands for common tasks. Prefer them when they cover the task.
 
 | Group | Commands | Reference | Description |
 |---|---|---|---|
-| `pltr admin` | 25 | [curated/admin.md](curated/admin.md) | Admin operations for user, group, and organization management |
+| `pltr admin` | 25 | [curated/admin.md](curated/admin.md) | Manage users, groups, roles, organizations and markings |
 | `pltr aip-agents` | 4 | [curated/aip-agents.md](curated/aip-agents.md) | Manage AIP Agents, sessions, and versions |
 | `pltr alias` | 9 | [curated/alias.md](curated/alias.md) | Manage command aliases |
 | `pltr audit` | 2 | [curated/audit.md](curated/audit.md) | Audit log operations for compliance and security monitoring |
@@ -32,7 +32,7 @@ The polished commands for common tasks. Prefer them when they cover the task.
 | `pltr completion` | 3 | [curated/completion.md](curated/completion.md) | Manage shell completions |
 | `pltr configure` | 4 | [curated/configure.md](curated/configure.md) | Manage authentication profiles |
 | `pltr connectivity` | 14 | [curated/connectivity.md](curated/connectivity.md) | Manage connections and data imports |
-| `pltr cp` | 1 | [curated/cp.md](curated/cp.md) | Copy datasets or folders into another Compass folder |
+| `pltr cp` | 1 | [curated/cp.md](curated/cp.md) | Copy a dataset, or a folder with its contents, into another folder. |
 | `pltr data-health` | 6 | [curated/data-health.md](curated/data-health.md) | Manage data health checks and reports |
 | `pltr dataset` | 30 | [curated/dataset.md](curated/dataset.md) | Manage datasets |
 | `pltr folder` | 4 | [curated/folder.md](curated/folder.md) | Manage folders |
@@ -46,9 +46,9 @@ The polished commands for common tasks. Prefer them when they cover the task.
 | `pltr project` | 9 | [curated/project.md](curated/project.md) | Manage projects |
 | `pltr resource` | 13 | [curated/resource.md](curated/resource.md) | Manage resources |
 | `pltr resource-role` | 3 | [curated/resource-role.md](curated/resource-role.md) | Manage resource permissions |
-| `pltr shell` | 2 | [curated/shell.md](curated/shell.md) | Interactive shell mode |
+| `pltr shell` | 2 | [curated/shell.md](curated/shell.md) | Start an interactive shell session with tab completion and history |
 | `pltr space` | 5 | [curated/space.md](curated/space.md) | Manage spaces |
-| `pltr sql` | 7 | [curated/sql.md](curated/sql.md) | Execute SQL queries |
+| `pltr sql` | 7 | [curated/sql.md](curated/sql.md) | Execute SQL queries against Foundry datasets |
 | `pltr streams` | 6 | [curated/streams.md](curated/streams.md) | Manage streaming datasets and streams |
 | `pltr third-party-apps` | 1 | [curated/third-party-apps.md](curated/third-party-apps.md) | Manage third-party applications |
 | `pltr verify` | 1 | [curated/verify.md](curated/verify.md) | Verify authentication |

@@ -62,7 +62,11 @@ def test_beta_commands_are_labeled_in_help():
     lines = invoke("--help").stdout.splitlines()
 
     def line_for(command):
-        return next(line for line in lines if f" {command} " in line)
+        # The command's row in the Commands panel, not an example line in
+        # the group's description.
+        return next(
+            line for line in lines if line.strip("│ ").startswith(f"{command} ")
+        )
 
     for command in (
         "get-by-path",
@@ -502,6 +506,24 @@ def test_download_overwrite(stub_foundry_http, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert target.read_bytes() == PNG
+
+
+def test_download_overwrite_interrupted_mid_stream_keeps_the_old_file(
+    stub_foundry_http, tmp_path
+):
+    stub_foundry_http.respond(stream=ChunkedStream([b"partial"], fail=True))
+    out = tmp_path / "out"
+    out.mkdir()
+    target = out / "photo.png"
+    target.write_bytes(b"old")
+
+    result = invoke(
+        "download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target), "--overwrite"
+    )
+
+    assert result.exit_code == 7
+    assert target.read_bytes() == b"old"
+    assert list(out.iterdir()) == [target]  # no temporary file left
 
 
 def test_api_error_keeps_the_existing_file(stub_foundry_http, tmp_path):

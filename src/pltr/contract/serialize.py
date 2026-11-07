@@ -105,6 +105,7 @@ def collect_pages(
     page_token: Optional[str] = None,
     max_pages: Optional[int] = 1,
     all_pages: bool = False,
+    stop_at_empty_page: bool = False,
 ) -> Page:
     """Fetch pages of a paged SDK list endpoint and merge them into a Page.
 
@@ -123,6 +124,12 @@ def collect_pages(
 
     Stops after ``max_pages`` pages (default 1) unless ``all_pages`` is set,
     and returns the token of the next unread page, if any.
+
+    Some endpoints return a ``nextPageToken`` on every page, even when there
+    is nothing more to read yet (audit log files without an end date, which
+    clients poll for new files). With ``stop_at_empty_page`` paging also
+    stops at the first page without items, and the returned token is that
+    page's ``nextPageToken``, from which a later call picks up new items.
     """
     items: List[Any] = []
     token = page_token
@@ -130,9 +137,12 @@ def collect_pages(
     limit = None if all_pages else max_pages
     while True:
         page = fetch_page(token)
-        items.extend(page.data or [])
+        data = page.data or []
+        items.extend(data)
         token = page.next_page_token
         pages += 1
         if not token or (limit is not None and pages >= limit):
+            break
+        if stop_at_empty_page and not data:
             break
     return Page(data=items, next_page_token=token or None)

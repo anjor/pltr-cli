@@ -1,19 +1,13 @@
 """Tests for CopyService against a real FoundryClient (only HTTP is faked).
 
-The resource and folder side (``Resource.get``, ``Folder.create``,
-``Folder.children``) and the file upload (``Dataset.File.upload``) go through
-``stub_foundry_http``. The other dataset steps go through ``DatasetService``
-methods that the dataset area keeps as dict-returning compatibility wrappers
-while it is converted (create_dataset, get_schema, put_schema, list_files,
-create_transaction, download_file, commit_transaction, abort_transaction,
-delete_dataset). Those methods are patched with ``autospec`` here, so the tests
-pin the interface copy relies on without depending on how the dataset area
-implements it.
+Every step goes through the SDK: the resource and folder side
+(``Resource.get``, ``Folder.create``, ``Folder.children``) and the dataset side
+(``Dataset.create``, ``File.list``, ``Transaction.create``, ``File.content``,
+``File.upload``, ``Transaction.commit``/``abort``, ``Dataset.get_schema``,
+``Dataset.put_schema``, and ``Resource.delete`` to clean up a failed copy).
 """
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from foundry_sdk import PermissionDeniedError
@@ -21,19 +15,22 @@ from foundry_sdk.v2.datasets.models import Dataset
 from foundry_sdk.v2.filesystem.models import Folder, Resource
 
 from pltr.contract import PltrError
-from pltr.services.copy import CopyService
-from pltr.services.dataset import DatasetService
+from pltr.services.copy import CopyService, dataframe_reader_for
 from tests import foundry_json as fj
+from tests import foundry_json_dataset as dj
 from tests import foundry_json_filesystem as fs
 
 pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
+API = "/api/v2/datasets"
 SOURCE_DATASET = fs.child_resource(fs.DATASET_RID, "Source Dataset")
 SOURCE_FOLDER = fs.child_resource(
     "ri.compass.main.folder.source", "Source", "COMPASS_FOLDER"
 )
 TARGET = "ri.compass.main.folder.target"
 NEW_DATASET_RID = "ri.foundry.main.dataset.new"
+NEW_DATASET = fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET)
+SCHEMA = dj.schema_response()
 UPLOAD_DENIED = fj.error(
     "UploadFilePermissionDenied",
     "PERMISSION_DENIED",
@@ -56,40 +53,42 @@ def requests_summary(stub):
     ]
 
 
-@pytest.fixture
-def dataset_compat():
-    """Patch the DatasetService compatibility methods copy relies on."""
+def calls(stub):
+    return [(request.method, request.url.path) for request in stub.requests]
 
-    def fake_download(self, dataset_rid, file_path, output_path, branch="master"):
-        Path(output_path).write_bytes(b"col\n1\n")
-        return {"downloaded": True}
 
-    patches = {
-        "create_dataset": {"return_value": {"rid": NEW_DATASET_RID}},
-        "get_schema": {"return_value": {"schema": None}},
-        "put_schema": {},
-        "list_files": {"return_value": [{"path": "/data/part-0.csv"}]},
-        "create_transaction": {"return_value": {"transaction_rid": fs.TRANSACTION_RID}},
-        "download_file": {"side_effect": fake_download},
-        "commit_transaction": {},
-        "abort_transaction": {},
-        "delete_dataset": {},
-    }
-    mocks = {}
-    started = []
-    for name, kwargs in patches.items():
-        patcher = patch.object(DatasetService, name, autospec=True, **kwargs)
-        mocks[name] = patcher.start()
-        started.append(patcher)
-    yield mocks
-    for patcher in started:
-        patcher.stop()
+def queue_files_copy(stub, paths=("data/part-0.csv",)):
+    """Queue the responses of a dataset copy up to the commit of its files."""
+    stub.respond(json=SOURCE_DATASET)  # Resource.get
+    stub.respond(json=NEW_DATASET)  # Dataset.create
+    stub.respond(json=fs.page([fs.dataset_file(path) for path in paths]))
+    stub.respond(json=fs.transaction())  # Transaction.create
+    for path in paths:
+        stub.respond(content=b"col\n1\n")  # File.content
+        stub.respond(json=fs.dataset_file(path))  # File.upload
+    stub.respond(json=fs.transaction(status="COMMITTED"))
+
+
+FILES_COPY_CALLS = [
+    ("GET", f"/api/v2/filesystem/resources/{fs.DATASET_RID}"),
+    ("POST", API),
+    ("GET", f"{API}/{fs.DATASET_RID}/files"),
+    ("POST", f"{API}/{NEW_DATASET_RID}/transactions"),
+    ("GET", f"{API}/{fs.DATASET_RID}/files/data/part-0.csv/content"),
+    ("POST", f"{API}/{NEW_DATASET_RID}/files/data/part-0.csv/upload"),
+    ("POST", f"{API}/{NEW_DATASET_RID}/transactions/{fs.TRANSACTION_RID}/commit"),
+]
+SCHEMA_COPY_CALLS = [
+    ("GET", f"{API}/{fs.DATASET_RID}/getSchema"),
+    ("PUT", f"{API}/{NEW_DATASET_RID}/putSchema"),
+]
+TRASH_CALL = ("DELETE", f"/api/v2/filesystem/resources/{NEW_DATASET_RID}")
 
 
 # ------------------------------------------------------------------ datasets
 
 
-def test_copy_dataset_dry_run_creates_nothing(stub_foundry_http, dataset_compat):
+def test_copy_dataset_dry_run_creates_nothing(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_DATASET)
 
     result = CopyService(dry_run=True).copy_resource(fs.DATASET_RID, TARGET)
@@ -102,76 +101,138 @@ def test_copy_dataset_dry_run_creates_nothing(stub_foundry_http, dataset_compat)
         "skipped": 0,
         "errors": 0,
     }
-    dataset_compat["create_dataset"].assert_not_called()
     assert requests_summary(stub_foundry_http) == [
         ("GET", f"/api/v2/filesystem/resources/{fs.DATASET_RID}", None)
     ]
 
 
-def test_copy_dataset_copies_files_into_a_snapshot(stub_foundry_http, dataset_compat):
-    stub_foundry_http.respond(json=SOURCE_DATASET)
-    stub_foundry_http.respond(json=fs.dataset_file("data/part-0.csv"))  # upload
+def test_copy_dataset_copies_files_then_the_schema(stub_foundry_http, capsys):
+    queue_files_copy(stub_foundry_http)
+    stub_foundry_http.respond(json=SCHEMA)  # Dataset.get_schema
+    stub_foundry_http.respond(json=SCHEMA)  # Dataset.put_schema
 
     result = CopyService(branch="dev").copy_resource(fs.DATASET_RID, TARGET)
 
     [created] = result.items
-    assert isinstance(created, Dataset)
+    assert isinstance(created, Dataset)  # the model Dataset.create returned
     assert (created.rid, created.name, created.parent_folder_rid) == (
         NEW_DATASET_RID,
         "Source Dataset-copy",
         TARGET,
     )
     assert (result.stats.datasets, result.failures) == (1, [])
-    # autospec: args[0] is the DatasetService instance
-    create_dataset = dataset_compat["create_dataset"]
-    create_dataset.assert_called_once()
-    assert create_dataset.call_args.args[1:] == ("Source Dataset-copy", TARGET)
-    dataset_compat["list_files"].assert_called_once()
-    assert dataset_compat["list_files"].call_args.kwargs == {"branch": "dev"}
-    assert dataset_compat["create_transaction"].call_args.kwargs == {
-        "branch": "dev",
-        "transaction_type": "SNAPSHOT",
-    }
-    dataset_compat["commit_transaction"].assert_called_once()
-    dataset_compat["delete_dataset"].assert_not_called()
-
-    _, upload = stub_foundry_http.requests
-    assert (upload.method, upload.url.path) == (
-        "POST",
-        f"/api/v2/datasets/{NEW_DATASET_RID}/files/data/part-0.csv/upload",
+    # A schema applies to a committed transaction, so it is copied last.
+    assert calls(stub_foundry_http) == FILES_COPY_CALLS + SCHEMA_COPY_CALLS
+    _, create, listing, start, content, upload, _, get_schema, put_schema = (
+        stub_foundry_http.requests
     )
+    assert json.loads(create.content) == {
+        "name": "Source Dataset-copy",
+        "parentFolderRid": TARGET,
+    }
+    assert dict(listing.url.params) == {"branchName": "dev"}
+    assert dict(start.url.params) == {"branchName": "dev"}
+    assert json.loads(start.content) == {"transactionType": "SNAPSHOT"}
+    assert dict(content.url.params) == {"branchName": "dev"}
     # transaction or branch, never both (InvalidParameterCombination)
     assert dict(upload.url.params) == {"transactionRid": fs.TRANSACTION_RID}
     assert upload.content == b"col\n1\n"
+    assert dict(get_schema.url.params) == {"branchName": "dev"}
+    assert json.loads(put_schema.content) == {
+        "branchName": "dev",
+        "endTransactionRid": fs.TRANSACTION_RID,
+        "schema": SCHEMA["schema"],
+        "dataframeReader": "CSV",  # every copied file is a .csv file
+    }
+    err = capsys.readouterr().err
+    assert f"Committed transaction {fs.TRANSACTION_RID}" in err
+    assert "Copied dataset schema (CSV reader)" in err
 
 
-def test_copy_dataset_copies_the_schema_when_there_is_one(
-    stub_foundry_http, dataset_compat
-):
-    dataset_compat["get_schema"].return_value = {"schema": {"fieldSchemaList": []}}
+def test_copy_dataset_reads_every_page_of_files(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_DATASET)
-    stub_foundry_http.respond(json=fs.dataset_file("data/part-0.csv"))
+    stub_foundry_http.respond(json=NEW_DATASET)
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("a.parquet")], "p2"))
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("b.parquet")]))
+    stub_foundry_http.respond(json=fs.transaction())
+    for path in ("a.parquet", "b.parquet"):
+        stub_foundry_http.respond(content=b"PAR1")
+        stub_foundry_http.respond(json=fs.dataset_file(path))
+    stub_foundry_http.respond(json=fs.transaction(status="COMMITTED"))
+    stub_foundry_http.respond(json=SCHEMA)
+    stub_foundry_http.respond(json=SCHEMA)
 
     CopyService().copy_resource(fs.DATASET_RID, TARGET)
 
-    put_schema = dataset_compat["put_schema"]
-    assert put_schema.call_args.args[1:] == (NEW_DATASET_RID, {"fieldSchemaList": []})
+    requests = stub_foundry_http.requests
+    listings = [
+        dict(request.url.params)
+        for request in requests
+        if request.url.path == f"{API}/{fs.DATASET_RID}/files"
+    ]
+    assert listings == [
+        {"branchName": "master"},
+        {"branchName": "master", "pageToken": "p2"},
+    ]
+    uploads = [r.url.path for r in requests if r.url.path.endswith("/upload")]
+    assert uploads == [
+        f"{API}/{NEW_DATASET_RID}/files/a.parquet/upload",
+        f"{API}/{NEW_DATASET_RID}/files/b.parquet/upload",
+    ]
+    # Parquet files: the API's default reader, so none is sent.
+    assert "dataframeReader" not in json.loads(requests[-1].content)
 
 
-def test_copy_dataset_without_schema(stub_foundry_http, dataset_compat):
-    stub_foundry_http.respond(json=SOURCE_DATASET)
-    stub_foundry_http.respond(json=fs.dataset_file("data/part-0.csv"))
+def test_copy_dataset_without_a_source_schema(stub_foundry_http, capsys):
+    queue_files_copy(stub_foundry_http)
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "SchemaNotFound",
+            parameters={"datasetRid": fs.DATASET_RID, "branchName": "master"},
+        ),
+    )
+
+    result = CopyService().copy_resource(fs.DATASET_RID, TARGET)
+
+    assert [item.rid for item in result.items] == [NEW_DATASET_RID]
+    assert result.failures == []
+    assert calls(stub_foundry_http) == FILES_COPY_CALLS + SCHEMA_COPY_CALLS[:1]
+    assert "Source dataset has no schema to copy" in capsys.readouterr().err
+
+
+def test_copy_dataset_with_no_schema_option(stub_foundry_http):
+    queue_files_copy(stub_foundry_http)
 
     CopyService(copy_schema=False).copy_resource(fs.DATASET_RID, TARGET)
 
-    dataset_compat["get_schema"].assert_not_called()
+    assert calls(stub_foundry_http) == FILES_COPY_CALLS
 
 
-def test_failed_dataset_copy_is_cleaned_up_and_raised(
-    stub_foundry_http, dataset_compat, capsys
-):
+def test_copy_dataset_without_files_commits_nothing(stub_foundry_http, capsys):
     stub_foundry_http.respond(json=SOURCE_DATASET)
+    stub_foundry_http.respond(json=NEW_DATASET)
+    stub_foundry_http.respond(json=fs.page([]))
+
+    result = CopyService().copy_resource(fs.DATASET_RID, TARGET)
+
+    assert [item.rid for item in result.items] == [NEW_DATASET_RID]
+    # No transaction, so no schema either (a schema needs a committed one).
+    assert calls(stub_foundry_http) == FILES_COPY_CALLS[:3]
+    err = capsys.readouterr().err
+    assert "has no files on branch 'master'" in err
+    assert "no schema to copy either" in err
+
+
+def test_failed_file_copy_is_rolled_back_trashed_and_raised(stub_foundry_http, capsys):
+    stub_foundry_http.respond(json=SOURCE_DATASET)
+    stub_foundry_http.respond(json=NEW_DATASET)
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("data/part-0.csv")]))
+    stub_foundry_http.respond(json=fs.transaction())
+    stub_foundry_http.respond(content=b"col\n1\n")
     stub_foundry_http.respond(403, json=UPLOAD_DENIED)
+    stub_foundry_http.respond(json=fs.transaction(status="ABORTED"))  # abort
+    stub_foundry_http.respond(204)  # Resource.delete
 
     with pytest.raises(RuntimeError, match="Failed to copy the files") as excinfo:
         CopyService().copy_resource(fs.DATASET_RID, TARGET)
@@ -180,28 +241,85 @@ def test_failed_dataset_copy_is_cleaned_up_and_raised(
     cause = excinfo.value.__cause__
     assert isinstance(cause, PermissionDeniedError)
     assert cause.name == "UploadFilePermissionDenied"
-    dataset_compat["abort_transaction"].assert_called_once()
-    dataset_compat["commit_transaction"].assert_not_called()
-    dataset_compat["delete_dataset"].assert_called_once()
-    assert dataset_compat["delete_dataset"].call_args.args[1] == NEW_DATASET_RID
+    assert calls(stub_foundry_http) == FILES_COPY_CALLS[:6] + [
+        ("POST", f"{API}/{NEW_DATASET_RID}/transactions/{fs.TRANSACTION_RID}/abort"),
+        TRASH_CALL,
+    ]
+    err = capsys.readouterr().err
+    assert "Removing the partly copied dataset" in err
+    assert f"Moved dataset {NEW_DATASET_RID} to the trash" in err
+
+
+def test_failed_schema_copy_trashes_the_copy_and_raises(stub_foundry_http, capsys):
+    queue_files_copy(stub_foundry_http)
+    stub_foundry_http.respond(json=SCHEMA)
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "PutDatasetSchemaPermissionDenied",
+            "PERMISSION_DENIED",
+            {"datasetRid": NEW_DATASET_RID},
+        ),
+    )
+    stub_foundry_http.respond(204)  # Resource.delete
+
+    with pytest.raises(RuntimeError, match="Failed to copy the schema") as excinfo:
+        CopyService().copy_resource(fs.DATASET_RID, TARGET)
+
+    cause = excinfo.value.__cause__
+    assert isinstance(cause, PermissionDeniedError)
+    assert cause.name == "PutDatasetSchemaPermissionDenied"
+    assert calls(stub_foundry_http) == (
+        FILES_COPY_CALLS + SCHEMA_COPY_CALLS + [TRASH_CALL]
+    )
     assert "Removing the partly copied dataset" in capsys.readouterr().err
 
 
-def test_upload_without_a_transaction_names_the_branch(stub_foundry_http, tmp_path):
-    stub_foundry_http.respond(json=fs.dataset_file("baz.csv"))
-    local = tmp_path / "baz.csv"
-    local.write_bytes(b"hello")
-
-    CopyService(branch="feature")._upload_dataset_file(
-        NEW_DATASET_RID, "/baz.csv", local, None
+def test_failed_cleanup_is_reported_and_the_copy_error_raised(
+    stub_foundry_http, capsys
+):
+    stub_foundry_http.respond(json=SOURCE_DATASET)
+    stub_foundry_http.respond(json=NEW_DATASET)
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "ListFilesPermissionDenied",
+            "PERMISSION_DENIED",
+            {"datasetRid": fs.DATASET_RID},
+        ),
+    )
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "DeleteResourcePermissionDenied",
+            "PERMISSION_DENIED",
+            {"resourceRid": NEW_DATASET_RID},
+        ),
     )
 
-    [request] = stub_foundry_http.requests
-    assert (
-        request.url.path == f"/api/v2/datasets/{NEW_DATASET_RID}/files/baz.csv/upload"
-    )
-    assert dict(request.url.params) == {"branchName": "feature"}
-    assert request.content == b"hello"
+    with pytest.raises(RuntimeError, match="Failed to copy the files") as excinfo:
+        CopyService().copy_resource(fs.DATASET_RID, TARGET)
+
+    assert excinfo.value.__cause__.name == "ListFilesPermissionDenied"
+    assert calls(stub_foundry_http)[-1] == TRASH_CALL
+    err = capsys.readouterr().err
+    assert f"Could not remove dataset {NEW_DATASET_RID}" in err
+    assert "DeleteResourcePermissionDenied" in err
+
+
+@pytest.mark.parametrize(
+    ("paths", "reader"),
+    [
+        (["a.csv", "dir/B.CSV"], "CSV"),
+        (["a.avro"], "AVRO"),
+        (["spark/part-0.snappy.parquet"], None),
+        (["a.csv", "b.parquet"], None),  # mixed: the API's default
+        (["a.csv", "_SUCCESS"], None),
+        ([], None),
+    ],
+)
+def test_dataframe_reader_for(paths, reader):
+    assert dataframe_reader_for(paths) == reader
 
 
 @pytest.mark.parametrize("path", ["../escape.csv", "/a/../../b.csv"])
@@ -355,7 +473,7 @@ def test_listing_failure_after_creating_the_folder_is_recorded(stub_foundry_http
     assert [failure.name for failure in result.failures] == ["FolderNotFound"]
 
 
-def test_copy_folder_dry_run_lists_the_sources(stub_foundry_http, dataset_compat):
+def test_copy_folder_dry_run_lists_the_sources(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
     stub_foundry_http.respond(json=fs.page([SOURCE_DATASET]))
 
@@ -368,8 +486,44 @@ def test_copy_folder_dry_run_lists_the_sources(stub_foundry_http, dataset_compat
         fs.DATASET_RID,
     ]
     assert all(isinstance(item, Resource) for item in result.items)
+    # Nothing is created: only the source and its children are read.
     assert [request.method for request in stub_foundry_http.requests] == ["GET", "GET"]
-    dataset_compat["create_dataset"].assert_not_called()
+
+
+def test_copy_folder_with_a_dataset(stub_foundry_http):
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(
+        json=fj.folder("ri.compass.main.folder.new", "Source-copy")
+    )
+    stub_foundry_http.respond(json=fs.page([SOURCE_DATASET]))
+    stub_foundry_http.respond(
+        json=fs.dataset(
+            NEW_DATASET_RID, "Source Dataset-copy", "ri.compass.main.folder.new"
+        )
+    )
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("data/part-0.csv")]))
+    stub_foundry_http.respond(json=fs.transaction())
+    stub_foundry_http.respond(content=b"col\n1\n")
+    stub_foundry_http.respond(json=fs.dataset_file("data/part-0.csv"))
+    stub_foundry_http.respond(json=fs.transaction(status="COMMITTED"))
+    stub_foundry_http.respond(json=SCHEMA)
+    stub_foundry_http.respond(json=SCHEMA)
+
+    result = CopyService().copy_resource(SOURCE_FOLDER["rid"], TARGET, recursive=True)
+
+    assert [type(item) for item in result.items] == [Folder, Dataset]
+    assert result.stats.as_dict() == {
+        "folders_copied": 1,
+        "datasets_copied": 1,
+        "skipped": 0,
+        "errors": 0,
+    }
+    create_dataset = stub_foundry_http.requests[3]
+    assert json.loads(create_dataset.content) == {
+        "name": "Source Dataset-copy",
+        "parentFolderRid": "ri.compass.main.folder.new",
+    }
+    assert calls(stub_foundry_http)[-1] == SCHEMA_COPY_CALLS[-1]
 
 
 def test_source_errors_propagate(stub_foundry_http):

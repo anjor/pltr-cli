@@ -270,21 +270,23 @@ def main():
     space uses beta Foundry endpoints (labeled [beta]); listing is GA.
 
     Examples:
+
+    \b
         # Create a space
         pltr space create "My Space" \\
             --enrollment-rid <ENROLLMENT_RID> \\
             --organization <ORGANIZATION_RID> \\
             --deletion-policy-org <ORGANIZATION_RID>
-
+    \b
         # List spaces (one page; --all for every page)
         pltr space list
-
+    \b
         # Get space information as JSON
         pltr space get <SPACE_RID> --format json
-
+    \b
         # Update the description
         pltr space update <SPACE_RID> --description "New text"
-
+    \b
         # Delete an empty space (asks for confirmation; --yes skips it)
         pltr space delete <SPACE_RID>
     """

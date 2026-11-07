@@ -621,15 +621,17 @@ def main():
     Foundry endpoints (labeled [beta]).
 
     Examples:
+
+    \b
         # Item metadata, and the RID of the item at a path
         pltr media-sets get <MEDIA_SET_RID> <MEDIA_ITEM_RID>
         pltr media-sets get-by-path <MEDIA_SET_RID> images/photo.jpg
-
+    \b
         # Upload to a transactional media set
         TXN=$(pltr media-sets create <MEDIA_SET_RID> --format json | jq -r .)
         pltr media-sets upload <MEDIA_SET_RID> photo.jpg images/photo.jpg "$TXN"
         pltr media-sets commit <MEDIA_SET_RID> "$TXN"
-
+    \b
         # Download (- writes to stdout)
         pltr media-sets download <MEDIA_SET_RID> <MEDIA_ITEM_RID> photo.jpg
     """

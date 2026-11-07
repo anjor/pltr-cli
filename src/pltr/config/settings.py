@@ -46,12 +46,17 @@ class Settings:
             return self._get_default_settings()
 
     def _get_default_settings(self) -> Dict[str, Any]:
-        """Get default settings."""
+        """Get default settings.
+
+        ``page_size`` is deprecated and no longer a default: list commands use
+        the API's page size unless ``--page-size`` is given. A ``page_size``
+        in an existing settings file is still loaded without error, and
+        ignored.
+        """
         return {
             "default_profile": "default",
             "output_format": "table",
             "color_output": True,
-            "page_size": 20,
             "timeout": 30,
             "verify_ssl": True,
         }

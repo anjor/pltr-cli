@@ -1446,17 +1446,19 @@ def main():
     queries are addressed by API name, objects by primary key.
 
     Examples:
+
+    \b
         # Ontologies and their object types
         pltr ontology list
         pltr ontology object-type-list my-ontology
-
+    \b
         # Objects
         pltr ontology object-get my-ontology Employee EMP001
         pltr ontology object-search my-ontology Employee \\
             --where '{"type": "eq", "field": "department", "value": "Sales"}'
         pltr ontology object-aggregate my-ontology Employee \\
             --aggregation '[{"type": "count"}]' --group-by department
-
+    \b
         # Actions
         pltr ontology action-validate my-ontology transferEmployee '{"employee": "EMP001"}'
         pltr ontology action-apply my-ontology transferEmployee '{"employee": "EMP001"}'
