@@ -1,188 +1,201 @@
 ---
 name: pltr-cli
-description: Helps you work with Palantir Foundry using the pltr CLI. Use this when you need to query datasets, manage orchestration builds, work with ontologies, run SQL queries, manage folders/spaces/projects, copy datasets, or perform admin operations in Foundry. Triggers: Foundry, pltr, dataset, SQL query, ontology, build, schedule, RID.
+description: Work with Palantir Foundry through the pltr CLI, which covers every Foundry Platform API endpoint. Datasets and files, SQL, ontologies and objects, actions, builds and schedules, folders, projects, spaces, permissions and markings, users and groups, models, streams, media sets, AIP agents and more. Use it when the user mentions Foundry, pltr, a Foundry RID (ri.*), datasets, ontology objects, builds or schedules.
 ---
 
-# pltr-cli: Palantir Foundry CLI
+# pltr: Palantir Foundry from the command line
 
-This skill helps you use the pltr-cli to interact with Palantir Foundry effectively.
+pltr wraps the official Foundry Platform SDK (`foundry-platform-sdk`). It has
+two kinds of commands:
 
-## Compatibility
+- **Curated commands** (`pltr dataset`, `pltr sql`, `pltr ontology`,
+  `pltr orchestration`, `pltr folder`, `pltr admin`, ...) are the polished
+  path for common tasks, with friendly arguments and tables.
+- **Generated commands** (`pltr api <namespace> <resource> <method>`) mirror
+  the SDK one to one: one command per SDK method (390). Use them for
+  anything the curated commands don't cover, or when you want the API's
+  exact request and response shapes.
 
-- **Skill version**: 1.1.0
-- **pltr-cli version**: 0.12.0+
-- **Python**: 3.9, 3.10, 3.11, 3.12
-- **Dependencies**: foundry-platform-sdk >= 1.69.0
+This skill needs a pltr release that has `pltr commands`. Check with
+`pltr commands --help`; older releases lack the JSON contract described here.
 
-## Overview
+## 1. Find the command; don't guess
 
-pltr-cli is a comprehensive CLI with 100+ commands for:
-- **Dataset operations**: Get info, list files, download files, manage branches and transactions
-- **SQL queries**: Execute queries, export results, manage async queries
-- **Ontology**: List ontologies, object types, objects, execute actions and queries
-- **Orchestration**: Manage builds, jobs, and schedules
-- **Filesystem**: Folders, spaces, projects, resources
-- **Admin**: User, group, role management
-- **Connectivity**: External connections and data imports
-- **MediaSets**: Media file management
-- **Language Models**: Interact with Anthropic Claude models and OpenAI embeddings
-- **Streams**: Create and manage streaming datasets, publish real-time data
-- **Functions**: Execute queries and inspect value types
-- **AIP Agents**: Manage AI agents, sessions, and versions
-- **Models**: ML model registry for model and version management
+pltr has more than 600 commands, so don't guess names or flags:
 
-## Critical Concepts
-
-### RID-Based API
-The Foundry API is **RID-based** (Resource Identifier). Most commands require RIDs:
-- **Datasets**: `ri.foundry.main.dataset.{uuid}`
-- **Folders**: `ri.compass.main.folder.{uuid}` (root: `ri.compass.main.folder.0`)
-- **Builds**: `ri.orchestration.main.build.{uuid}`
-- **Schedules**: `ri.orchestration.main.schedule.{uuid}`
-- **Ontologies**: `ri.ontology.main.ontology.{uuid}`
-
-Users must know RIDs in advance (from Foundry web UI or previous API calls).
-
-### Authentication
-Before using any command, ensure authentication is configured:
 ```bash
-# Configure interactively
-pltr configure configure
-
-# Or use environment variables
-export FOUNDRY_TOKEN="your-token"
-export FOUNDRY_HOST="foundry.company.com"
-
-# Verify connection
-pltr verify
+pltr commands search list dataset branches        # ranked, best first
+pltr commands search Dataset.Branch.list          # by SDK method
+pltr commands show dataset branches list --format json
+pltr commands list api datasets                   # everything under a path
 ```
 
-### Output Formats
-All commands support multiple output formats:
+`search` matches names, descriptions and SDK methods, and ranks curated
+commands above generated ones that match as well. `show` prints one command's
+manifest entry:
+
+- `usage`, `arguments` and `options` (flags, type, required, choices, default);
+- `beta`, `destructive` and `paged`;
+- `outputFormats` (`binary` means raw bytes);
+- `sdkMethods` (the SDK method it calls, relative to `FoundryClient`);
+- `generated` (a `pltr api` command) and `local` (makes no Foundry call).
+
+An entry without `beta`/`destructive` hasn't recorded its metadata yet;
+read its `--help` before running it. `pltr commands list --format json`
+prints the whole manifest.
+
+The `reference/` folder holds the same information as Markdown, one file per
+command group, generated from the manifest. Start at
+[reference/index.md](reference/index.md) and load only the file you need.
+
+## 2. Authenticate (headless works)
+
+pltr uses the first of these that applies:
+
+1. `--profile NAME` on the command line;
+2. the `PLTR_PROFILE` environment variable (a profile name);
+3. the default profile, set up with `pltr configure configure`;
+4. environment variables, when no profile is selected:
+   - `FOUNDRY_HOST` and `FOUNDRY_TOKEN`, or
+   - `FOUNDRY_HOST`, `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`
+     (OAuth2 client credentials).
+
+With environment variables nothing needs to be set up: no configuration
+file and no keyring. A stored profile always wins over the variables.
+Check what pltr will use with:
+
 ```bash
-pltr <command> --format table    # Default: Rich table
-pltr <command> --format json     # JSON output
-pltr <command> --format csv      # CSV format
-pltr <command> --output file.csv # Save to file
+pltr verify --format json
 ```
 
-### Profile Selection
-Use `--profile` to switch between Foundry instances:
+Never print, log or echo tokens or client secrets.
+
+## 3. Run with JSON and read the result
+
+Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
+
+- **stdout carries exactly one JSON document**: the SDK's own serialization,
+  with Foundry API field names (camelCase) and no null fields. Single objects
+  print as themselves. Lists use the API's paged shape,
+  `{"data": [...], "nextPageToken": "..."}`. A command with no result (a
+  delete, a grant) prints `null`.
+- **Paged commands print one page.** Pass `nextPageToken` back with
+  `--page-token`, or use `--max-pages N` or `--all`.
+- **stderr carries JSON Lines only**: warnings look like
+  `{"type": "warning", "message": "..."}`. On failure the last stderr line is
+  the error object:
+  `{"type": "not_found", "message": "...", "exitCode": 5, "statusCode": 404, "errorName": "...", "parameters": {...}}`.
+- **Binary commands** (file content, Arrow or Parquet results, images)
+  write raw bytes to `--output FILE` or to a pipe, never to a terminal.
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| 0 | success | |
+| 1 | unexpected error, or "no" at a prompt | read the message; `PLTR_DEBUG=1` shows a traceback |
+| 2 | usage error, or `--yes` required | fix the arguments (`pltr commands show ...`) |
+| 3 | authentication | check credentials with `pltr verify` |
+| 4 | permission denied (403) | the account lacks access; tell the user |
+| 5 | not found (404) | check the RID and that the account can see it |
+| 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
+| 7 | other API or network error (409, 429, 5xx, timeouts) | retry later, or report it |
+
+## 4. Safety rules
+
+- **Destructive commands** (`destructive: true`: delete, remove, revoke,
+  replace, reset, cancel, abort and similar) ask for confirmation. Without a
+  terminal they never prompt: they fail with exit code 2 and change nothing
+  unless you pass `--yes`.
+- Pass `--yes` only for a change the user asked for, on resources they
+  named. Show them the exact command first when you're unsure. Never loop a
+  destructive command over a list you built yourself without confirming the
+  list with the user.
+- `--confirm` and `--force` (where they meant "skip the prompt") are
+  deprecated aliases of `--yes`; use `--yes`.
+- **Beta** commands start their help with `[beta]` and have `beta: true`.
+  pltr passes `preview=true` for you, but beta endpoints can change or be
+  turned off on a stack; say so when you rely on one.
+- Prefer reading before writing: `get`/`list` the resource, then change it.
+
+## 5. RIDs
+
+Foundry's API addresses almost everything by RID (Resource Identifier), not by
+name: `ri.<service>.<instance>.<type>.<id>`. For example:
+
+- dataset: `ri.foundry.main.dataset.<uuid>`;
+- folder or project: `ri.compass.main.folder.<uuid>`; the root folder is
+  `ri.compass.main.folder.0`.
+
+Users and groups are identified by UUIDs, ontologies by RID or API name, and
+object types by API name. Don't construct RIDs; get them from the user or
+from command output:
+
 ```bash
-pltr <command> --profile production
-pltr <command> --profile development
+pltr resource get-by-path "/My Space/My Project/flights" --format json   # path -> RID
+pltr resource search flights --folder-rid ri.compass.main.folder.0 --format json
+pltr space list --format json
+pltr project list --format json
+pltr folder list ri.compass.main.folder.0 --format json
+pltr ontology list --format json
+pltr admin user search jane --format json                                  # user IDs
 ```
 
-## Reference Files
+## 6. Curated command or `pltr api`?
 
-Load these files based on the user's task:
+1. Search first. If a curated command does the job, use it: its arguments
+   are friendlier and its help explains the domain.
+2. Use `pltr api ...` when no curated command covers the endpoint, or when
+   you need an option the curated command doesn't expose.
+3. `pltr api` arguments are the endpoint's path parameters. Options taking
+   JSON accept the Foundry API's own shape (camelCase), inline, as
+   `@file.json` or as `@-` for stdin, and the SDK validates the value before
+   anything is sent.
 
-| Task Type | Reference File |
-|-----------|----------------|
-| Setup, authentication, getting started | `reference/quick-start.md` |
-| Dataset operations (get, files, branches, transactions) | `reference/dataset-commands.md` |
-| SQL queries | `reference/sql-commands.md` |
-| Builds, jobs, schedules | `reference/orchestration-commands.md` |
-| Ontologies, objects, actions | `reference/ontology-commands.md` |
-| Users, groups, roles, orgs | `reference/admin-commands.md` |
-| Folders, spaces, projects, resources, permissions | `reference/filesystem-commands.md` |
-| Connections, imports | `reference/connectivity-commands.md` |
-| Media sets, media items | `reference/mediasets-commands.md` |
-| Anthropic Claude models, OpenAI embeddings | `reference/language-models-commands.md` |
-| Streaming datasets, real-time data publishing | `reference/streams-commands.md` |
-| Functions queries, value types | `reference/functions-commands.md` |
-| AIP Agents, sessions, versions | `reference/aip-agents-commands.md` |
-| ML model registry, model versions | `reference/models-commands.md` |
+## 7. Workflows
 
-## Workflow Files
-
-For common multi-step tasks:
-
-| Workflow | File |
-|----------|------|
-| Data exploration, SQL analysis, ontology queries | `workflows/data-analysis.md` |
-| ETL pipelines, scheduled jobs, data quality | `workflows/data-pipeline.md` |
-| Setting up permissions, resource roles, access control | `workflows/permission-management.md` |
-
-## Common Commands Quick Reference
+**Inspect a dataset and query it with SQL**
 
 ```bash
-# Verify setup
-pltr verify
-
-# Current user info
-pltr admin user current
-
-# Execute SQL query
-pltr sql execute "SELECT * FROM my_table LIMIT 10"
-
-# Get dataset info
-pltr dataset get ri.foundry.main.dataset.abc123
-
-# List files in dataset
-pltr dataset files list ri.foundry.main.dataset.abc123
-
-# Download file from dataset
-pltr dataset files get ri.foundry.main.dataset.abc123 "/path/file.csv" "./local.csv"
-
-# Copy dataset to another folder
-pltr cp ri.foundry.main.dataset.abc123 ri.compass.main.folder.target456
-
-# List folder contents
-pltr folder list ri.compass.main.folder.0  # root folder
-
-# Search builds
-pltr orchestration builds search
-
-# Interactive shell mode
-pltr shell
-
-# Send message to Claude model
-pltr language-models anthropic messages ri.language-models.main.model.xxx \
-    --message "Explain this concept"
-
-# Generate embeddings
-pltr language-models openai embeddings ri.language-models.main.model.xxx \
-    --input "Sample text"
-
-# Create streaming dataset
-pltr streams dataset create my-stream \
-    --folder ri.compass.main.folder.xxx \
-    --schema '{"fieldSchemaList": [{"name": "value", "type": "STRING"}]}'
-
-# Publish record to stream
-pltr streams stream publish ri.foundry.main.dataset.xxx \
-    --branch master \
-    --record '{"value": "hello"}'
-
-# Execute a function query
-pltr functions query execute myQuery --parameters '{"limit": 10}'
-
-# Get AIP Agent info
-pltr aip-agents get ri.foundry.main.agent.abc123
-
-# List agent sessions
-pltr aip-agents sessions list ri.foundry.main.agent.abc123
-
-# Get ML model info
-pltr models model get ri.foundry.main.model.abc123
-
-# List model versions
-pltr models version list ri.foundry.main.model.abc123
+pltr resource get-by-path "/My Space/My Project/flights" --format json
+pltr dataset get ri.foundry.main.dataset.<id> --format json
+pltr dataset files list ri.foundry.main.dataset.<id> --format json
+pltr sql execute 'SELECT origin, COUNT(*) AS n FROM `ri.foundry.main.dataset.<id>` GROUP BY origin' --format json
 ```
 
-## Best Practices
-
-1. **Always verify authentication first**: Run `pltr verify` before starting work
-2. **Use appropriate output format**: JSON for programmatic use, CSV for spreadsheets, table for readability
-3. **Use async for large queries**: `pltr sql submit` + `pltr sql wait` for long-running queries
-4. **Export results**: Use `--output` to save results for further analysis
-5. **Use shell mode for exploration**: `pltr shell` provides tab completion and history
-
-## Getting Help
+**Build a dataset and follow the build**
 
 ```bash
-pltr --help                    # All commands
-pltr <command> --help          # Command help
-pltr <command> <sub> --help    # Subcommand help
+pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.<id>"]}' --branch master --format json
+pltr orchestration builds get ri.foundry.main.build.<id> --format json
+pltr orchestration builds jobs ri.foundry.main.build.<id> --format json
+```
+
+**Search ontology objects** with the API's typed filter (`pltr api` takes the
+endpoint's request exactly as Foundry's API docs describe it):
+
+```bash
+pltr api ontologies ontology-object search my-ontology Aircraft \
+  --where '{"type": "eq", "field": "status", "value": "ACTIVE"}' \
+  --select tailNumber --select status --format json
+```
+
+**Grant access to a project**
+
+```bash
+pltr admin user search jane --format json                      # find the user ID
+pltr resource-role list ri.compass.main.folder.<id> --format json   # role IDs in use
+pltr resource-role grant ri.compass.main.folder.<id> --role <role-id> --principal-id <user-uuid>
+```
+
+Role IDs come from the role set of the project's space (for example
+`compass:manage` is Owner in the default role set).
+
+More: [workflows/](workflows/) has longer workflows for data exploration,
+pipelines and permissions.
+
+## Getting help
+
+```bash
+pltr commands search <words>      # find a command
+pltr commands show <command>      # everything about one command
+pltr <group> --help               # a group's commands
 ```
