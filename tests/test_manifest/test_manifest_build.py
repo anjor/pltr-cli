@@ -12,12 +12,15 @@ from typing import List, Optional
 import click
 import pytest
 import typer
+from typing_extensions import Annotated
 
 from pltr import __version__
 from pltr.cli import app
 from pltr.commands.api import _specs
 from pltr.contract import (
     FormatOption,
+    resource_argument,
+    resource_option,
     YesOption,
     get_command_meta,
     iter_commands,
@@ -349,6 +352,17 @@ def synthetic_app() -> typer.Typer:
     ):
         """Every kind of option."""
 
+    @test_app.command("paths")
+    @pltr_command(sdk="datasets.Dataset.create")
+    def paths_command(
+        dataset_rid: Annotated[str, resource_argument("dataset", help="Dataset RID.")],
+        parent: Annotated[
+            str, resource_option("--parent", kind="folder", help="Folder.")
+        ],
+        label: Optional[str] = typer.Option(None, "--label"),
+    ):
+        """Arguments and options that take a RID or a Compass path."""
+
     return test_app
 
 
@@ -434,3 +448,17 @@ def test_metadata_reader_sees_the_synthetic_commands():
     ctx = click.Context(root)
     assert get_command_meta(root.get_command(ctx, "legacy")) is None
     assert get_command_meta(root.get_command(ctx, "http")) is not None
+
+
+def test_resource_parameters_accept_paths(synthetic):
+    entry = synthetic["pltr paths"]
+    (argument,) = entry["arguments"]
+    options = {o["name"]: o for o in entry["options"]}
+    assert argument["acceptsPath"] is True
+    assert argument["resourceKind"] == "dataset"
+    assert argument["type"] == "string"
+    assert options["parent"]["acceptsPath"] is True
+    assert options["parent"]["resourceKind"] == "folder"
+    assert "acceptsPath" not in options["label"]
+    assert "resourceKind" not in options["label"]
+    assert entry["usage"] == "pltr paths DATASET_RID --parent RID|PATH [OPTIONS]"

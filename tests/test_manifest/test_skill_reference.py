@@ -252,3 +252,31 @@ def test_write_files_replaces_the_directory(generator, tmp_path):
         "api/a.md",
         "index.md",
     ]
+
+
+def test_resource_parameters_say_they_take_a_path(generator):
+    argument = {
+        "name": "dataset_rid",
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "resourceKind": "dataset",
+        "help": "Dataset RID. A Compass path such as /Space/Project/name works too.",
+    }
+    assert generator.render_argument(argument) == (
+        "- `DATASET_RID` (RID or path): Dataset RID."
+    )
+    option = {
+        "name": "parent",
+        "flags": ["--parent"],
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "resourceKind": "folder",
+        "help": "Folder. A Compass path such as /Space/Project/name works too.",
+    }
+    assert generator.render_option(option) == (
+        "- `--parent` RID|PATH (required): Folder."
+    )

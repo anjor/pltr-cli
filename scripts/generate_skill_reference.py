@@ -128,6 +128,8 @@ def render_argument(argument: Mapping[str, Any]) -> str:
     name = str(argument["name"]).upper() + ("..." if argument["multiple"] else "")
     line = f"- {_code(name)}"
     facts = [] if argument["required"] else ["optional"]
+    if argument.get("acceptsPath"):
+        facts.append("RID or path")
     if "choices" in argument:
         facts.append("one of " + ", ".join(argument["choices"]))
     if "default" in argument:
