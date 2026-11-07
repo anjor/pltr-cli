@@ -132,30 +132,6 @@ services/orchestration.py::OrchestrationService.get_schedule::orchestration.Sche
 services/orchestration.py::OrchestrationService.get_schedule_runs::orchestration.Schedule.runs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
 services/orchestration.py::OrchestrationService.replace_schedule::orchestration.Schedule.replace::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.replace is beta: pass preview=True
 
-# src/pltr/services/project.py
-services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/project.py::ProjectService.add_organizations::filesystem.Project.add_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(default_roles)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(display_name)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(organization_rids)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(role_grants)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(space_rid)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[2]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[3]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[4]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[2]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[3]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unknown-keyword(body)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project_from_template::filesystem.Project.create_from_template::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.create_from_template
-services/project.py::ProjectService.delete_project::filesystem.Project.delete::missing-method  # #182 project delete: no Project.delete; Resource.delete(project_rid) if it accepts project RIDs (verify), else remove
-services/project.py::ProjectService.get_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.list_organizations::filesystem.Project.organizations::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.organizations
-services/project.py::ProjectService.list_projects::filesystem.Space.list::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.remove_organizations::filesystem.Project.remove_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.update_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
 # src/pltr/services/resource.py
 services/resource.py::ResourceService.add_markings::filesystem.Resource.add_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
 services/resource.py::ResourceService.delete_resource::filesystem.Resource.delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
