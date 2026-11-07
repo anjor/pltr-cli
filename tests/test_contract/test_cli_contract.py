@@ -31,7 +31,8 @@ from foundry_sdk import FoundryClient, UserTokenAuth
 
 from pltr.cli import app
 from pltr.contract import FORMAT_ENVVAR, FORMATS, iter_commands
-from tests.test_contract.cases import CONTRACT_RID, load_cases
+from pltr.contract.resources import ResourceRef
+from tests.test_contract.cases import CONTRACT_RID, load_cases, resource_rid
 
 ROOT = typer.main.get_command(app)
 ENTRIES = {entry.path: entry for entry in iter_commands(ROOT)}
@@ -67,6 +68,8 @@ runner = CliRunner()
 def _sample_value(param: click.Parameter, tmp_path) -> str:
     """A plausible value for a required parameter."""
     param_type = param.type
+    if isinstance(param_type, ResourceRef):
+        return resource_rid(param_type.kind.name)
     if isinstance(param_type, click.Choice):
         return str(param_type.choices[0])
     if isinstance(param_type, (click.Path, click.File)):

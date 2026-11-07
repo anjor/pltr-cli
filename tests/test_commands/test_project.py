@@ -405,11 +405,21 @@ def test_delete_project_prompts_when_interactive(stub_foundry_http, interactive)
 
 
 def test_delete_project_of_a_non_project_rid(stub_foundry_http):
+    """A dataset RID is refused before any request (#197): nothing is trashed."""
+    result = invoke("project", "delete", fs.DATASET_RID, "--yes", "-f", "json")
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "wrong_resource_type"
+    assert stub_foundry_http.requests == []
+
+
+def test_delete_project_of_a_folder_rid_asks_the_api(stub_foundry_http):
+    """A folder RID may be a project: only the API can tell."""
     stub_foundry_http.respond(
-        404, json=fj.error("ProjectNotFound", parameters={"projectRid": fs.DATASET_RID})
+        404, json=fj.error("ProjectNotFound", parameters={"projectRid": fj.FOLDER_RID})
     )
 
-    result = invoke("project", "delete", fs.DATASET_RID, "--yes", "-f", "json")
+    result = invoke("project", "delete", fj.FOLDER_RID, "--yes", "-f", "json")
 
     assert result.exit_code == 5
     assert json_lines(result.stderr)[-1]["errorName"] == "ProjectNotFound"

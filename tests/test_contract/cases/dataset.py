@@ -3,7 +3,7 @@
 import json
 
 from tests import foundry_json_dataset as dj
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 SUCCESS = {
     "dataset get": [{"json": dj.dataset(CONTRACT_RID)}],
@@ -62,7 +62,7 @@ SUCCESS = {
 ARGS = {
     # needs exactly one schema source
     "dataset schema set": [
-        CONTRACT_RID,
+        resource_rid("dataset"),
         "--json",
         json.dumps({"fieldSchemaList": [dj.field("id", "LONG", nullable=False)]}),
     ],

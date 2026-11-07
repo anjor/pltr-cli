@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 import click
+import pytest
 import typer
 from click.testing import CliRunner
 from typing_extensions import Annotated
@@ -258,3 +259,57 @@ def test_helpers_add_the_path_sentence_and_the_type() -> None:
     assert isinstance(params["target"].type, ResourceRef)
     assert params["target"].help.endswith(PATH_HELP)
     assert not isinstance(params["note"].type, ResourceRef)
+
+
+# ------------------------------------------- RIDs of the wrong kind (#197)
+
+
+def test_a_rid_of_the_wrong_kind_fails_before_any_request(stub_foundry_http) -> None:
+    result = invoke("things", "get", FOLDER_RID, "--format", "json")
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "wrong_resource_type"
+    assert error["message"] == (
+        f"{FOLDER_RID} is a COMPASS_FOLDER, but DATASET_RID takes a dataset "
+        "(FOUNDRY_DATASET)."
+    )
+    assert error["parameters"] == {
+        "rid": FOLDER_RID,
+        "resourceType": "COMPASS_FOLDER",
+        "expectedTypes": ["FOUNDRY_DATASET"],
+    }
+    assert error["hint"] == "That is a folder: look in it for a dataset."
+    assert error["suggestedCommand"] == f"pltr folder list {FOLDER_RID}"
+
+
+def test_a_folder_path_for_a_dataset_suggests_listing_it(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        json=resource_json(FOLDER_RID, "/S/P/f", "COMPASS_FOLDER")
+    )
+
+    result = invoke("things", "get", "/S/P/f", "--format", "json")
+
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["suggestedCommand"] == "pltr folder list /S/P/f"
+
+
+@pytest.mark.parametrize(
+    "rid",
+    [
+        "ri.foo.main.bar.1",  # an unknown RID type: the API decides
+        "not-a-rid",
+    ],
+)
+def test_rids_of_unknown_types_pass_through(stub_foundry_http, rid) -> None:
+    result = invoke("things", "get", rid)
+
+    assert stdout_json(result) == {"dataset_rid": rid}
+    assert stub_foundry_http.requests == []
+
+
+def test_any_known_rid_suits_a_resource_parameter(stub_foundry_http) -> None:
+    result = invoke("things", "batch", FOLDER_RID, DATASET_RID)
+
+    assert stdout_json(result) == {"rids": [FOLDER_RID, DATASET_RID]}

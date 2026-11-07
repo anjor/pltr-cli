@@ -21,7 +21,7 @@ from foundry_sdk import FoundryClient, UserTokenAuth
 
 from pltr.commands.api import _specs
 from pltr.commands.api._runtime import is_shared_paging_parameter, option_name
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 SUCCESS_EXEMPT = {
     "api": "generated tree: tests/test_api_commands covers the success path per namespace",
@@ -156,6 +156,13 @@ def _arguments(spec: Dict[str, Any], method: Any) -> List[str]:
         if is_shared_paging_parameter(spec, param) or param.get("auto"):
             continue
         annotation = parameters[param["name"]].annotation
+        if param.get("resource") and not param.get("multiple"):
+            value = resource_rid(param["resource"])
+            if param["in"] == "path":
+                positional.append(value)
+            elif param.get("required"):
+                options += [option_name(param), value]
+            continue
         if param["in"] == "path":
             positional.append(_text(_sample(annotation)))
             continue

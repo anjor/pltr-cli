@@ -1,7 +1,7 @@
 """Contract-test cases for src/pltr/commands/mediasets.py (see __init__.py)."""
 
 from tests import foundry_json_mediasets as ms
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 SUCCESS = {
     "media-sets get": [{"json": ms.item_info()}],
@@ -18,12 +18,12 @@ SUCCESS = {
 
 ARGS = {
     # Transaction IDs are UUIDs.
-    "media-sets commit": [CONTRACT_RID, ms.TRANSACTION_ID],
-    "media-sets abort": [CONTRACT_RID, ms.TRANSACTION_ID],
+    "media-sets commit": [resource_rid("media-set"), ms.TRANSACTION_ID],
+    "media-sets abort": [resource_rid("media-set"), ms.TRANSACTION_ID],
     # A synthesized OUTPUT_PATH is an existing file, which needs --overwrite;
     # "-" streams the content to stdout instead.
-    "media-sets download": [CONTRACT_RID, CONTRACT_RID, "-"],
-    "media-sets thumbnail-retrieve": [CONTRACT_RID, CONTRACT_RID, "-"],
+    "media-sets download": [resource_rid("media-set"), CONTRACT_RID, "-"],
+    "media-sets thumbnail-retrieve": [resource_rid("media-set"), CONTRACT_RID, "-"],
 }
 
 _BINARY = (
