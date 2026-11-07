@@ -32,9 +32,6 @@ services/aip_agents.py::AipAgentsService.get_session::aip_agents.Agent.Session.g
 services/aip_agents.py::AipAgentsService.list_sessions::aip_agents.Agent.Session.list::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
 services/aip_agents.py::AipAgentsService.list_versions::aip_agents.Agent.AgentVersion.list::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
 
-# src/pltr/services/audit.py
-services/audit.py::AuditService.list_log_files::audit.Organization.LogFile.list::unchecked-kwargs  # #185: dict-built (end_date, page_size; valid keys); pass explicit keywords
-
 # src/pltr/services/copy.py
 services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
 
