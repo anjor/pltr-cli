@@ -56,9 +56,11 @@ class PltrError(Exception):
         error_type: Optional[str] = None,
         exit_code: Optional[int] = None,
         hint: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(message)
         self.message = message
+        self.parameters = parameters
         if error_type is not None:
             self.error_type = error_type
         if exit_code is not None:
@@ -503,7 +505,13 @@ def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
     from ..auth.base import AuthError
 
     if isinstance(exc, PltrError):
-        return ErrorInfo(exc.error_type, exc.message, exc.exit_code, hint=exc.hint)
+        return ErrorInfo(
+            exc.error_type,
+            exc.message,
+            exc.exit_code,
+            hint=exc.hint,
+            parameters=exc.parameters,
+        )
     if isinstance(exc, click.UsageError):
         return ErrorInfo("usage_error", exc.format_message(), ExitCode.USAGE)
     if isinstance(exc, click.ClickException):
