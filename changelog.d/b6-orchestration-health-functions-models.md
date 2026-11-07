@@ -13,8 +13,13 @@
   `statusCheckConfig`; null fields left out) instead of snake_case keys with
   nulls. `report latest` prints the API response `{"data": [...]}`;
   `check delete` prints `null`.
-- **`orchestration` and `data-health`: status messages go to stderr and
-  errors are structured**, with the documented exit codes (2 usage,
+- **`functions`: `--format json` prints the SDK's own serialization**
+  (camelCase API field names such as `apiName`, `dataType`, `versionId`;
+  null fields left out) instead of snake_case keys with nulls. `query
+  execute` and `query execute-by-rid` print the API response,
+  `{"value": <result>}`.
+- **`orchestration`, `data-health` and `functions`: status messages go to
+  stderr and errors are structured**, with the documented exit codes (2 usage,
   3 authentication, 4 permission denied, 5 not found, 6 validation, 7 other
   API or network error). Every error used to exit with 1. `data-health
   report get` no longer prints a colored status line to stdout; the status
@@ -49,9 +54,14 @@
   type, intent, groups, created by, updated, config; report: RID, status,
   message, created, check, check type) instead of every key of the
   serialized response.
-- **`orchestration` and `data-health` validate `--format`/`-f`:** only
-  table, json and csv are accepted (case-insensitive). `-f` is new on
-  `data-health` commands.
+- **`functions` table and CSV output use curated columns** (query: API
+  name, display name, description, RID, version, parameters with their
+  types, output type; value type: RID, API name, display name, description,
+  version, version ID, base type, constraints). `query execute` shows one
+  row per item when the result is a list.
+- **`orchestration`, `data-health` and `functions` validate
+  `--format`/`-f`:** only table, json and csv are accepted
+  (case-insensitive). `-f` is new on `data-health` commands.
 
 ### Added
 
@@ -79,14 +89,27 @@
   to find the report RIDs that `report get` needs.
 - `[beta]` label in the help of every `data-health` command (all data
   health endpoints are beta; they are always called with `preview=true`).
-- `PLTR_FORMAT` sets the default `--format` of every `orchestration` and
-  `data-health` command.
+- `functions query get` and `query execute`: `--include-prerelease` and
+  `--latest-version-resolution SEMANTIC_VERSION|PUBLISH_TIME` (how the
+  latest version is picked when `--version` isn't given).
+  `query get-by-rid` and `query execute-by-rid`: `--include-prerelease`.
+- `[beta]` label in the help of every `functions` command (every Functions
+  endpoint pltr calls is beta; they are always called with `preview=true`).
+- `PLTR_FORMAT` sets the default `--format` of every `orchestration`,
+  `data-health` and `functions` command.
+
+### Changed
+
+- `functions query execute-by-rid` looks the query up by RID
+  (`Query.get_by_rid`) and then executes the version it found by API name
+  (`Query.execute`), in two requests. The API has no execute-by-RID
+  endpoint.
 
 ### Deprecated
 
 - `--preview` on `orchestration schedules get`, `create` and `replace` and
   on `data-health check get`, `create`, `replace`, `delete` and
-  `report get` is a hidden no-op that prints a deprecation warning; it will
+  `report get`, and on every `functions` command, is a hidden no-op that prints a deprecation warning; it will
   be removed in a future release. The beta endpoints are always called with
   `preview=true`.
 - `data-health check delete --force` is a hidden, deprecated alias of
@@ -111,6 +134,12 @@
   with `--preview`; they now always send `preview=true`.
 - The `data-health check create` help example used the severity `WARNING`,
   which the API rejects; severities are `MODERATE` and `CRITICAL`.
+- `functions query get-by-rid` could never succeed: it passed the RID
+  positionally, but `Query.get_by_rid` takes it as the keyword `rid`.
+- `functions query execute-by-rid` could never succeed: it called
+  `Query.execute_by_rid`, which doesn't exist (see Changed).
+- `functions query get`, `query execute` and `value-type get` only worked
+  with `--preview`; they now always send `preview=true`.
 
 ### Docs to update
 
@@ -128,6 +157,12 @@
   `builds cancel` and `schedules replace`, the new `builds search` filters,
   `builds create --fallback-branch/--retry-count`, `schedules create
   --scope-mode`, and that `schedules run` prints the run and its build.
+- claude_skill/reference/functions-commands.md and claude_skill/SKILL.md:
+  drop `--preview` from the options lists; document
+  `--include-prerelease` and `--latest-version-resolution`, the JSON shapes
+  above, and that `execute-by-rid` resolves the RID first. Point readers to
+  `pltr functions query get <API name>` to find a query's RID (the example
+  RID format `ri.functions.main.query.<id>` used there is unverified).
 - The orchestration formatters in `src/pltr/utils/formatting.py`
   (`format_build_detail`, `format_builds_list`, `format_job_detail`,
   `format_jobs_list`, `format_schedule_detail`, `format_schedules_list`,
