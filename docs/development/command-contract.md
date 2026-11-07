@@ -248,6 +248,12 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 - The default is one page. `--all` fetches every page, and
   `--max-pages N` stops after N pages.
 - In JSON, `nextPageToken` says where to resume.
+- Some endpoints return a `nextPageToken` on every page, even when there is
+  nothing more yet (audit log files without an end date: clients poll for
+  new files), so `--all` would never end. Pass `stop_at_empty_page=True`:
+  paging then also stops at the first page without items, and that page's
+  `nextPageToken` is returned for picking up new items later
+  (`pltr audit list`).
 
 **Binary output.** For file content, Arrow/Parquet results and images, call
 `check_binary_output(output)` before the request and

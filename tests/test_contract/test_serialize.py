@@ -149,6 +149,39 @@ def test_collect_pages_all_pages_overrides_max_pages():
     assert calls == [None, "t2", "t3"]
 
 
+#: An endpoint that returns a token on every page (polling for new items).
+ENDLESS = {
+    None: FakePage([1], "t2"),
+    "t2": FakePage([], "t3"),  # caught up; t3 picks up new items later
+    "t3": FakePage([2], "t4"),
+}
+
+
+def test_collect_pages_stop_at_empty_page_keeps_its_token():
+    fetch, calls = fake_fetch(ENDLESS)
+    page = collect_pages(fetch, all_pages=True, stop_at_empty_page=True)
+    assert (page.data, page.next_page_token, calls) == ([1], "t3", [None, "t2"])
+
+
+def test_collect_pages_stop_at_empty_page_still_honours_max_pages():
+    fetch, calls = fake_fetch(ENDLESS)
+    page = collect_pages(fetch, max_pages=1, stop_at_empty_page=True)
+    assert (page.data, page.next_page_token, calls) == ([1], "t2", [None])
+
+
+def test_collect_pages_stop_at_empty_page_resumes_from_the_kept_token():
+    fetch, calls = fake_fetch({**ENDLESS, "t4": FakePage([], "t5")})
+    page = collect_pages(fetch, page_token="t3", max_pages=5, stop_at_empty_page=True)
+    assert (page.data, page.next_page_token, calls) == ([2], "t5", ["t3", "t4"])
+
+
+def test_collect_pages_reads_past_empty_pages_by_default():
+    """Some endpoints return empty pages mid-listing; only the token ends it."""
+    fetch, calls = fake_fetch({None: FakePage([], "t2"), "t2": FakePage([1], None)})
+    page = collect_pages(fetch, all_pages=True)
+    assert (page.data, page.next_page_token, calls) == ([1], None, [None, "t2"])
+
+
 def test_collect_pages_with_sdk_iterators(stub_foundry_http):
     stub_foundry_http.respond(json={"data": [fj.space()], "nextPageToken": "t2"})
     stub_foundry_http.respond(json={"data": [fj.space("ri.compass.main.folder.s2")]})
