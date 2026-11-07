@@ -43,12 +43,21 @@ SPECS_PACKAGE = "pltr.commands.api._specs"
 # Configuration (reviewed by hand; refresh on every SDK bump)
 # ---------------------------------------------------------------------------
 
-# Method names that suggest an operation destroys or overwrites data. Every SDK
-# method whose name matches must appear either in the version's `destructive` set
-# or in its `not_destructive` set, so a new method is never classified silently.
+# Words in method names that suggest an operation destroys or overwrites data.
+# Every SDK method with one of them as a `_`-separated word of its name
+# (`delete`, `bulk_delete`, `delete_batch`, `reset_offsets`, ...) must appear
+# either in the version's `destructive` set or in its `not_destructive` set, so a
+# new method is never classified silently.
 DESTRUCTIVE_NAME_SEED = re.compile(
-    r"delete|permanently_delete|abort|cancel|disable|(?:remove|revoke|replace)\w*"
+    r"(?:^|_)(?:delete|abort|cancel|disable|remove|revoke|replace|reset|clear"
+    r"|undeploy|unregister|purge)(?:_|$)"
 )
+
+
+def looks_destructive(method_name: str) -> bool:
+    """Whether a method name has a destructive word (see DESTRUCTIVE_NAME_SEED)."""
+    return DESTRUCTIVE_NAME_SEED.search(method_name) is not None
+
 
 # The shared pltr.contract options that every generated command (or some of
 # them) adds. An SDK parameter whose option name collides with one of these is
@@ -87,8 +96,8 @@ class ApiVersionConfig:
 
 V2_DESTRUCTIVE = frozenset(
     {
-        # Seeded from names: delete, permanently_delete, remove*, revoke*, replace*,
-        # abort, cancel, disable.
+        # Names with a destructive word (DESTRUCTIVE_NAME_SEED): delete,
+        # permanently_delete, remove*, revoke*, replace*, abort, cancel, disable.
         "admin.Enrollment.EnrollmentRoleAssignment.remove",
         "admin.Group.GroupMember.remove",
         "admin.Group.MembershipExpirationPolicy.replace",
@@ -146,6 +155,8 @@ V2_DESTRUCTIVE = frozenset(
         "connectivity.Connection.update_secrets",
         # Replaces the dataset's schema on a branch.
         "datasets.Dataset.put_schema",
+        # Reviewed first by hand; their names have a destructive word too (reset,
+        # clear, undeploy).
         # Soft-deletes the item at a path and every older item at that path.
         "media_sets.MediaSet.clear",
         # Clears the stream's existing records.
@@ -675,7 +686,7 @@ def method_spec(
 
     method_name = method.sdk_path[-1]
     destructive = method.dotted in config.destructive
-    if DESTRUCTIVE_NAME_SEED.fullmatch(method_name) and not (
+    if looks_destructive(method_name) and not (
         destructive or method.dotted in config.not_destructive
     ):
         raise GeneratorError(

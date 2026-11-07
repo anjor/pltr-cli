@@ -96,7 +96,7 @@ def test_destructive_list_matches_seed_names(generator):
     methods = generator.all_public_methods(generator.V2)
     for method in methods:
         name = method.rsplit(".", 1)[1]
-        if generator.DESTRUCTIVE_NAME_SEED.fullmatch(name):
+        if generator.looks_destructive(name):
             assert (
                 method in generator.V2.destructive
                 or method in generator.V2.not_destructive
@@ -112,13 +112,66 @@ def test_destructive_list_matches_seed_names(generator):
         assert reviewed in generator.V2.destructive
 
 
-def test_unreviewed_destructive_name_fails_generation(generator, monkeypatch):
+@pytest.mark.parametrize(
+    "name",
+    [
+        "delete",
+        "permanently_delete",
+        "delete_batch",
+        "bulk_delete",
+        "remove_markings",
+        "revoke_all_tokens",
+        "replace_backing_datasets",
+        "abort",
+        "cancel",
+        "disable",
+        "reset",
+        "reset_offsets",
+        "clear",
+        "clear_cache",
+        "undeploy",
+        "unregister",
+        "purge",
+    ],
+)
+def test_destructive_words_anywhere_in_the_name(generator, name):
+    assert generator.looks_destructive(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "get",
+        "list",
+        "create",
+        "update",
+        "deleted_items",
+        "clearance",
+        "resetting",
+        "removes",
+    ],
+)
+def test_names_without_a_destructive_word(generator, name):
+    assert not generator.looks_destructive(name)
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "admin.User.delete",
+        # Destructive words that aren't the whole name (a fullmatch missed them).
+        "streams.Dataset.Stream.Subscriber.reset_offsets",
+        "media_sets.MediaSet.clear",
+        "third_party_applications.ThirdPartyApplication.Website.undeploy",
+    ],
+)
+def test_unreviewed_destructive_name_fails_generation(generator, monkeypatch, method):
     config = generator.V2
     trimmed = generator.dataclasses.replace(
-        config, destructive=config.destructive - {"admin.User.delete"}
+        config, destructive=config.destructive - {method}
     )
     monkeypatch.setattr(generator, "API_VERSIONS", (trimmed,))
-    with pytest.raises(generator.GeneratorError, match="admin.User.delete"):
+    with pytest.raises(generator.GeneratorError, match=method.replace(".", r"\.")):
         generator.build_specs()
 
 

@@ -198,12 +198,12 @@ pltr api admin user delete "$USER_ID" --yes    # for scripts and agents
 ```
 
 The list is explicit and reviewed (`V2_DESTRUCTIVE` in
-`scripts/generate_api_commands.py`). It holds every method named `delete`,
-`permanently_delete`, `remove*`, `revoke*`, `replace*`, `abort`, `cancel` or
-`disable`, plus methods whose names don't say so: `connectivity connection
-update-secrets`, `datasets dataset put-schema`, `media-sets media-set clear`,
-`streams dataset stream reset`, `streams dataset stream subscriber reset-offsets`
-and `third-party-applications third-party-application website undeploy`.
+`scripts/generate_api_commands.py`). It holds every method whose name has one of
+the words `delete`, `remove`, `revoke`, `replace`, `abort`, `cancel`, `disable`,
+`reset`, `clear`, `undeploy`, `unregister` or `purge` (`permanently_delete`,
+`reset_offsets`, `media-sets media-set clear`, ...), plus methods whose names
+don't say so: `connectivity connection update-secrets` and
+`datasets dataset put-schema`.
 
 ## Errors and exit codes
 
@@ -264,8 +264,9 @@ uv tool install pltr-cli    # or: pipx install pltr-cli
    then `uv sync`).
 2. Run `uv run python scripts/generate_api_commands.py`. It stops with an
    explanation when a new method needs a decision:
-   - a method whose name looks destructive (`delete`, `remove*`, ...) must be added
-     to `V2_DESTRUCTIVE`, or to `not_destructive` if it isn't;
+   - a method whose name has a destructive word (`delete`, `delete_batch`,
+     `reset_offsets`, ...; see `DESTRUCTIVE_NAME_SEED`) must be added to
+     `V2_DESTRUCTIVE`, or to `not_destructive` if it isn't;
    - a server-sent-events method must be added to `excluded` with a reason;
    - a method with an integer path parameter must be excluded while the SDK can't
      URL-quote it (try calling it first: if the new SDK handles it, relax the check
