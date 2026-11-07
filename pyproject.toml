@@ -22,6 +22,10 @@ dependencies = [
     "requests>=2.32.4",
     "rich>=14.1.0",
     "typing-extensions>=4.7.1",
+    # Arrow results (sql, dataset preview) with time-zone-aware timestamps are
+    # decoded through zoneinfo, which needs the tzdata package where the system
+    # has no time zone database: Windows, and minimal Linux containers.
+    "tzdata>=2024.1",
     # typer and click are capped at the pair the test suite runs against (uv.lock:
     # typer 0.16.0, click 8.2.1; a fresh install resolves typer 0.16.1, which only
     # adds an early return for click 8.2's NoArgsIsHelpError). pltr imports click
