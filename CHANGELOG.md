@@ -799,6 +799,12 @@ from `--help`. They will be removed in the next release.
 - Tracebacks (now printed only with `PLTR_DEBUG=1`) showed every frame's
   local variables, which included the bearer token, the `Authorization`
   header and the OAuth client secret. They show the code and the error only.
+- A command whose API call succeeded, a write included, failed with exit
+  code 1 and printed no result when the RID completion cache
+  (`~/.cache/pltr`) couldn't be written, for example with a read-only or
+  missing home directory in a container or agent sandbox; a retry repeated
+  the write. The cache is best-effort now, and a corrupted cache file is
+  replaced.
 
 ## [0.16.0] - 2026-06-25
 
