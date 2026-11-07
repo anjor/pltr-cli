@@ -1,614 +1,486 @@
 """
-Project management commands for Foundry filesystem.
+Project commands (Foundry filesystem API).
 """
 
-import typer
-from typing import Optional, List
-from rich.console import Console
-from rich.table import Table
+import uuid
+from typing import Dict, List, Optional
 
-from ..services.project import ProjectService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+import click
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    AllPagesOption,
+    Columns,
+    ConfirmAliasOption,
+    FormatOption,
+    MaxPagesOption,
+    OutputOption,
+    PageSizeOption,
+    PageTokenOption,
+    ProfileOption,
+    YesOption,
+    collect_pages,
+    confirm_destructive,
+    emit,
+    output_option,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.project import OWNER_ROLE_ID, PrincipalType, ProjectService
+from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
-console = Console()
-formatter = OutputFormatter(console)
+
+#: Table/CSV columns for a ``Project`` model.
+PROJECT_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Description": "description",
+    "Path": "path",
+    "Space": "space_rid",
+    "Trash Status": "trash_status",
+    "Resource-Level Role Grants": "resource_level_role_grants_allowed",
+    "Created": "created_time",
+    "Created By": "created_by",
+    "Updated": "updated_time",
+    "Updated By": "updated_by",
+}
+
+#: Table/CSV columns for ``project list`` (one row per project ``Resource``).
+PROJECT_LIST_COLUMNS: Columns = {
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Space": "space_rid",
+    "Trash Status": "trash_status",
+    "Created": "created_time",
+    "Created By": "created_by",
+}
+
+#: ``Project.organizations`` returns organization RIDs (strings).
+ORGANIZATION_COLUMNS: Columns = {"Organization RID": lambda rid: rid}
+
+ProjectRid = Annotated[
+    str,
+    typer.Argument(
+        help="Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').",
+        autocompletion=complete_rid,
+    ),
+]
+OrganizationsOption = Annotated[
+    List[str],
+    typer.Option(
+        "--org",
+        "-o",
+        help="Organization RID (repeat for several).",
+    ),
+]
+DefaultRolesOption = Annotated[
+    Optional[List[str]],
+    typer.Option(
+        "--default-role",
+        help=(
+            "Role ID for the project's default roles (repeat for several); it "
+            "must be in the role set of the space."
+        ),
+        show_default=False,
+    ),
+]
+DescriptionOption = Annotated[
+    Optional[str],
+    typer.Option("--description", "-d", help="Project description."),
+]
+
+
+def _user_or_group_id(value: str, param_hint: str) -> str:
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise typer.BadParameter(
+            f"{value!r} is not a user or group ID. IDs are UUIDs such as "
+            "6f2a1b3c-0000-4000-8000-000000000001; usernames and group names "
+            "are not accepted.",
+            param_hint=param_hint,
+        ) from None
+
+
+def _parse_variables(values: Optional[List[str]]) -> Dict[str, str]:
+    variables: Dict[str, str] = {}
+    for value in values or []:
+        name, sep, text = value.partition("=")
+        if not sep or not name.strip():
+            raise typer.BadParameter(
+                f"expected name=value, got {value!r}", param_hint="'--var'"
+            )
+        variables[name.strip()] = text
+    return variables
 
 
 @app.command("create")
+@pltr_command(sdk=("filesystem.Project.create", "admin.User.get_current"))
 def create_project(
-    name: str = typer.Argument(..., help="Project display name"),
-    space_rid: str = typer.Option(
-        ...,
-        "--space-rid",
-        "-s",
-        help="Space Resource Identifier",
-        autocompletion=complete_rid,
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", "-d", help="Project description"
-    ),
-    organization_rids: Optional[List[str]] = typer.Option(
-        None,
-        "--organization-rid",
-        "-org",
-        help="Organization RIDs (can be specified multiple times)",
-    ),
-    owner_id: Optional[str] = typer.Option(
-        None,
-        "--owner-id",
-        help="Owner principal id (user or group) for compass:manage",
-    ),
-    owner_type: str = typer.Option(
-        "USER",
-        "--owner-type",
-        help="Owner principal type (USER or GROUP)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    name: Annotated[
+        str,
+        typer.Argument(
+            help="Display name of the new project (unique in the space; no '/')."
+        ),
+    ],
+    space_rid: Annotated[
+        str,
+        typer.Option(
+            "--space-rid",
+            "-s",
+            help="RID of the space to create the project in (see 'pltr space list').",
+            autocompletion=complete_rid,
+        ),
+    ],
+    description: DescriptionOption = None,
+    organization_rids: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--organization-rid",
+            "-org",
+            help=(
+                "Organization RID to apply to the project (repeat for several); "
+                "it must also be on the space."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    owner_id: Annotated[
+        Optional[str],
+        typer.Option(
+            "--owner-id",
+            help="User or group ID (a UUID) that owns the project (default: you).",
+            show_default=False,
+        ),
+    ] = None,
+    owner_type: Annotated[
+        Optional[str],
+        typer.Option(
+            "--owner-type",
+            click_type=click.Choice(["USER", "GROUP"], case_sensitive=False),
+            help="Whether --owner-id is a user or a group (default: USER).",
+            show_default=False,
+        ),
+    ] = None,
+    owner_role: Annotated[
+        str,
+        typer.Option(
+            "--owner-role",
+            help=(
+                "Role ID granted to the owner. The API requires an owner-like "
+                "role; change it for spaces with a custom role set."
+            ),
+        ),
+    ] = OWNER_ROLE_ID,
+    default_roles: DefaultRolesOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Create a new project in Foundry."""
-    try:
-        service = ProjectService(profile=profile)
+    """Create a project in a space.
 
-        role_grants = None
-        if owner_id:
-            role_grants = [
-                {
-                    "principal_id": owner_id,
-                    "principal_type": owner_type,
-                    "role_name": "compass:manage",
-                }
-            ]
-
-        with SpinnerProgressTracker().track_spinner(f"Creating project '{name}'..."):
-            project = service.create_project(
-                display_name=name,
-                space_rid=space_rid,
-                description=description,
-                organization_rids=organization_rids,
-                role_grants=role_grants,
-            )
-
-        # Cache the RID for future completions
-        if project.get("rid"):
-            cache_rid(project["rid"])
-
-        formatter.print_success(f"Successfully created project '{name}'")
-        formatter.print_info(f"Project RID: {project.get('rid', 'unknown')}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(project, format=format)
-        elif format == "csv":
-            formatter.format_list([project], format=format)
-        else:
-            _format_project_table(project)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create project: {e}")
-        raise typer.Exit(1)
+    The API requires an owner: by default you get the compass:manage role
+    (Owner in Foundry's default role set). --owner-id and --owner-type make a
+    user or group the owner instead.
+    """
+    if owner_type is not None and owner_id is None:
+        raise typer.BadParameter(
+            "--owner-type needs --owner-id", param_hint="'--owner-type'"
+        )
+    owner = _user_or_group_id(owner_id, "'--owner-id'") if owner_id else None
+    principal_type: PrincipalType = (
+        "GROUP" if (owner_type or "").upper() == "GROUP" else "USER"
+    )
+    with spinner(f"Creating project '{name}'..."):
+        project = ProjectService(profile=profile).create_project(
+            display_name=name,
+            space_rid=space_rid,
+            owner_id=owner,
+            owner_type=principal_type,
+            owner_role=owner_role,
+            description=description,
+            organization_rids=organization_rids,
+            default_roles=default_roles,
+        )
+    cache_rid(project.rid)
+    success(f"Created project '{project.display_name}' ({project.rid})")
+    emit(
+        project, format=format, output=output, columns=PROJECT_COLUMNS, title="Project"
+    )
 
 
 @app.command("get")
+@pltr_command(sdk="filesystem.Project.get")
 def get_project(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    project_rid: ProjectRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific project."""
-    try:
-        # Cache the RID for future completions
-        cache_rid(project_rid)
-
-        service = ProjectService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching project {project_rid}..."
-        ):
-            project = service.get_project(project_rid)
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(project, output, "json")
-            else:
-                formatter.format_dict(project, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file([project], output, "csv")
-            else:
-                formatter.format_list([project], format=format)
-        else:
-            _format_project_table(project)
-
-        if output:
-            formatter.print_success(f"Project information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get project: {e}")
-        raise typer.Exit(1)
+    """Get a project's metadata."""
+    with spinner(f"Fetching project {project_rid}..."):
+        project = ProjectService(profile=profile).get_project(project_rid)
+    cache_rid(project_rid)
+    emit(
+        project, format=format, output=output, columns=PROJECT_COLUMNS, title="Project"
+    )
 
 
 @app.command("list")
+@pltr_command(sdk=("filesystem.Space.list", "filesystem.Folder.children"), paged=True)
 def list_projects(
-    space_rid: Optional[str] = typer.Option(
-        None,
-        "--space-rid",
-        "-s",
-        help="Space Resource Identifier to filter by",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of items per page"
-    ),
+    space_rid: Annotated[
+        Optional[str],
+        typer.Option(
+            "--space-rid",
+            "-s",
+            help="RID of the space to list (default: every space you can see).",
+            autocompletion=complete_rid,
+            show_default=False,
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """List projects, optionally filtered by space."""
-    try:
-        service = ProjectService(profile=profile)
+    """List the projects in a space, or in every space you can see.
 
-        filter_desc = f" in space {space_rid}" if space_rid else ""
-        with SpinnerProgressTracker().track_spinner(
-            f"Listing projects{filter_desc}..."
-        ):
-            projects = service.list_projects(space_rid=space_rid, page_size=page_size)
-
-        if not projects:
-            formatter.print_info("No projects found.")
-            return
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(projects, output, "json")
-            else:
-                formatter.format_list(projects, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(projects, output, "csv")
-            else:
-                formatter.format_list(projects, format=format)
-        else:
-            _format_projects_table(projects)
-
-        if output:
-            formatter.print_success(f"Projects list saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to list projects: {e}")
-        raise typer.Exit(1)
+    With --space-rid, fetches one page of the space's projects by default;
+    use --all for every page, or --page-token with the nextPageToken of an
+    earlier response to continue. Without it, pltr reads every page of
+    every space (at least one request per space), so --page-token and
+    --max-pages don't apply. Items are the projects' Resource metadata.
+    """
+    service = ProjectService(profile=profile)
+    if space_rid:
+        with spinner(f"Listing projects in space {space_rid}..."):
+            page = collect_pages(
+                lambda token: service.list_projects(
+                    space_rid, page_size=page_size, page_token=token
+                ),
+                page_token=page_token,
+                max_pages=max_pages,
+                all_pages=all_pages,
+            )
+        cache_rid(space_rid)
+        emit(page, format=format, output=output, columns=PROJECT_LIST_COLUMNS)
+        return
+    if page_token is not None or max_pages != 1:
+        raise typer.BadParameter(
+            "--page-token and --max-pages need --space-rid: without it, pltr "
+            "lists every project of every space",
+            param_hint="'--space-rid'",
+        )
+    with spinner("Listing the projects of every space..."):
+        projects = service.list_all_projects(page_size=page_size)
+    emit(projects, format=format, output=output, columns=PROJECT_LIST_COLUMNS)
 
 
 @app.command("update")
+@pltr_command(sdk=("filesystem.Project.get", "filesystem.Project.replace"), beta=True)
 def update_project(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    name: Optional[str] = typer.Option(
-        None, "--name", "-n", help="New project display name"
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", "-d", help="New project description"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    project_rid: ProjectRid,
+    name: Annotated[
+        Optional[str], typer.Option("--name", "-n", help="New display name.")
+    ] = None,
+    description: Annotated[
+        Optional[str], typer.Option("--description", "-d", help="New description.")
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Update project information."""
-    try:
-        if not name and not description:
-            formatter.print_error(
-                "At least one field (--name or --description) must be provided"
-            )
-            raise typer.Exit(1)
+    """Change a project's display name or description.
 
-        service = ProjectService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Updating project {project_rid}..."
-        ):
-            project = service.update_project(
-                project_rid=project_rid,
-                display_name=name,
-                description=description,
-            )
-
-        formatter.print_success(f"Successfully updated project {project_rid}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(project, format=format)
-        elif format == "csv":
-            formatter.format_list([project], format=format)
-        else:
-            _format_project_table(project)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to update project: {e}")
-        raise typer.Exit(1)
+    The field you don't pass keeps its current value.
+    """
+    if name is None and description is None:
+        raise typer.BadParameter("pass --name, --description or both")
+    with spinner(f"Updating project {project_rid}..."):
+        project = ProjectService(profile=profile).update_project(
+            project_rid, display_name=name, description=description
+        )
+    success(f"Updated project {project_rid}")
+    emit(
+        project, format=format, output=output, columns=PROJECT_COLUMNS, title="Project"
+    )
 
 
 @app.command("delete")
+@pltr_command(
+    sdk=("filesystem.Project.get", "filesystem.Resource.delete"), destructive=True
+)
 def delete_project(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+    project_rid: ProjectRid,
+    yes: YesOption = False,
+    confirm: ConfirmAliasOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Delete a project."""
-    try:
-        if not confirm:
-            confirm_delete = typer.confirm(
-                f"Are you sure you want to delete project {project_rid}?"
-            )
-            if not confirm_delete:
-                formatter.print_info("Project deletion cancelled.")
-                return
+    """Move a project, and everything in it, to the trash.
 
-        service = ProjectService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Deleting project {project_rid}..."
-        ):
-            service.delete_project(project_rid)
-
-        formatter.print_success(f"Successfully deleted project {project_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to delete project: {e}")
-        raise typer.Exit(1)
+    The SDK has no project-specific delete: pltr checks that the RID is a
+    project and moves it to the trash like any other resource. Restore it
+    with 'pltr resource restore', or delete it for good with 'pltr resource
+    permanently-delete'. Asks for confirmation; --yes skips it. Prints
+    nothing on stdout (JSON: null).
+    """
+    confirm_destructive(
+        f"Move project {project_rid}, and everything in it, to the trash?", yes=yes
+    )
+    with spinner(f"Moving project {project_rid} to the trash..."):
+        project = ProjectService(profile=profile).delete_project(project_rid)
+    success(
+        f"Moved project '{project.display_name}' ({project_rid}) to the trash; "
+        f"restore it with 'pltr resource restore {project_rid}'"
+    )
+    emit(None, format=format)
 
 
 # ==================== Organization Operations ====================
 
 
 @app.command("add-orgs")
+@pltr_command(sdk="filesystem.Project.add_organizations")
 def add_organizations(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    organization_rids: List[str] = typer.Option(
-        ...,
-        "--org",
-        "-o",
-        help="Organization RID(s) to add (can specify multiple)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
+    project_rid: ProjectRid,
+    organization_rids: OrganizationsOption,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Add organizations to a project."""
-    try:
-        service = ProjectService(profile=profile)
+    """Apply organizations to a project; they must also be on its space.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Adding {len(organization_rids)} organization(s) to project {project_rid}..."
-        ):
-            service.add_organizations(project_rid, organization_rids)
-
-        formatter.print_success(
-            f"Successfully added {len(organization_rids)} organization(s) to project {project_rid}"
+    Prints nothing on stdout (JSON: null).
+    """
+    with spinner(f"Adding organizations to project {project_rid}..."):
+        ProjectService(profile=profile).add_organizations(
+            project_rid, organization_rids
         )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to add organizations: {e}")
-        raise typer.Exit(1)
+    success(f"Added {len(organization_rids)} organization(s) to project {project_rid}")
+    emit(None, format=format)
 
 
 @app.command("remove-orgs")
+@pltr_command(sdk="filesystem.Project.remove_organizations", destructive=True)
 def remove_organizations(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    organization_rids: List[str] = typer.Option(
-        ...,
-        "--org",
-        "-o",
-        help="Organization RID(s) to remove (can specify multiple)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
+    project_rid: ProjectRid,
+    organization_rids: OrganizationsOption,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Remove organizations from a project."""
-    try:
-        service = ProjectService(profile=profile)
+    """Remove organizations from a project.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Removing {len(organization_rids)} organization(s) from project {project_rid}..."
-        ):
-            service.remove_organizations(project_rid, organization_rids)
-
-        formatter.print_success(
-            f"Successfully removed {len(organization_rids)} organization(s) from project {project_rid}"
+    Asks for confirmation; --yes skips it. Prints nothing on stdout (JSON:
+    null).
+    """
+    confirm_destructive(
+        f"Remove organization(s) {', '.join(organization_rids)} from project "
+        f"{project_rid}?",
+        yes=yes,
+    )
+    with spinner(f"Removing organizations from project {project_rid}..."):
+        ProjectService(profile=profile).remove_organizations(
+            project_rid, organization_rids
         )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to remove organizations: {e}")
-        raise typer.Exit(1)
+    success(
+        f"Removed {len(organization_rids)} organization(s) from project {project_rid}"
+    )
+    emit(None, format=format)
 
 
 @app.command("list-orgs")
+@pltr_command(sdk="filesystem.Project.organizations", paged=True)
 def list_organizations(
-    project_rid: str = typer.Argument(
-        ..., help="Project Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(None, "--output", help="Output file path"),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of items per page"
-    ),
+    project_rid: ProjectRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """List organizations directly applied to a project."""
-    try:
-        service = ProjectService(profile=profile)
+    """List the RIDs of the organizations applied directly to a project.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching organizations for project {project_rid}..."
-        ):
-            organizations = service.list_organizations(project_rid, page_size=page_size)
-
-        if not organizations:
-            formatter.print_info("No organizations found on this project.")
-            return
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(organizations, output, "json")
-            else:
-                formatter.format_list(organizations, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(organizations, output, "csv")
-            else:
-                formatter.format_list(organizations, format=format)
-        else:
-            _format_organizations_table(organizations)
-
-        if output:
-            formatter.print_success(f"Organizations list saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to list organizations: {e}")
-        raise typer.Exit(1)
+    Fetches one page by default; use --all for every page.
+    """
+    service = ProjectService(profile=profile)
+    with spinner(f"Listing organizations of project {project_rid}..."):
+        page = collect_pages(
+            lambda token: service.list_organizations(
+                project_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(project_rid)
+    emit(page, format=format, output=output, columns=ORGANIZATION_COLUMNS)
 
 
 # ==================== Template Operations ====================
 
 
 @app.command("create-from-template")
+@pltr_command(sdk="filesystem.Project.create_from_template")
 def create_from_template(
-    template_rid: str = typer.Option(
-        ...,
-        "--template-rid",
-        "-t",
-        help="Template Resource Identifier",
-        autocompletion=complete_rid,
-    ),
-    variable: List[str] = typer.Option(
-        ...,
-        "--var",
-        "-v",
-        help="Variable values in format 'name=value' (can specify multiple)",
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", "-d", help="Project description"
-    ),
-    organization_rids: Optional[List[str]] = typer.Option(
-        None,
-        "--org",
-        "-o",
-        help="Organization RIDs (can be specified multiple times)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    template_rid: Annotated[
+        str,
+        typer.Option(
+            "--template-rid",
+            "-t",
+            help="RID of the project template.",
+            autocompletion=complete_rid,
+        ),
+    ],
+    variables: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--var",
+            "-v",
+            help="Template variable as name=value (repeat for several).",
+            show_default=False,
+        ),
+    ] = None,
+    description: DescriptionOption = None,
+    organization_rids: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--org",
+            "-o",
+            help="Organization RID to apply to the project (repeat for several).",
+            show_default=False,
+        ),
+    ] = None,
+    default_roles: DefaultRolesOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    # -o is --org here, so --output has no short flag.
+    output: Annotated[Optional[str], output_option(short=False)] = None,
 ):
-    """Create a project from a template."""
-    try:
-        # Parse variable values
-        variable_values = {}
-        for var in variable:
-            if "=" not in var:
-                formatter.print_error(
-                    f"Invalid variable format: '{var}'. Use 'name=value' format."
-                )
-                raise typer.Exit(1)
-            name, value = var.split("=", 1)
-            name = name.strip()
-            if not name:
-                formatter.print_error(f"Variable name cannot be empty: '{var}'")
-                raise typer.Exit(1)
-            variable_values[name] = value
-
-        service = ProjectService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Creating project from template {template_rid}..."
-        ):
-            project = service.create_project_from_template(
-                template_rid=template_rid,
-                variable_values=variable_values,
-                organization_rids=organization_rids,
-                project_description=description,
-            )
-
-        # Cache the RID for future completions
-        if project.get("rid"):
-            cache_rid(project["rid"])
-
-        formatter.print_success("Successfully created project from template")
-        formatter.print_info(f"Project RID: {project.get('rid', 'unknown')}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(project, format=format)
-        elif format == "csv":
-            formatter.format_list([project], format=format)
-        else:
-            _format_project_table(project)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create project from template: {e}")
-        raise typer.Exit(1)
-
-
-def _format_project_table(project: dict):
-    """Format project information as a table."""
-    table = Table(
-        title="Project Information", show_header=True, header_style="bold cyan"
+    """Create a project from a project template."""
+    variable_values = _parse_variables(variables)
+    with spinner(f"Creating project from template {template_rid}..."):
+        project = ProjectService(profile=profile).create_project_from_template(
+            template_rid=template_rid,
+            variable_values=variable_values,
+            default_roles=default_roles,
+            organization_rids=organization_rids,
+            project_description=description,
+        )
+    cache_rid(project.rid)
+    success(f"Created project '{project.display_name}' ({project.rid})")
+    emit(
+        project, format=format, output=output, columns=PROJECT_COLUMNS, title="Project"
     )
-    table.add_column("Property", style="cyan")
-    table.add_column("Value")
-
-    table.add_row("RID", project.get("rid", "N/A"))
-    table.add_row("Display Name", project.get("display_name", "N/A"))
-    table.add_row("Description", project.get("description", "N/A"))
-    table.add_row("Path", project.get("path", "N/A"))
-    table.add_row("Space RID", project.get("space_rid", "N/A"))
-    table.add_row("Created By", project.get("created_by", "N/A"))
-    table.add_row("Created Time", project.get("created_time", "N/A"))
-    table.add_row("Modified By", project.get("modified_by", "N/A"))
-    table.add_row("Modified Time", project.get("modified_time", "N/A"))
-    table.add_row("Trash Status", project.get("trash_status", "N/A"))
-
-    console.print(table)
-
-
-def _format_projects_table(projects: List[dict]):
-    """Format multiple projects as a table."""
-    table = Table(title="Projects", show_header=True, header_style="bold cyan")
-    table.add_column("Display Name")
-    table.add_column("RID")
-    table.add_column("Space RID")
-    table.add_column("Created By")
-    table.add_column("Created Time")
-
-    for project in projects:
-        table.add_row(
-            project.get("display_name", "N/A"),
-            project.get("rid", "N/A"),
-            project.get("space_rid", "N/A"),
-            project.get("created_by", "N/A"),
-            project.get("created_time", "N/A"),
-        )
-
-    console.print(table)
-    console.print(f"\nTotal: {len(projects)} projects")
-
-
-def _format_organizations_table(organizations: List[dict]):
-    """Format organizations as a table."""
-    table = Table(title="Organizations", show_header=True, header_style="bold cyan")
-    table.add_column("Organization RID")
-    table.add_column("Display Name")
-    table.add_column("Description")
-
-    for org in organizations:
-        table.add_row(
-            org.get("organization_rid", "N/A"),
-            org.get("display_name", "N/A"),
-            org.get("description", "N/A"),
-        )
-
-    console.print(table)
-    console.print(f"\nTotal: {len(organizations)} organizations")
 
 
 @app.callback()
@@ -616,34 +488,28 @@ def main():
     """
     Project operations using foundry-platform-sdk.
 
-    Manage projects in the Foundry filesystem. Create, retrieve, update, and delete
-    projects using Resource Identifiers (RIDs).
+    Projects live in spaces and are addressed by RID
+    (ri.compass.main.folder.<id>, like folders). Find a space with
+    'pltr space list' and its projects with 'pltr project list --space-rid'.
+    Updating a project uses a beta Foundry endpoint (labeled [beta]).
 
     Examples:
-        # Create a project in a space
-        pltr project create "My Project" --space-rid ri.compass.main.space.xyz123
+        # Create a project in a space (you become its owner)
+        pltr project create "My Project" --space-rid ri.compass.main.folder.space123
 
-        # List all projects
-        pltr project list
+        # List the projects in a space, or in every space
+        pltr project list --space-rid ri.compass.main.folder.space123
+        pltr project list --format json
 
-        # List projects in a specific space
-        pltr project list --space-rid ri.compass.main.space.xyz123
+        # Get, rename, and move a project to the trash
+        pltr project get ri.compass.main.folder.proj456
+        pltr project update ri.compass.main.folder.proj456 --name "New Name"
+        pltr project delete ri.compass.main.folder.proj456
 
-        # Get project information
-        pltr project get ri.compass.main.project.abc456
+        # Organizations
+        pltr project add-orgs ri.compass.main.folder.proj456 -o <ORGANIZATION_RID>
+        pltr project list-orgs ri.compass.main.folder.proj456
 
-        # Update project
-        pltr project update ri.compass.main.project.abc456 --name "Updated Name"
-
-        # Delete project
-        pltr project delete ri.compass.main.project.abc456
-
-        # Organization operations
-        pltr project add-orgs ri.compass.main.project.abc456 -o org-rid-1 -o org-rid-2
-        pltr project remove-orgs ri.compass.main.project.abc456 -o org-rid-1
-        pltr project list-orgs ri.compass.main.project.abc456
-
-        # Create from template
-        pltr project create-from-template -t template-rid -v "name=MyProject" -v "desc=Description"
+        # Create a project from a template
+        pltr project create-from-template -t <TEMPLATE_RID> -v "name=My Project"
     """
-    pass

@@ -8,24 +8,6 @@
 # Format: <file>::<Class.method>::<SDK path or HTTP call>::<rule>[<n>]  # <reason>
 # Rewrite (keeps existing reasons): uv run python scripts/check_sdk_calls.py --write-allowlist
 
-# src/pltr/services/admin.py
-services/admin.py::AdminService.create_group::admin.Group.create::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Group.create requires attributes= and organizations=, organization_rid isn't a parameter
-services/admin.py::AdminService.create_marking::admin.Marking.create::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Marking.create requires initial_members= and initial_role_assignments=; also preview= on GA (#184)
-services/admin.py::AdminService.create_organization::admin.Organization.create::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Organization.create (beta) requires administrators=, admin_ids isn't a parameter
-services/admin.py::AdminService.get_batch_markings::admin.Marking.get_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/admin.py::AdminService.get_marking::admin.Marking.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/admin.py::AdminService.get_role::admin.Role.get::beta-without-preview  # #182 admin role get: Role.get is beta; pass preview=True
-services/admin.py::AdminService.list_available_roles::admin.Organization.list_available_roles::preview-on-ga  # #182/#184 admin org available-roles: list_available_roles(organization_rid) is GA
-services/admin.py::AdminService.list_available_roles::admin.Organization.list_available_roles::unknown-keyword(page_size)  # #182 admin org available-roles: list_available_roles takes only organization_rid
-services/admin.py::AdminService.list_available_roles::admin.Organization.list_available_roles::unknown-keyword(page_token)  # #182 admin org available-roles: list_available_roles takes only organization_rid
-services/admin.py::AdminService.list_markings::admin.Marking.list::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/admin.py::AdminService.replace_marking::admin.Marking.replace::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Marking.replace
-services/admin.py::AdminService.replace_organization::admin.Organization.replace::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Organization.replace
-services/admin.py::AdminService.search_groups::admin.Group.search::missing-required(where)  # #182 admin group search: Group.search requires where= (and returns a page object, not an iterator)
-services/admin.py::AdminService.search_groups::admin.Group.search::unknown-keyword(query)  # #182 admin group search: Group.search takes where=, not query=
-services/admin.py::AdminService.search_users::admin.User.search::missing-required(where)  # #182 admin user search: User.search requires where= (and returns a page object, not an iterator)
-services/admin.py::AdminService.search_users::admin.User.search::unknown-keyword(query)  # #182 admin user search: User.search takes where=, not query=
-
 # src/pltr/services/audit.py
 services/audit.py::AuditService.list_log_files::audit.Organization.LogFile.list::unchecked-kwargs  # #185: dict-built (end_date, page_size; valid keys); pass explicit keywords
 
@@ -42,16 +24,6 @@ services/connectivity.py::ConnectivityService.list_file_imports::file_imports.Fi
 services/connectivity.py::ConnectivityService.list_file_imports::file_imports.FileImport.list::missing-method[2]  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.list(connection_rid, ...) (different arguments)
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method[2]  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
-
-# src/pltr/services/copy.py
-services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
-
-# src/pltr/services/data_health.py
-services/data_health.py::DataHealthService.create_check::data_health.Check.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.delete_check::data_health.Check.delete::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check::data_health.Check.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/data_health.py::DataHealthService.get_check_report::data_health.CheckReport.get::missing-method  # #182 data-health report get: use Check.CheckReport.get(check_rid, check_report_rid, preview=True) (beta)
-services/data_health.py::DataHealthService.replace_check::data_health.Check.replace::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
 # src/pltr/services/dataset.py
 services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
@@ -72,15 +44,6 @@ services/dataset.py::DatasetService.read_table::datasets.read_table::missing-met
 services/dataset.py::DatasetService.remove_backing_datasets::datasets.Dataset.View.remove_backing_datasets::missing-method  # #182 dataset views remove-datasets: use datasets.View.remove_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.replace_backing_datasets::datasets.Dataset.View.replace_backing_datasets::missing-method  # #182 dataset views replace-datasets: use datasets.View.replace_backing_datasets(view_dataset_rid, backing_datasets=)
 
-# src/pltr/services/functions.py
-services/functions.py::FunctionsService.execute_query::functions.Query.execute::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.execute_query_by_rid::functions.Query.execute_by_rid::missing-method  # #182 functions query execute-by-rid: no execute_by_rid; resolve with get_by_rid then execute, or remove
-services/functions.py::FunctionsService.get_query::functions.Query.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::missing-required(rid)  # #182 functions query get-by-rid: rid is keyword-only; Query.get_by_rid(rid=..., preview=True)
-services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::too-many-positional  # #182 functions query get-by-rid: rid is keyword-only; Query.get_by_rid(rid=..., preview=True)
-services/functions.py::FunctionsService.get_value_type::functions.ValueType.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/language_models.py
 services/language_models.py::LanguageModelsService.generate_embeddings::language_models.OpenAiModel.embeddings::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta OpenAiModel.embeddings
 services/language_models.py::LanguageModelsService.send_message::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
@@ -96,12 +59,6 @@ services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet
 services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/models.py
-services/models.py::ModelsService.create_model::models.Model.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model::models.Model.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model_version::models.ModelVersion.get::missing-method  # #182 models version get: use models.Model.Version.get(model_rid, model_version_rid, preview=True) (beta)
-services/models.py::ModelsService.list_model_versions::models.ModelVersion.list::missing-method  # #182 models version list: use models.Model.Version.list(model_rid, preview=True) (beta)
-
 # src/pltr/services/ontology.py
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::too-many-positional  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
@@ -113,67 +70,6 @@ services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.Ontolo
 services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(filter)  # #182 ontology object-aggregate: OntologyObject.aggregate filters with where=, not filter=
 services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
 services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
-
-# src/pltr/services/orchestration.py
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs[2]  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService.create_build::orchestration.Build.create::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.create_schedule::orchestration.Schedule.create::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.create is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_build_jobs::orchestration.Build.jobs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.get_job::orchestration.Job.get::beta-without-preview  # #182 orchestration jobs get: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_jobs_batch::orchestration.Job.get_batch::beta-without-preview  # #182 orchestration jobs get-batch: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule::orchestration.Schedule.get::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.get is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule_runs::orchestration.Schedule.runs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.replace_schedule::orchestration.Schedule.replace::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.replace is beta: pass preview=True
-
-# src/pltr/services/project.py
-services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/project.py::ProjectService.add_organizations::filesystem.Project.add_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(default_roles)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(display_name)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(organization_rids)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(role_grants)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(space_rid)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[2]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[3]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[4]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[2]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[3]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unknown-keyword(body)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project_from_template::filesystem.Project.create_from_template::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.create_from_template
-services/project.py::ProjectService.delete_project::filesystem.Project.delete::missing-method  # #182 project delete: no Project.delete; Resource.delete(project_rid) if it accepts project RIDs (verify), else remove
-services/project.py::ProjectService.get_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.list_organizations::filesystem.Project.organizations::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.organizations
-services/project.py::ProjectService.list_projects::filesystem.Space.list::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.remove_organizations::filesystem.Project.remove_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.update_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/resource.py
-services/resource.py::ResourceService.add_markings::filesystem.Resource.add_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.delete_resource::filesystem.Resource.delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_access_requirements::filesystem.Resource.get_access_requirements::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource::filesystem.Resource.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_by_path::filesystem.Resource.get_by_path::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_metadata::filesystem.Resource.get_metadata::missing-method  # #182 resource get-metadata: no SDK equivalent; remove
-services/resource.py::ResourceService.get_resources_batch::filesystem.Resource.get_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resources_by_path_batch::filesystem.Resource.get_by_path_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.list_markings::filesystem.Resource.markings::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Resource.markings
-services/resource.py::ResourceService.list_resources::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/resource.py::ResourceService.permanently_delete_resource::filesystem.Resource.permanently_delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.remove_markings::filesystem.Resource.remove_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.restore_resource::filesystem.Resource.restore::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.search_resources::filesystem.Folder.children::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/resource_role.py
-services/resource_role.py::ResourceRoleService.bulk_grant_roles::filesystem.ResourceRole.bulk_grant::missing-method  # #182: unused bulk_grant_roles; delete
-services/resource_role.py::ResourceRoleService.bulk_revoke_roles::filesystem.ResourceRole.bulk_revoke::missing-method  # #182: unused bulk_revoke_roles; delete
-services/resource_role.py::ResourceRoleService.get_available_roles::filesystem.ResourceRole.get_available_roles::missing-method  # #182 resource-role get-available-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.get_principal_roles::filesystem.ResourceRole.get_principal_roles::missing-method  # #182 resource-role get-principal-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.grant_role::filesystem.ResourceRole.grant::missing-method  # #182 resource-role grant: use filesystem.Resource.Role.add(resource_rid, roles=[...])
-services/resource_role.py::ResourceRoleService.list_resource_roles::filesystem.ResourceRole.list::missing-method  # #182 resource-role list: use filesystem.Resource.Role.list(resource_rid, include_inherited=...)
-services/resource_role.py::ResourceRoleService.revoke_role::filesystem.ResourceRole.revoke::missing-method  # #182 resource-role revoke: use filesystem.Resource.Role.remove(resource_rid, roles=[...])
 
 # src/pltr/services/sql.py
 services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=

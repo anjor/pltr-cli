@@ -1,776 +1,615 @@
+"""Tests for AdminService against a real FoundryClient (only HTTP is faked).
+
+Every admin endpoint pltr calls is GA except Role.get, Role.get_batch and
+Organization.create, which must carry preview=true. A GA call that still
+passes preview= makes the SDK warn, which the module-level filter turns into
+a failure.
 """
-Tests for Admin service.
-"""
+
+import json
 
 import pytest
-from unittest.mock import Mock
+from foundry_sdk.v2.admin.models import (
+    GetGroupsBatchResponse,
+    GetMarkingsBatchResponse,
+    GetRolesBatchResponse,
+    GetUserMarkingsResponse,
+    GetUsersBatchResponse,
+    Group,
+    ListAvailableOrganizationRolesResponse,
+    Marking,
+    Organization,
+    Role,
+    SearchGroupsResponse,
+    SearchUsersResponse,
+    User,
+)
+from foundry_sdk.v2.admin.errors import UserNotFound
 
-from pltr.services.admin import AdminService
+from pltr.services.admin import MAX_BATCH_SIZE, AdminService
+from tests import foundry_json_admin as aj
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
 
-class TestAdminService:
-    """Test Admin service functionality."""
+def only_request(stub):
+    [request] = stub.requests
+    return request
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.admin = Mock()
-        client.admin.User = Mock()
-        client.admin.Group = Mock()
-        client.admin.Role = Mock()
-        client.admin.Organization = Mock()
-        client.admin.Marking = Mock()
-        return client
 
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create AdminService with mocked client."""
-        service = AdminService()
-        service._client = mock_client
-        return service
+# ------------------------------------------------------------------- users
 
-    # User Management Tests
-    def test_list_users(self, service, mock_client):
-        """Test listing all users."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "users": [
-                {"id": "user1", "username": "john.doe", "email": "john@example.com"},
-                {"id": "user2", "username": "jane.doe", "email": "jane@example.com"},
-            ],
-            "nextPageToken": None,
+
+def test_list_users_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [aj.user()], "nextPageToken": "next"})
+
+    page = AdminService().list_users(page_size=50, page_token="tok")
+
+    assert [user.username for user in page.data] == ["jane.doe"]
+    assert isinstance(page.data[0], User)
+    assert page.next_page_token == "next"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", "/api/v2/admin/users")
+    assert dict(request.url.params) == {"pageSize": "50", "pageToken": "tok"}
+
+
+def test_get_user(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.user())
+
+    user = AdminService().get_user(aj.USER_ID)
+
+    assert isinstance(user, User)
+    assert (user.given_name, user.status) == ("Jane", "ACTIVE")
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/users/{aj.USER_ID}",
+    )
+    assert dict(request.url.params) == {}
+
+
+def test_get_user_not_found_propagates_the_sdk_error(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json={
+            "errorCode": "NOT_FOUND",
+            "errorName": "UserNotFound",
+            "errorInstanceId": "00000000-0000-4000-8000-000000000001",
+            "parameters": {"userId": aj.USER_ID},
+        },
+    )
+
+    with pytest.raises(UserNotFound):
+        AdminService().get_user(aj.USER_ID)
+
+
+def test_current_user_returns_the_model(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.user())
+
+    user = AdminService().current_user()
+
+    assert isinstance(user, User)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        "/api/v2/admin/users/getCurrent",
+    )
+
+
+def test_get_current_user_returns_the_sdk_dict(stub_foundry_http):
+    """ProjectService reads the current user's "id" from this dict."""
+    stub_foundry_http.respond(json=aj.user())
+
+    current = AdminService().get_current_user()
+
+    assert current == aj.user()
+    assert current["id"] == aj.USER_ID
+
+
+def test_search_users_sends_a_query_string_filter(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [aj.user()], "nextPageToken": "next"})
+
+    page = AdminService().search_users("jan", page_size=5, page_token="tok")
+
+    assert isinstance(page, SearchUsersResponse)
+    assert [user.id for user in page.data] == [aj.USER_ID]
+    assert page.next_page_token == "next"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/users/search",
+    )
+    assert json.loads(request.content) == {
+        "where": {"type": "queryString", "value": "jan"},
+        "pageSize": 5,
+        "pageToken": "tok",
+    }
+
+
+def test_search_users_omits_unset_paging(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
+
+    page = AdminService().search_users("jan")
+
+    assert page.data == [] and page.next_page_token is None
+    body = json.loads(only_request(stub_foundry_http).content)
+    assert body == {"where": {"type": "queryString", "value": "jan"}}
+
+
+def test_get_user_markings(stub_foundry_http):
+    stub_foundry_http.respond(json={"view": [aj.MARKING_ID, aj.MARKING_ID_2]})
+
+    response = AdminService().get_user_markings(aj.USER_ID)
+
+    assert isinstance(response, GetUserMarkingsResponse)
+    assert response.view == [aj.MARKING_ID, aj.MARKING_ID_2]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/users/{aj.USER_ID}/getMarkings",
+    )
+
+
+def test_revoke_user_tokens(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    assert AdminService().revoke_user_tokens(aj.USER_ID) is None
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"/api/v2/admin/users/{aj.USER_ID}/revokeAllTokens",
+    )
+
+
+def test_delete_user(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    assert AdminService().delete_user(aj.USER_ID) is None
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "DELETE",
+        f"/api/v2/admin/users/{aj.USER_ID}",
+    )
+
+
+def test_get_batch_users_sends_request_elements(stub_foundry_http):
+    """The old call sent bare strings, which the SDK rejects."""
+    stub_foundry_http.respond(
+        json={
+            "data": {
+                aj.USER_ID: aj.user(),
+                aj.USER_ID_2: aj.user(aj.USER_ID_2, "john.roe"),
+            }
         }
-        mock_client.admin.User.list.return_value = mock_response
-
-        # Execute
-        result = service.list_users()
-
-        # Assert
-        mock_client.admin.User.list.assert_called_once_with(
-            page_size=None, page_token=None
-        )
-        assert "users" in result
-        assert len(result["users"]) == 2
-
-    def test_list_users_with_pagination(self, service, mock_client):
-        """Test listing users with pagination."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "users": [{"id": "user1", "username": "john.doe"}],
-            "nextPageToken": "token123",
-        }
-        mock_client.admin.User.list.return_value = mock_response
-
-        # Execute
-        result = service.list_users(page_size=10, page_token="prev_token")
-
-        # Assert
-        mock_client.admin.User.list.assert_called_once_with(
-            page_size=10, page_token="prev_token"
-        )
-        assert result["nextPageToken"] == "token123"
-
-    def test_get_user(self, service, mock_client):
-        """Test getting a specific user."""
-        # Setup
-        user_id = "user123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": user_id,
-            "username": "john.doe",
-            "email": "john@example.com",
-            "displayName": "John Doe",
-        }
-        mock_client.admin.User.get.return_value = mock_response
-
-        # Execute
-        result = service.get_user(user_id)
-
-        # Assert
-        mock_client.admin.User.get.assert_called_once_with(user_id)
-        assert result["id"] == user_id
-        assert result["username"] == "john.doe"
-
-    def test_get_current_user(self, service, mock_client):
-        """Test getting current user."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "current_user",
-            "username": "current.user",
-            "email": "current@example.com",
-        }
-        mock_client.admin.User.get_current.return_value = mock_response
-
-        # Execute
-        result = service.get_current_user()
-
-        # Assert
-        mock_client.admin.User.get_current.assert_called_once()
-        assert result["id"] == "current_user"
-
-    def test_search_users(self, service, mock_client):
-        """Test searching users."""
-        # Setup
-        query = "john"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "users": [{"id": "user1", "username": "john.doe"}],
-            "nextPageToken": None,
-        }
-        mock_client.admin.User.search.return_value = mock_response
-
-        # Execute
-        result = service.search_users(query)
-
-        # Assert
-        mock_client.admin.User.search.assert_called_once_with(
-            query=query, page_size=None, page_token=None
-        )
-        assert len(result["users"]) == 1
-
-    def test_get_user_markings(self, service, mock_client):
-        """Test getting user markings."""
-        # Setup
-        user_id = "user123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "markings": ["public", "internal"],
-            "permissions": ["read", "write"],
-        }
-        mock_client.admin.User.get_markings.return_value = mock_response
-
-        # Execute
-        result = service.get_user_markings(user_id)
-
-        # Assert
-        mock_client.admin.User.get_markings.assert_called_once_with(user_id)
-        assert result["markings"] == ["public", "internal"]
-
-    def test_revoke_user_tokens(self, service, mock_client):
-        """Test revoking user tokens."""
-        # Setup
-        user_id = "user123"
-        mock_client.admin.User.revoke_all_tokens.return_value = None
-
-        # Execute
-        result = service.revoke_user_tokens(user_id)
-
-        # Assert
-        mock_client.admin.User.revoke_all_tokens.assert_called_once_with(user_id)
-        assert result["success"] is True
-        assert "revoked" in result["message"]
-
-    # Group Management Tests
-    def test_list_groups(self, service, mock_client):
-        """Test listing all groups."""
-        # Setup - mock ResourceIterator with .data and .next_page_token
-        mock_group1 = Mock()
-        mock_group1.dict.return_value = {
-            "id": "group1",
-            "name": "Engineering",
-            "description": "Engineering team",
-        }
-        mock_group2 = Mock()
-        mock_group2.dict.return_value = {
-            "id": "group2",
-            "name": "Product",
-            "description": "Product team",
-        }
-        mock_iterator = Mock()
-        mock_iterator.data = [mock_group1, mock_group2]
-        mock_iterator.next_page_token = None
-        mock_client.admin.Group.list.return_value = mock_iterator
-
-        # Execute
-        result = service.list_groups()
-
-        # Assert
-        mock_client.admin.Group.list.assert_called_once_with(
-            page_size=None, page_token=None
-        )
-        assert "data" in result
-        assert len(result["data"]) == 2
-        assert result["data"][0]["id"] == "group1"
-        assert result["data"][1]["id"] == "group2"
-
-    def test_get_group(self, service, mock_client):
-        """Test getting a specific group."""
-        # Setup
-        group_id = "group123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": group_id,
-            "name": "Engineering",
-            "description": "Engineering team",
-            "memberCount": 25,
-        }
-        mock_client.admin.Group.get.return_value = mock_response
-
-        # Execute
-        result = service.get_group(group_id)
-
-        # Assert
-        mock_client.admin.Group.get.assert_called_once_with(group_id)
-        assert result["id"] == group_id
-        assert result["name"] == "Engineering"
-
-    def test_search_groups(self, service, mock_client):
-        """Test searching groups."""
-        # Setup
-        query = "engineering"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "groups": [{"id": "group1", "name": "Engineering"}],
-            "nextPageToken": None,
-        }
-        mock_client.admin.Group.search.return_value = mock_response
-
-        # Execute
-        result = service.search_groups(query)
-
-        # Assert
-        mock_client.admin.Group.search.assert_called_once_with(
-            query=query, page_size=None, page_token=None
-        )
-        assert len(result["groups"]) == 1
-
-    def test_create_group(self, service, mock_client):
-        """Test creating a new group."""
-        # Setup
-        group_name = "New Team"
-        description = "A new team"
-        org_rid = "org123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "new_group_id",
-            "name": group_name,
-            "description": description,
-        }
-        mock_client.admin.Group.create.return_value = mock_response
-
-        # Execute
-        result = service.create_group(
-            name=group_name, description=description, organization_rid=org_rid
-        )
-
-        # Assert
-        mock_client.admin.Group.create.assert_called_once_with(
-            name=group_name, description=description, organization_rid=org_rid
-        )
-        assert result["name"] == group_name
-
-    def test_create_group_minimal(self, service, mock_client):
-        """Test creating a group with only name."""
-        # Setup
-        group_name = "Simple Group"
-        mock_response = Mock()
-        mock_response.dict.return_value = {"id": "simple_group_id", "name": group_name}
-        mock_client.admin.Group.create.return_value = mock_response
-
-        # Execute
-        result = service.create_group(name=group_name)
-
-        # Assert
-        mock_client.admin.Group.create.assert_called_once_with(name=group_name)
-        assert result["name"] == group_name
-
-    def test_delete_group(self, service, mock_client):
-        """Test deleting a group."""
-        # Setup
-        group_id = "group123"
-        mock_client.admin.Group.delete.return_value = None
-
-        # Execute
-        result = service.delete_group(group_id)
-
-        # Assert
-        mock_client.admin.Group.delete.assert_called_once_with(group_id)
-        assert result["success"] is True
-        assert "deleted" in result["message"]
-
-    # Organization Management Tests
-    def test_get_organization(self, service, mock_client):
-        """Test getting organization information."""
-        # Setup
-        org_id = "org123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": org_id,
-            "name": "Acme Corp",
-            "description": "Example organization",
-        }
-        mock_client.admin.Organization.get.return_value = mock_response
-
-        # Execute
-        result = service.get_organization(org_id)
-
-        # Assert
-        mock_client.admin.Organization.get.assert_called_once_with(org_id)
-        assert result["id"] == org_id
-        assert result["name"] == "Acme Corp"
-
-    # Role Management Tests
-    def test_get_role(self, service, mock_client):
-        """Test getting role information."""
-        # Setup
-        role_id = "role123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": role_id,
-            "name": "Admin",
-            "description": "Administrator role",
-        }
-        mock_client.admin.Role.get.return_value = mock_response
-
-        # Execute
-        result = service.get_role(role_id)
-
-        # Assert
-        mock_client.admin.Role.get.assert_called_once_with(role_id)
-        assert result["id"] == role_id
-        assert result["name"] == "Admin"
-
-    # Error Handling Tests
-    def test_list_users_error(self, service, mock_client):
-        """Test error handling in list_users."""
-        # Setup
-        mock_client.admin.User.list.side_effect = Exception("API Error")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to list users"):
-            service.list_users()
-
-    def test_get_user_error(self, service, mock_client):
-        """Test error handling in get_user."""
-        # Setup
-        user_id = "user123"
-        mock_client.admin.User.get.side_effect = Exception("User not found")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to get user"):
-            service.get_user(user_id)
-
-    def test_create_group_error(self, service, mock_client):
-        """Test error handling in create_group."""
-        # Setup
-        group_name = "Bad Group"
-        mock_client.admin.Group.create.side_effect = Exception("Validation error")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to create group"):
-            service.create_group(name=group_name)
-
-    # Serialization Tests
-    def test_serialize_response_with_dict_method(self, service):
-        """Test serialization of response with dict() method."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {"key": "value"}
-
-        # Execute
-        result = service._serialize_response(mock_response)
-
-        # Assert
-        assert result == {"key": "value"}
-
-    def test_serialize_response_with_dict_attr(self, service):
-        """Test serialization of response with __dict__ attribute."""
-
-        # Setup
-        class MockResponse:
-            def __init__(self):
-                self.key = "value"
-                self._private = "private"
-
-        mock_response = MockResponse()
-
-        # Execute
-        result = service._serialize_response(mock_response)
-
-        # Assert
-        assert result == {"key": "value"}
-        assert "_private" not in result
-
-    def test_serialize_response_primitive(self, service):
-        """Test serialization of primitive response."""
-        # Execute & Assert
-        assert service._serialize_response("string") == "string"
-        assert service._serialize_response(123) == 123
-        assert service._serialize_response(None) == {}
-
-    def test_serialize_response_non_serializable(self, service):
-        """Test serialization of non-serializable response."""
-
-        # Setup
-        class NonSerializableResponse:
-            def __init__(self):
-                self.data = object()  # non-serializable
-
-        mock_response = NonSerializableResponse()
-
-        # Execute
-        result = service._serialize_response(mock_response)
-
-        # Assert
-        assert "data" in result
-        assert isinstance(result["data"], str)
-
-    # New User Management Tests
-    def test_delete_user(self, service, mock_client):
-        """Test deleting a user."""
-        # Setup
-        user_id = "user123"
-        mock_client.admin.User.delete.return_value = None
-
-        # Execute
-        result = service.delete_user(user_id)
-
-        # Assert
-        mock_client.admin.User.delete.assert_called_once_with(user_id)
-        assert result["success"] is True
-        assert "deleted" in result["message"]
-
-    def test_delete_user_error(self, service, mock_client):
-        """Test error handling in delete_user."""
-        # Setup
-        user_id = "user123"
-        mock_client.admin.User.delete.side_effect = Exception("User not found")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to delete user"):
-            service.delete_user(user_id)
-
-    def test_get_batch_users(self, service, mock_client):
-        """Test batch getting users."""
-        # Setup
-        user_ids = ["user1", "user2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
+    )
+
+    response = AdminService().get_batch_users([aj.USER_ID, aj.USER_ID_2])
+
+    assert isinstance(response, GetUsersBatchResponse)
+    assert response.data[aj.USER_ID_2].username == "john.roe"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/users/getBatch",
+    )
+    assert json.loads(request.content) == [
+        {"userId": aj.USER_ID},
+        {"userId": aj.USER_ID_2},
+    ]
+
+
+def test_get_batch_users_rejects_more_than_500(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 500 users"):
+        AdminService().get_batch_users([aj.USER_ID] * (MAX_BATCH_SIZE + 1))
+    assert stub_foundry_http.requests == []
+
+
+# ------------------------------------------------------------------ groups
+
+
+def test_list_groups_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [aj.group()]})
+
+    page = AdminService().list_groups(page_size=10)
+
+    assert isinstance(page.data[0], Group)
+    assert page.next_page_token is None
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", "/api/v2/admin/groups")
+    assert dict(request.url.params) == {"pageSize": "10"}
+
+
+def test_get_group(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.group())
+
+    group = AdminService().get_group(aj.GROUP_ID)
+
+    assert isinstance(group, Group)
+    assert group.organizations == [aj.ORG_RID]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/groups/{aj.GROUP_ID}",
+    )
+
+
+def test_search_groups_sends_a_query_string_filter(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [aj.group()], "nextPageToken": "next"})
+
+    page = AdminService().search_groups("data", page_size=2)
+
+    assert isinstance(page, SearchGroupsResponse)
+    assert [group.name for group in page.data] == ["Data Science"]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/groups/search",
+    )
+    assert json.loads(request.content) == {
+        "where": {"type": "queryString", "value": "data"},
+        "pageSize": 2,
+    }
+
+
+def test_create_group_sends_every_required_field(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.group())
+
+    group = AdminService().create_group(
+        name="Data Science",
+        organizations=[aj.ORG_RID],
+        attributes={"team": ["ds"]},
+        description="Machine learning team",
+    )
+
+    assert isinstance(group, Group)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", "/api/v2/admin/groups")
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "name": "Data Science",
+        "organizations": [aj.ORG_RID],
+        "attributes": {"team": ["ds"]},
+        "description": "Machine learning team",
+    }
+
+
+def test_create_group_without_description_or_attributes(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.group(description=None, attributes={}))
+
+    AdminService().create_group(
+        name="Data Science", organizations=[aj.ORG_RID], attributes={}
+    )
+
+    assert json.loads(only_request(stub_foundry_http).content) == {
+        "name": "Data Science",
+        "organizations": [aj.ORG_RID],
+        "attributes": {},
+    }
+
+
+def test_delete_group(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    assert AdminService().delete_group(aj.GROUP_ID) is None
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "DELETE",
+        f"/api/v2/admin/groups/{aj.GROUP_ID}",
+    )
+
+
+def test_get_batch_groups_sends_request_elements(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": {aj.GROUP_ID: aj.group()}})
+
+    response = AdminService().get_batch_groups([aj.GROUP_ID])
+
+    assert isinstance(response, GetGroupsBatchResponse)
+    assert response.data[aj.GROUP_ID].name == "Data Science"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/groups/getBatch",
+    )
+    assert json.loads(request.content) == [{"groupId": aj.GROUP_ID}]
+
+
+def test_get_batch_groups_rejects_more_than_500(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 500 groups"):
+        AdminService().get_batch_groups([aj.GROUP_ID] * (MAX_BATCH_SIZE + 1))
+    assert stub_foundry_http.requests == []
+
+
+# ---------------------------------------------------------------- markings
+
+
+def test_list_markings_without_filters(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [aj.marking()], "nextPageToken": "n"})
+
+    page = AdminService().list_markings()
+
+    assert isinstance(page.data[0], Marking)
+    assert page.next_page_token == "n"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", "/api/v2/admin/markings")
+    assert dict(request.url.params) == {}
+
+
+def test_list_markings_with_filters_and_paging(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
+
+    AdminService().list_markings(
+        include_deleted=False, marking_type="CBAC", page_size=100, page_token="t"
+    )
+
+    assert dict(only_request(stub_foundry_http).url.params) == {
+        "includeDeleted": "false",
+        "markingType": "CBAC",
+        "pageSize": "100",
+        "pageToken": "t",
+    }
+
+
+def test_get_marking(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.marking())
+
+    marking = AdminService().get_marking(aj.MARKING_ID)
+
+    assert isinstance(marking, Marking)
+    assert (marking.category_id, marking.priority) == (aj.CATEGORY_ID, 10)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/markings/{aj.MARKING_ID}",
+    )
+    assert dict(request.url.params) == {}
+
+
+def test_get_batch_markings_sends_request_elements(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": {aj.MARKING_ID: aj.marking()}})
+
+    response = AdminService().get_batch_markings([aj.MARKING_ID])
+
+    assert isinstance(response, GetMarkingsBatchResponse)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/markings/getBatch",
+    )
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == [{"markingId": aj.MARKING_ID}]
+
+
+def test_get_batch_markings_rejects_more_than_500(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 500 markings"):
+        AdminService().get_batch_markings([aj.MARKING_ID] * (MAX_BATCH_SIZE + 1))
+    assert stub_foundry_http.requests == []
+
+
+def test_create_marking_sends_members_and_role_assignments(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.marking())
+
+    marking = AdminService().create_marking(
+        name="Project X",
+        category_id=aj.CATEGORY_ID,
+        initial_members=[aj.GROUP_ID],
+        initial_role_assignments=[("ADMINISTER", aj.USER_ID), ("USE", aj.GROUP_ID)],
+        description="Data about Project X",
+    )
+
+    assert isinstance(marking, Marking)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", "/api/v2/admin/markings")
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "name": "Project X",
+        "categoryId": aj.CATEGORY_ID,
+        "initialMembers": [aj.GROUP_ID],
+        "initialRoleAssignments": [
+            {"role": "ADMINISTER", "principalId": aj.USER_ID},
+            {"role": "USE", "principalId": aj.GROUP_ID},
+        ],
+        "description": "Data about Project X",
+    }
+
+
+def test_replace_marking_with_description_sends_one_request(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.marking(name="Renamed", description="New"))
+
+    marking = AdminService().replace_marking(
+        aj.MARKING_ID, name="Renamed", description="New"
+    )
+
+    assert marking.name == "Renamed"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "PUT",
+        f"/api/v2/admin/markings/{aj.MARKING_ID}",
+    )
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {"name": "Renamed", "description": "New"}
+
+
+def test_replace_marking_keeps_the_current_description(stub_foundry_http):
+    """Marking.replace clears a description it isn't sent."""
+    stub_foundry_http.respond(json=aj.marking())
+    stub_foundry_http.respond(json=aj.marking(name="Renamed"))
+
+    AdminService().replace_marking(aj.MARKING_ID, name="Renamed")
+
+    get_request, put_request = stub_foundry_http.requests
+    assert get_request.method == "GET"
+    assert put_request.method == "PUT"
+    assert json.loads(put_request.content) == {
+        "name": "Renamed",
+        "description": "Data about Project X",
+    }
+
+
+# ----------------------------------------------------------- organizations
+
+
+def test_get_organization(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.organization())
+
+    organization = AdminService().get_organization(aj.ORG_RID)
+
+    assert isinstance(organization, Organization)
+    assert organization.marking_id == aj.ORG_MARKING_ID
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/organizations/{aj.ORG_RID}",
+    )
+
+
+def test_create_organization_is_beta_and_sends_administrators(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.organization())
+
+    organization = AdminService().create_organization(
+        name="Research",
+        enrollment_rid=aj.ENROLLMENT_RID,
+        administrators=[aj.USER_ID],
+        description="Research department",
+        host="research.example.com",
+    )
+
+    assert isinstance(organization, Organization)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/organizations",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "name": "Research",
+        "enrollmentRid": aj.ENROLLMENT_RID,
+        "administrators": [aj.USER_ID],
+        "description": "Research department",
+        "host": "research.example.com",
+    }
+
+
+def test_replace_organization_with_every_field_sends_one_request(
+    stub_foundry_http,
+):
+    stub_foundry_http.respond(json=aj.organization(name="Lab"))
+
+    AdminService().replace_organization(
+        aj.ORG_RID, name="Lab", description="New", host="lab.example.com"
+    )
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "PUT",
+        f"/api/v2/admin/organizations/{aj.ORG_RID}",
+    )
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "name": "Lab",
+        "description": "New",
+        "host": "lab.example.com",
+    }
+
+
+def test_replace_organization_keeps_the_current_description_and_host(
+    stub_foundry_http,
+):
+    """Organization.replace clears the description and host it isn't sent."""
+    stub_foundry_http.respond(json=aj.organization())
+    stub_foundry_http.respond(json=aj.organization(name="Lab"))
+
+    organization = AdminService().replace_organization(aj.ORG_RID, name="Lab")
+
+    assert organization.name == "Lab"
+    get_request, put_request = stub_foundry_http.requests
+    assert (get_request.method, put_request.method) == ("GET", "PUT")
+    assert json.loads(put_request.content) == {
+        "name": "Lab",
+        "description": "Research department",
+        "host": "research.example.com",
+    }
+
+
+def test_replace_organization_keeps_only_what_is_not_given(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.organization(host=None))
+    stub_foundry_http.respond(json=aj.organization(name="Lab"))
+
+    AdminService().replace_organization(aj.ORG_RID, name="Lab", description="New")
+
+    body = json.loads(stub_foundry_http.requests[1].content)
+    assert body == {"name": "Lab", "description": "New"}  # no host to keep
+
+
+def test_list_available_roles_takes_only_the_organization(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
             "data": [
-                {"id": "user1", "username": "john"},
-                {"id": "user2", "username": "jane"},
+                aj.organization_role(),
+                aj.organization_role(aj.ROLE_ID_2, "Viewer", isDefault=False),
             ]
         }
-        mock_client.admin.User.get_batch.return_value = mock_response
+    )
 
-        # Execute
-        result = service.get_batch_users(user_ids)
+    response = AdminService().list_available_roles(aj.ORG_RID)
 
-        # Assert
-        mock_client.admin.User.get_batch.assert_called_once_with(body=user_ids)
-        assert "data" in result
+    assert isinstance(response, ListAvailableOrganizationRolesResponse)
+    assert [role.name for role in response.data] == ["Administrator", "Viewer"]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/organizations/{aj.ORG_RID}/listAvailableRoles",
+    )
+    assert dict(request.url.params) == {}
 
-    def test_get_batch_users_exceeds_limit(self, service, mock_client):
-        """Test batch get users exceeds limit."""
-        # Setup
-        user_ids = [f"user{i}" for i in range(501)]
 
-        # Execute & Assert
-        with pytest.raises(ValueError, match="Maximum batch size is 500"):
-            service.get_batch_users(user_ids)
+# ------------------------------------------------------------------- roles
 
-    # New Group Management Tests
-    def test_get_batch_groups(self, service, mock_client):
-        """Test batch getting groups."""
-        # Setup
-        group_ids = ["group1", "group2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"id": "group1", "name": "Engineering"},
-                {"id": "group2", "name": "Product"},
-            ]
+
+def test_get_role_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.role())
+
+    role = AdminService().get_role(aj.ROLE_ID)
+
+    assert isinstance(role, Role)
+    assert role.can_assigns == [aj.ROLE_ID_2]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"/api/v2/admin/roles/{aj.ROLE_ID}",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
+
+
+def test_get_batch_roles_is_beta_and_sends_request_elements(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
+            "data": {
+                aj.ROLE_ID: aj.role(),
+                aj.ROLE_ID_2: aj.role(aj.ROLE_ID_2, "Viewer"),
+            }
         }
-        mock_client.admin.Group.get_batch.return_value = mock_response
+    )
 
-        # Execute
-        result = service.get_batch_groups(group_ids)
+    response = AdminService().get_batch_roles([aj.ROLE_ID, aj.ROLE_ID_2])
 
-        # Assert
-        mock_client.admin.Group.get_batch.assert_called_once_with(body=group_ids)
-        assert "data" in result
+    assert isinstance(response, GetRolesBatchResponse)
+    assert response.data[aj.ROLE_ID_2].display_name == "Viewer"
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/admin/roles/getBatch",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == [
+        {"roleId": aj.ROLE_ID},
+        {"roleId": aj.ROLE_ID_2},
+    ]
 
-    def test_get_batch_groups_exceeds_limit(self, service, mock_client):
-        """Test batch get groups exceeds limit."""
-        # Setup
-        group_ids = [f"group{i}" for i in range(501)]
 
-        # Execute & Assert
-        with pytest.raises(ValueError, match="Maximum batch size is 500"):
-            service.get_batch_groups(group_ids)
-
-    # Marking Management Tests
-    def test_list_markings(self, service, mock_client):
-        """Test listing markings."""
-        # Setup
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"id": "marking1", "name": "Confidential"},
-                {"id": "marking2", "name": "Public"},
-            ],
-            "nextPageToken": None,
-        }
-        mock_client.admin.Marking.list.return_value = mock_response
-
-        # Execute
-        result = service.list_markings()
-
-        # Assert
-        mock_client.admin.Marking.list.assert_called_once_with(
-            page_size=None, page_token=None, preview=True
-        )
-        assert "data" in result
-
-    def test_get_marking(self, service, mock_client):
-        """Test getting a specific marking."""
-        # Setup
-        marking_id = "marking123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": marking_id,
-            "name": "Confidential",
-            "description": "Confidential marking",
-        }
-        mock_client.admin.Marking.get.return_value = mock_response
-
-        # Execute
-        result = service.get_marking(marking_id)
-
-        # Assert
-        mock_client.admin.Marking.get.assert_called_once_with(marking_id, preview=True)
-        assert result["id"] == marking_id
-
-    def test_get_batch_markings(self, service, mock_client):
-        """Test batch getting markings."""
-        # Setup
-        marking_ids = ["marking1", "marking2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"id": "marking1", "name": "Confidential"},
-                {"id": "marking2", "name": "Public"},
-            ]
-        }
-        mock_client.admin.Marking.get_batch.return_value = mock_response
-
-        # Execute
-        result = service.get_batch_markings(marking_ids)
-
-        # Assert
-        mock_client.admin.Marking.get_batch.assert_called_once_with(
-            body=marking_ids, preview=True
-        )
-        assert "data" in result
-
-    def test_get_batch_markings_exceeds_limit(self, service, mock_client):
-        """Test batch get markings exceeds limit."""
-        # Setup
-        marking_ids = [f"marking{i}" for i in range(501)]
-
-        # Execute & Assert
-        with pytest.raises(ValueError, match="Maximum batch size is 500"):
-            service.get_batch_markings(marking_ids)
-
-    def test_create_marking(self, service, mock_client):
-        """Test creating a marking."""
-        # Setup
-        marking_name = "New Marking"
-        description = "Test description"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "new_marking_id",
-            "name": marking_name,
-            "description": description,
-        }
-        mock_client.admin.Marking.create.return_value = mock_response
-
-        # Execute
-        result = service.create_marking(name=marking_name, description=description)
-
-        # Assert
-        mock_client.admin.Marking.create.assert_called_once_with(
-            name=marking_name, description=description, preview=True
-        )
-        assert result["name"] == marking_name
-
-    def test_create_marking_minimal(self, service, mock_client):
-        """Test creating a marking with only name."""
-        # Setup
-        marking_name = "Simple Marking"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "simple_marking_id",
-            "name": marking_name,
-        }
-        mock_client.admin.Marking.create.return_value = mock_response
-
-        # Execute
-        result = service.create_marking(name=marking_name)
-
-        # Assert
-        mock_client.admin.Marking.create.assert_called_once_with(
-            name=marking_name, preview=True
-        )
-        assert result["name"] == marking_name
-
-    def test_replace_marking(self, service, mock_client):
-        """Test replacing a marking."""
-        # Setup
-        marking_id = "marking123"
-        new_name = "Updated Marking"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": marking_id,
-            "name": new_name,
-        }
-        mock_client.admin.Marking.replace.return_value = mock_response
-
-        # Execute
-        result = service.replace_marking(marking_id=marking_id, name=new_name)
-
-        # Assert
-        mock_client.admin.Marking.replace.assert_called_once_with(
-            marking_id, name=new_name, preview=True
-        )
-        assert result["name"] == new_name
-
-    def test_create_marking_error(self, service, mock_client):
-        """Test error handling in create_marking."""
-        # Setup
-        mock_client.admin.Marking.create.side_effect = Exception("Permission denied")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to create marking"):
-            service.create_marking(name="Test Marking")
-
-    # New Organization Management Tests
-    def test_create_organization(self, service, mock_client):
-        """Test creating an organization."""
-        # Setup
-        org_name = "New Org"
-        enrollment_rid = "enrollment123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "new_org_id",
-            "name": org_name,
-        }
-        mock_client.admin.Organization.create.return_value = mock_response
-
-        # Execute
-        result = service.create_organization(
-            name=org_name, enrollment_rid=enrollment_rid
-        )
-
-        # Assert
-        mock_client.admin.Organization.create.assert_called_once_with(
-            name=org_name, enrollment_rid=enrollment_rid, preview=True
-        )
-        assert result["name"] == org_name
-
-    def test_create_organization_with_admins(self, service, mock_client):
-        """Test creating an organization with admin IDs."""
-        # Setup
-        org_name = "New Org"
-        enrollment_rid = "enrollment123"
-        admin_ids = ["admin1", "admin2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": "new_org_id",
-            "name": org_name,
-        }
-        mock_client.admin.Organization.create.return_value = mock_response
-
-        # Execute
-        result = service.create_organization(
-            name=org_name, enrollment_rid=enrollment_rid, admin_ids=admin_ids
-        )
-
-        # Assert
-        mock_client.admin.Organization.create.assert_called_once_with(
-            name=org_name,
-            enrollment_rid=enrollment_rid,
-            admin_ids=admin_ids,
-            preview=True,
-        )
-        assert result["name"] == org_name
-
-    def test_replace_organization(self, service, mock_client):
-        """Test replacing an organization."""
-        # Setup
-        org_rid = "org123"
-        new_name = "Updated Org"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "id": org_rid,
-            "name": new_name,
-        }
-        mock_client.admin.Organization.replace.return_value = mock_response
-
-        # Execute
-        result = service.replace_organization(organization_rid=org_rid, name=new_name)
-
-        # Assert
-        mock_client.admin.Organization.replace.assert_called_once_with(
-            org_rid, name=new_name, preview=True
-        )
-        assert result["name"] == new_name
-
-    def test_list_available_roles(self, service, mock_client):
-        """Test listing available roles for an organization."""
-        # Setup
-        org_rid = "org123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"id": "role1", "name": "Admin"},
-                {"id": "role2", "name": "Editor"},
-            ],
-            "nextPageToken": None,
-        }
-        mock_client.admin.Organization.list_available_roles.return_value = mock_response
-
-        # Execute
-        result = service.list_available_roles(org_rid)
-
-        # Assert
-        mock_client.admin.Organization.list_available_roles.assert_called_once_with(
-            org_rid, page_size=None, page_token=None, preview=True
-        )
-        assert "data" in result
-
-    # New Role Management Tests
-    def test_get_batch_roles(self, service, mock_client):
-        """Test batch getting roles."""
-        # Setup
-        role_ids = ["role1", "role2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"id": "role1", "name": "Admin"},
-                {"id": "role2", "name": "Editor"},
-            ]
-        }
-        mock_client.admin.Role.get_batch.return_value = mock_response
-
-        # Execute
-        result = service.get_batch_roles(role_ids)
-
-        # Assert
-        mock_client.admin.Role.get_batch.assert_called_once_with(
-            body=role_ids, preview=True
-        )
-        assert "data" in result
-
-    def test_get_batch_roles_exceeds_limit(self, service, mock_client):
-        """Test batch get roles exceeds limit."""
-        # Setup
-        role_ids = [f"role{i}" for i in range(501)]
-
-        # Execute & Assert
-        with pytest.raises(ValueError, match="Maximum batch size is 500"):
-            service.get_batch_roles(role_ids)
+def test_get_batch_roles_rejects_more_than_500(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 500 roles"):
+        AdminService().get_batch_roles([aj.ROLE_ID] * (MAX_BATCH_SIZE + 1))
+    assert stub_foundry_http.requests == []

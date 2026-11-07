@@ -1,396 +1,433 @@
-"""Tests for DataHealth commands."""
+"""Tests for `pltr data-health` against a real FoundryClient (only HTTP is faked)."""
+
+import csv
+import io
+import json
 
 import pytest
-import json
-from unittest.mock import Mock, patch
 from typer.testing import CliRunner
+
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_data_health as fd
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+API = "/api/v2/dataHealth/checks"
 
 
-class TestDataHealthCommands:
-    """Test DataHealth CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, ["data-health", *args], **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock DataHealthService."""
-        with patch("pltr.commands.data_health.DataHealthService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
-    # ===== Check Get Tests =====
 
-    def test_check_get_success(self, runner, mock_service):
-        """Test successful check retrieval."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        response = {
-            "rid": check_rid,
-            "config": {"type": "buildStatus"},
-            "groups": [],
-            "intent": "Monitor builds",
+@pytest.fixture
+def interactive(monkeypatch):
+    """Pretend stdin is a terminal so confirmation prompts are allowed."""
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
+
+
+# ------------------------------------------------------------------- help
+
+
+@pytest.mark.parametrize(
+    "group, commands",
+    [
+        ("check", ("get", "create", "replace", "delete")),
+        ("report", ("get", "latest")),
+    ],
+)
+def test_every_command_is_labeled_beta(group, commands):
+    result = invoke(group, "--help")
+
+    lines = result.stdout.splitlines()
+    for command in commands:
+        line = next(
+            line for line in lines if line.lstrip("│| ").startswith(f"{command} ")
+        )
+        assert "[beta]" in line, line
+
+
+# -------------------------------------------------------------- check get
+
+
+def test_get_check_table(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
+
+    result = invoke("check", "get", fd.CHECK_RID)
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        fd.CHECK_RID,
+        "buildStatus",
+        "Monitor production builds",
+        fd.CHECK_GROUP_RID,
+        fj.USER_ID,
+        "2024-01-02T00:00:00+00:00",
+        '"severity":"MODERATE"',
+    ):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fd.CHECK_RID}"
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_check_json(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
+
+    result = invoke("check", "get", fd.CHECK_RID, "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == fd.sdk_json(fd.check())
+    assert result.stderr == ""
+
+
+def test_get_check_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check(intent=None))
+
+    result = invoke("check", "get", fd.CHECK_RID, "-f", "csv")
+
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert (row["RID"], row["Type"], row["Intent"]) == (
+        fd.CHECK_RID,
+        "buildStatus",
+        "",
+    )
+
+
+def test_get_check_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
+
+    result = invoke("check", "get", fd.CHECK_RID, "--preview", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    [warning] = json_lines(result.stderr)
+    assert "--preview is deprecated" in warning["message"]
+
+
+def test_get_check_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("CheckNotFound", parameters={"checkRid": fd.CHECK_RID})
+    )
+
+    result = invoke("check", "get", fd.CHECK_RID, "--format", "json")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "CheckNotFound")
+
+
+# ----------------------------------------------------------- check create
+
+
+def test_create_check_inline_json(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
+
+    result = invoke(
+        "check",
+        "create",
+        json.dumps(fd.BUILD_STATUS_CONFIG),
+        "--intent",
+        "Monitor production builds",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"Created check {fd.CHECK_RID}" in result.stderr
+    assert fd.CHECK_RID in result.stdout
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", API)
+    assert request.url.params["preview"] == "true"
+    assert json.loads(request.content) == {
+        "config": fd.BUILD_STATUS_CONFIG,
+        "intent": "Monitor production builds",
+    }
+
+
+def test_create_check_from_file_json_output(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=fd.check())
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(fd.BUILD_STATUS_CONFIG))
+
+    result = invoke("check", "create", f"@{path}", "-i", "why", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == fd.sdk_json(fd.check())
+    assert result.stderr == ""
+    assert json.loads(stub_foundry_http.requests[0].content)["intent"] == "why"
+
+
+@pytest.mark.parametrize(
+    "config, message",
+    [
+        ("{not json", "invalid JSON"),
+        ("@/nonexistent/config.json", "cannot read"),
+        ('{"type": "vibes"}', "Invalid argument"),
+    ],
+)
+def test_create_check_bad_config_is_a_usage_error(stub_foundry_http, config, message):
+    result = invoke("check", "create", config, "--format", "json")
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert message in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_create_check_validation_error_from_the_api(stub_foundry_http):
+    stub_foundry_http.respond(
+        400, json=fj.error("InvalidCheckConfig", "INVALID_ARGUMENT")
+    )
+
+    result = invoke(
+        "check", "create", json.dumps(fd.BUILD_STATUS_CONFIG), "--format", "json"
+    )
+
+    assert result.exit_code == 6
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == (
+        "validation_error",
+        "InvalidCheckConfig",
+    )
+
+
+# ---------------------------------------------------------- check replace
+
+
+def test_replace_check_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke(
+        "check",
+        "replace",
+        fd.CHECK_RID,
+        json.dumps(fd.REPLACE_BUILD_STATUS_CONFIG),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "confirmation_required"
+    assert stub_foundry_http.requests == []
+
+
+def test_replace_check_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check(intent="Page on failed builds"))
+
+    result = invoke(
+        "check",
+        "replace",
+        fd.CHECK_RID,
+        json.dumps(fd.REPLACE_BUILD_STATUS_CONFIG),
+        "--intent",
+        "Page on failed builds",
+        "--yes",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"Replaced check {fd.CHECK_RID}" in result.stderr
+    assert "Page on failed builds" in result.stdout
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("PUT", f"{API}/{fd.CHECK_RID}")
+    assert request.url.params["preview"] == "true"
+    assert json.loads(request.content) == {
+        "config": fd.REPLACE_BUILD_STATUS_CONFIG,
+        "intent": "Page on failed builds",
+    }
+
+
+def test_replace_check_prompts_when_interactive(stub_foundry_http, interactive):
+    stub_foundry_http.respond(json=fd.check())
+
+    result = invoke(
+        "check",
+        "replace",
+        fd.CHECK_RID,
+        json.dumps(fd.REPLACE_BUILD_STATUS_CONFIG),
+        input="y\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"Replace the configuration of check {fd.CHECK_RID}?" in result.stderr
+
+
+def test_replace_check_invalid_json_fails_before_asking(stub_foundry_http):
+    result = invoke("check", "replace", fd.CHECK_RID, "{oops", "-f", "json")
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+# ----------------------------------------------------------- check delete
+
+
+def test_delete_check_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke("check", "delete", fd.CHECK_RID)
+
+    assert result.exit_code == 2
+    assert "Re-run with --yes" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_delete_check_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("check", "delete", fd.CHECK_RID, "-y")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""
+    assert f"Deleted check {fd.CHECK_RID}" in result.stderr
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("DELETE", f"{API}/{fd.CHECK_RID}")
+    assert request.url.params["preview"] == "true"
+
+
+def test_delete_check_force_is_a_deprecated_alias_for_yes(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("check", "delete", fd.CHECK_RID, "--force", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) is None
+    assert json_lines(result.stderr) == [
+        {
+            "type": "warning",
+            "message": "--force is deprecated and will be removed in a future "
+            "release; use --yes.",
         }
-        mock_service.get_check.return_value = response
+    ]
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "get",
-                check_rid,
-                "--format",
-                "json",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_check.assert_called_once_with(
-            check_rid=check_rid,
-            preview=False,
-        )
+def test_delete_check_short_f_is_now_format(stub_foundry_http):
+    """-f used to mean --force; it is --format now, so a bare -f is an error."""
+    result = invoke("check", "delete", fd.CHECK_RID, "-f")
 
-    def test_check_get_with_preview(self, runner, mock_service):
-        """Test check retrieval with preview mode."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        response = {"rid": check_rid, "config": {}, "groups": []}
-        mock_service.get_check.return_value = response
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "get",
-                check_rid,
-                "--preview",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_check.assert_called_once_with(
-            check_rid=check_rid,
-            preview=True,
-        )
+def test_delete_check_answering_no_aborts(stub_foundry_http, interactive):
+    result = invoke("check", "delete", fd.CHECK_RID, input="n\n")
 
-    def test_check_get_error(self, runner, mock_service):
-        """Test check retrieval error handling."""
-        # Setup
-        mock_service.get_check.side_effect = Exception("Not found")
+    assert result.exit_code == 1
+    assert "Aborted" in result.stderr
+    assert stub_foundry_http.requests == []
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "get",
-                "ri.data-health.main.check.notfound",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
+# ------------------------------------------------------------- report get
 
-    # ===== Check Create Tests =====
 
-    def test_check_create_success(self, runner, mock_service):
-        """Test successful check creation."""
-        # Setup
-        config = {
-            "type": "buildStatus",
-            "subject": {
-                "datasetRid": "ri.foundry.main.dataset.xxx",
-                "branchId": "master",
-            },
-            "statusCheckConfig": {"severity": "WARNING"},
+def test_get_report_table(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check_report())
+
+    result = invoke("report", "get", fd.CHECK_RID, fd.REPORT_RID)
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        fd.REPORT_RID,
+        "FAILED",
+        "The latest build failed",
+        fd.CHECK_RID,
+        "buildStatus",
+    ):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fd.CHECK_RID}/checkReports/{fd.REPORT_RID}"
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_report_json(stub_foundry_http):
+    report = fd.check_report(status="PASSED", message=None)
+    stub_foundry_http.respond(json=report)
+
+    result = invoke("report", "get", fd.CHECK_RID, fd.REPORT_RID, "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == fd.sdk_json(report)
+
+
+def test_get_report_needs_both_rids(stub_foundry_http):
+    """The old form `report get <REPORT_RID>` can't address a report."""
+    result = invoke("report", "get", fd.REPORT_RID)
+
+    assert result.exit_code == 2
+    assert "CHECK_REPORT_RID" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_get_report_not_found(stub_foundry_http):
+    parameters = {"checkRid": fd.CHECK_RID, "checkReportRid": fd.REPORT_RID}
+    stub_foundry_http.respond(
+        404, json=fj.error("CheckReportNotFound", parameters=parameters)
+    )
+
+    result = invoke("report", "get", fd.CHECK_RID, fd.REPORT_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    error = json_lines(result.stderr)[-1]
+    assert (error["errorName"], error["parameters"]) == (
+        "CheckReportNotFound",
+        parameters,
+    )
+
+
+# ---------------------------------------------------------- report latest
+
+
+def test_latest_reports_table(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
+            "data": [
+                fd.check_report(),
+                fd.check_report(fd.REPORT_RID_2, "PASSED", message=None),
+            ]
         }
-        response = {
-            "rid": "ri.data-health.main.check.abc123",
-            "config": config,
-            "groups": [],
-        }
-        mock_service.create_check.return_value = response
+    )
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "create",
-                json.dumps(config),
-                "--intent",
-                "Monitor builds",
-                "--format",
-                "json",
-            ],
-        )
+    result = invoke("report", "latest", fd.CHECK_RID, "--format", "csv")
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.create_check.assert_called_once_with(
-            config=config,
-            intent="Monitor builds",
-            preview=False,
-        )
-        assert "Created check" in result.output
+    assert result.exit_code == 0, result.output
+    rows = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert [(row["RID"], row["Status"], row["Message"]) for row in rows] == [
+        (fd.REPORT_RID, "FAILED", "The latest build failed"),
+        (fd.REPORT_RID_2, "PASSED", ""),
+    ]
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fd.CHECK_RID}/checkReports/getLatest"
+    assert dict(request.url.params) == {"preview": "true"}
 
-    def test_check_create_invalid_json(self, runner, mock_service):
-        """Test check creation with invalid JSON."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "create",
-                "not valid json",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Invalid JSON" in result.output
+def test_latest_reports_json_and_limit(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [fd.check_report()]})
 
-    def test_check_create_error(self, runner, mock_service):
-        """Test check creation error handling."""
-        # Setup
-        mock_service.create_check.side_effect = Exception("Permission denied")
+    result = invoke("report", "latest", fd.CHECK_RID, "--limit", "3", "-f", "json")
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "create",
-                '{"type": "buildStatus"}',
-            ],
-        )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"data": [fd.sdk_json(fd.check_report())]}
+    assert dict(stub_foundry_http.requests[0].url.params) == {
+        "limit": "3",
+        "preview": "true",
+    }
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
 
-    # ===== Check Replace Tests =====
+def test_latest_reports_limit_is_checked(stub_foundry_http):
+    result = invoke("report", "latest", fd.CHECK_RID, "--limit", "101")
 
-    def test_check_replace_success(self, runner, mock_service):
-        """Test successful check replacement."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        config = {"type": "buildStatus", "statusCheckConfig": {"severity": "ERROR"}}
-        response = {
-            "rid": check_rid,
-            "config": config,
-            "intent": "Updated threshold",
-        }
-        mock_service.replace_check.return_value = response
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "replace",
-                check_rid,
-                json.dumps(config),
-                "--intent",
-                "Updated threshold",
-                "--format",
-                "json",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.replace_check.assert_called_once_with(
-            check_rid=check_rid,
-            config=config,
-            intent="Updated threshold",
-            preview=False,
-        )
-        assert "Updated check" in result.output
+def test_latest_reports_empty(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
 
-    def test_check_replace_error(self, runner, mock_service):
-        """Test check replacement error handling."""
-        # Setup
-        mock_service.replace_check.side_effect = Exception("Not found")
+    result = invoke("report", "latest", fd.CHECK_RID)
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "replace",
-                "ri.data-health.main.check.abc123",
-                '{"type": "buildStatus"}',
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
-
-    # ===== Check Delete Tests =====
-
-    def test_check_delete_success(self, runner, mock_service):
-        """Test successful check deletion."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_service.delete_check.return_value = None
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "delete",
-                check_rid,
-                "--force",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.delete_check.assert_called_once_with(
-            check_rid=check_rid,
-            preview=False,
-        )
-        assert "Deleted check" in result.output
-
-    def test_check_delete_cancelled(self, runner, mock_service):
-        """Test check deletion cancellation."""
-        # Execute - input 'n' for confirmation
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "delete",
-                "ri.data-health.main.check.abc123",
-            ],
-            input="n\n",
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Cancelled" in result.output
-        mock_service.delete_check.assert_not_called()
-
-    def test_check_delete_error(self, runner, mock_service):
-        """Test check deletion error handling."""
-        # Setup
-        mock_service.delete_check.side_effect = Exception("Permission denied")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "check",
-                "delete",
-                "ri.data-health.main.check.abc123",
-                "--force",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
-
-    # ===== Report Get Tests =====
-
-    def test_report_get_success(self, runner, mock_service):
-        """Test successful report retrieval."""
-        # Setup
-        report_rid = "ri.data-health.main.check-report.abc123"
-        response = {
-            "rid": report_rid,
-            "check": {"rid": "ri.data-health.main.check.xxx", "config": {}},
-            "result": {"status": "PASSED", "message": "Check passed"},
-            "createdTime": "2024-01-15T10:30:00Z",
-        }
-        mock_service.get_check_report.return_value = response
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "report",
-                "get",
-                report_rid,
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_check_report.assert_called_once_with(
-            check_report_rid=report_rid,
-            preview=False,
-        )
-        assert "PASSED" in result.output
-
-    def test_report_get_failed_status(self, runner, mock_service):
-        """Test report retrieval with failed status."""
-        # Setup
-        report_rid = "ri.data-health.main.check-report.abc123"
-        response = {
-            "rid": report_rid,
-            "check": {"rid": "ri.data-health.main.check.xxx", "config": {}},
-            "result": {"status": "FAILED", "message": "Build failed"},
-            "createdTime": "2024-01-15T10:30:00Z",
-        }
-        mock_service.get_check_report.return_value = response
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "report",
-                "get",
-                report_rid,
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "FAILED" in result.output
-
-    def test_report_get_error(self, runner, mock_service):
-        """Test report retrieval error handling."""
-        # Setup
-        mock_service.get_check_report.side_effect = Exception("Not found")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "data-health",
-                "report",
-                "get",
-                "ri.data-health.main.check-report.notfound",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
+    assert result.exit_code == 0
+    assert "No results." in result.stderr

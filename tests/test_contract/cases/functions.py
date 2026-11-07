@@ -1,11 +1,16 @@
 """Contract-test cases for src/pltr/commands/functions.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "functions query execute",
-    "functions query execute-by-rid",
-    "functions query get",
-    "functions query get-by-rid",
-    "functions value-type get",
+from tests import foundry_json_functions as ff
+from tests.test_contract.cases import CONTRACT_RID
+
+SUCCESS = {
+    "functions query get": [{"json": ff.query()}],
+    "functions query get-by-rid": [{"json": ff.query()}],
+    "functions query execute": [{"json": {"value": [{"name": "Acme"}]}}],
+    # resolves the RID, then executes the version it found
+    "functions query execute-by-rid": [
+        {"json": ff.query()},
+        {"json": {"value": 42}},
+    ],
+    "functions value-type get": [{"json": ff.value_type(CONTRACT_RID)}],
 }
