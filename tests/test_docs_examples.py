@@ -317,10 +317,12 @@ def _flags(command: click.Command) -> Dict[str, click.Option]:
 
 
 def _is_placeholder(word: str) -> bool:
-    """`<rid>`, `{name}`, `[OPTIONS]`, `$VAR`, `COMMAND`, `...`."""
+    """`<rid>`, `{name}`, `[OPTIONS]`, `$VAR`, `COMMAND`, `...`, and words
+    with a placeholder inside, such as `da<TAB>`."""
     return bool(
         word in ("...", "…", "SUBSTITUTION")
         or word.startswith(("<", "{", "[", "$"))
+        or _ANGLE_PLACEHOLDER.search(word)
         or re.fullmatch(r"[A-Z][A-Z0-9_]*", word)
     )
 
@@ -575,6 +577,7 @@ def test_find_examples(markdown: str, expected: List[Tuple[str, ...]]) -> None:
         ("pltr folder list ri.x -f json -o out.json", None),
         ("pltr dataset files get <rid> data.csv -", None),
         ("pltr <group> --help", None),
+        ("pltr da<TAB>", None),
         ("pltr dataset", None),
         ("pltr --version", None),
         ("pltr api datasets dataset get <rid>", None),
