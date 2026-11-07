@@ -15,6 +15,7 @@ tree.
 """
 
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -43,12 +44,51 @@ HELP_WORDS = {"help", "?", ":help", ":h"}
 #: shell lines are split without backslash escapes there.
 WINDOWS = sys.platform == "win32"
 
+#: Lines that pass credentials (``configure configure --token X``, or
+#: ``!export FOUNDRY_TOKEN=X``) are never written to the history file.
+_SECRET_LINE = re.compile(
+    r"(?:^|\s)--(?:token|client-secret|client-id)(?:[=\s]|$)"
+    r"|\bFOUNDRY_(?:TOKEN|CLIENT_SECRET)="
+)
+
+
+def holds_credentials(line: str) -> bool:
+    """Whether a shell line passes a token, client ID or client secret."""
+    return _SECRET_LINE.search(line) is not None
+
 
 def get_history_file() -> Path:
-    """Get the path to the history file for the REPL."""
-    config_dir = Path.home() / ".config" / "pltr"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir / "repl_history"
+    """The REPL history file, in pltr's configuration directory.
+
+    That is ``$XDG_CONFIG_HOME/pltr`` or ``~/.config/pltr``, like the rest of
+    pltr's configuration. On POSIX the directory is created private (0700)
+    and the file is private (0600) too.
+    """
+    from ..config.settings import Settings
+
+    config_dir = Settings().config_dir
+    config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    history = config_dir / "repl_history"
+    descriptor = os.open(history, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.close(descriptor)
+    if os.name == "posix" and history.stat().st_mode & 0o077:
+        history.chmod(0o600)  # one created by an earlier version (0644)
+    return history
+
+
+def make_history(path: Path) -> Any:
+    """A prompt_toolkit FileHistory that doesn't save lines with credentials.
+
+    Such lines can still be recalled with the arrow keys during the session.
+    """
+    from prompt_toolkit.history import FileHistory
+
+    class PltrHistory(FileHistory):
+        def store_string(self, string: str) -> None:
+            if not holds_credentials(string):
+                super().store_string(string)
+
+    return PltrHistory(str(path))
 
 
 def get_prompt() -> str:
@@ -239,7 +279,6 @@ def start(
         return
 
     from prompt_toolkit import PromptSession
-    from prompt_toolkit.history import FileHistory
 
     if profile:
         click.secho(f"Using profile: {profile}", fg="green", err=True)
@@ -248,7 +287,7 @@ def start(
 
     session: Any = PromptSession(
         message=get_prompt,
-        history=FileHistory(str(get_history_file())),
+        history=make_history(get_history_file()),
         completer=build_completer(root),
         complete_while_typing=True,
         enable_history_search=True,

@@ -379,6 +379,12 @@ can search. See Added.
   An unsupported or undetectable shell exits with 2.
 - `pltr shell` prints its banner and "Goodbye!" on stderr, and only when
   stdin is a terminal. It runs each line as its own `pltr` invocation.
+- `pltr shell` keeps its history (`repl_history`) in pltr's configuration
+  directory, `$XDG_CONFIG_HOME/pltr` when that is set (it ignored it), and on
+  macOS and Linux the file is private (0600, also an existing one) in a
+  directory created private (0700). Lines that pass `--token`, `--client-id`
+  or `--client-secret`, or set `FOUNDRY_TOKEN` or `FOUNDRY_CLIENT_SECRET`,
+  aren't saved to it; they can still be recalled during the session.
 
 #### `folder` and `space`
 
