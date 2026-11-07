@@ -449,13 +449,13 @@ can search. See Added.
 - `branches create --parent BRANCH` (default `master`) starts the new branch
   at the parent's latest transaction. `branches delete master` is refused
   (exit 2).
-- `branches create` without `--transaction-rid`, when the parent's latest
-  transaction is still open: a branch can only start at a committed
-  transaction, so the API rejects it (`TransactionNotCommitted`, exit 6), and
-  the error now says to commit or abort that transaction first, or to pass
-  `--transaction-rid` with a committed one (`branches transactions` lists
-  them). pltr doesn't look one up itself, because the only listing is a beta
-  endpoint and `branches create` stays GA. Not verified against a live stack.
+- `branches create` says what to do when the parent's latest transaction is
+  still open. A branch can only start at a committed transaction, so the API
+  rejects it (`TransactionNotCommitted`, exit 6); the error now says to commit
+  or abort that transaction first, or to pass `--transaction-rid` with a
+  committed one (`branches transactions` lists them). pltr doesn't look one
+  up itself: the only listings are beta endpoints, and `branches create`
+  stays GA. Not verified against a live stack.
 - A leading `/` in a dataset file path is dropped (the API rejects it).
 - `preview` gives duplicate column names a `_2`, `_3` suffix with a warning,
   like `sql`, instead of letting the later column overwrite the earlier one.
