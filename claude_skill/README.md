@@ -1,51 +1,56 @@
-# pltr-cli Claude Code Skill
+# pltr-cli agent skill
 
-This directory contains a Claude Code skill for working with Palantir Foundry using the pltr-cli.
+A Claude Code skill (it works with other agents that read `SKILL.md` skills)
+for working with Palantir Foundry through the pltr CLI.
 
-## Installation
+## Install
 
-### Use Within This Repository
-
-The skill is automatically available when using Claude Code in this repository.
-
-### Install Globally
+Inside this repository the skill is available to Claude Code as is. To use it
+everywhere, copy it to your skills directory:
 
 ```bash
 cp -r claude_skill ~/.claude/skills/pltr
 ```
 
-## Structure
+The skill needs a pltr release that has `pltr commands` (check with
+`pltr commands --help`), installed for example with `uv tool install pltr-cli`.
+
+## Layout
 
 ```
 claude_skill/
-├── SKILL.md                    # Main skill definition
-├── reference/                  # Command references (loaded on-demand)
-│   ├── quick-start.md         # Setup and authentication
-│   ├── dataset-commands.md    # Dataset operations
-│   ├── sql-commands.md        # SQL queries
-│   ├── orchestration-commands.md  # Builds, jobs, schedules
-│   ├── ontology-commands.md   # Ontology operations
-│   ├── admin-commands.md      # User/group management
-│   ├── filesystem-commands.md # Folders, spaces, projects
-│   ├── connectivity-commands.md   # Connections, imports
-│   └── mediasets-commands.md  # Media operations
-└── workflows/                  # Common patterns
-    ├── data-analysis.md       # Analysis workflows
-    ├── data-pipeline.md       # ETL and pipelines
-    └── permission-management.md   # Access control
+├── SKILL.md            # hand-written: auth, output contract, safety, RIDs, workflows
+├── README.md           # this file
+├── workflows/          # hand-written, longer workflows
+│   ├── explore-data.md
+│   ├── builds-and-schedules.md
+│   └── permissions.md
+└── reference/          # GENERATED from the command manifest; don't edit
+    ├── index.md        # what's where, and how to read an entry
+    ├── curated/        # one file per curated group: dataset.md, sql.md, ...
+    └── api/            # one file per `pltr api` namespace (large ones per resource)
 ```
 
-## Usage
+`SKILL.md` is short and always loaded. An agent finds commands with
+`pltr commands search` and reads one command's details with
+`pltr commands show`, so it loads a `reference/` file only when it needs to
+browse a whole area.
 
-Ask Claude Code questions about Foundry tasks:
+## Keeping it current
 
-- "How do I query a dataset?"
-- "Help me set up a daily build schedule"
-- "Grant viewer access to john.doe on my dataset"
-- "Execute SQL query to count rows"
+`reference/` is generated from the command manifest
+(`pltr commands list --format json`). After changing commands (converting a
+module, regenerating `pltr api` after an SDK bump), run:
 
-Claude will automatically use this skill to provide accurate guidance.
+```bash
+uv run python scripts/generate_skill_reference.py
+```
 
-## Documentation
+That's the only step. The test `tests/test_manifest/test_skill_reference.py`
+fails in CI when the committed reference is stale, and also when `SKILL.md`,
+this README or a workflow mentions a `pltr` command or option that doesn't
+exist. `uv run python scripts/generate_skill_reference.py --check` runs the
+same checks locally.
 
-See [docs/user-guide/claude-skill.md](../docs/user-guide/claude-skill.md) for full documentation.
+See [docs/user-guide/claude-skill.md](../docs/user-guide/claude-skill.md) for
+more.
