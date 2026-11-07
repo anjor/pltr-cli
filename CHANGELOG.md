@@ -784,6 +784,9 @@ from `--help`. They will be removed in the next release.
   copy. cp no longer builds local paths from the source's file names: it
   downloads each file to a numbered temporary file, so every name is copied
   and none can point outside the temporary directory, on any platform.
+- Ctrl-C during a `pltr cp` dataset copy left the partial copy behind with
+  an open transaction. cp now aborts the transaction and moves the copy to
+  the trash on Ctrl-C too, then exits (code 130).
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No

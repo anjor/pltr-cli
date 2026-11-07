@@ -200,8 +200,9 @@ class CopyService:
             copied = self._copy_dataset_files(dataset_rid, new_dataset_rid)
             if self.copy_schema:
                 self._copy_dataset_schema(dataset_rid, new_dataset_rid, copied)
-        except Exception:
-            # Trash the partly copied dataset, then report the failure.
+        except BaseException:
+            # Trash the partly copied dataset, also on Ctrl-C (KeyboardInterrupt),
+            # then report the failure.
             warn(f"Removing the partly copied dataset {new_dataset_rid}")
             try:
                 self.resource_service.delete_resource(new_dataset_rid)
@@ -288,13 +289,15 @@ class CopyService:
                 target_rid, transaction_rid
             )
             info(f"  Committed transaction {committed.rid}")
-        except Exception as exc:
+        except BaseException as exc:
             if transaction_rid is not None:
                 try:
                     self.dataset_service.abort_transaction(target_rid, transaction_rid)
                     warn(f"Rolled back transaction {transaction_rid}")
                 except Exception:
                     warn(f"Failed to roll back transaction {transaction_rid}")
+            if not isinstance(exc, Exception):
+                raise  # Ctrl-C (KeyboardInterrupt): rolled back, not an error
 
             if self.debug:
                 traceback.print_exc()

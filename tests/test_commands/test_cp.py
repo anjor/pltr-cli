@@ -308,6 +308,38 @@ def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http):
     )
 
 
+def test_cp_ctrl_c_cleans_up_the_copy(stub_foundry_http, monkeypatch):
+    stub = stub_foundry_http
+    stub.respond(json=SOURCE_DATASET)
+    stub.respond(json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET))
+    stub.respond(json=COPY_BRANCHES)
+    stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))
+    stub.respond(json=fs.transaction())  # Transaction.create
+    stub.respond(json=fs.transaction(status="ABORTED"))  # abort
+    stub.respond(204)  # Resource.delete (to the trash)
+    queued = stub.next_response
+
+    def next_response(request):
+        if request.url.path.endswith("/content"):
+            raise KeyboardInterrupt  # Ctrl-C while downloading
+        return queued(request)
+
+    monkeypatch.setattr(stub, "next_response", next_response)
+
+    result = invoke("cp", fs.DATASET_RID, TARGET)
+
+    assert result.exit_code == 130  # Typer's exit code for Ctrl-C (128 + SIGINT)
+    assert result.stdout == ""
+    assert f"Rolled back transaction {fs.TRANSACTION_RID}" in result.stderr
+    assert "Removing the partly copied dataset" in result.stderr
+    abort, trash = stub.requests[-2:]
+    assert abort.url.path.endswith(f"/transactions/{fs.TRANSACTION_RID}/abort")
+    assert (trash.method, trash.url.path) == (
+        "DELETE",
+        f"/api/v2/filesystem/resources/{NEW_DATASET_RID}",
+    )
+
+
 def test_cp_failed_schema_copy_fails_the_dataset_copy(stub_foundry_http):
     invalid = fj.error(
         "InvalidSchema",

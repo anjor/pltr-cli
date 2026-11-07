@@ -326,6 +326,45 @@ def test_failed_file_copy_is_rolled_back_trashed_and_raised(stub_foundry_http, c
     assert f"Moved dataset {NEW_DATASET_RID} to the trash" in err
 
 
+def interrupt_downloads(stub, monkeypatch):
+    """Raise KeyboardInterrupt (Ctrl-C) when a file's content is requested."""
+    queued = stub.next_response
+
+    def next_response(request):
+        if request.url.path.endswith("/content"):
+            raise KeyboardInterrupt
+        return queued(request)
+
+    monkeypatch.setattr(stub, "next_response", next_response)
+
+
+def test_ctrl_c_aborts_the_transaction_and_trashes_the_copy(
+    stub_foundry_http, monkeypatch, capsys
+):
+    """Ctrl-C used to leave the copy with an open transaction (#181 review)."""
+    stub_foundry_http.respond(json=SOURCE_DATASET)
+    stub_foundry_http.respond(json=NEW_DATASET)
+    stub_foundry_http.respond(json=COPY_BRANCHES)
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("data/part-0.csv")]))
+    stub_foundry_http.respond(json=fs.transaction())  # Transaction.create
+    # File.content: Ctrl-C
+    stub_foundry_http.respond(json=fs.transaction(status="ABORTED"))  # abort
+    stub_foundry_http.respond(204)  # Resource.delete
+    interrupt_downloads(stub_foundry_http, monkeypatch)
+
+    # Re-raised as it is: not wrapped in "Failed to copy the files".
+    with pytest.raises(KeyboardInterrupt):
+        CopyService().copy_resource(fs.DATASET_RID, TARGET)
+
+    assert calls(stub_foundry_http)[-2:] == [
+        ("POST", f"{API}/{NEW_DATASET_RID}/transactions/{fs.TRANSACTION_RID}/abort"),
+        TRASH_CALL,
+    ]
+    err = capsys.readouterr().err
+    assert f"Rolled back transaction {fs.TRANSACTION_RID}" in err
+    assert f"Moved dataset {NEW_DATASET_RID} to the trash" in err
+
+
 def test_failed_schema_copy_trashes_the_copy_and_raises(stub_foundry_http, capsys):
     queue_files_copy(stub_foundry_http)
     stub_foundry_http.respond(json=SCHEMA)
