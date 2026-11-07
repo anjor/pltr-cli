@@ -231,23 +231,6 @@ SPEC = {
                     ],
                 },
                 {
-                    "name": "tile",
-                    "sdk": "tile",
-                    "summary": "Gets a PNG map tile for a media item.",
-                    "help": "Gets a PNG map tile for a media item. Only PNG tiles are currently supported.\nReturns `204 No Content` for a blank tile.\nReturns `400 Bad Request` when the tile path or coordinates are invalid or the tile transformation is unavailable.\nReturns `404 Not Found` when the requested media set or media item does not exist.\n\nRequired scopes: [api:mediasets-read]",
-                    "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/tiles/{z}/{x}/{y}",
-                    "beta": True,
-                    "binary": True,
-                    "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
-                        {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
-                        {"name": "z", "in": "path", "api": "z", "type": "int", "schema": "int", "required": True, "help": "The tile zoom level."},
-                        {"name": "x", "in": "path", "api": "x", "type": "int", "schema": "int", "required": True, "help": "The tile column."},
-                        {"name": "y", "in": "path", "api": "y", "type": "int", "schema": "int", "required": True, "help": "The tile row."},
-                        {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
-                    ],
-                },
-                {
                     "name": "transform",
                     "sdk": "transform",
                     "summary": "Initiates a transformation on a media item.",

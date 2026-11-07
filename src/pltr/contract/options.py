@@ -299,12 +299,15 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
 
 
 def load_json_input(value: str, *, param_hint: str) -> Any:
-    """Parse a JSON option value given inline or as ``@path/to/file.json``.
+    """Parse a JSON option value given inline, as ``@path/to/file.json``, or
+    as ``@-`` (read from stdin).
 
     Invalid JSON (or an unreadable file) is a usage error (exit code 2).
     """
     text = value
-    if value.startswith("@"):
+    if value == "@-":
+        text = click.get_text_stream("stdin").read()
+    elif value.startswith("@"):
         path = value[1:]
         try:
             text = Path(path).read_text(encoding="utf-8")

@@ -28,6 +28,8 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
+import sys
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
@@ -151,13 +153,33 @@ def _identity(item: Any) -> Any:
 # --------------------------------------------------------------------- emit
 
 
+def _is_paged_model(result: Any) -> bool:
+    """A paged API response model, e.g. ``ListUsersResponse``/``SearchUsersResponse``.
+
+    Such a model has a list ``data`` field and a ``next_page_token`` field.
+    Tables and CSV show one row per item of its ``data``; JSON still prints
+    the whole response (with fields such as ``totalCount``).
+    """
+    fields = getattr(type(result), "model_fields", None)
+    return (
+        isinstance(fields, dict)
+        and "data" in fields
+        and "next_page_token" in fields
+        and isinstance(getattr(result, "data", None), list)
+    )
+
+
 def _rows(
     result: Any, rows: Optional[Callable[[Any], Iterable[Any]]]
 ) -> Tuple[List[Any], bool, Optional[str]]:
     """Return (row items, is_single_object, next_page_token)."""
     if rows is not None:
         return list(rows(result)), False, None
-    if isinstance(result, Page) or _is_resource_iterator(result):
+    if (
+        isinstance(result, Page)
+        or _is_resource_iterator(result)
+        or _is_paged_model(result)
+    ):
         return list(result.data), False, result.next_page_token
     if isinstance(result, (list, tuple)):
         return list(result), False, None
@@ -229,8 +251,9 @@ def emit(
 
     Args:
         result: what the SDK returned: a model, a dict, a list, a
-            :class:`Page`, an SDK ``ResourceIterator`` (its current page) or
-            ``None`` (a call with no response body).
+            :class:`Page`, an SDK ``ResourceIterator`` (its current page), a
+            paged response model (tables show its ``data``; JSON prints the
+            whole response) or ``None`` (a call with no response body).
         format: ``table``, ``json`` or ``csv`` (the command's ``--format``).
         output: file path from ``--output``; stdout when ``None``.
         columns: curated table/CSV columns (see module docstring). Defaults
@@ -287,3 +310,66 @@ def emit(
             f"More results available. Next page: --page-token {next_page_token} "
             "(or --all to fetch every page)."
         )
+
+
+# ------------------------------------------------------------------- binary
+
+
+def _stdout_is_terminal() -> bool:
+    try:
+        return sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def check_binary_output(output: Optional[str]) -> None:
+    """Refuse to write binary data to a terminal (a usage error, exit code 2).
+
+    Call it before requesting binary content, so a command fails before it
+    downloads anything; :func:`emit_bytes` checks again. ``output`` is the
+    command's ``--output`` value (``-`` means stdout, even on a terminal).
+    """
+    if output is None and _stdout_is_terminal():
+        raise click.UsageError(
+            "This command returns binary data: pass --output FILE, or redirect "
+            "stdout to a file or a pipe."
+        )
+
+
+def emit_bytes(
+    chunks: Union[bytes, Iterable[bytes]], *, output: Optional[str] = None
+) -> int:
+    """Write binary data (file content, Arrow, Parquet, images) to stdout or a file.
+
+    ``chunks`` is ``bytes`` or an iterable of ``bytes``, for example an SDK
+    streamed response's ``iter_bytes()``, so large downloads aren't held in
+    memory. The data goes to ``output`` (``-`` means stdout), or to stdout,
+    but never to a terminal (see :func:`check_binary_output`). A partially
+    written file is deleted when the stream fails. In text mode a
+    "Wrote N bytes to FILE" message goes to stderr. Returns the number of
+    bytes written.
+    """
+    check_binary_output(output)
+    if isinstance(chunks, (bytes, bytearray)):
+        chunks = [bytes(chunks)]
+    written = 0
+    if output and output != "-":
+        try:
+            with open(output, "wb") as handle:
+                for chunk in chunks:
+                    handle.write(chunk)
+                    written += len(chunk)
+        except BaseException:
+            try:
+                os.remove(output)
+            except OSError:
+                pass
+            raise
+        success(f"Wrote {written} bytes to {output}")
+        return written
+    stream = click.get_binary_stream("stdout")
+    for chunk in chunks:
+        stream.write(chunk)
+        written += len(chunk)
+    stream.flush()
+    return written

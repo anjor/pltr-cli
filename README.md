@@ -30,6 +30,19 @@ A comprehensive command-line interface for Palantir Foundry APIs, providing 81+ 
 
 ## Installation
 
+### Recommended: an isolated install
+
+```bash
+uv tool install pltr-cli    # or: pipx install pltr-cli
+```
+
+This gives pltr its own environment, with the `foundry-platform-sdk` version
+pltr was tested with. pltr accepts a range of SDK versions, but its
+[`pltr api`](#every-endpoint-pltr-api) commands are generated from one
+version: in a shared environment where another package upgrades the SDK, a
+command whose SDK method changed fails with a clear error. Upgrade with
+`uv tool upgrade pltr-cli` (or `pipx upgrade pltr-cli`).
+
 ### Using pip
 
 ```bash
@@ -192,6 +205,60 @@ Set `PLTR_DEBUG=1` to see a Python traceback for an unexpected error.
 > `space` first). Until a module is converted, some of its status messages
 > may still appear on stdout, and its commands may exit with code 1 for every
 > error, use their own JSON keys and confirm in their own way.
+
+## Every endpoint: `pltr api`
+
+`pltr api` has a command for every method of the Foundry Platform SDK's V2
+client (390 of its 394 methods; the [exceptions](docs/api-commands.md#methods-without-a-command)
+are listed with their reasons). The commands are generated from the SDK, so
+they mirror it one to one and follow it on every SDK upgrade:
+
+```
+pltr api <namespace> <resource> [<sub-resource>...] <method> [ARGUMENTS] [OPTIONS]
+```
+
+The curated commands above (`pltr dataset`, `pltr ontology`, ...) stay the
+polished path for common tasks, with friendlier arguments and curated tables.
+Use `pltr api` for an endpoint they don't cover, or when you want the API's
+exact request and response shapes, for example in scripts and agents. Every
+`pltr api` command follows the output, error and exit-code rules above.
+
+```bash
+pltr api --help                                   # namespaces
+pltr api orchestration build --help               # a resource's methods
+pltr api admin user get-current --format json
+pltr api datasets dataset branch list "$DATASET_RID"
+pltr api orchestration build get "$BUILD_RID"
+pltr api ontologies linked-object list-linked-objects my-ontology Aircraft N123 flights
+```
+
+- **Arguments** are the endpoint's path parameters, mostly RIDs
+  (`ri.foundry.main.dataset.<uuid>`); `--help` shows each one's SDK type.
+  Everything else is an option named after the SDK parameter (`page_size`
+  becomes `--page-size`).
+- **JSON inputs**: options that take a model, a union or a dict accept JSON
+  in the Foundry API's own shape (camelCase, as in Foundry's API docs),
+  inline, as `@file.json` or as `@-` for stdin. The SDK validates it before
+  anything is sent:
+
+  ```bash
+  pltr api admin user search --where '{"type": "queryString", "value": "jane"}'
+  pltr api orchestration build search --where @filter.json --format json
+  ```
+
+- **Paging**: list endpoints print one page, in the API's response shape
+  with its `nextPageToken`; `--page-token` resumes, and `--max-pages N` or
+  `--all` fetch more.
+- **Beta** endpoints are labeled `[beta]` and called with `preview=True` for
+  you.
+- **Destructive** methods (delete, remove, revoke, replace, reset, clear,
+  cancel, abort, disable, undeploy, put-schema and a few others) ask for
+  confirmation; `--yes` skips it.
+- **Binary** responses (file content, Arrow and Parquet results, images) go
+  to `--output FILE`, or to stdout when it isn't a terminal.
+
+See **[docs/api-commands.md](docs/api-commands.md)** for the argument
+mapping, paging, the destructive list and how the commands are generated.
 
 ## 📚 Documentation
 

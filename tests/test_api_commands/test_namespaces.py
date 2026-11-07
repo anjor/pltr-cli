@@ -333,17 +333,19 @@ def test_cases_cover_every_namespace():
 
 @pytest.mark.filterwarnings("error::UserWarning")
 @pytest.mark.parametrize("args, expected_request, response", CASES)
-def test_namespace_command(api_stub, pltr_api, args, expected_request, response):
+def test_namespace_command(
+    stub_foundry_http, pltr_api, args, expected_request, response
+):
     if response is None:
-        api_stub.respond(204)
+        stub_foundry_http.respond(204)
     else:
-        api_stub.respond(200, json=response)
+        stub_foundry_http.respond(200, json=response)
 
     result = pltr_api(*args, "--format", "json")
 
     assert result.exit_code == 0, result.output
     method, path, query, body = expected_request
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == method
     assert request.url.path == path
     assert dict(request.url.params) == query

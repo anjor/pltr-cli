@@ -197,7 +197,11 @@ emit(result, *, format, output=None, columns=None, rows=None, title=None)
 ```
 
 - `result` is whatever the SDK returned: a model, a dict, a list, a `Page`,
-  an SDK `ResourceIterator` (its current page), or `None`.
+  an SDK `ResourceIterator` (its current page), a paged response model, or
+  `None`. A paged response model (a model with a list `data` and a
+  `next_page_token`, such as `ListObjectsResponseV2`) prints in full in JSON
+  (with fields such as `totalCount`), and as one row per item of its `data`
+  in table and CSV, with the next-page hint.
 - **JSON** prints `to_document(result)`. Columns are ignored.
 - **Table**: a single object is shown as a vertical Property/Value table, and
   a list as one row per item. An empty list prints `No results.` on stderr.
@@ -244,6 +248,14 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 - The default is one page. `--all` fetches every page, and
   `--max-pages N` stops after N pages.
 - In JSON, `nextPageToken` says where to resume.
+
+**Binary output.** For file content, Arrow/Parquet results and images, call
+`check_binary_output(output)` before the request and
+`emit_bytes(chunks, output=output)` after it. `chunks` is `bytes` or an
+iterable of `bytes` (an SDK streamed response's `iter_bytes()`, so large
+files aren't held in memory). The data goes to `--output FILE` (`-` means
+stdout), or to stdout, but never to a terminal (a usage error, exit code 2).
+A partially written file is deleted when the stream fails.
 
 **Messages.** `success(msg)`, `info(msg)`, `warn(msg)` and
 `with spinner(msg): ...` all write to stderr. The first two are suppressed in
@@ -293,7 +305,7 @@ Text mode prints `Error: <message>`, then the details and a hint.
   classification, and the outer exception's first line is kept as context.
 - **Usage errors.** Raise `typer.BadParameter("...", param_hint="'--x'")`. In
   text mode click renders it as usual; in JSON mode it becomes a
-  `usage_error`. For JSON inputs (inline or `@file.json`) use
+  `usage_error`. For JSON inputs (inline, `@file.json` or `@-` for stdin) use
   `load_json_input(value, param_hint="'--where'")`.
 - **pltr's own failures.** For a failure that isn't an API error, raise
   `PltrError(message, error_type=..., exit_code=..., hint=...)`.
