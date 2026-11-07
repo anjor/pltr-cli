@@ -75,7 +75,9 @@ An SDK parameter whose name collides with one of pltr's shared options gets an
 `--api-` prefix: `pltr api datasets dataset read-table --api-format CSV` passes
 the API's `format` parameter (`--format` stays pltr's output format). The paging
 parameters `page_size` and `page_token` of paged endpoints are the shared
-`--page-size` and `--page-token` options.
+`--page-size` and `--page-token` options. A method that takes `page_size` but
+returns a single result (`models model experiment series json`) has its own
+`--page-size` and no other paging options.
 
 For uploads whose API needs the content length (`ontologies attachment upload`),
 pltr fills in `--content-length` from the size of `--body` when you leave it out.

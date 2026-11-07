@@ -198,6 +198,80 @@ def test_page_size_for_an_endpoint_without_one_is_a_usage_error(
     assert "page size" in error["message"]
 
 
+MODEL_RID = "ri.models.main.model.11111111-2222-4333-8444-555555555555"
+EXPERIMENT_RID = "ri.models.main.experiment.11111111-2222-4333-8444-555555555556"
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_page_size_of_a_method_that_isnt_paged_is_sent(stub_foundry_http, pltr_api):
+    """Series.json takes page_size but returns one series, not a page: its
+    --page-size is the SDK parameter, and was silently dropped."""
+    series = {
+        "type": "doubleV1",
+        "series": [{"value": 0.5, "timestamp": "1700000000000", "step": "1"}],
+    }
+    stub_foundry_http.respond(200, json=series)
+    experiment = ("models", "model", "experiment")
+
+    result = pltr_api(
+        *experiment,
+        "series",
+        "json",
+        MODEL_RID,
+        EXPERIMENT_RID,
+        "loss",
+        "--page-size",
+        "5",
+        "--offset",
+        "10",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    (request,) = stub_foundry_http.requests
+    assert dict(request.url.params) == {
+        "pageSize": "5",
+        "offset": "10",
+        "preview": "true",
+    }
+    assert json.loads(result.stdout)["series"][0]["value"] == 0.5
+    # It isn't paged, so it has no paging options.
+    help_text = pltr_api(*experiment, "series", "json", "--help").stdout
+    assert "--page-size" in help_text
+    assert "--page-token" not in help_text and "--all" not in help_text
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_page_size_of_a_binary_method_is_sent(stub_foundry_http, pltr_api, tmp_path):
+    stub_foundry_http.respond(
+        200,
+        content=b'[{"a": 1}]',
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    target = tmp_path / "rows.json"
+
+    result = pltr_api(
+        "models",
+        "model",
+        "experiment",
+        "artifact-table",
+        "json",
+        MODEL_RID,
+        EXPERIMENT_RID,
+        "metrics",
+        "--page-size",
+        "3",
+        "-o",
+        str(target),
+    )
+
+    assert result.exit_code == 0, result.output
+    (request,) = stub_foundry_http.requests
+    assert dict(request.url.params) == {"pageSize": "3", "preview": "true"}
+    assert target.read_bytes() == b'[{"a": 1}]'
+
+
 def test_one_page_keeps_page_level_fields(stub_foundry_http, pltr_api):
     """A single page is the API's response as-is, e.g. with totalCount."""
     page = {
