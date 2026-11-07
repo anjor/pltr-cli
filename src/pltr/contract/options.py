@@ -24,7 +24,7 @@ from typing_extensions import Annotated
 
 from ..utils.completion import complete_output_format, complete_profile
 from .errors import Aborted, ConfirmationRequired
-from .runtime import FORMAT_ENVVAR, FORMATS, remember_format, warn
+from .runtime import FORMAT_ENVVAR, FORMATS, is_json, remember_format, warn
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -271,9 +271,11 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
 
     * ``yes`` (``--yes``, or a deprecated ``--confirm``/``--force`` alias)
       skips the prompt.
-    * When stdin is not a terminal nothing is ever prompted: raises
+    * In JSON mode (``--format json`` or ``PLTR_FORMAT=json``), or when
+      stdin is not a terminal, nothing is ever prompted: raises
       :class:`ConfirmationRequired` (exit code 2) telling the user to pass
-      ``--yes``.
+      ``--yes``. (Agent harnesses often run commands under a pseudo-terminal;
+      a JSON-mode command must never wait for an answer.)
     * Otherwise prompts on stderr; "no" raises :class:`Aborted` (exit 1).
 
     ``prompt`` is a question such as ``"Delete space ri.compass.main.space.x?"``.
@@ -285,6 +287,11 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
         raise ConfirmationRequired(
             f"{prompt} Confirmation is required, but stdin is not a terminal. "
             "Re-run with --yes to proceed."
+        )
+    if is_json():
+        raise ConfirmationRequired(
+            f"{prompt} Confirmation is required, and --format json never "
+            "prompts. Re-run with --yes to proceed."
         )
     # Not click.confirm(): it writes part of its prompt to stdout via input().
     click.echo(f"{prompt} [y/N]: ", nl=False, err=True)

@@ -208,8 +208,8 @@ pltr is built to be scripted, by people and by agents.
 **Destructive commands ask first.** Commands that delete, remove, revoke,
 reset, cancel, abort or replace something ask for confirmation, and
 `--yes` (`-y`) skips the prompt. pltr never prompts when stdin is not a
-terminal: without `--yes` such a command fails with exit code 2 and tells
-you to pass `--yes`. The old `--confirm` and `--force` flags still work for
+terminal or with `--format json` (or `PLTR_FORMAT=json`): without `--yes`
+such a command fails with exit code 2 and tells you to pass `--yes`. The old `--confirm` and `--force` flags still work for
 one release as deprecated aliases of `--yes`.
 
 **Beta endpoints** work without extra flags, and their commands are labeled

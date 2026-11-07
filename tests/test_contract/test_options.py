@@ -228,21 +228,41 @@ def test_non_interactive_without_yes_is_exit_2():
 
 
 def test_prompt_goes_to_stderr_and_yes_proceeds(interactive):
-    result = runner.invoke(APP, ["drop", "-f", "json"], input="y\n")
+    result = runner.invoke(APP, ["drop", "-f", "csv"], input="y\n")
     assert result.exit_code == 0
     assert result.stderr == "Drop it? [y/N]: "
-    assert json.loads(result.stdout) == {"dropped": True}  # nothing else on stdout
+    assert result.stdout == "dropped\ntrue\n"  # nothing else on stdout
 
 
 def test_answering_no_is_exit_1(interactive):
-    result = runner.invoke(APP, ["drop", "-f", "json"], input="n\n")
+    result = runner.invoke(APP, ["drop"], input="n\n")
     assert result.exit_code == 1
     assert result.stdout == ""
     prompt, error = result.stderr.split("]: ")
     assert prompt == "Drop it? [y/N"
-    assert lines(error) == [
-        {"type": "aborted", "message": "Aborted; nothing was changed.", "exitCode": 1}
-    ]
+    assert error.startswith("Error: Aborted; nothing was changed.")
+
+
+@pytest.mark.parametrize(
+    "args, env",
+    [(["-f", "json"], {}), (["--format", "json"], {}), ([], {"PLTR_FORMAT": "json"})],
+)
+def test_json_mode_never_prompts_even_on_a_terminal(interactive, args, env):
+    """Agent harnesses run commands under a pseudo-terminal: a JSON-mode
+    command must fail at once (exit 2), not block on a plain-text prompt."""
+    result = runner.invoke(APP, ["drop", *args], input="y\n", env=env)
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "[y/N]" not in result.stderr
+    [error] = lines(result.stderr)
+    assert error == {
+        "type": "confirmation_required",
+        "message": "Drop it? Confirmation is required, and --format json never "
+        "prompts. Re-run with --yes to proceed.",
+        "exitCode": 2,
+    }
+    with_yes = runner.invoke(APP, ["drop", *args, "--yes"], env=env)
+    assert with_yes.exit_code == 0 and json.loads(with_yes.stdout) == {"dropped": True}
 
 
 @pytest.mark.parametrize("answer", ["", "\n", "maybe\n"])

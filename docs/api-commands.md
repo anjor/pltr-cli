@@ -189,9 +189,9 @@ nor fails.
 Commands that delete, remove, revoke, replace, reset, clear, cancel, abort,
 disable or undeploy something, or overwrite data, ask for confirmation on stderr
 before calling the API, showing the endpoint (`Run DELETE /v2/admin/users/... ?`).
-`--yes` (`-y`) skips the question. When stdin is not a terminal pltr never
-prompts: without `--yes` the command fails with exit code 2
-(`confirmation_required`) and sends nothing. Answering anything but `y` exits with
+`--yes` (`-y`) skips the question. When stdin is not a terminal, or with
+`--format json`, pltr never prompts: without `--yes` the command fails with
+exit code 2 (`confirmation_required`) and sends nothing. Answering anything but `y` exits with
 code 1 (`aborted`).
 
 ```bash

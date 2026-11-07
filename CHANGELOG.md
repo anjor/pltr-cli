@@ -46,8 +46,10 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
 - **Destructive commands ask first, and `--yes`/`-y` skips the question,
   everywhere.** Deletes, removes, revokes, resets, cancels, aborts, replaces,
   clears and schema changes ask on stderr; several asked nothing before (see
-  Changed). Nothing prompts when stdin is not a terminal: without `--yes`
-  such a command exits with code 2 and changes nothing. Answering "no" exits
+  Changed). Nothing prompts when stdin is not a terminal, or in JSON mode
+  (`--format json` or `PLTR_FORMAT=json`, even on a terminal: agent harnesses
+  often run commands under a pseudo-terminal): without `--yes` such a command
+  exits with code 2 and changes nothing. Answering "no" exits
   with 1; several commands exited with 0. `--confirm` and `--force`, where
   they meant "don't ask", are hidden aliases of `--yes` for one release.
 - **`-f` means `--format`.** It used to mean `--force` on `configure delete`,

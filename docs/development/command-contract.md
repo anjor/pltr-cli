@@ -31,8 +31,10 @@ Import everything from `pltr.contract` and nothing from its submodules.
    field that really exists on the SDK model. A missing field fails a test.
 5. **Exit codes are documented** (see the table below).
 6. **Destructive commands confirm**, and `--yes`/`-y` skips the prompt.
-   Nothing ever prompts when stdin is not a terminal: without `--yes` the
-   command fails with exit code 2.
+   Nothing ever prompts when stdin is not a terminal or in JSON mode
+   (`--format json`, `PLTR_FORMAT=json`; agent harnesses often give
+   commands a pseudo-terminal): without `--yes` the command fails with exit
+   code 2.
 7. **Beta endpoints** are always called with a literal `preview=True`, and
    the command's help starts with `[beta]`. GA endpoints never get `preview`.
 8. The default format is `table`. `PLTR_FORMAT=json|csv|table` changes it.
@@ -397,8 +399,9 @@ def delete_space(
 
 - **Behaviour of `confirm_destructive`:**
   - `--yes` (or a deprecated alias) returns at once.
-  - When stdin is not a terminal it raises `ConfirmationRequired`
-    (`confirmation_required`, exit 2, "Re-run with --yes").
+  - When stdin is not a terminal, or in JSON mode, it raises
+    `ConfirmationRequired` (`confirmation_required`, exit 2, "Re-run with
+    --yes") without prompting.
   - Otherwise it prompts on stderr; anything but `y`/`yes` raises `Aborted`
     (exit 1).
 - **Which commands are destructive:** delete, remove, revoke, reset, cancel,
@@ -475,8 +478,9 @@ def delete_space(
     sets `COLUMNS=200` so tables don't wrap, and also keeps
     `~/.cache/pltr` out of your home.
 - **Prompts:** monkeypatch `pltr.contract.options.stdin_is_interactive` to
-  return `True` and pass `input="y\n"`. Without it, CliRunner's stdin is
-  not a terminal, so you get exit code 2.
+  return `True` and pass `input="y\n"`, in table or CSV mode. Without it,
+  CliRunner's stdin is not a terminal, so you get exit code 2; JSON mode
+  never prompts either.
 
 ## The contract test
 
