@@ -87,6 +87,14 @@ jobs:
       run: |
         uv run python scripts/coverage.py
 
+    - name: Check curated commands' SDK metadata matches their calls (#188)
+      run: |
+        uv run python scripts/check_command_metadata.py
+
+    - name: Check the generated agent skill reference is up to date (#188)
+      run: |
+        uv run python scripts/generate_skill_reference.py --check
+
     - name: Run security checks (if configured)
       run: |
         # Add security scanning tools here if needed
