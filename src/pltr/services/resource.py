@@ -1,578 +1,265 @@
 """
-Resource service wrapper for Foundry SDK filesystem API.
+Resource service wrapper for the Foundry SDK filesystem API.
+
+Every ``Resource`` endpoint pltr uses is GA, so no call passes ``preview``.
+Methods return SDK models (or SDK iterators) unchanged and let SDK exceptions
+propagate so the error layer can classify them.
 """
 
+import typing
 from collections import deque
-from typing import Any, Optional, Dict, List
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Set
 
 from foundry_sdk.v2.filesystem.models import (
-    GetResourcesBatchRequestElement,
     GetByPathResourcesBatchRequestElement,
+    GetResourcesBatchRequestElement,
+    ResourceType,
 )
 
+from ..contract import Page
 from .base import BaseService
+
+#: RID of the root folder (its children are the spaces).
+ROOT_FOLDER_RID = "ri.compass.main.folder.0"
+
+#: Maximum number of resources or paths per batch request.
+MAX_BATCH_SIZE = 1000
+
+#: Default number of folders ``resource search`` lists before it stops.
+DEFAULT_MAX_SEARCH_FOLDERS = 1000
+
+#: The resource type of folders (including projects); ``search`` descends into them.
+FOLDER_TYPE = "COMPASS_FOLDER"
+
+#: Short names accepted by ``--type`` (earlier releases documented them).
+TYPE_ALIASES = {"DATASET": "FOUNDRY_DATASET", "FOLDER": "COMPASS_FOLDER"}
+
+
+def _literal_values(tp: Any) -> List[str]:
+    """String values of a (possibly ``Annotated``) ``Literal`` type alias."""
+    values: List[str] = []
+    for arg in typing.get_args(tp):
+        if isinstance(arg, str):
+            values.append(arg)
+        else:
+            values.extend(_literal_values(arg))
+    return values
+
+
+#: Every resource type the installed SDK knows (``ResourceType``).
+RESOURCE_TYPES = tuple(_literal_values(ResourceType))
+
+
+def normalize_resource_type(value: str) -> str:
+    """Return the API name of a resource type given case-insensitively.
+
+    Accepts the SDK's ``ResourceType`` values (``FOUNDRY_DATASET``,
+    ``COMPASS_FOLDER``, ...) and the short names ``dataset`` and ``folder``.
+
+    Raises:
+        ValueError: if the SDK doesn't know the type.
+    """
+    name = value.strip().upper().replace("-", "_")
+    name = TYPE_ALIASES.get(name, name)
+    if name not in RESOURCE_TYPES:
+        raise ValueError(name)
+    return name
+
+
+@dataclass
+class SearchResult:
+    """Matches of :meth:`ResourceService.search_resources` and how far it got."""
+
+    matches: List[Any] = field(default_factory=list)
+    folders_scanned: int = 0
+    #: True when the folder limit stopped the scan before every folder was read.
+    truncated: bool = False
+
+
+def resource_matches(resource: Any, needle: str) -> bool:
+    """True when ``needle`` (lower case) occurs in a resource's name, path,
+    description, RID or type."""
+    haystack = (
+        resource.display_name,
+        resource.path,
+        resource.description,
+        resource.rid,
+        resource.type,
+    )
+    return any(needle in str(part).lower() for part in haystack if part)
 
 
 class ResourceService(BaseService):
-    """Service wrapper for Foundry resource operations using filesystem API."""
-
-    # Foundry filesystem root folder RID used for unscoped resource listing/search.
-    ROOT_FOLDER_RID = "ri.compass.main.folder.0"
-    MAX_SEARCH_FOLDERS = 1000
+    """Service wrapper for Foundry resource operations (``client.filesystem``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry filesystem service."""
         return self.client.filesystem
 
-    def get_resource(self, resource_rid: str) -> Dict[str, Any]:
-        """
-        Get information about a specific resource.
+    def get_resource(self, resource_rid: str) -> Any:
+        """Get a resource (``Resource.get``, GA); returns a ``Resource`` model."""
+        return self.service.Resource.get(resource_rid)
 
-        Args:
-            resource_rid: Resource Identifier
+    def get_resource_by_path(self, path: str) -> Any:
+        """Get a resource by absolute path (``Resource.get_by_path``, GA)."""
+        return self.service.Resource.get_by_path(path=path)
 
-        Returns:
-            Resource information dictionary
-        """
-        try:
-            resource = self.service.Resource.get(resource_rid, preview=True)
-            return self._format_resource_info(resource)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to get resource {resource_rid}: {detail}")
-
-    def get_resource_by_path(self, path: str) -> Dict[str, Any]:
-        """
-        Get information about a specific resource by its path.
-
-        Args:
-            path: Absolute path to the resource (e.g., "/My Organization/Project/Dataset")
-
-        Returns:
-            Resource information dictionary
-        """
-        try:
-            resource = self.service.Resource.get_by_path(path=path, preview=True)
-            return self._format_resource_info(resource)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to get resource at path '{path}': {detail}")
-
-    def list_resources(
+    def list_children(
         self,
-        folder_rid: Optional[str] = None,
+        folder_rid: str,
         resource_type: Optional[str] = None,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        List resources, optionally filtered by folder and type.
+    ) -> Any:
+        """List one page of a folder's children (``Folder.children``, GA).
 
         Args:
-            folder_rid: Folder Resource Identifier to filter by (optional)
-            resource_type: Resource type to filter by (optional)
-            page_size: Number of children to request per API page (optional)
-            page_token: Pagination token (optional)
+            folder_rid: RID of the folder, project or space
+            resource_type: keep only resources of this API type (filtered
+                locally: the API has no type filter, so a page can hold
+                fewer items than ``page_size``)
 
         Returns:
-            List of resource information dictionaries
-
-        Note:
-            Resource type filtering is applied client-side because Folder.children()
-            does not expose a server-side resource type filter. When resource_type
-            is provided, each API page can include non-matching resources, so the
-            returned list may contain fewer than page_size items.
+            Without ``resource_type``, the SDK ``ResourceIterator[Resource]``
+            (constructing it fetched one page). With it, a ``Page`` of the
+            matching resources and the same ``next_page_token``.
         """
-        try:
-            parent_folder_rid = folder_rid or self.ROOT_FOLDER_RID
-            resources = []
-            list_params: Dict[str, Any] = {"preview": True}
-            if page_size:
-                list_params["page_size"] = page_size
-            if page_token:
-                list_params["page_token"] = page_token
+        children = self.service.Folder.children(
+            folder_rid, page_size=page_size, page_token=page_token
+        )
+        if resource_type is None:
+            return children
+        return Page(
+            data=[child for child in children.data if child.type == resource_type],
+            next_page_token=children.next_page_token,
+        )
 
-            for resource in self.service.Folder.children(
-                parent_folder_rid, **list_params
-            ):
-                if self._matches_resource_type(resource, resource_type):
-                    resources.append(self._format_resource_info(resource))
-            return resources
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to list resources: {detail}")
-
-    def get_resources_batch(self, resource_rids: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get multiple resources in a single request.
-
-        Args:
-            resource_rids: List of resource RIDs (max 1000)
+    def get_resources_batch(self, resource_rids: List[str]) -> Any:
+        """Get up to 1000 resources in one request (``Resource.get_batch``, GA).
 
         Returns:
-            List of resource information dictionaries
+            ``GetResourcesBatchResponse``; its ``data`` maps RID to
+            ``Resource``. RIDs that don't exist, or that are spaces or the
+            root folder, are left out.
         """
-        if len(resource_rids) > 1000:
-            raise ValueError("Maximum batch size is 1000 resources")
+        if len(resource_rids) > MAX_BATCH_SIZE:
+            raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} resources")
+        elements = [
+            GetResourcesBatchRequestElement(resource_rid=rid) for rid in resource_rids
+        ]
+        return self.service.Resource.get_batch(body=elements)
 
-        try:
-            elements = [
-                GetResourcesBatchRequestElement(resource_rid=rid)
-                for rid in resource_rids
-            ]
-            response = self.service.Resource.get_batch(body=elements, preview=True)
-            resources = []
-            for resource in response.resources:
-                resources.append(self._format_resource_info(resource))
-            return resources
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to get resources batch: {detail}")
-
-    def get_resource_metadata(self, resource_rid: str) -> Dict[str, Any]:
-        """
-        Get metadata for a specific resource.
-
-        Args:
-            resource_rid: Resource Identifier
+    def get_resources_by_path_batch(self, paths: List[str]) -> Any:
+        """Get up to 1000 resources by path (``Resource.get_by_path_batch``, GA).
 
         Returns:
-            Resource metadata dictionary
+            ``GetByPathResourcesBatchResponse``; its ``data`` lists the
+            resources found. Paths that don't exist or can't be read are
+            left out.
         """
-        try:
-            metadata = self.service.Resource.get_metadata(resource_rid, preview=True)
-            return self._format_metadata(metadata)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to get metadata for resource {resource_rid}: {detail}"
-            )
+        if len(paths) > MAX_BATCH_SIZE:
+            raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} paths")
+        elements = [GetByPathResourcesBatchRequestElement(path=path) for path in paths]
+        return self.service.Resource.get_by_path_batch(body=elements)
 
     def search_resources(
         self,
         query: str,
-        resource_type: Optional[str] = None,
         folder_rid: Optional[str] = None,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Search for resources by query string.
+        resource_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        max_folders: int = DEFAULT_MAX_SEARCH_FOLDERS,
+    ) -> SearchResult:
+        """Find resources by scanning folders (the API has no search endpoint).
+
+        Lists the children of ``folder_rid`` (default: the root folder) and,
+        breadth-first, of every folder below it with ``Folder.children``
+        (GA, every page), keeping resources whose display name, path,
+        description, RID or type contains ``query`` (case-insensitive).
 
         Args:
-            query: Search query string
-            resource_type: Resource type to filter by (optional)
-            folder_rid: Folder to search within (optional)
-            page_size: Maximum number of matching results to return (optional)
-            page_token: Pagination token (unsupported for recursive search)
+            query: text to look for
+            folder_rid: folder, project or space to start from
+            resource_type: keep only resources of this API type
+            limit: stop after this many matches
+            max_folders: stop after listing this many folders; the result is
+                then marked ``truncated``
 
         Returns:
-            List of matching resource information dictionaries
+            A :class:`SearchResult` with the matching ``Resource`` models.
         """
-        normalized_query = query.strip().lower()
-        if not normalized_query:
-            return []
-        if page_token is not None:
-            raise ValueError(
-                "page_token is not supported for recursive resource search"
-            )
-
-        max_results = page_size if page_size and page_size > 0 else None
-
-        try:
-            start_folder_rid = folder_rid or self.ROOT_FOLDER_RID
-
-            matches: List[Dict[str, Any]] = []
-            pending_folders = deque([start_folder_rid])
-            visited_folders: set[str] = set()
-
-            while pending_folders and len(visited_folders) < self.MAX_SEARCH_FOLDERS:
-                current_folder_rid = pending_folders.popleft()
-                if current_folder_rid in visited_folders:
-                    continue
-                visited_folders.add(current_folder_rid)
-
-                children = self.service.Folder.children(
-                    current_folder_rid, preview=True
-                )
-                for resource in children:
-                    if self._matches_resource_type(
-                        resource, resource_type
-                    ) and self._resource_matches_query(resource, normalized_query):
-                        matches.append(self._format_resource_info(resource))
-                        if max_results is not None and len(matches) >= max_results:
-                            return matches
-
-                    if self._is_container_resource(resource):
-                        child_rid = getattr(resource, "rid", None)
-                        if child_rid and child_rid not in visited_folders:
-                            pending_folders.append(child_rid)
-
-            if pending_folders:
-                raise RuntimeError(
-                    "Resource search exceeded folder scan limit "
-                    f"({self.MAX_SEARCH_FOLDERS}). "
-                    "Provide a narrower folder_rid and retry."
-                )
-
-            return matches
-        except Exception as e:
-            if isinstance(e, RuntimeError):
-                raise
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to search resources: {detail}")
+        needle = query.strip().lower()
+        if not needle:
+            raise ValueError("The search query is empty")
+        result = SearchResult()
+        pending = deque([folder_rid or ROOT_FOLDER_RID])
+        queued: Set[str] = set(pending)
+        while pending:
+            if result.folders_scanned >= max_folders:
+                result.truncated = True
+                break
+            current = pending.popleft()
+            result.folders_scanned += 1
+            for child in self.service.Folder.children(current):
+                if (
+                    resource_type is None or child.type == resource_type
+                ) and resource_matches(child, needle):
+                    result.matches.append(child)
+                    if limit is not None and len(result.matches) >= limit:
+                        return result
+                if child.type == FOLDER_TYPE and child.rid not in queued:
+                    queued.add(child.rid)
+                    pending.append(child.rid)
+        return result
 
     # ==================== Trash Operations ====================
 
     def delete_resource(self, resource_rid: str) -> None:
-        """
-        Move a resource to trash.
-
-        The resource can be restored later or permanently deleted.
-
-        Args:
-            resource_rid: Resource Identifier
-
-        Raises:
-            RuntimeError: If deletion fails
-        """
-        try:
-            self.service.Resource.delete(resource_rid, preview=True)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to delete resource {resource_rid}: {detail}")
+        """Move a resource to the trash (``Resource.delete``, GA)."""
+        self.service.Resource.delete(resource_rid)
 
     def restore_resource(self, resource_rid: str) -> None:
-        """
-        Restore a resource from trash.
-
-        This also restores any directly trashed ancestors.
-        Operation is ignored if the resource is not trashed.
-
-        Args:
-            resource_rid: Resource Identifier
-
-        Raises:
-            RuntimeError: If restoration fails
-        """
-        try:
-            self.service.Resource.restore(resource_rid, preview=True)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to restore resource {resource_rid}: {detail}")
+        """Restore a resource and its directly trashed ancestors (``Resource.restore``, GA)."""
+        self.service.Resource.restore(resource_rid)
 
     def permanently_delete_resource(self, resource_rid: str) -> None:
-        """
-        Permanently delete a resource from trash.
-
-        The resource must already be in the trash. This operation is irreversible.
-
-        Args:
-            resource_rid: Resource Identifier
-
-        Raises:
-            RuntimeError: If permanent deletion fails
-        """
-        try:
-            self.service.Resource.permanently_delete(resource_rid, preview=True)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to permanently delete resource {resource_rid}: {detail}"
-            )
+        """Permanently delete a trashed resource (``Resource.permanently_delete``, GA)."""
+        self.service.Resource.permanently_delete(resource_rid)
 
     # ==================== Markings Operations ====================
 
     def add_markings(self, resource_rid: str, marking_ids: List[str]) -> None:
-        """
-        Add markings to a resource.
-
-        Args:
-            resource_rid: Resource Identifier
-            marking_ids: List of marking identifiers to add
-
-        Raises:
-            RuntimeError: If adding markings fails
-        """
-        try:
-            self.service.Resource.add_markings(
-                resource_rid, marking_ids=marking_ids, preview=True
-            )
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to add markings to resource {resource_rid}: {detail}"
-            )
+        """Add markings to a resource (``Resource.add_markings``, GA)."""
+        self.service.Resource.add_markings(resource_rid, marking_ids=marking_ids)
 
     def remove_markings(self, resource_rid: str, marking_ids: List[str]) -> None:
-        """
-        Remove markings from a resource.
-
-        Args:
-            resource_rid: Resource Identifier
-            marking_ids: List of marking identifiers to remove
-
-        Raises:
-            RuntimeError: If removing markings fails
-        """
-        try:
-            self.service.Resource.remove_markings(
-                resource_rid, marking_ids=marking_ids, preview=True
-            )
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to remove markings from resource {resource_rid}: {detail}"
-            )
+        """Remove markings from a resource (``Resource.remove_markings``, GA)."""
+        self.service.Resource.remove_markings(resource_rid, marking_ids=marking_ids)
 
     def list_markings(
         self,
         resource_rid: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        List markings directly applied to a resource.
+    ) -> Any:
+        """List one page of the markings applied directly to a resource.
 
-        Args:
-            resource_rid: Resource Identifier
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
+        ``Resource.markings`` (GA) returns marking IDs (strings).
 
         Returns:
-            List of marking information dictionaries
+            The SDK ``ResourceIterator[str]``; constructing it fetched one page.
         """
-        try:
-            markings = []
-            list_params: Dict[str, Any] = {"preview": True}
+        return self.service.Resource.markings(
+            resource_rid, page_size=page_size, page_token=page_token
+        )
 
-            if page_size:
-                list_params["page_size"] = page_size
-            if page_token:
-                list_params["page_token"] = page_token
+    # ==================== Access Requirements ====================
 
-            for marking in self.service.Resource.markings(resource_rid, **list_params):
-                markings.append(self._format_marking_info(marking))
-            return markings
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to list markings for resource {resource_rid}: {detail}"
-            )
+    def get_access_requirements(self, resource_rid: str) -> Any:
+        """Organizations and markings needed to view a resource.
 
-    # ==================== Access & Batch Operations ====================
-
-    def get_access_requirements(self, resource_rid: str) -> Dict[str, Any]:
+        ``Resource.get_access_requirements`` (GA); returns an
+        ``AccessRequirements`` model.
         """
-        Get access requirements for a resource.
-
-        Returns the Organizations and Markings required to view the resource.
-
-        Args:
-            resource_rid: Resource Identifier
-
-        Returns:
-            Access requirements dictionary with organizations and markings
-        """
-        try:
-            requirements = self.service.Resource.get_access_requirements(
-                resource_rid, preview=True
-            )
-            return self._format_access_requirements(requirements)
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(
-                f"Failed to get access requirements for resource {resource_rid}: {detail}"
-            )
-
-    def get_resources_by_path_batch(self, paths: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get multiple resources by their absolute paths in a single request.
-
-        Args:
-            paths: List of absolute paths (max 1000)
-
-        Returns:
-            List of resource information dictionaries
-        """
-        if len(paths) > 1000:
-            raise ValueError("Maximum batch size is 1000 paths")
-
-        try:
-            elements = [GetByPathResourcesBatchRequestElement(path=p) for p in paths]
-            response = self.service.Resource.get_by_path_batch(
-                body=elements, preview=True
-            )
-            resources = []
-            for resource in response.resources:
-                resources.append(self._format_resource_info(resource))
-            return resources
-        except Exception as e:
-            detail = self._format_error_detail(e)
-            raise RuntimeError(f"Failed to get resources by path batch: {detail}")
-
-    def _format_resource_info(self, resource: Any) -> Dict[str, Any]:
-        """
-        Format resource information for consistent output.
-
-        Args:
-            resource: Resource object from Foundry SDK
-
-        Returns:
-            Formatted resource information dictionary
-        """
-        modified_by = getattr(resource, "modified_by", None)
-        if modified_by is None:
-            modified_by = getattr(resource, "updated_by", None)
-
-        modified_time = getattr(resource, "modified_time", None)
-        if modified_time is None:
-            modified_time = getattr(resource, "updated_time", None)
-
-        return {
-            "rid": getattr(resource, "rid", None),
-            "display_name": getattr(resource, "display_name", None),
-            "name": getattr(resource, "name", None),
-            "description": getattr(resource, "description", None),
-            "path": getattr(resource, "path", None),
-            "type": getattr(resource, "type", None),
-            "folder_rid": getattr(resource, "folder_rid", None),
-            "created_by": getattr(resource, "created_by", None),
-            "created_time": self._format_timestamp(
-                getattr(resource, "created_time", None)
-            ),
-            "modified_by": modified_by,
-            "modified_time": self._format_timestamp(modified_time),
-            "size_bytes": getattr(resource, "size_bytes", None),
-            "trash_status": getattr(resource, "trash_status", None),
-        }
-
-    @staticmethod
-    def _matches_resource_type(resource: Any, expected_type: Optional[str]) -> bool:
-        """Check whether a resource matches a requested type filter."""
-        if not expected_type:
-            return True
-        actual_type = str(getattr(resource, "type", "") or "").lower()
-        return actual_type == expected_type.lower()
-
-    @staticmethod
-    def _resource_matches_query(resource: Any, query: str) -> bool:
-        """Check whether a resource matches a text query across common fields."""
-        searchable_parts = [
-            getattr(resource, "rid", ""),
-            getattr(resource, "display_name", ""),
-            getattr(resource, "name", ""),
-            getattr(resource, "description", ""),
-            getattr(resource, "path", ""),
-            getattr(resource, "type", ""),
-        ]
-        haystack = " ".join(str(part) for part in searchable_parts if part).lower()
-        return query in haystack
-
-    @staticmethod
-    def _is_container_resource(resource: Any) -> bool:
-        """Check whether a resource can have filesystem children.
-
-        This list reflects known container resource types returned by filesystem APIs.
-        """
-        resource_type = str(getattr(resource, "type", "") or "").lower()
-        return resource_type in {"folder", "project", "space", "compass_folder"}
-
-    def _format_metadata(self, metadata: Any) -> Dict[str, Any]:
-        """
-        Format metadata for consistent output.
-
-        Args:
-            metadata: Metadata object from Foundry SDK
-
-        Returns:
-            Formatted metadata dictionary
-        """
-        if hasattr(metadata, "__dict__"):
-            return dict(metadata.__dict__)
-        elif isinstance(metadata, dict):
-            return metadata
-        else:
-            return {"raw": str(metadata)}
-
-    def _format_timestamp(self, timestamp: Any) -> Optional[str]:
-        """
-        Format timestamp for display.
-
-        Args:
-            timestamp: Timestamp object from SDK
-
-        Returns:
-            Formatted timestamp string or None
-        """
-        if timestamp is None:
-            return None
-
-        # Handle different timestamp formats from the SDK
-        if hasattr(timestamp, "time"):
-            return str(timestamp.time)
-        return str(timestamp)
-
-    @staticmethod
-    def _format_error_detail(error: Exception) -> str:
-        """Format exception details, including fallback for empty SDK error strings."""
-        message = str(error).strip()
-        if message:
-            return message
-
-        args = getattr(error, "args", ())
-        if args:
-            joined = " ".join(str(arg) for arg in args if arg is not None)
-            if joined:
-                return joined
-
-        return error.__class__.__name__
-
-    def _format_marking_info(self, marking: Any) -> Dict[str, Any]:
-        """
-        Format marking information for consistent output.
-
-        Args:
-            marking: Marking object from Foundry SDK
-
-        Returns:
-            Formatted marking information dictionary
-        """
-        return {
-            "marking_id": getattr(marking, "marking_id", None),
-            "display_name": getattr(marking, "display_name", None),
-            "description": getattr(marking, "description", None),
-            "category_id": getattr(marking, "category_id", None),
-            "category_display_name": getattr(marking, "category_display_name", None),
-        }
-
-    def _format_access_requirements(self, requirements: Any) -> Dict[str, Any]:
-        """
-        Format access requirements for consistent output.
-
-        Args:
-            requirements: AccessRequirements object from Foundry SDK
-
-        Returns:
-            Formatted access requirements dictionary
-        """
-        organizations = []
-        markings = []
-
-        if hasattr(requirements, "organizations"):
-            for org in getattr(requirements, "organizations", []) or []:
-                organizations.append(
-                    {
-                        "organization_rid": getattr(org, "organization_rid", None),
-                        "display_name": getattr(org, "display_name", None),
-                    }
-                )
-
-        if hasattr(requirements, "markings"):
-            for marking in getattr(requirements, "markings", []) or []:
-                markings.append(self._format_marking_info(marking))
-
-        return {
-            "organizations": organizations,
-            "markings": markings,
-        }
+        return self.service.Resource.get_access_requirements(resource_rid)
