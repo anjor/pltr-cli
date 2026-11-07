@@ -845,3 +845,28 @@ def test_every_check_parses_against_the_real_cli(check, tmp_path):
         opt for p in command.params if isinstance(p, click.Option) for opt in p.opts
     }:
         assert "--yes" in argv, f"{check.id} would stop at the confirmation"
+
+
+# ------------------------------------------------------------------ the docs
+
+
+def test_live_verification_doc_names_real_checks_and_counts():
+    """docs/development/live-verification.md cites checks that exist."""
+    doc = (REPO / "docs" / "development" / "live-verification.md").read_text()
+    groups = {check.group for check in smoke.CHECKS}
+    ids = set(smoke.CHECKS_BY_ID)
+    keys = smoke.known_keys()
+    for name in re.findall(r"`([a-z-]+\.[a-z0-9_*-]+)`", doc):
+        if name.split(".")[0] not in groups or name in keys:
+            continue
+        if name.endswith("*"):
+            assert any(i.startswith(name[:-1]) for i in ids | keys), name
+        else:
+            assert name in ids, f"the doc cites {name}, which isn't a check"
+    rows = re.findall(r"^\| `([a-z-]+)` \| (\d+) \|", doc, re.M)
+    assert rows
+    for group, count in rows:
+        actual = sum(
+            1 for c in smoke.CHECKS if c.group == group and c.kind != "admin write"
+        )
+        assert int(count) == actual, f"the doc says {group} has {count} checks"
