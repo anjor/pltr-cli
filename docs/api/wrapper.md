@@ -49,7 +49,7 @@ src/pltr/
 ├── commands/           # one module per command group (dataset.py, ontology.py, ...)
 │   └── api/            # the generated `pltr api` tree (_runtime.py and _specs/)
 ├── services/           # one service per area (dataset.py, ontology.py, ...)
-└── utils/              # completion, alias resolution, legacy formatting helpers
+└── utils/              # helpers for completion and alias resolution
 scripts/
 ├── generate_api_commands.py     # regenerate `pltr api` from the SDK
 ├── generate_skill_reference.py  # regenerate claude_skill/reference from the manifest

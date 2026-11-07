@@ -483,12 +483,10 @@ fails on examples that name a command or option that doesn't exist.
 
 ## Gotchas
 
-- Don't print with `console.print`, `typer.echo` or `print` in a converted
-  command. If it's data, `emit` it; otherwise use `info`/`success`/`warn`.
+- Don't print with `console.print`, `typer.echo` or `print` in a command.
+  If it's data, `emit` it; otherwise use `info`/`success`/`warn`. Every
+  command prints only through `pltr.contract`.
 - `emit` must be called once per command, with the command's `format`.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page
   of: iterating it fetches every page.
-- Don't use the legacy `OutputFormatter` (`pltr.utils.formatting`) or
-  `BaseService._serialize_response` (snake_case with nulls) in command code:
-  every command prints through `pltr.contract`.
