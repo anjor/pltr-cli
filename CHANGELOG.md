@@ -42,7 +42,7 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
   (bad arguments, invalid JSON input, an invalid RID, or `--yes` needed); 3
   authentication; 4 permission denied (HTTP 403); 5 not found (404); 6
   validation error (400, 422); 7 other API or network errors (409, 413, 429,
-  5xx, timeouts, connection errors).
+  5xx, timeouts, connection errors, or a response pltr can't read).
 - **Destructive commands ask first, and `--yes`/`-y` skips the question,
   everywhere.** Deletes, removes, revokes, resets, cancels, aborts, replaces,
   clears and schema changes ask on stderr; several asked nothing before (see
@@ -79,6 +79,12 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
   `ontology object-aggregate` takes `--aggregation`; `resource-role grant` and
   `revoke` take `--principal-id` (or `--everyone`) and `--role`;
   `orchestration builds search` needs a filter.
+- **`pltr cp` copies schemas, and fails if it can't.** With `--schema` (the
+  default), a dataset copy that can't read the source's schema or put it on
+  the copy moves the partial copy to the trash and exits with the error. It
+  used to warn and exit 0, leaving a copy without a schema (in fact cp never
+  copied a schema; see Fixed). A source with no schema is still copied
+  without one; `--no-schema` copies only the files.
 - **Authentication.** `FOUNDRY_HOST` with `FOUNDRY_TOKEN`, or with
   `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`, now works without a stored
   profile, keyring or configuration directory (#190, #144). pltr uses the
@@ -146,6 +152,10 @@ can search. See Added.
 - `PLTR_DEBUG=1` prints the Python traceback of an unexpected error.
 - `PLTR_KEYRING_TIMEOUT`: how many seconds to wait for the system keyring
   (default 30; `0` waits indefinitely).
+- The error type `invalid_response` (exit code 7): the API's response doesn't
+  match the SDK's model or isn't JSON, so pltr can't read it. Upgrade pltr; a
+  retry won't help. For a response that doesn't match, the message names the
+  model and the fields.
 - `pltr verify --format table|json|csv` and `--output`. JSON is
   `{"authSource": {...}, "user": {...}}`: where the credentials came from
   (profile or environment, and how it was selected), the auth type and host,
@@ -262,7 +272,18 @@ can search. See Added.
   option) are JSON errors when the command was asked for JSON (`--format json`
   or `PLTR_FORMAT=json`).
 - An unexpected error prints one `Error: ...` line instead of a traceback; set
-  `PLTR_DEBUG=1` for the traceback.
+  `PLTR_DEBUG=1` for the traceback. An unexpected failure inside the SDK says
+  "foundry-platform-sdk failed unexpectedly" and asks you to report it.
+- pltr starts about three times faster: `pltr --help` took a median of
+  1017 ms and now 370 ms (15 runs each, same machine), and shell completion
+  speeds up the same way. Commands import the SDK's model packages when they
+  run, not at startup.
+- `pltr <group> --help` shows the group's own help, with RID formats and
+  examples, for `dataset`, `folder`, `project`, `resource`, `resource-role`,
+  `space`, `ontology`, `orchestration`, `media-sets`, `connectivity` and
+  `verify`; a one-line description used to replace it. `pltr --help` keeps
+  the one-line summaries. `admin`, `sql` and `shell` show their modules'
+  descriptions, and `pltr cp --help` its full description.
 - pltr depends on prompt-toolkit instead of click-repl.
 - **The Claude Code skill in `claude_skill/` was rewritten** (#188).
   `SKILL.md` is a short guide: headless authentication, the JSON, stdout and
@@ -272,6 +293,10 @@ can search. See Added.
   the manifest: `reference/index.md`, `reference/curated/<group>.md` and
   `reference/api/<namespace>.md`. If you copied the skill to
   `~/.claude/skills/`, copy the directory again.
+- For library users: `DatasetService.preview_rows()` is now
+  `preview_table()` and returns the `pyarrow.Table`; `decode_arrow_rows()` is
+  now `arrow_table()`; `pltr.services.resource.RESOURCE_TYPES` is now the
+  function `resource_types()`.
 
 #### Authentication, `verify` and `configure`
 
@@ -370,6 +395,15 @@ can search. See Added.
   has no such filter.
 - `cp --dry-run` prints the resources it would copy. Skipped items are
   warnings.
+- **Breaking:** a `cp` dataset copy fails when its schema can't be copied (see
+  Breaking changes). The schema is read from `--branch` (it was read from the
+  default branch) and put on the committed copy of the files, on the same
+  branch. The API doesn't report the source's dataframe reader, so the copy
+  gets `CSV` when every copied file is a `.csv` file, `AVRO` when every file
+  is `.avro`, and the API's default (`PARQUET`) otherwise. A dataset with no
+  files on `--branch` is copied empty, without a schema, with a message.
+- `cp --help` explains the RID arguments and how datasets, schemas and
+  failures are handled.
 
 #### `dataset`
 
@@ -399,6 +433,8 @@ can search. See Added.
   at the parent's latest transaction. `branches delete master` is refused
   (exit 2).
 - A leading `/` in a dataset file path is dropped (the API rejects it).
+- `preview` gives duplicate column names a `_2`, `_3` suffix with a warning,
+  like `sql`, instead of letting the later column overwrite the earlier one.
 
 #### `ontology`
 
@@ -476,9 +512,9 @@ can search. See Added.
   `HIGH_THROUGHPUT`.
 - **Breaking:** `media-sets download` and `thumbnail-retrieve` exit with 2
   when the output file exists and `--overwrite` isn't given, and stream the
-  content to the file. A download that fails part-way deletes the partial
-  file; with `--overwrite`, the file it replaced is gone too. An empty
-  thumbnail exits with 7.
+  content to a temporary file that replaces the output file only when the
+  download is complete: a failed download leaves no partial file and keeps
+  the file it would have replaced. An empty thumbnail exits with 7.
 - JSON shapes worth knowing: `media-sets get` prints the API's media item
   info; `get-by-path` prints `{"mediaItemRid": "..."}`; `create` prints the
   transaction ID as a string; `upload` prints
@@ -556,8 +592,8 @@ can search. See Added.
   JSON, and when every endpoint fails, report each endpoint's status.
 - `openai embeddings --encoding` accepts only `float` or `base64`, and
   `audit list` dates must be `YYYY-MM-DD`.
-- `audit get` streams the log file and deletes a partly written `--output`
-  file when the download fails.
+- `audit get` streams the log file; a failed download leaves no partial
+  `--output` file and keeps an existing one.
 
 #### `widgets`, `aip-agents` and `third-party-apps`
 
@@ -580,10 +616,10 @@ from `--help`. They will be removed in the next release.
 - `--no-confirm`, an alias of `--yes`, on `alias remove` and `alias clear`;
   their `--confirm` (the old default) does nothing.
 - `--preview`, which does nothing now: on every `sql` command (also
-  `--no-preview`), every `streams`, `functions` and `models` command,
-  `media-sets get-by-path`, `create`, `commit`, `abort`, `upload`,
-  `reference`, `thumbnail-calculate` and `thumbnail-retrieve`,
-  `orchestration schedules get`, `create` and `replace`,
+  `--no-preview`), every `streams`, `functions` and `models` command, every
+  `media-sets` command except the new `clear` (#179 had removed it from
+  `get`, `download` and `upload-temp`, whose endpoints became GA; it is back
+  as a no-op), `orchestration schedules get`, `create` and `replace`,
   `data-health check get`, `create`, `replace` and `delete` and
   `report get`, `language-models anthropic messages`, `messages-advanced`
   and `openai embeddings`, and `third-party-apps get`.
@@ -597,8 +633,10 @@ from `--help`. They will be removed in the next release.
 - `resource-role grant` and `revoke --principal-type/-t`: ignored; the
   principal's ID is enough.
 - `cp --debug`: set `PLTR_DEBUG=1` instead.
-- For library users: `DatasetService.create_dataset`, `get_schema`,
-  `list_files`, `create_transaction` and `delete_dataset`, kept for `pltr cp`.
+- The `page_size` setting (`settings.json` in the configuration directory):
+  no command reads it, since list commands use the API's page size unless
+  you pass `--page-size`. New settings files don't get it, and an existing
+  one is accepted and ignored.
 
 ### Removed
 
@@ -632,8 +670,6 @@ from `--help`. They will be removed in the next release.
   - `ontology object-search --query/-q` (see Changed) and
     `dataset views create --description` (views have no description): hidden
     for one release, and they fail with an explanation.
-  - `--preview` on `media-sets get`, `download` and `upload-temp`: their
-    endpoints became GA (#179).
   - `-o` as the short form of `--format` on `resource list` and
     `resource search`, and `-f` as the short form of `--force` on
     `configure delete`, `resource delete`, `resource permanently-delete` and
@@ -655,6 +691,18 @@ from `--help`. They will be removed in the next release.
   `ResourceRoleService.bulk_grant_roles` and `bulk_revoke_roles`;
   `AliasManager.display_aliases`. Services return SDK models instead of
   snake_case dicts, and let SDK exceptions propagate.
+- For library users: `DatasetService.create_dataset`, `get_schema`,
+  `list_files`, `create_transaction` and `delete_dataset` (use `create`,
+  `get_dataset_schema`, `list_dataset_files`, `start_transaction` and
+  `ResourceService.delete_resource`); the legacy output helpers no command
+  uses any more: `pltr.utils.formatting` (`OutputFormatter`),
+  `pltr.utils.progress`, `pltr.utils.pagination`,
+  `BaseService._paginate_iterator`, `_paginate_response` and
+  `_serialize_response`, and the unused completion helpers
+  `complete_ontology_action`, `complete_file_path`,
+  `setup_completion_environment`, `handle_completion` and
+  `COMPLETION_FUNCTIONS`. Use `pltr.contract` (`emit`, `spinner`,
+  `collect_pages`, `to_jsonable`).
 
 ### Fixed
 
@@ -697,9 +745,15 @@ from `--help`. They will be removed in the next release.
   reports problems as usage errors.
 - `audit list` could page forever; `audit get` printed `[...]` in log content
   as terminal markup.
-- `pltr cp` moves a partly copied dataset to the trash when a step fails (the
-  cleanup called a method that doesn't exist), and `--fail-fast` no longer
-  counts a failure once per folder level.
+- `pltr cp` never copied a dataset's schema: it passed the whole schema
+  response where the API takes the schema itself, and put it on the new
+  dataset before any transaction existed, so the schema was always skipped
+  with a warning. It now copies the files, commits them, and then puts the
+  source's schema on the committed transaction of the same branch.
+- `pltr cp` moves a partly copied dataset to the trash when a step fails,
+  including listing the source's files (the cleanup called a method that
+  doesn't exist), and `--fail-fast` no longer counts a failure once per
+  folder level.
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No
