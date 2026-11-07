@@ -691,3 +691,45 @@ def test_compat_delete_dataset_moves_it_to_the_trash(stub_foundry_http):
         f"/api/v2/filesystem/resources/{DATASET}",
     )
     assert "preview" not in request.url.params
+
+
+def test_cp_copies_a_dataset_through_the_compat_methods(stub_foundry_http):
+    """`pltr cp` end to end over the real compat methods (not patched)."""
+    from pltr.services.copy import CopyService
+
+    copy_rid = dj.OTHER_DATASET_RID
+    stub_foundry_http.respond(json=fj.resource(DATASET, "sales", "FOUNDRY_DATASET"))
+    stub_foundry_http.respond(json=dj.dataset(copy_rid, "sales-copy"))
+    stub_foundry_http.respond(json=dj.schema_response())  # get_schema
+    stub_foundry_http.respond(json=dj.schema_response())  # put_schema
+    stub_foundry_http.respond(json=dj.page([dj.file("data/a.csv")]))
+    stub_foundry_http.respond(json=dj.transaction(transaction_type="SNAPSHOT"))
+    stub_foundry_http.respond(content=b"id\n1\n")  # File.content
+    stub_foundry_http.respond(json=dj.file("data/a.csv"))  # File.upload
+    stub_foundry_http.respond(
+        json=dj.transaction(status="COMMITTED", closed_time=dj.CLOSED_TIME)
+    )
+
+    result = CopyService().copy_resource(DATASET, dj.FOLDER_RID)
+
+    assert [item.rid for item in result.items] == [copy_rid]
+    assert [(r.method, r.url.path) for r in stub_foundry_http.requests] == [
+        ("GET", f"/api/v2/filesystem/resources/{DATASET}"),
+        ("POST", API),
+        ("GET", f"{API}/{DATASET}/getSchema"),
+        ("PUT", f"{API}/{copy_rid}/putSchema"),
+        ("GET", f"{API}/{DATASET}/files"),
+        ("POST", f"{API}/{copy_rid}/transactions"),
+        ("GET", f"{API}/{DATASET}/files/data/a.csv/content"),
+        ("POST", f"{API}/{copy_rid}/files/data/a.csv/upload"),
+        ("POST", f"{API}/{copy_rid}/transactions/{dj.TRANSACTION_RID}/commit"),
+    ]
+    requests = stub_foundry_http.requests
+    assert json.loads(requests[1].content) == {
+        "name": "sales-copy",
+        "parentFolderRid": dj.FOLDER_RID,
+    }
+    assert json.loads(requests[3].content)["schema"] == dj.schema_response()["schema"]
+    assert json.loads(requests[5].content) == {"transactionType": "SNAPSHOT"}
+    assert dict(requests[7].url.params) == {"transactionRid": dj.TRANSACTION_RID}
+    assert requests[7].content == b"id\n1\n"
