@@ -33,6 +33,7 @@ from ..services.resource import (
     DEFAULT_MAX_SEARCH_FOLDERS,
     MAX_BATCH_SIZE,
     ROOT_FOLDER_RID,
+    ROOT_FOLDER_UNSUPPORTED,
     ResourceService,
     normalize_resource_type,
     resource_types,
@@ -118,18 +119,26 @@ TypeOption = Annotated[
     ),
 ]
 FolderRidOption = Annotated[
-    Optional[str],
+    str,
     typer.Option(
         "--folder-rid",
         "-f",
         help=(
-            "RID of the folder, project or space (default: the root folder, "
-            f"{ROOT_FOLDER_RID})."
+            "RID of the folder, project or space (the API can't list the "
+            "root folder: find spaces with 'pltr space list')."
         ),
         autocompletion=complete_rid,
         show_default=False,
     ),
 ]
+
+
+def _check_not_root(folder_rid: str) -> None:
+    """Fail fast on the root folder, which the API can't list."""
+    if folder_rid == ROOT_FOLDER_RID:
+        raise typer.BadParameter(ROOT_FOLDER_UNSUPPORTED, param_hint="'--folder-rid'")
+
+
 # On `list` and `search`, -f is --folder-rid, so --format has no short flag.
 # -o used to be --format's short flag there; --output gets none, so old
 # `-o json` invocations fail instead of writing a file named "json".
@@ -228,7 +237,7 @@ def get_resource_by_path(
 @app.command("list")
 @pltr_command(sdk="filesystem.Folder.children", paged=True)
 def list_resources(
-    folder_rid: FolderRidOption = None,
+    folder_rid: FolderRidOption,
     resource_type: TypeOption = None,
     profile: ProfileOption = None,
     format: FormatNoShortOption = "table",
@@ -240,18 +249,18 @@ def list_resources(
 ):
     """List the resources directly inside a folder (not its subfolders).
 
-    Without --folder-rid it lists the root folder. --type filters each
-    fetched page locally, so a page can hold fewer items than --page-size.
+    --type filters each fetched page locally, so a page can hold fewer items
+    than --page-size.
     Fetches one page by default; use --all for every page, or --page-token
     with the nextPageToken of an earlier response to continue.
     """
+    _check_not_root(folder_rid)
     wanted_type = _resource_type(resource_type)
-    parent = folder_rid or ROOT_FOLDER_RID
     service = ResourceService(profile=profile)
-    with spinner(f"Listing resources in {parent}..."):
+    with spinner(f"Listing resources in {folder_rid}..."):
         page = collect_pages(
             lambda token: service.list_children(
-                parent,
+                folder_rid,
                 resource_type=wanted_type,
                 page_size=page_size,
                 page_token=token,
@@ -260,8 +269,7 @@ def list_resources(
             max_pages=max_pages,
             all_pages=all_pages,
         )
-    if folder_rid:
-        cache_rid(folder_rid)
+    cache_rid(folder_rid)
     emit(page, format=format, output=output, columns=RESOURCE_LIST_COLUMNS)
 
 
@@ -277,8 +285,8 @@ def search_resources(
             )
         ),
     ],
+    folder_rid: FolderRidOption,
     resource_type: TypeOption = None,
-    folder_rid: FolderRidOption = None,
     limit: Annotated[
         Optional[int],
         typer.Option(
@@ -306,8 +314,8 @@ def search_resources(
     """Find resources below a folder by name, path, description, RID or type.
 
     The Foundry API has no search endpoint, so pltr scans: it lists the
-    children of --folder-rid (default: the root folder) and of every folder
-    below it, breadth-first, and matches QUERY locally. Each folder costs at
+    children of --folder-rid and of every folder below it, breadth-first, and
+    matches QUERY locally. Each folder costs at
     least one request, so start from the narrowest folder you can. After
     --max-folders folders it stops and warns that the results may be
     incomplete. Output is {"data": [...]}, with no nextPageToken.
@@ -318,12 +326,12 @@ def search_resources(
         warn("--page-size is deprecated for 'resource search'; use --limit.")
         if limit is None:
             limit = page_size
+    _check_not_root(folder_rid)
     wanted_type = _resource_type(resource_type)
-    start = folder_rid or ROOT_FOLDER_RID
-    with spinner(f"Searching {start} for '{query}'..."):
+    with spinner(f"Searching {folder_rid} for '{query}'..."):
         result = ResourceService(profile=profile).search_resources(
             query,
-            folder_rid=start,
+            folder_rid=folder_rid,
             resource_type=wanted_type,
             limit=limit,
             max_folders=max_folders,

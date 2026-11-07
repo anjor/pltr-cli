@@ -439,15 +439,17 @@ class TestHeadlessCommands:
     ):
         set_env_oauth(monkeypatch)
         fake_http.route_oauth_token()
-        # `language-models list` is one of the labeled direct-HTTP commands
-        endpoint = LanguageModelsService._MODEL_LIST_ENDPOINTS[0]
+        # `language-models enroll` is one of the labeled direct-HTTP commands
+        endpoint = LanguageModelsService._MODEL_ENROLL_ENDPOINTS[0].format(
+            model_id="claude"
+        )
         fake_http.route(
-            "GET",
+            "POST",
             endpoint,
-            body={"data": [{"rid": "ri.language-model.main.model.claude"}]},
+            body={"rid": "ri.language-model.main.model.claude", "status": "ENROLLED"},
         )
 
-        result = CliRunner().invoke(app, ["language-models", "list"])
+        result = CliRunner().invoke(app, ["language-models", "enroll", "claude"])
 
         assert result.exit_code == 0, result.output
         (direct,) = fake_http.direct_requests

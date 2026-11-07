@@ -30,7 +30,6 @@ runner = CliRunner()
 
 MESSAGES = f"/api/v2/languageModels/anthropic/{lm.MODEL_API_NAME}/messages"
 EMBEDDINGS = f"/api/v2/languageModels/openAi/{lm.EMBEDDING_MODEL}/embeddings"
-PROXY_MODELS = "/api/v2/llm/proxy/openai/v1/models"
 SIMPLE_REQUEST = {
     "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}],
     "maxTokens": 100,
@@ -61,7 +60,7 @@ def test_sdk_commands_are_labeled_beta_and_direct_http_ones_are_not():
     for line in anthropic.splitlines() + openai.splitlines():
         if " messages " in line or " embeddings " in line:
             assert "[beta]" in line, line
-    for command in ("list", "status", "enroll"):
+    for command in ("enroll",):
         line = next(line for line in top.splitlines() if f" {command} " in line)
         assert "[beta]" not in line, line
 
@@ -570,171 +569,6 @@ def test_embeddings_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
     assert "--preview is deprecated" in result.stderr
 
 
-# ============================================== list (labeled direct HTTP)
-
-
-def test_list_table(stub_foundry_http):
-    stub_foundry_http.respond(
-        json={
-            "data": [
-                lm.language_model(),
-                lm.language_model("ri.x..y.z", "Other", "PREVIEW"),
-            ]
-        }
-    )
-
-    result = invoke("language-models", "list")
-
-    assert result.exit_code == 0, result.output
-    for expected in (
-        lm.MODEL_RID,
-        "Claude 3.5 Sonnet",
-        "ENROLLED",
-        "ANTHROPIC",
-        "PREVIEW",
-    ):
-        assert expected in result.stdout
-    assert "Models from GET /api/v2/languageModels" in result.stderr
-    [request] = stub_foundry_http.requests
-    assert request.url.path == "/api/v2/languageModels"
-    assert request.headers["Authorization"] == f"Bearer {STUB_TOKEN}"
-
-
-def test_list_json_keeps_the_endpoints_model_objects(stub_foundry_http):
-    stub_foundry_http.respond(
-        json={"data": [lm.language_model()], "nextPageToken": "t"}
-    )
-
-    result = invoke("language-models", "list", "--format", "json")
-
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {
-        "data": [lm.language_model()],
-        "nextPageToken": "t",
-    }
-    assert result.stderr == ""
-
-
-def test_list_from_the_openai_proxy(stub_foundry_http):
-    stub_foundry_http.respond(**not_found())
-    stub_foundry_http.respond(json=lm.proxy_models(lm.proxy_model()))
-
-    result = invoke("language-models", "list", "-f", "csv")
-
-    assert result.exit_code == 0, result.output
-    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
-    assert row == {
-        "Model": "gpt-4o",
-        "Display Name": "",
-        "Status": "",
-        "Type": "openai",
-    }
-    assert "OpenAI-compatible proxy" in result.stderr
-    assert stub_foundry_http.requests[-1].url.path == PROXY_MODELS
-
-
-def test_list_empty(stub_foundry_http):
-    stub_foundry_http.respond(json={"data": []})
-
-    result = invoke("language-models", "list")
-
-    assert result.exit_code == 0
-    assert result.stdout == ""
-    assert "No results." in result.stderr
-
-
-@pytest.mark.parametrize(
-    "status, code, error_type, exit_code",
-    [
-        (404, "NOT_FOUND", "not_found", 5),
-        (403, "PERMISSION_DENIED", "permission_denied", 4),
-        (401, "UNAUTHORIZED", "auth_error", 3),
-        (500, "INTERNAL", "server_error", 7),
-    ],
-)
-def test_list_errors_are_structured(
-    stub_foundry_http, status, code, error_type, exit_code
-):
-    stub_foundry_http.respond_always(status, json=fj.error("SomeError", code))
-
-    result = invoke("language-models", "list", "-f", "json")
-
-    assert result.exit_code == exit_code
-    assert result.stdout == ""
-    error = json_error(result)
-    assert (error["type"], error["statusCode"], error["errorName"]) == (
-        error_type,
-        status,
-        "SomeError",
-    )
-    assert error["errorInstanceId"] == fj.ERROR_INSTANCE_ID
-    assert "GET /api/v2/languageModels -> HTTP" in error["message"]
-
-
-def test_list_missing_credentials_is_an_auth_error(monkeypatch):
-    # Same seam stub_foundry_http uses: the AuthManager services construct.
-    auth_manager = Mock()
-    auth_manager.return_value.get_auth_context.side_effect = ProfileNotFoundError(
-        "No profile configured"
-    )
-    monkeypatch.setattr("pltr.services.base.AuthManager", auth_manager)
-
-    result = invoke("language-models", "list", "-f", "json")
-
-    assert result.exit_code == 3
-    error = json_error(result)
-    assert (error["type"], error["message"]) == ("auth_error", "No profile configured")
-
-
-# ============================================ status (labeled direct HTTP)
-
-
-def test_status_table(stub_foundry_http):
-    stub_foundry_http.respond(json=lm.language_model())
-
-    result = invoke("language-models", "status", lm.MODEL_RID)
-
-    assert result.exit_code == 0, result.output
-    for expected in (lm.MODEL_RID, "Claude 3.5 Sonnet", "ENROLLED", "ANTHROPIC"):
-        assert expected in result.stdout
-    [request] = stub_foundry_http.requests
-    assert request.url.path == f"/api/v2/languageModels/{lm.MODEL_RID}"
-
-
-def test_status_json(stub_foundry_http):
-    stub_foundry_http.respond(json=lm.language_model())
-
-    result = invoke("language-models", "status", lm.MODEL_RID, "-f", "json")
-
-    assert json.loads(result.stdout) == lm.language_model()
-    assert result.stderr == ""
-
-
-def test_status_via_the_openai_proxy(stub_foundry_http):
-    stub_foundry_http.respond(**not_found())
-    stub_foundry_http.respond(**not_found())
-    stub_foundry_http.respond(json=lm.proxy_models(lm.proxy_model()))
-
-    result = invoke("language-models", "status", "gpt-4o")
-
-    assert result.exit_code == 0, result.output
-    assert "gpt-4o" in result.stdout
-    assert "reports no enrollment status" in result.stderr
-
-
-def test_status_unknown_model_is_not_found(stub_foundry_http):
-    stub_foundry_http.respond(**not_found())
-    stub_foundry_http.respond(**not_found())
-    stub_foundry_http.respond(json=lm.proxy_models(lm.proxy_model()))
-
-    result = invoke("language-models", "status", "missing-model", "-f", "json")
-
-    assert result.exit_code == 5
-    error = json_error(result)
-    assert error["type"] == "not_found"
-    assert "missing-model" in error["message"]
-
-
 # ============================================ enroll (labeled direct HTTP)
 
 
@@ -775,3 +609,49 @@ def test_enroll_failure_mentions_the_model_catalog(stub_foundry_http):
     assert result.exit_code == 4
     assert "Model Catalog" in result.stderr
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "status, code, error_type, exit_code",
+    [
+        (404, "NOT_FOUND", "not_found", 5),
+        (403, "PERMISSION_DENIED", "permission_denied", 4),
+        (401, "UNAUTHORIZED", "auth_error", 3),
+        (500, "INTERNAL", "server_error", 7),
+    ],
+)
+def test_enroll_errors_are_structured(
+    stub_foundry_http, status, code, error_type, exit_code
+):
+    stub_foundry_http.respond_always(status, json=fj.error("SomeError", code))
+
+    result = invoke("language-models", "enroll", lm.MODEL_RID, "-f", "json")
+
+    assert result.exit_code == exit_code
+    assert result.stdout == ""
+    error = json_error(result)
+    assert (error["type"], error["statusCode"], error["errorName"]) == (
+        error_type,
+        status,
+        "SomeError",
+    )
+    assert error["errorInstanceId"] == fj.ERROR_INSTANCE_ID
+    assert (
+        f"POST /api/v2/languageModels/{lm.MODEL_RID}/enroll -> HTTP"
+        in (error["message"])
+    )
+
+
+def test_enroll_missing_credentials_is_an_auth_error(monkeypatch):
+    # Same seam stub_foundry_http uses: the AuthManager services construct.
+    auth_manager = Mock()
+    auth_manager.return_value.get_auth_context.side_effect = ProfileNotFoundError(
+        "No profile configured"
+    )
+    monkeypatch.setattr("pltr.services.base.AuthManager", auth_manager)
+
+    result = invoke("language-models", "enroll", lm.MODEL_RID, "-f", "json")
+
+    assert result.exit_code == 3
+    error = json_error(result)
+    assert (error["type"], error["message"]) == ("auth_error", "No profile configured")

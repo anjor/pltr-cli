@@ -469,12 +469,6 @@ class FakeFoundry:
         r("GET", f"{api}/models/{{rid}}/versions/{{sub}}")(
             lambda q, rid, sub: js(fj_models.model_version(sub))
         )
-        r("GET", f"{api}/languageModels")(
-            lambda q: js({"data": [fj_lm.language_model()]})
-        )
-        r("GET", f"{api}/languageModels/{{name}}")(
-            lambda q, name: js(fj_lm.language_model())
-        )
         r("POST", f"{api}/languageModels/anthropic/{{name}}/messages")(
             lambda q, name: js(fj_lm.anthropic_response("OK"))
         )

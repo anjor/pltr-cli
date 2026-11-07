@@ -74,10 +74,12 @@ def test_token_from_the_environment_is_not_printed():
 
 @pytest.mark.usefixtures("isolated_home")
 def test_bearer_header_is_not_printed_when_a_direct_http_request_fails():
-    # language-models list calls Foundry with `requests`; the Authorization
+    # language-models enroll calls Foundry with `requests`; the Authorization
     # header is a local of the frame that sends it.
     result = run_with_debug(
-        ["language-models", "list"], FOUNDRY_HOST=unused_port(), FOUNDRY_TOKEN=TOKEN
+        ["language-models", "enroll", "claude"],
+        FOUNDRY_HOST=unused_port(),
+        FOUNDRY_TOKEN=TOKEN,
     )
 
     assert_traceback_without(result, TOKEN)

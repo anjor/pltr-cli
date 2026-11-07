@@ -8,9 +8,7 @@ SUCCESS = {
     "language-models anthropic messages": [{"json": lm.anthropic_response()}],
     "language-models anthropic messages-advanced": [{"json": lm.anthropic_response()}],
     "language-models openai embeddings": [{"json": lm.embeddings_response()}],
-    # list, status and enroll are labeled direct-HTTP commands (requests, not httpx)
-    "language-models list": [{"json": {"data": [lm.language_model()]}}],
-    "language-models status": [{"json": lm.language_model()}],
+    # enroll is a labeled direct-HTTP command (requests, not httpx)
     "language-models enroll": [{"json": {"status": "ENROLLED"}}],
 }
 

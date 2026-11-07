@@ -16,7 +16,7 @@ pltr resource get-by-path "/My Space/My Project/flights" --format json
 # A name you don't know the folder of: scan below a folder (one request per folder)
 pltr resource search flights --folder-rid ri.compass.main.folder.<id> --type dataset --format json
 
-# Browse: spaces, then projects, then folders (the root folder is ri.compass.main.folder.0)
+# Browse: spaces, then projects, then folders (the API can't list the root folder)
 pltr space list --format json
 pltr project list --format json
 pltr folder list ri.compass.main.folder.<id> --format json --all

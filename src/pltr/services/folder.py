@@ -27,8 +27,7 @@ class FolderService(BaseService):
 
         Args:
             display_name: Folder display name
-            parent_folder_rid: RID of the parent folder, space or project
-                (``ri.compass.main.folder.0`` is the root folder)
+            parent_folder_rid: RID of the parent folder or project
 
         Returns:
             The created ``Folder`` model

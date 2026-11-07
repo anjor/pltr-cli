@@ -696,16 +696,6 @@ def smallest_file(doc: Any) -> Any:
     return min(files, key=size)["path"] if files else None
 
 
-def first_model_id(doc: Any) -> Any:
-    """language-models list items are the endpoint's own objects."""
-    for item in _data_list(doc)[:1]:
-        if isinstance(item, dict):
-            for field in ("apiName", "id", "rid", "modelRid", "name"):
-                if item.get(field):
-                    return item[field]
-    return None
-
-
 def whole(doc: Any) -> Any:
     return doc
 
@@ -1110,14 +1100,17 @@ CHECKS: Tuple[Check, ...] = (
     C(
         "filesystem.root-folder-list",
         f"folder list {ROOT_FOLDER_RID} --page-size 5",
-        "Children of the root folder.",
-        expect=(paged(),),
+        "The API can't list the root folder (GetRootFolderNotSupported), so "
+        "pltr refuses it before any request and points to 'pltr space list'.",
+        exit_codes=(2,),
+        error_types=("usage_error",),
     ),
     C(
         "filesystem.resource-list-root",
-        "resource list --page-size 5",
-        "resource list without --folder-rid lists the root folder.",
-        expect=(paged(),),
+        f"resource list --folder-rid {ROOT_FOLDER_RID} --page-size 5",
+        "resource list refuses the root folder too, before any request.",
+        exit_codes=(2,),
+        error_types=("usage_error",),
     ),
     C(
         "filesystem.space-list",
@@ -1434,19 +1427,6 @@ CHECKS: Tuple[Check, ...] = (
         "streams stream get {streams.dataset_rid} --branch {streams.branch}",
         "A stream.",
         expect=(has("branchName"),),
-    ),
-    C(
-        "language-models.list",
-        "language-models list",
-        "Language models (direct HTTP: not in the SDK).",
-        expect=(paged(),),
-        capture={"language_models.model_id": first_model_id},
-    ),
-    C(
-        "language-models.status",
-        "language-models status {language_models.model_id}",
-        "A model's enrollment status (direct HTTP).",
-        expect=(has(),),
     ),
     C(
         "language-models.anthropic-messages",

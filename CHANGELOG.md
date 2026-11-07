@@ -68,11 +68,13 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
   field the API returns. Many old columns read fields that don't exist and
   were always empty or `N/A`. `--format` accepts only `table`, `json` and
   `csv`; other values fell back to a table.
-- **Removed commands.** None of them could work with the SDK:
+- **Removed commands.** None of them could work:
   `connectivity connection list`, `dataset views list`,
   `resource get-metadata`, `resource-role get-principal-roles`,
   `resource-role get-available-roles`, and `widgets dev-mode get`, `enable`,
-  `disable` and `pause`. See Removed for what to use instead.
+  `disable` and `pause` call SDK methods that don't exist;
+  `language-models list` and `status` call endpoints that don't exist on a
+  live stack. See Removed for what to use instead.
 - **New arguments** for commands that never worked as documented:
   `connectivity import` commands take the connection RID first;
   `data-health report get` takes the check RID and the report RID;
@@ -80,7 +82,9 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
   `ontology object-search` filters with `--where` (`--query` is gone);
   `ontology object-aggregate` takes `--aggregation`; `resource-role grant` and
   `revoke` take `--principal-id` (or `--everyone`) and `--role`;
-  `orchestration builds search` needs a filter.
+  `orchestration builds search` needs a filter; `resource list` and
+  `resource search` need `--folder-rid`, because their default, the root
+  folder, can't be listed through the API.
 - **`pltr cp` copies schemas, and fails if it can't.** With `--schema` (the
   default), a dataset copy that can't read the source's schema or put it on
   the copy moves the partial copy to the trash and exits with the error. It
@@ -415,6 +419,11 @@ can search. See Added.
   the default role set and usage account were reset.
 - `folder create --parent-folder` help says that folders can only be created
   inside a project.
+- `folder get` and `folder list` refuse the root folder
+  (`ri.compass.main.folder.0`) with a usage error (exit 2) that points to
+  `pltr space list`. The API answers `GetRootFolderNotSupported` for it, so
+  `folder list ri.compass.main.folder.0`, which earlier docs suggested, never
+  worked.
 
 #### `project`, `resource`, `resource-role` and `cp`
 
@@ -422,6 +431,11 @@ can search. See Added.
   confirmation. `project delete`, `resource delete`,
   `resource permanently-delete` and `resource-role revoke` don't prompt when
   stdin is not a terminal.
+- **Breaking:** `resource list` and `resource search` require
+  `--folder-rid`. Without it they listed the root folder, which the API
+  refuses (`GetRootFolderNotSupported`), so they always failed; the root
+  folder itself is now refused with a usage error that points to
+  `pltr space list`. Verified on a live stack.
 - **Breaking:** `resource list` and `resource search` no longer accept `-o`
   for `--format`. `-f` stays `--folder-rid` there, so `--format` and
   `--output` have no short flags on these two commands.
@@ -654,17 +668,18 @@ can search. See Added.
   configuration itself; the import commands print the API's `FileImport` or
   `TableImport`; `anthropic messages` prints the API's response (`content`,
   `stopReason`, `usage`); `openai embeddings` prints `data` as a list of
-  vectors; `language-models list` prints `{"data": [...]}` with each model as
-  the endpoint returned it, without the values pltr used to fill in.
+  vectors.
 - `anthropic messages-advanced` reports unknown request fields (such as
   `max_tokens` instead of `maxTokens`) and invalid requests as usage errors
   before sending anything. The thinking example in its help used `budget`;
   the field is `budgetTokens`.
 - The model argument of `anthropic messages`, `messages-advanced` and
   `openai embeddings` is the model's API name, not a RID.
-- `language-models list`, `status` and `enroll` try `/api/v2/languageModels`
-  first (they called `/v2/...` at the host root), skip answers that aren't
-  JSON, and when every endpoint fails, report each endpoint's status.
+- `language-models enroll` tries `/api/v2/languageModels/...` first (it
+  called `/v2/...` at the host root), skips answers that aren't JSON, and
+  when every endpoint fails, reports each endpoint's status. Not verified
+  live: `list` and `status` used the same endpoints and were removed (see
+  Removed).
 - `openai embeddings --encoding` accepts only `float`, and `audit list` dates
   must be `YYYY-MM-DD`. `--encoding base64` is a usage error (exit 2) before
   any call: the SDK reads embeddings only as lists of floats, so a base64
@@ -734,6 +749,12 @@ from `--help`. They will be removed in the next release.
     and `widgets dev-mode enable`, which alone would be confusing. Use
     `pltr api widgets dev-mode-settings enable` (or `set-widget-set-by-id`)
     and the `dev-mode-settings-v2` commands.
+  - `language-models list` and `status`: the SDK has no endpoint for either,
+    and the endpoints pltr called instead (`GET /api/v2/languageModels`,
+    `GET /api/v2/llm/models/{id}` and the OpenAI-compatible proxy's
+    `GET /api/v2/llm/proxy/openai/v1/models`) returned 404 on a live stack.
+    The model argument of `anthropic messages` and `openai embeddings` is the
+    model's API name, as shown in Foundry's Model Catalog.
 - Options:
   - `connectivity import file` and `table --execute` (use
     `import execute-file` and `execute-table`), `import file --config/-c` (use

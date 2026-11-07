@@ -15,8 +15,16 @@ from typing import Any, List, Optional, Set, Tuple
 from ..contract import Page
 from .base import BaseService
 
-#: RID of the root folder (its children are the spaces).
+#: RID of the root folder. Its children are the spaces, but the API can't get
+#: or list it: Foundry answers ``GetRootFolderNotSupported`` (HTTP 400).
 ROOT_FOLDER_RID = "ri.compass.main.folder.0"
+
+#: Why a command can't take the root folder, and what to use instead.
+ROOT_FOLDER_UNSUPPORTED = (
+    f"the Foundry API can't get or list the root folder ({ROOT_FOLDER_RID}). "
+    "Its children are the spaces: run 'pltr space list', then pass a space, "
+    "project or folder RID"
+)
 
 #: Maximum number of resources or paths per batch request.
 MAX_BATCH_SIZE = 1000
@@ -171,17 +179,17 @@ class ResourceService(BaseService):
     def search_resources(
         self,
         query: str,
-        folder_rid: Optional[str] = None,
+        folder_rid: str,
         resource_type: Optional[str] = None,
         limit: Optional[int] = None,
         max_folders: int = DEFAULT_MAX_SEARCH_FOLDERS,
     ) -> SearchResult:
         """Find resources by scanning folders (the API has no search endpoint).
 
-        Lists the children of ``folder_rid`` (default: the root folder) and,
-        breadth-first, of every folder below it with ``Folder.children``
-        (GA, every page), keeping resources whose display name, path,
-        description, RID or type contains ``query`` (case-insensitive).
+        Lists the children of ``folder_rid`` and, breadth-first, of every
+        folder below it with ``Folder.children`` (GA, every page), keeping
+        resources whose display name, path, description, RID or type
+        contains ``query`` (case-insensitive).
 
         Args:
             query: text to look for
@@ -198,7 +206,7 @@ class ResourceService(BaseService):
         if not needle:
             raise ValueError("The search query is empty")
         result = SearchResult()
-        pending = deque([folder_rid or ROOT_FOLDER_RID])
+        pending = deque([folder_rid])
         queued: Set[str] = set(pending)
         while pending:
             if result.folders_scanned >= max_folders:

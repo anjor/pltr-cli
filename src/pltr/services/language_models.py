@@ -6,13 +6,17 @@ Through foundry-platform-sdk: ``AnthropicModel.messages`` and
 ``preview=True``. Both take the model's API name (``LanguageModelApiName``),
 return the SDK response models unchanged and let SDK exceptions propagate.
 
-Labeled direct-HTTP exceptions (see docs/development/sdk-guardrail.md): the
-SDK has no endpoint to list language models, read a model's enrollment status
-or enroll a model. ``list_available_models``, ``get_model_enrollment_status``
-and ``enroll_model`` call Foundry with ``BaseService._make_request`` (the SDK
-client's host and auth), trying the endpoints below in order and returning
-the first answer as the endpoint sent it. None of these endpoints is in the
-SDK or verified against a live stack.
+Labeled direct-HTTP exception (see docs/development/sdk-guardrail.md): the
+SDK has no endpoint to enroll a model. ``enroll_model`` calls Foundry with
+``BaseService._make_request`` (the SDK client's host and auth), trying the
+endpoints below in order and returning the first answer as the endpoint sent
+it. These endpoints aren't in the SDK and haven't been verified against a live
+stack.
+
+``language-models list`` and ``status`` were removed in 0.17.0: the endpoints
+they tried (``GET /api/v2/languageModels``, ``GET /api/v2/llm/models/{id}``
+and the OpenAI-compatible proxy's ``GET /api/v2/llm/proxy/openai/v1/models``)
+returned 404 on a live stack, and the SDK has no equivalent.
 """
 
 from dataclasses import dataclass
@@ -24,22 +28,6 @@ import requests
 from ..contract import ExitCode, PltrError
 from .base import BaseService
 
-#: ``language-models list``: GET endpoints tried in order.
-MODEL_LIST_ENDPOINTS: Tuple[str, ...] = (
-    "/api/v2/languageModels",
-    "/api/v2/llm/proxy/openai/v1/models",
-)
-
-#: ``language-models status``: GET endpoints tried in order. When neither
-#: answers, the model is looked up in the OpenAI-compatible proxy's model list.
-MODEL_STATUS_ENDPOINTS: Tuple[str, ...] = (
-    "/api/v2/languageModels/{model_id}",
-    "/api/v2/llm/models/{model_id}",
-)
-
-#: The OpenAI-compatible LLM proxy's model list (``status`` falls back to it).
-OPENAI_PROXY_MODELS_ENDPOINT = "/api/v2/llm/proxy/openai/v1/models"
-
 #: ``language-models enroll``: POST endpoints tried in order.
 MODEL_ENROLL_ENDPOINTS: Tuple[str, ...] = (
     "/api/v2/languageModels/{model_id}/enroll",
@@ -48,28 +36,11 @@ MODEL_ENROLL_ENDPOINTS: Tuple[str, ...] = (
 
 
 @dataclass
-class ModelListing:
-    """The answer of ``list_available_models``.
-
-    Attributes:
-        endpoint: the endpoint that answered, e.g. ``"GET /api/v2/languageModels"``
-        models: the model objects, as the endpoint returned them
-        next_page_token: the endpoint's ``nextPageToken``, if it sent one
-            (pltr doesn't follow it)
-    """
-
-    endpoint: str
-    models: List[Dict[str, Any]]
-    next_page_token: Optional[str] = None
-
-
-@dataclass
 class EndpointAnswer:
     """The JSON body of the endpoint that answered (``None``: no body)."""
 
     endpoint: str
     body: Any
-    via_openai_proxy: bool = False
 
 
 class _NotJson:
@@ -87,26 +58,6 @@ def _json_body(response: requests.Response) -> Any:
         return response.json()
     except ValueError:  # requests' JSONDecodeError is a ValueError
         return _NOT_JSON
-
-
-def _model_items(payload: Any) -> List[Dict[str, Any]]:
-    """The model objects of a list response: its ``data`` (or ``models``) list."""
-    items: Any = []
-    if isinstance(payload, dict):
-        if "data" in payload:
-            items = payload["data"]
-        elif "models" in payload:
-            items = payload["models"]
-    elif isinstance(payload, list):
-        items = payload
-    if not isinstance(items, list):
-        return []
-    return [item for item in items if isinstance(item, dict)]
-
-
-def _next_page_token(payload: Any) -> Optional[str]:
-    token = payload.get("nextPageToken") if isinstance(payload, dict) else None
-    return token if isinstance(token, str) and token else None
 
 
 def _unwrap_data(body: Any) -> Any:
@@ -174,10 +125,7 @@ def _raise_no_answer(message: str, attempts: _Attempts) -> NoReturn:
 class LanguageModelsService(BaseService):
     """Service wrapper for Foundry language models (``client.language_models``)."""
 
-    # The direct-HTTP endpoints, also as the class attributes they used to be
-    # (tests/test_auth/test_headless_auth.py reads _MODEL_LIST_ENDPOINTS).
-    _MODEL_LIST_ENDPOINTS = MODEL_LIST_ENDPOINTS
-    _MODEL_STATUS_ENDPOINTS = MODEL_STATUS_ENDPOINTS
+    # The direct-HTTP endpoints, also as the class attribute they used to be.
     _MODEL_ENROLL_ENDPOINTS = MODEL_ENROLL_ENDPOINTS
 
     def _get_service(self) -> Any:
@@ -298,93 +246,6 @@ class LanguageModelsService(BaseService):
         )
 
     # ===== Labeled direct-HTTP exceptions =====
-
-    def list_available_models(self) -> ModelListing:
-        """List the language models available to the user (direct HTTP).
-
-        Tries ``MODEL_LIST_ENDPOINTS`` in order. An endpoint that fails with
-        an HTTP error, or answers with something other than JSON, is skipped.
-        Reads one response; it doesn't follow a ``nextPageToken``.
-
-        Raises:
-            RuntimeError: no endpoint answered; ``__cause__`` is the most
-                telling ``requests.HTTPError``
-            PltrError: no endpoint answered with JSON, and none failed with
-                an HTTP error status
-        """
-        attempts = _Attempts()
-        for path in MODEL_LIST_ENDPOINTS:
-            endpoint = f"GET {path}"
-            try:
-                response = self._make_request("GET", path)
-            except requests.HTTPError as error:
-                attempts.http_error(endpoint, error)
-                continue
-            payload = _json_body(response)
-            if payload is _NOT_JSON:
-                attempts.not_json(endpoint)
-                continue
-            return ModelListing(
-                endpoint=endpoint,
-                models=_model_items(payload),
-                next_page_token=_next_page_token(payload),
-            )
-        _raise_no_answer("No endpoint listed the language models", attempts)
-
-    def get_model_enrollment_status(self, model_id: str) -> EndpointAnswer:
-        """Get a model's enrollment status (direct HTTP).
-
-        Tries ``MODEL_STATUS_ENDPOINTS`` in order, then looks the model up by
-        ``id`` in the OpenAI-compatible proxy's model list
-        (``via_openai_proxy`` is then set; that list has no enrollment status).
-
-        Args:
-            model_id: Model RID or API name
-
-        Raises:
-            RuntimeError: no endpoint answered (``__cause__``: the most telling
-                ``requests.HTTPError``)
-            PltrError: the proxy's model list doesn't have the model (not found)
-        """
-        encoded_model_id = quote(model_id, safe="")
-        attempts = _Attempts()
-        for template in MODEL_STATUS_ENDPOINTS:
-            path = template.format(model_id=encoded_model_id)
-            endpoint = f"GET {path}"
-            try:
-                response = self._make_request("GET", path)
-            except requests.HTTPError as error:
-                attempts.http_error(endpoint, error)
-                continue
-            body = _json_body(response)
-            if body is _NOT_JSON:
-                attempts.not_json(endpoint)
-                continue
-            return EndpointAnswer(endpoint=endpoint, body=_unwrap_data(body))
-
-        endpoint = f"GET {OPENAI_PROXY_MODELS_ENDPOINT}"
-        failed = f"Couldn't get the status of model {model_id}"
-        try:
-            response = self._make_request("GET", OPENAI_PROXY_MODELS_ENDPOINT)
-        except requests.HTTPError as error:
-            attempts.http_error(endpoint, error)
-            _raise_no_answer(failed, attempts)
-        payload = _json_body(response)
-        if payload is _NOT_JSON:
-            attempts.not_json(endpoint)
-            _raise_no_answer(failed, attempts)
-        for item in _model_items(payload):
-            if item.get("id") == model_id:
-                return EndpointAnswer(
-                    endpoint=endpoint, body=item, via_openai_proxy=True
-                )
-        raise PltrError(
-            f"Model {model_id} not found: {endpoint} doesn't list it, and the "
-            f"language-model endpoints didn't answer ({attempts.summary()})",
-            error_type="not_found",
-            exit_code=ExitCode.NOT_FOUND,
-            hint="Run 'pltr language-models list' to see the models you can use.",
-        )
 
     def enroll_model(self, model_id: str) -> EndpointAnswer:
         """Enroll (enable) a language model for API use (direct HTTP).

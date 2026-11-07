@@ -665,20 +665,19 @@ your shell history; secrets not in the file keep their values.
 ## Language models: `pltr language-models`
 
 The model argument of `anthropic messages`, `messages-advanced` and
-`openai embeddings` is the model's API name. `list`, `status` and `enroll`
-call language-model endpoints directly (the SDK has none for them).
+`openai embeddings` is the model's API name. `enroll` calls language-model
+endpoints directly (the SDK has none for it). There is no command to list
+models: the SDK has no endpoint for it, and the endpoints pltr used to guess
+weren't there on a live stack.
 
 | Command | What it does |
 |---|---|
-| `language-models list` | List the language models available to you |
-| `language-models status` | Show a language model's enrollment status |
 | `language-models enroll` | Enroll (enable) a language model for API use |
 | `language-models anthropic messages` | [beta] Send one message to an Anthropic Claude model |
 | `language-models anthropic messages-advanced` | [beta] Send a full messages request to a Claude model |
 | `language-models openai embeddings` | [beta] Embed texts with an OpenAI embedding model |
 
 ```bash
-pltr language-models list
 pltr language-models anthropic messages <model-api-name> -m "Explain RIDs" --max-tokens 300
 pltr language-models anthropic messages-advanced <model-api-name> --request @request.json --format json
 pltr language-models openai embeddings <model-api-name> --input '["first text", "second text"]'

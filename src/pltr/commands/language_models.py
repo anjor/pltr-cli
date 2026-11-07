@@ -1,6 +1,6 @@
 """
 Language model commands: Anthropic Claude messages, OpenAI embeddings, and
-listing, checking and enrolling models.
+enrolling models.
 """
 
 from typing import Any, Callable, Dict, List, Optional
@@ -16,7 +16,6 @@ from ..contract import (
     PreviewNoopOption,
     ProfileOption,
     emit,
-    info,
     load_json_input,
     pltr_command,
     spinner,
@@ -24,9 +23,6 @@ from ..contract import (
 )
 from ..services.language_models import (
     MODEL_ENROLL_ENDPOINTS,
-    MODEL_LIST_ENDPOINTS,
-    MODEL_STATUS_ENDPOINTS,
-    OPENAI_PROXY_MODELS_ENDPOINT,
     LanguageModelsService,
 )
 
@@ -136,8 +132,8 @@ EMBEDDING_CSV_COLUMNS: Columns = {
 def _first(*keys: str) -> Callable[[Dict[str, Any]], Any]:
     """Column reading the first of ``keys`` the model object has.
 
-    The direct-HTTP endpoints return plain JSON whose field names differ by
-    endpoint; a missing field renders empty.
+    The direct-HTTP enroll endpoints return plain JSON whose field names may
+    differ by endpoint; a missing field renders empty.
     """
 
     def get(item: Dict[str, Any]) -> Any:
@@ -150,7 +146,7 @@ def _first(*keys: str) -> Callable[[Dict[str, Any]], Any]:
     return get
 
 
-#: Table/CSV columns for the model objects of ``list``, ``status`` and ``enroll``.
+#: Table/CSV columns for the model object ``enroll`` returns.
 MODEL_COLUMNS: Columns = {
     "Model": _first("rid", "modelRid", "id", "apiName", "name"),
     "Display Name": _first("displayName", "name"),
@@ -201,88 +197,6 @@ def _parse_input_texts(value: str) -> List[str]:
 
 
 # ===== Models (labeled direct-HTTP exceptions) =====
-
-
-@app.command("list")
-@pltr_command(http=tuple(f"GET {path}" for path in MODEL_LIST_ENDPOINTS))
-def list_models(
-    profile: ProfileOption = None,
-    format: FormatOption = "table",
-    output: OutputOption = None,
-):
-    """List the language models available to you.
-
-    The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
-    directly and prints the first answer of: GET /api/v2/languageModels, then
-    the OpenAI-compatible proxy's GET /api/v2/llm/proxy/openai/v1/models
-    (which lists the models it serves, without an enrollment status). As
-    these endpoints aren't in the SDK, not every Foundry stack may have them.
-
-    JSON output is {"data": [...]} with each model as the endpoint returned it.
-    """
-    with spinner("Fetching available models..."):
-        listing = LanguageModelsService(profile=profile).list_available_models()
-    if listing.endpoint.endswith(OPENAI_PROXY_MODELS_ENDPOINT):
-        info(
-            f"Models from the OpenAI-compatible proxy ({listing.endpoint}), "
-            "which reports no enrollment status."
-        )
-    else:
-        info(f"Models from {listing.endpoint}")
-    document: Dict[str, Any] = {"data": listing.models}
-    if listing.next_page_token:
-        document["nextPageToken"] = listing.next_page_token
-        info("The endpoint returned more models than this page; pltr doesn't page it.")
-    emit(
-        document,
-        format=format,
-        output=output,
-        columns=MODEL_COLUMNS,
-        rows=lambda doc: doc["data"],
-    )
-
-
-@app.command("status")
-@pltr_command(
-    http=tuple(f"GET {path}" for path in MODEL_STATUS_ENDPOINTS)
-    + (f"GET {OPENAI_PROXY_MODELS_ENDPOINT}",)
-)
-def model_status(
-    model_id: ModelIdentifier,
-    profile: ProfileOption = None,
-    format: FormatOption = "table",
-    output: OutputOption = None,
-):
-    """Show a language model's enrollment status.
-
-    The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
-    directly: GET /api/v2/languageModels/MODEL_ID, then
-    GET /api/v2/llm/models/MODEL_ID. If neither answers, it looks the model up
-    by id in the OpenAI-compatible proxy's model list, which has no enrollment
-    status. As these endpoints aren't in the SDK, not every Foundry stack may
-    have them.
-
-    JSON output is the model as the endpoint returned it.
-    """
-    with spinner("Checking model status..."):
-        answer = LanguageModelsService(profile=profile).get_model_enrollment_status(
-            model_id
-        )
-    if answer.via_openai_proxy:
-        info(
-            f"The language-model endpoints don't know {model_id}; it is listed by "
-            f"the OpenAI-compatible proxy ({answer.endpoint}), which reports no "
-            "enrollment status."
-        )
-    else:
-        info(f"Status from {answer.endpoint}")
-    emit(
-        answer.body,
-        format=format,
-        output=output,
-        columns=MODEL_COLUMNS,
-        title="Language model",
-    )
 
 
 @app.command("enroll")

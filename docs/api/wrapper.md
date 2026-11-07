@@ -101,7 +101,7 @@ class FolderService(BaseService):
   directly with the client's host and token. It is only for the labeled
   direct-HTTP exceptions (`dataset schema apply`, the
   `ontology object-type-create`/`link-type-create` fallback and
-  `language-models list`/`status`/`enroll`); new code goes through the SDK.
+  `language-models enroll`); new code goes through the SDK.
 
 ### Using services from Python
 
