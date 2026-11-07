@@ -39,6 +39,9 @@ shell_app = typer.Typer(
 EXIT_WORDS = {"exit", "quit", ":q", ":quit", ":exit"}
 #: ``help`` alone shows pltr's help; ``help <command>`` shows that command's.
 HELP_WORDS = {"help", "?", ":help", ":h"}
+#: On Windows a backslash separates path components (``C:\data\x.csv``), so
+#: shell lines are split without backslash escapes there.
+WINDOWS = sys.platform == "win32"
 
 
 def get_history_file() -> Path:
@@ -61,11 +64,18 @@ def get_prompt() -> str:
         return "pltr> "
 
 
-def split_line(text: str) -> List[str]:
-    """Split a command line like a shell; an unclosed quote keeps its partial word."""
+def split_line(text: str, *, windows: Optional[bool] = None) -> List[str]:
+    """Split a command line like a shell; an unclosed quote keeps its partial word.
+
+    Quotes group words everywhere. A backslash escapes the next character
+    except on Windows (``windows`` defaults to the platform), where it is a
+    path separator: ``C:\\data\\x.csv`` stays one unchanged word.
+    """
     lexer = shlex.shlex(text, posix=True)
     lexer.whitespace_split = True
     lexer.commenters = ""
+    if WINDOWS if windows is None else windows:
+        lexer.escape = ""
     words: List[str] = []
     try:
         for word in lexer:
@@ -135,8 +145,13 @@ def build_completer(root: click.Command) -> Any:
     return PltrCompleter()
 
 
-def _looks_like_path(text: str) -> bool:
-    return text.startswith(("/", ".", "~")) or "/" in text
+def _looks_like_path(text: str, *, windows: Optional[bool] = None) -> bool:
+    if text.startswith(("/", ".", "~")) or "/" in text:
+        return True
+    if WINDOWS if windows is None else windows:
+        # C:\data, data\file.csv, \\server\share
+        return "\\" in text or (len(text) >= 2 and text[0].isalpha() and text[1] == ":")
+    return False
 
 
 def run_line(root: click.Command, line: str) -> bool:

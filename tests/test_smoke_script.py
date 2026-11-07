@@ -8,6 +8,7 @@ drift from the commands it runs.
 import datetime as dt
 import io
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -576,7 +577,9 @@ def test_auth_checks_bring_their_own_credentials():
     assert env["FOUNDRY_HOST"] == "foundry.example.com"
     assert env["FOUNDRY_TOKEN"] == "pltr-smoke-invalid-token"
     assert env["PLTR_PROFILE"] is None and env["FOUNDRY_CLIENT_ID"] is None
-    assert env["XDG_CONFIG_HOME"].startswith("/run/isolated-home")
+    home = os.path.join(str(Path("/run")), "isolated-home")  # \run\... on Windows
+    assert (env["HOME"], env["USERPROFILE"]) == (home, home)
+    assert env["XDG_CONFIG_HOME"] == os.path.join(home, ".config")
     assert "--profile" not in smoke.command_line(check, ctx, "dev")
     # Every other check runs with the profile and without PLTR_DEBUG.
     other = smoke.CHECKS_BY_ID["verify"]

@@ -500,7 +500,8 @@ def test_export_unknown_extension_writes_a_table(stub_foundry_http, tmp_path):
     result = invoke("sql", "export", sj.QUERY, str(target))
 
     assert result.exit_code == 0, result.output
-    assert "there" in target.read_text()
+    # Tables are written as UTF-8 (box drawing); Windows reads cp1252 by default.
+    assert "there" in target.read_text(encoding="utf-8")
     assert f"Wrote table output to {target}" in result.stderr
 
 

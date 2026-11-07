@@ -783,6 +783,10 @@ from `--help`. They will be removed in the next release.
   `python -m pltr`.
 - `pltr shell` works on click 8.2: it printed an empty error box at start and
   crashed on the first command.
+- `pltr shell` on Windows treated backslashes as escape characters, so
+  `C:\data\x.csv` reached the command as `C:datax.csv`. On Windows a
+  backslash is now part of the word (quotes still group words), and Tab
+  completes `C:\...` paths.
 - `pltr completion` scripts complete commands, options, option values and the
   `pltr api` tree in bash, zsh and fish; the scripts it installed never
   completed anything.

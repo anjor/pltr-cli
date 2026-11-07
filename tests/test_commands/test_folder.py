@@ -118,7 +118,8 @@ def test_get_folder_output_file_table_mode_reports_path(stub_foundry_http, tmp_p
     result = invoke("folder", "get", fj.FOLDER_RID, "--output", str(path))
 
     assert result.exit_code == 0
-    assert "Test Folder" in path.read_text()
+    # Tables are written as UTF-8 (box drawing); Windows reads cp1252 by default.
+    assert "Test Folder" in path.read_text(encoding="utf-8")
     assert result.stdout == ""
     assert str(path) in result.stderr
 

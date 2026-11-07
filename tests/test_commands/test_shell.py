@@ -353,6 +353,71 @@ def test_split_line_keeps_an_unclosed_quote():
     assert split_line("folder list  ri.x ") == ["folder", "list", "ri.x"]
 
 
+def test_split_line_keeps_windows_paths():
+    """On Windows a backslash separates path components; it isn't an escape."""
+    line = r"dataset files upload C:\data\flights.csv ri.foundry.main.dataset.x"
+    assert split_line(line, windows=True) == [
+        "dataset",
+        "files",
+        "upload",
+        r"C:\data\flights.csv",
+        "ri.foundry.main.dataset.x",
+    ]
+    assert split_line(r"x \\server\share\f.csv", windows=True) == [
+        "x",
+        r"\\server\share\f.csv",
+    ]
+    # Quotes still group words, and an unclosed one keeps its partial word.
+    assert split_line(r'alias import "C:\My Data\a.json"', windows=True) == [
+        "alias",
+        "import",
+        r"C:\My Data\a.json",
+    ]
+    assert split_line(r"alias import 'C:\My Data\a", windows=True) == [
+        "alias",
+        "import",
+        r"C:\My Data\a",
+    ]
+
+
+def test_split_line_escapes_with_a_backslash_elsewhere():
+    assert split_line(r"alias import my\ file.json", windows=False) == [
+        "alias",
+        "import",
+        "my file.json",
+    ]
+
+
+def test_split_line_follows_the_platform(monkeypatch):
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", True)
+    assert split_line(r"dataset get C:\x") == ["dataset", "get", r"C:\x"]
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", False)
+    assert split_line(r"dataset get C:\x") == ["dataset", "get", "C:x"]
+
+
+def test_a_windows_path_reaches_the_command_unchanged(monkeypatch, isolated_home):
+    """`pltr shell` on Windows mangled C:\\data\\x.json into C:datax.json."""
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", True)
+
+    result = run_shell(r"alias import C:\no\such\aliases.json --format json")
+
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "usage_error"
+    assert r"cannot read C:\no\such\aliases.json" in error["message"]
+
+
+def test_windows_paths_get_path_completion():
+    from pltr.commands.shell import _looks_like_path
+
+    for text in (r"C:\data\fl", "C:", r"data\fl", r"\\server\share"):
+        assert _looks_like_path(text, windows=True), text
+        assert not _looks_like_path(text, windows=False), text
+    for text in ("/tmp/x", "./x", "~/x", "data/x"):
+        assert _looks_like_path(text, windows=True), text
+        assert _looks_like_path(text, windows=False), text
+    assert not _looks_like_path("dataset", windows=True)
+
+
 class TestShellIntegration:
     """Integration tests for shell functionality."""
 
