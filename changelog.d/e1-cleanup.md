@@ -37,6 +37,13 @@
   `pyarrow.Table`; `decode_arrow_rows()` is now `arrow_table()` (library
   API).
 
+### Deprecated
+
+- The `page_size` setting (`settings.json` in the pltr configuration
+  directory). No command reads it: list commands use the API's page size
+  unless you pass `--page-size`. New settings files no longer get it, and a
+  `page_size` in an existing file is accepted and ignored.
+
 ### Removed
 
 - `DatasetService.create_dataset`, `get_schema`, `list_files`,
@@ -87,6 +94,9 @@
   schema now works" with the cp schema entry above (the fix needs both), and
   drop `b1-dataset.md`'s Deprecated entry for the `DatasetService` compat
   methods (they are removed now).
+- `docs/pagination.md`: the "Configuration" section (around line 431) lists
+  `page_size` ("Default items per page (default: 20)") as a setting; it is
+  deprecated and unused (use `--page-size`).
 - `README.md` exit-code table (and any other list of error types, e.g. in
   `claude_skill/`): add `invalid_response` to exit code 7 ("the API's
   response doesn't match the SDK's model or isn't JSON; upgrade pltr").
