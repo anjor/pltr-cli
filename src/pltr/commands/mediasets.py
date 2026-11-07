@@ -169,6 +169,7 @@ def get_media_item(
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
     """Get a media item's metadata: path, MIME type, size and who uploaded it."""
     with spinner(f"Fetching media item {media_item_rid}..."):
@@ -388,6 +389,7 @@ def download_media(
         ),
     ] = False,
     overwrite: OverwriteOption = False,
+    preview: PreviewNoopOption = False,
 ):
     """Download a media item's content to a file, or to stdout with -.
 
@@ -540,6 +542,7 @@ def upload_temp(
     ] = None,
     format: FormatOption = "table",
     output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
     """Upload temporary media; prints its media reference.
 

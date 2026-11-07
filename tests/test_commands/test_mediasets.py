@@ -235,6 +235,20 @@ def test_get_by_path_preview_is_a_deprecated_no_op(stub_foundry_http):
     assert "--preview is deprecated" in result.stderr
 
 
+def test_ga_commands_keep_preview_as_a_deprecated_no_op(stub_foundry_http, tmp_path):
+    """0.16.0 had --preview on get/download/upload-temp; it stays hidden for one
+    release and is never sent to these GA endpoints."""
+    stub_foundry_http.respond(json=ms.item_info())
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "--preview")
+    assert result.exit_code == 0, result.output
+    assert "--preview is deprecated" in result.stderr
+    assert "preview" not in dict(only_request(stub_foundry_http).url.params)
+
+    for command in ("download", "upload-temp"):
+        help_text = invoke(command, "--help").stdout
+        assert "--preview" not in help_text, command
+
+
 # ------------------------------------------------------------ transactions
 
 
