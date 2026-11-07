@@ -1,837 +1,943 @@
 """
-Orchestration commands for managing builds, jobs, and schedules.
+Orchestration commands: builds, jobs and schedules (Foundry orchestration API).
 """
 
-import typer
-import json
-from typing import Optional
-from rich.console import Console
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from ..services.orchestration import OrchestrationService
-from ..utils.formatting import OutputFormatter
-from ..utils.pagination import PaginationConfig
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+import click
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    AllPagesOption,
+    Columns,
+    FormatOption,
+    MaxPagesOption,
+    OutputOption,
+    PageSizeOption,
+    PageTokenOption,
+    PreviewNoopOption,
+    ProfileOption,
+    YesOption,
+    collect_pages,
+    confirm_destructive,
+    emit,
+    info,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.orchestration import (
+    MAX_BUILDS_BATCH,
+    MAX_JOBS_BATCH,
+    OrchestrationService,
+)
+from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
-console = Console()
-formatter = OutputFormatter(console)
-
-# Create sub-apps for different orchestration components
 builds_app = typer.Typer()
 jobs_app = typer.Typer()
 schedules_app = typer.Typer()
 
-# ============================================================================
-# Build Commands
-# ============================================================================
+
+# ------------------------------------------------------------------ columns
+
+
+def _join(values: List[str]) -> str:
+    return ", ".join(values)
+
+
+def _retry_backoff(build: Any) -> str:
+    duration = build.retry_backoff_duration
+    return f"{duration.value} {duration.unit}"
+
+
+def _job_outputs(job: Any) -> str:
+    """The dataset or media set RID written by each of a job's outputs."""
+    rids = []
+    for output in job.outputs:
+        if output.type == "datasetJobOutput":
+            rids.append(output.dataset_rid)
+        elif output.type == "transactionalMediaSetJobOutput":
+            rids.append(output.media_set_rid)
+        else:  # an output kind added in a newer SDK
+            rids.append(output.type)
+    return _join(rids)
+
+
+def _run_build(run: Any) -> Optional[str]:
+    """The build a schedule run submitted, if it submitted one."""
+    result = run.result
+    if result is not None and result.type == "submitted":
+        return result.build_rid
+    return None
+
+
+def _run_error(run: Any) -> Optional[str]:
+    result = run.result
+    if result is not None and result.type == "error":
+        return f"{result.error_name}: {result.description}"
+    return None
+
+
+#: Table/CSV columns for a ``Build``.
+BUILD_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "status",
+    "Branch": "branch_name",
+    "Created": "created_time",
+    "Created By": "created_by",
+    "Finished": "finished_time",
+    "Schedule": "schedule_rid",
+    "Jobs": lambda build: _join(build.job_rids),
+    "Fallback Branches": lambda build: _join(build.fallback_branches),
+    "Abort On Failure": "abort_on_failure",
+    "Retry Count": "retry_count",
+    "Retry Backoff": _retry_backoff,
+}
+
+#: Table/CSV columns for lists of builds (one row per ``Build``).
+BUILD_LIST_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "status",
+    "Branch": "branch_name",
+    "Created": "created_time",
+    "Finished": "finished_time",
+}
+
+#: Table/CSV columns for a ``Job``.
+JOB_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "job_status",
+    "Build": "build_rid",
+    "Started": "started_time",
+    "Latest Attempt Started": "latest_attempt_start_time",
+    "Finished": "finished_time",
+    "Outputs": _job_outputs,
+}
+
+#: Table/CSV columns for lists of jobs (one row per ``Job``).
+JOB_LIST_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "job_status",
+    "Started": "started_time",
+    "Finished": "finished_time",
+    "Outputs": _job_outputs,
+}
+
+#: Table/CSV columns for a ``Schedule``.
+SCHEDULE_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Description": "description",
+    "Paused": "paused",
+    "Trigger": "trigger",
+    "Target": "action.target",
+    "Branch": "action.branch_name",
+    "Scope Mode": "scope_mode",
+    "Current Version": "current_version_rid",
+    "Created": "created_time",
+    "Created By": "created_by",
+    "Updated": "updated_time",
+    "Updated By": "updated_by",
+}
+
+#: Table/CSV columns for a ``ScheduleRun``.
+SCHEDULE_RUN_COLUMNS: Columns = {
+    "RID": "rid",
+    "Schedule": "schedule_rid",
+    "Schedule Version": "schedule_version_rid",
+    "Created": "created_time",
+    "Created By": "created_by",
+    "Result": "result.type",
+    "Build": _run_build,
+    "Error": _run_error,
+}
+
+#: Table/CSV columns for lists of schedule runs (one row per ``ScheduleRun``).
+SCHEDULE_RUN_LIST_COLUMNS: Columns = {
+    "RID": "rid",
+    "Created": "created_time",
+    "Result": "result.type",
+    "Build": _run_build,
+    "Error": _run_error,
+}
+
+
+# ------------------------------------------------------------- arguments
+
+BuildRid = Annotated[
+    str,
+    typer.Argument(
+        help="Build RID (ri.foundry.main.build.<id>).",
+        autocompletion=complete_rid,
+    ),
+]
+JobRid = Annotated[
+    str,
+    typer.Argument(
+        help="Job RID (ri.foundry.main.job.<id>).", autocompletion=complete_rid
+    ),
+]
+ScheduleRid = Annotated[
+    str,
+    typer.Argument(
+        help="Schedule RID (ri.scheduler.main.schedule.<id>).",
+        autocompletion=complete_rid,
+    ),
+]
+ScheduleNameOption = Annotated[
+    Optional[str],
+    typer.Option("--name", help="Display name of the schedule."),
+]
+ScheduleDescriptionOption = Annotated[
+    Optional[str],
+    typer.Option("--description", help="Description of the schedule."),
+]
+TriggerOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--trigger",
+        help=(
+            "When the schedule runs, as JSON or @file.json in the API's shape, "
+            'e.g. \'{"type": "time", "cronExpression": "0 6 * * *", '
+            '"timeZone": "UTC"}\'.'
+        ),
+    ),
+]
+ScopeModeOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--scope-mode",
+        help=(
+            "Whose permissions the schedule's builds use, as JSON or @file.json: "
+            '\'{"type": "project", "projectRids": ["<project RID>"]}\' or '
+            '\'{"type": "user"}\'.'
+        ),
+    ),
+]
+
+
+def _split_rids(values: List[str]) -> List[str]:
+    """RIDs given space- and/or comma-separated."""
+    return [rid.strip() for value in values for rid in value.split(",") if rid.strip()]
+
+
+def _optional_json(value: Optional[str], param_hint: str) -> Any:
+    return None if value is None else load_json_input(value, param_hint=param_hint)
+
+
+# ------------------------------------------------------------------ builds
 
 
 @builds_app.command("get")
+@pltr_command(sdk="orchestration.Build.get")
 def get_build(
-    build_rid: str = typer.Argument(
-        ..., help="Build Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    build_rid: BuildRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific build."""
-    try:
-        cache_rid(build_rid)
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Fetching build {build_rid}..."):
-            build = service.get_build(build_rid)
-
-        formatter.format_build_detail(build, format, output)
-
-        if output:
-            formatter.print_success(f"Build information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get build: {e}")
-        raise typer.Exit(1)
+    """Get a build: its status, branch, jobs and timing."""
+    with spinner(f"Fetching build {build_rid}..."):
+        build = OrchestrationService(profile=profile).get_build(build_rid)
+    cache_rid(build_rid)
+    emit(build, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
 
 
 @builds_app.command("create")
+@pltr_command(sdk="orchestration.Build.create")
 def create_build(
-    target: str = typer.Argument(..., help="Build target (JSON format)"),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    branch_name: Optional[str] = typer.Option(
-        None, "--branch", help="Branch name for the build"
-    ),
-    force_build: bool = typer.Option(
-        False, "--force", help="Force build even if no changes"
-    ),
-    abort_on_failure: bool = typer.Option(
-        False, "--abort-on-failure", help="Abort on failure"
-    ),
-    notifications: bool = typer.Option(
-        True, "--notifications/--no-notifications", help="Enable notifications"
-    ),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
+    target: Annotated[
+        str,
+        typer.Argument(
+            help="What to build, as JSON or @file.json (see the examples below).",
+            show_default=False,
+        ),
+    ],
+    branch_name: Annotated[
+        Optional[str],
+        typer.Option("--branch", help="Branch to build on."),
+    ] = None,
+    fallback_branches: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--fallback-branch",
+            help=(
+                "Branch to read an input from when it doesn't exist on --branch "
+                "(repeat for several, in order)."
+            ),
+        ),
+    ] = None,
+    force_build: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Build even if the outputs are already up to date.",
+        ),
+    ] = False,
+    abort_on_failure: Annotated[
+        bool,
+        typer.Option(
+            "--abort-on-failure", help="Stop the other jobs when one job fails."
+        ),
+    ] = False,
+    notifications: Annotated[
+        bool,
+        typer.Option(
+            "--notifications/--no-notifications",
+            help="Send build notifications.",
+        ),
+    ] = True,
+    retry_count: Annotated[
+        Optional[int],
+        typer.Option(
+            "--retry-count", min=0, help="Number of retry attempts for failed jobs."
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """
-    Create a new build with specified target datasets.
+    """Start a build of datasets (or other build targets).
 
-    The target parameter must be a JSON object with a 'type' field that specifies
-    the build strategy. Three types are supported:
-
-    \b
-    1. Manual Build - Explicitly specify datasets to build:
-       {
-         "type": "manual",
-         "targetRids": ["ri.foundry.main.dataset.abc123..."]
-       }
+    TARGET is a JSON object (inline or @file.json) in the API's shape, with a
+    'type' that picks the build strategy:
 
     \b
-    2. Upstream Build - Build target datasets and all their upstream dependencies:
-       {
-         "type": "upstream",
-         "targetRids": ["ri.foundry.main.dataset.abc123..."],
-         "ignoredRids": []
-       }
+    manual: build exactly these targets
+      {"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}
+    upstream: build the targets and everything upstream of them
+      {"type": "upstream", "targetRids": ["ri.foundry.main.dataset.abc"],
+       "ignoredRids": []}
+    connecting: build everything between the inputs and the targets
+      {"type": "connecting", "inputRids": ["ri.foundry.main.dataset.in"],
+       "targetRids": ["ri.foundry.main.dataset.out"], "ignoredRids": []}
 
-    \b
-    3. Connecting Build - Build datasets between input and target datasets:
-       {
-         "type": "connecting",
-         "inputRids": ["ri.foundry.main.dataset.input123..."],
-         "targetRids": ["ri.foundry.main.dataset.target123..."],
-         "ignoredRids": []
-       }
+    Follow the build with 'pltr orchestration builds get <build RID>' and
+    its jobs with 'pltr orchestration builds jobs <build RID>'.
 
     Examples:
 
     \b
-      # Build specific datasets manually
-      pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc123"]}' --branch master
-
-    \b
-      # Build dataset and all upstream dependencies
-      pltr orchestration builds create '{"type": "upstream", "targetRids": ["ri.foundry.main.dataset.abc123"], "ignoredRids": []}' --branch master --force
+      pltr orchestration builds create \\
+        '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}' \\
+        --branch master
+      pltr orchestration builds create @target.json --force --format json
     """
-    try:
-        service = OrchestrationService(profile=profile)
-
-        # Parse target JSON
-        try:
-            target_dict = json.loads(target)
-        except json.JSONDecodeError:
-            formatter.print_error("Invalid JSON format for target")
-            raise typer.Exit(1)
-
-        with SpinnerProgressTracker().track_spinner("Creating build..."):
-            build = service.create_build(
-                target=target_dict,
-                branch_name=branch_name,
-                force_build=force_build,
-                abort_on_failure=abort_on_failure,
-                notifications_enabled=notifications,
-            )
-
-        formatter.print_success("Successfully created build")
-        formatter.print_info(f"Build RID: {build.get('rid', 'unknown')}")
-        formatter.format_build_detail(build, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create build: {e}")
-        raise typer.Exit(1)
+    target_json = load_json_input(target, param_hint="TARGET")
+    with spinner("Starting build..."):
+        build = OrchestrationService(profile=profile).create_build(
+            target=target_json,
+            fallback_branches=list(fallback_branches or []),
+            branch_name=branch_name,
+            force_build=force_build,
+            abort_on_failure=abort_on_failure,
+            notifications_enabled=notifications,
+            retry_count=retry_count,
+        )
+    cache_rid(build.rid)
+    success(f"Started build {build.rid} ({build.status})")
+    info(f"Check its status with: pltr orchestration builds get {build.rid}")
+    emit(build, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
 
 
 @builds_app.command("cancel")
+@pltr_command(sdk="orchestration.Build.cancel", destructive=True)
 def cancel_build(
-    build_rid: str = typer.Argument(
-        ..., help="Build Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
+    build_rid: BuildRid,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Cancel a build and all its unfinished jobs."""
-    try:
-        service = OrchestrationService(profile=profile)
+    """Cancel a build's unfinished jobs.
 
-        with SpinnerProgressTracker().track_spinner(f"Cancelling build {build_rid}..."):
-            service.cancel_build(build_rid)
-
-        formatter.print_success(f"Successfully cancelled build {build_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to cancel build: {e}")
-        raise typer.Exit(1)
+    Cancellation is asynchronous: the build's status changes shortly after the
+    request is acknowledged. A build that has already finished is unchanged.
+    """
+    confirm_destructive(f"Cancel build {build_rid}?", yes=yes)
+    with spinner(f"Cancelling build {build_rid}..."):
+        OrchestrationService(profile=profile).cancel_build(build_rid)
+    success(f"Requested cancellation of build {build_rid}")
+    emit(None, format=format)
 
 
 @builds_app.command("jobs")
+@pltr_command(sdk="orchestration.Build.jobs", paged=True)
 def get_build_jobs(
-    build_rid: str = typer.Argument(
-        ..., help="Build Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
-    ),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    build_rid: BuildRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """List all jobs in a build."""
+    """List the jobs of a build, with their status and outputs.
+
+    Fetches one page by default; use --all for every page, or --page-token
+    with the nextPageToken of an earlier response to continue.
+    """
+    service = OrchestrationService(profile=profile)
+    with spinner(f"Fetching jobs of build {build_rid}..."):
+        page = collect_pages(
+            lambda token: service.get_build_jobs(
+                build_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(build_rid)
+    emit(page, format=format, output=output, columns=JOB_LIST_COLUMNS)
+
+
+_STATUSES = ("RUNNING", "SUCCEEDED", "FAILED", "CANCELED")
+_ORDER_FIELDS = ("STARTED_TIME", "FINISHED_TIME")
+
+
+def _timestamp(value: str, param_hint: str) -> str:
+    """Validate an ISO-8601 timestamp with a time zone; return it in UTC."""
+    text = value.strip()
+    if text[-1:] in ("Z", "z"):
+        text = text[:-1] + "+00:00"
     try:
-        cache_rid(build_rid)
-        service = OrchestrationService(profile=profile)
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        parsed = None
+    if parsed is None or parsed.tzinfo is None:
+        raise typer.BadParameter(
+            f"{value!r} is not an ISO-8601 timestamp with a time zone, "
+            "e.g. 2024-01-31T00:00:00Z",
+            param_hint=param_hint,
+        )
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching jobs for build {build_rid}..."
-        ):
-            response = service.get_build_jobs(build_rid, page_size=page_size)
 
-        jobs = response.get("jobs", [])
-
-        if not jobs:
-            formatter.print_warning("No jobs found for this build")
-            return
-
-        formatter.format_jobs_list(jobs, format, output)
-
-        if output:
-            formatter.print_success(f"Jobs list saved to {output}")
-
-        if response.get("next_page_token"):
-            formatter.print_info(
-                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
+def _order_by(values: List[str]) -> Optional[Dict[str, Any]]:
+    """Turn ``FIELD[:ASC|DESC]`` values into a ``SearchBuildsOrderBy``."""
+    if not values:
+        return None
+    fields = []
+    for value in values:
+        name, _, direction = value.partition(":")
+        field = name.strip().upper().replace("-", "_")
+        direction = (direction.strip() or "DESC").upper()
+        if field not in _ORDER_FIELDS or direction not in ("ASC", "DESC"):
+            raise typer.BadParameter(
+                f"{value!r}: expected FIELD[:ASC|DESC] with FIELD one of "
+                f"{', '.join(_ORDER_FIELDS)}",
+                param_hint="'--order-by'",
             )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get build jobs: {e}")
-        raise typer.Exit(1)
+        fields.append({"field": field, "direction": direction})
+    return {"fields": fields}
 
 
 @builds_app.command("search")
+@pltr_command(sdk="orchestration.Build.search", beta=True, paged=True)
 def search_builds(
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of builds per page (default: from settings)"
-    ),
-    max_pages: Optional[int] = typer.Option(
-        1, "--max-pages", help="Maximum number of pages to fetch (default: 1)"
-    ),
-    page_token: Optional[str] = typer.Option(
-        None, "--page-token", help="Page token to resume from previous response"
-    ),
-    all: bool = typer.Option(
-        False, "--all", help="Fetch all available pages (overrides --max-pages)"
-    ),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    where: Annotated[
+        Optional[str],
+        typer.Option(
+            "--where",
+            help=(
+                "Filter as JSON or @file.json in the API's SearchBuildsFilter "
+                "shape (eq, gte, lt, and, or, not; see below)."
+            ),
+        ),
+    ] = None,
+    status: Annotated[
+        Optional[str],
+        typer.Option(
+            "--status",
+            help="Only builds with this status.",
+            click_type=click.Choice(_STATUSES, case_sensitive=False),
+        ),
+    ] = None,
+    branch: Annotated[
+        Optional[str], typer.Option("--branch", help="Only builds on this branch.")
+    ] = None,
+    created_by: Annotated[
+        Optional[str],
+        typer.Option("--created-by", help="Only builds started by this user ID."),
+    ] = None,
+    started_after: Annotated[
+        Optional[str],
+        typer.Option(
+            "--started-after",
+            help=(
+                "Only builds started at or after this time "
+                "(ISO-8601 with a time zone, e.g. 2024-01-31T00:00:00Z)."
+            ),
+        ),
+    ] = None,
+    started_before: Annotated[
+        Optional[str],
+        typer.Option("--started-before", help="Only builds started before this time."),
+    ] = None,
+    finished_after: Annotated[
+        Optional[str],
+        typer.Option(
+            "--finished-after", help="Only builds finished at or after this time."
+        ),
+    ] = None,
+    finished_before: Annotated[
+        Optional[str],
+        typer.Option(
+            "--finished-before", help="Only builds finished before this time."
+        ),
+    ] = None,
+    order_by: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--order-by",
+            help=(
+                "Sort by STARTED_TIME or FINISHED_TIME, optionally with :ASC or "
+                ":DESC (default DESC); repeat to sort by both."
+            ),
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """
-    Search for builds with pagination support.
+    """Search builds by status, branch, creator and start/finish time.
 
-    By default, fetches only the first page of results. Use --all to fetch all builds,
-    or --max-pages to control how many pages to fetch.
+    Pass at least one filter. The filter options are combined with AND, and
+    with --where if given. --where takes the API's SearchBuildsFilter: 'eq'
+    on STATUS, BRANCH_NAME, CREATED_BY or RID; 'gte'/'lt' on STARTED_TIME or
+    FINISHED_TIME; 'and'/'or' with "items"; 'not' with "value".
+
+    Fetches one page by default (the API's page size is 100); use --all for
+    every page, or --page-token with the nextPageToken of an earlier response
+    to continue.
 
     Examples:
-        # Search first page of builds (default)
-        pltr orchestration builds search
 
-        # Search all builds
-        pltr orchestration builds search --all
-
-        # Search first 3 pages
-        pltr orchestration builds search --max-pages 3
-
-        # Resume from a specific page
-        pltr orchestration builds search --page-token abc123
+    \b
+      # Failed builds on master, most recently started first
+      pltr orchestration builds search --status FAILED --branch master \\
+        --order-by STARTED_TIME:DESC
+    \b
+      # Builds started since a given time
+      pltr orchestration builds search --started-after 2024-01-31T00:00:00Z
+    \b
+      # The same filter as --where JSON
+      pltr orchestration builds search --where \\
+        '{"type": "gte", "field": "STARTED_TIME", "value": "2024-01-31T00:00:00Z"}'
     """
-    try:
-        service = OrchestrationService(profile=profile)
-
-        # Create pagination config
-        config = PaginationConfig(
-            page_size=page_size,
-            max_pages=max_pages,
-            page_token=page_token,
-            fetch_all=all,
+    filters: List[Dict[str, Any]] = []
+    if where is not None:
+        filters.append(load_json_input(where, param_hint="'--where'"))
+    for field, value in (
+        ("STATUS", status.upper() if status else None),
+        ("BRANCH_NAME", branch),
+        ("CREATED_BY", created_by),
+    ):
+        if value is not None:
+            filters.append({"type": "eq", "field": field, "value": value})
+    for filter_type, field, value, hint in (
+        ("gte", "STARTED_TIME", started_after, "'--started-after'"),
+        ("lt", "STARTED_TIME", started_before, "'--started-before'"),
+        ("gte", "FINISHED_TIME", finished_after, "'--finished-after'"),
+        ("lt", "FINISHED_TIME", finished_before, "'--finished-before'"),
+    ):
+        if value is not None:
+            filters.append(
+                {"type": filter_type, "field": field, "value": _timestamp(value, hint)}
+            )
+    if not filters:
+        raise typer.BadParameter(
+            "pass --where or at least one of --status, --branch, --created-by, "
+            "--started-after, --started-before, --finished-after, --finished-before "
+            "(the API requires a filter)"
         )
+    where_filter = (
+        filters[0] if len(filters) == 1 else {"type": "and", "items": filters}
+    )
+    sort = _order_by(list(order_by or []))
 
-        with SpinnerProgressTracker().track_spinner("Searching builds..."):
-            result = service.search_builds_paginated(config)
-
-        if not result.data:
-            formatter.print_warning("No builds found")
-            return
-
-        # Format and display paginated results
-        if output:
-            formatter.format_paginated_output(
-                result,
-                format,
-                output,
-                formatter_fn=lambda data, fmt, out: formatter.format_builds_list(
-                    data, fmt, out
-                ),
-            )
-            formatter.print_success(f"Builds list saved to {output}")
-        else:
-            formatter.format_paginated_output(
-                result,
-                format,
-                formatter_fn=lambda data, fmt, out: formatter.format_builds_list(
-                    data, fmt, out
-                ),
-            )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to search builds: {e}")
-        raise typer.Exit(1)
+    service = OrchestrationService(profile=profile)
+    with spinner("Searching builds..."):
+        page = collect_pages(
+            lambda token: service.search_builds(
+                where=where_filter,
+                order_by=sort,
+                page_size=page_size,
+                page_token=token,
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    emit(page, format=format, output=output, columns=BUILD_LIST_COLUMNS)
 
 
 @builds_app.command("get-batch")
+@pltr_command(sdk="orchestration.Build.get_batch")
 def get_builds_batch(
-    build_rids: str = typer.Argument(
-        ..., help="Comma-separated list of Build RIDs (max 100)"
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    build_rids: Annotated[
+        List[str],
+        typer.Argument(
+            help=(
+                f"Build RIDs, separated by spaces or commas (at most "
+                f"{MAX_BUILDS_BATCH})."
+            )
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get multiple builds in batch (max 100)."""
-    try:
-        rids_list = [rid.strip() for rid in build_rids.split(",") if rid.strip()]
+    """Get several builds in one request.
 
-        if not rids_list:
-            formatter.print_error("No valid RIDs provided")
-            raise typer.Exit(1)
-
-        if len(rids_list) > 100:
-            formatter.print_error("Maximum batch size is 100 builds")
-            raise typer.Exit(1)
-
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching {len(rids_list)} builds..."
-        ):
-            response = service.get_builds_batch(rids_list)
-
-        builds = response.get("builds", [])
-
-        if not builds:
-            formatter.print_warning("No builds found")
-            return
-
-        formatter.format_builds_list(builds, format, output)
-
-        if output:
-            formatter.print_success(f"Builds information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get builds batch: {e}")
-        raise typer.Exit(1)
+    JSON output is the API's response: {"data": {"<build RID>": {...}}}.
+    """
+    rids = _split_rids(build_rids)
+    if not rids:
+        raise typer.BadParameter("no build RIDs given", param_hint="BUILD_RIDS")
+    if len(rids) > MAX_BUILDS_BATCH:
+        raise typer.BadParameter(
+            f"at most {MAX_BUILDS_BATCH} build RIDs per request, got {len(rids)}",
+            param_hint="BUILD_RIDS",
+        )
+    with spinner(f"Fetching {len(rids)} builds..."):
+        response = OrchestrationService(profile=profile).get_builds_batch(rids)
+    emit(
+        response,
+        format=format,
+        output=output,
+        columns=BUILD_LIST_COLUMNS,
+        rows=lambda batch: list(batch.data.values()),
+    )
 
 
-# ============================================================================
-# Job Commands
-# ============================================================================
+# -------------------------------------------------------------------- jobs
 
 
 @jobs_app.command("get")
+@pltr_command(sdk="orchestration.Job.get", beta=True)
 def get_job(
-    job_rid: str = typer.Argument(
-        ..., help="Job Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    job_rid: JobRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific job."""
-    try:
-        cache_rid(job_rid)
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Fetching job {job_rid}..."):
-            job = service.get_job(job_rid)
-
-        formatter.format_job_detail(job, format, output)
-
-        if output:
-            formatter.print_success(f"Job information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get job: {e}")
-        raise typer.Exit(1)
+    """Get a job: its status, build, outputs and timing."""
+    with spinner(f"Fetching job {job_rid}..."):
+        job = OrchestrationService(profile=profile).get_job(job_rid)
+    cache_rid(job_rid)
+    emit(job, format=format, output=output, columns=JOB_COLUMNS, title="Job")
 
 
 @jobs_app.command("get-batch")
+@pltr_command(sdk="orchestration.Job.get_batch", beta=True)
 def get_jobs_batch(
-    job_rids: str = typer.Argument(
-        ..., help="Comma-separated list of Job RIDs (max 500)"
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    job_rids: Annotated[
+        List[str],
+        typer.Argument(
+            help=(
+                f"Job RIDs, separated by spaces or commas (at most {MAX_JOBS_BATCH})."
+            )
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get multiple jobs in batch (max 500)."""
-    try:
-        # Parse job RIDs
-        rids_list = [rid.strip() for rid in job_rids.split(",")]
+    """Get several jobs in one request.
 
-        if len(rids_list) > 500:
-            formatter.print_error("Maximum batch size is 500 jobs")
-            raise typer.Exit(1)
-
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching {len(rids_list)} jobs..."
-        ):
-            response = service.get_jobs_batch(rids_list)
-
-        jobs = response.get("jobs", [])
-
-        if not jobs:
-            formatter.print_warning("No jobs found")
-            return
-
-        formatter.format_jobs_list(jobs, format, output)
-
-        if output:
-            formatter.print_success(f"Jobs information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get jobs batch: {e}")
-        raise typer.Exit(1)
+    JSON output is the API's response: {"data": {"<job RID>": {...}}}.
+    """
+    rids = _split_rids(job_rids)
+    if not rids:
+        raise typer.BadParameter("no job RIDs given", param_hint="JOB_RIDS")
+    if len(rids) > MAX_JOBS_BATCH:
+        raise typer.BadParameter(
+            f"at most {MAX_JOBS_BATCH} job RIDs per request, got {len(rids)}",
+            param_hint="JOB_RIDS",
+        )
+    with spinner(f"Fetching {len(rids)} jobs..."):
+        response = OrchestrationService(profile=profile).get_jobs_batch(rids)
+    emit(
+        response,
+        format=format,
+        output=output,
+        columns=JOB_COLUMNS,
+        rows=lambda batch: list(batch.data.values()),
+    )
 
 
-# ============================================================================
-# Schedule Commands
-# ============================================================================
+# --------------------------------------------------------------- schedules
 
 
 @schedules_app.command("get")
+@pltr_command(sdk="orchestration.Schedule.get", beta=True)
 def get_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    schedule_rid: ScheduleRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """Get detailed information about a specific schedule."""
-    try:
-        cache_rid(schedule_rid)
-        service = OrchestrationService(profile=profile)
+    """Get a schedule: its trigger, build target, scope and paused state."""
+    with spinner(f"Fetching schedule {schedule_rid}..."):
+        schedule = OrchestrationService(profile=profile).get_schedule(schedule_rid)
+    cache_rid(schedule_rid)
+    emit(
+        schedule,
+        format=format,
+        output=output,
+        columns=SCHEDULE_COLUMNS,
+        title="Schedule",
+    )
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching schedule {schedule_rid}..."
-        ):
-            schedule = service.get_schedule(schedule_rid, preview=preview)
 
-        formatter.format_schedule_detail(schedule, format, output)
-
-        if output:
-            formatter.print_success(f"Schedule information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get schedule: {e}")
-        raise typer.Exit(1)
+_ACTION_HELP = (
+    "What the schedule builds, as JSON or @file.json in the API's shape, e.g. "
+    '\'{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, '
+    '"branchName": "master"}\'.'
+)
 
 
 @schedules_app.command("create")
+@pltr_command(sdk="orchestration.Schedule.create", beta=True)
 def create_schedule(
-    action: str = typer.Argument(..., help="Schedule action (JSON format)"),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    display_name: Optional[str] = typer.Option(
-        None, "--name", help="Display name for the schedule"
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", help="Schedule description"
-    ),
-    trigger: Optional[str] = typer.Option(
-        None, "--trigger", help="Trigger configuration (JSON format)"
-    ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
+    action: Annotated[str, typer.Argument(help=_ACTION_HELP, show_default=False)],
+    display_name: ScheduleNameOption = None,
+    description: ScheduleDescriptionOption = None,
+    trigger: TriggerOption = None,
+    scope_mode: ScopeModeOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """Create a new schedule."""
-    try:
-        service = OrchestrationService(profile=profile)
+    """Create a schedule.
 
-        # Parse action JSON
-        try:
-            action_dict = json.loads(action)
-        except json.JSONDecodeError:
-            formatter.print_error("Invalid JSON format for action")
-            raise typer.Exit(1)
+    ACTION says what to build (a build target plus build options such as
+    branchName, fallbackBranches, forceBuild, abortOnFailure, retryCount and
+    notificationsEnabled). --trigger says when. In user-scoped mode the
+    outputs to build are found from what the user can access, so they can
+    change with the user's permissions; Foundry recommends a project-scoped
+    schedule (--scope-mode).
 
-        # Parse trigger JSON if provided
-        trigger_dict = None
-        if trigger:
-            try:
-                trigger_dict = json.loads(trigger)
-            except json.JSONDecodeError:
-                formatter.print_error("Invalid JSON format for trigger")
-                raise typer.Exit(1)
+    Examples:
 
-        with SpinnerProgressTracker().track_spinner("Creating schedule..."):
-            schedule = service.create_schedule(
-                action=action_dict,
-                display_name=display_name,
-                description=description,
-                trigger=trigger_dict,
-                preview=preview,
-            )
-
-        formatter.print_success("Successfully created schedule")
-        formatter.print_info(f"Schedule RID: {schedule.get('rid', 'unknown')}")
-        formatter.format_schedule_detail(schedule, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create schedule: {e}")
-        raise typer.Exit(1)
-
-
-@schedules_app.command("delete")
-def delete_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
-):
-    """Delete a schedule."""
-    try:
-        if not confirm:
-            typer.confirm(
-                f"Are you sure you want to delete schedule {schedule_rid}?", abort=True
-            )
-
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Deleting schedule {schedule_rid}..."
-        ):
-            service.delete_schedule(schedule_rid)
-
-        formatter.print_success(f"Successfully deleted schedule {schedule_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to delete schedule: {e}")
-        raise typer.Exit(1)
-
-
-@schedules_app.command("pause")
-def pause_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-):
-    """Pause a schedule."""
-    try:
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Pausing schedule {schedule_rid}..."
-        ):
-            service.pause_schedule(schedule_rid)
-
-        formatter.print_success(f"Successfully paused schedule {schedule_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to pause schedule: {e}")
-        raise typer.Exit(1)
-
-
-@schedules_app.command("unpause")
-def unpause_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-):
-    """Unpause a schedule."""
-    try:
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Unpausing schedule {schedule_rid}..."
-        ):
-            service.unpause_schedule(schedule_rid)
-
-        formatter.print_success(f"Successfully unpaused schedule {schedule_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to unpause schedule: {e}")
-        raise typer.Exit(1)
-
-
-@schedules_app.command("run")
-def run_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-):
-    """Execute a schedule immediately."""
-    try:
-        service = OrchestrationService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Running schedule {schedule_rid}..."
-        ):
-            service.run_schedule(schedule_rid)
-
-        formatter.print_success(f"Successfully triggered schedule {schedule_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to run schedule: {e}")
-        raise typer.Exit(1)
+    \b
+      pltr orchestration schedules create \\
+        '{"target": {"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}}' \\
+        --name "Nightly build" \\
+        --trigger '{"type": "time", "cronExpression": "0 2 * * *", "timeZone": "UTC"}'
+    """
+    action_json = load_json_input(action, param_hint="ACTION")
+    trigger_json = _optional_json(trigger, "'--trigger'")
+    scope_json = _optional_json(scope_mode, "'--scope-mode'")
+    with spinner("Creating schedule..."):
+        schedule = OrchestrationService(profile=profile).create_schedule(
+            action=action_json,
+            display_name=display_name,
+            description=description,
+            trigger=trigger_json,
+            scope_mode=scope_json,
+        )
+    cache_rid(schedule.rid)
+    success(f"Created schedule {schedule.rid}")
+    emit(
+        schedule,
+        format=format,
+        output=output,
+        columns=SCHEDULE_COLUMNS,
+        title="Schedule",
+    )
 
 
 @schedules_app.command("replace")
+@pltr_command(sdk="orchestration.Schedule.replace", beta=True, destructive=True)
 def replace_schedule(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    action: str = typer.Argument(..., help="Schedule action (JSON format)"),
-    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Profile name"),
-    display_name: Optional[str] = typer.Option(
-        None, "--name", help="Display name for the schedule"
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", help="Schedule description"
-    ),
-    trigger: Optional[str] = typer.Option(
-        None, "--trigger", help="Trigger configuration (JSON format)"
-    ),
-    preview: bool = typer.Option(False, "--preview", help="Enable preview mode"),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format (table, json, csv)"
-    ),
+    schedule_rid: ScheduleRid,
+    action: Annotated[str, typer.Argument(help=_ACTION_HELP, show_default=False)],
+    display_name: ScheduleNameOption = None,
+    description: ScheduleDescriptionOption = None,
+    trigger: TriggerOption = None,
+    scope_mode: ScopeModeOption = None,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """Replace an existing schedule."""
-    try:
-        service = OrchestrationService(profile=profile)
+    """Replace a schedule's definition with a new one.
 
-        # Parse action JSON
-        try:
-            action_dict = json.loads(action)
-        except json.JSONDecodeError:
-            formatter.print_error("Invalid JSON format for action")
-            raise typer.Exit(1)
+    This is a full replacement, not a patch: only what you pass is sent, so
+    pass every field you want the schedule to keep (name, description,
+    trigger, scope mode). Read the current definition first with
+    'pltr orchestration schedules get <RID> --format json'.
+    """
+    action_json = load_json_input(action, param_hint="ACTION")
+    trigger_json = _optional_json(trigger, "'--trigger'")
+    scope_json = _optional_json(scope_mode, "'--scope-mode'")
+    confirm_destructive(f"Replace the definition of schedule {schedule_rid}?", yes=yes)
+    with spinner(f"Replacing schedule {schedule_rid}..."):
+        schedule = OrchestrationService(profile=profile).replace_schedule(
+            schedule_rid,
+            action=action_json,
+            display_name=display_name,
+            description=description,
+            trigger=trigger_json,
+            scope_mode=scope_json,
+        )
+    success(f"Replaced schedule {schedule_rid}")
+    emit(
+        schedule,
+        format=format,
+        output=output,
+        columns=SCHEDULE_COLUMNS,
+        title="Schedule",
+    )
 
-        # Parse trigger JSON if provided
-        trigger_dict = None
-        if trigger:
-            try:
-                trigger_dict = json.loads(trigger)
-            except json.JSONDecodeError:
-                formatter.print_error("Invalid JSON format for trigger")
-                raise typer.Exit(1)
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Replacing schedule {schedule_rid}..."
-        ):
-            schedule = service.replace_schedule(
-                schedule_rid=schedule_rid,
-                action=action_dict,
-                display_name=display_name,
-                description=description,
-                trigger=trigger_dict,
-                preview=preview,
-            )
+@schedules_app.command("delete")
+@pltr_command(sdk="orchestration.Schedule.delete", destructive=True)
+def delete_schedule(
+    schedule_rid: ScheduleRid,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+):
+    """Delete a schedule."""
+    confirm_destructive(f"Delete schedule {schedule_rid}?", yes=yes)
+    with spinner(f"Deleting schedule {schedule_rid}..."):
+        OrchestrationService(profile=profile).delete_schedule(schedule_rid)
+    success(f"Deleted schedule {schedule_rid}")
+    emit(None, format=format)
 
-        formatter.print_success(f"Successfully replaced schedule {schedule_rid}")
-        formatter.format_schedule_detail(schedule, format)
 
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to replace schedule: {e}")
-        raise typer.Exit(1)
+@schedules_app.command("pause")
+@pltr_command(sdk="orchestration.Schedule.pause")
+def pause_schedule(
+    schedule_rid: ScheduleRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+):
+    """Pause a schedule: its trigger no longer starts builds."""
+    with spinner(f"Pausing schedule {schedule_rid}..."):
+        OrchestrationService(profile=profile).pause_schedule(schedule_rid)
+    success(f"Paused schedule {schedule_rid}")
+    emit(None, format=format)
+
+
+@schedules_app.command("unpause")
+@pltr_command(sdk="orchestration.Schedule.unpause")
+def unpause_schedule(
+    schedule_rid: ScheduleRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+):
+    """Unpause a schedule."""
+    with spinner(f"Unpausing schedule {schedule_rid}..."):
+        OrchestrationService(profile=profile).unpause_schedule(schedule_rid)
+    success(f"Unpaused schedule {schedule_rid}")
+    emit(None, format=format)
+
+
+@schedules_app.command("run")
+@pltr_command(sdk="orchestration.Schedule.run")
+def run_schedule(
+    schedule_rid: ScheduleRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Run a schedule now, and show the run (with the build it started)."""
+    with spinner(f"Running schedule {schedule_rid}..."):
+        run = OrchestrationService(profile=profile).run_schedule(schedule_rid)
+    build_rid = _run_build(run)
+    if build_rid is not None:
+        cache_rid(build_rid)
+        success(f"Schedule {schedule_rid} started build {build_rid}")
+        info(f"Check its status with: pltr orchestration builds get {build_rid}")
+    else:
+        success(f"Ran schedule {schedule_rid}")
+    emit(
+        run,
+        format=format,
+        output=output,
+        columns=SCHEDULE_RUN_COLUMNS,
+        title="Schedule Run",
+    )
 
 
 @schedules_app.command("runs")
+@pltr_command(sdk="orchestration.Schedule.runs", paged=True)
 def get_schedule_runs(
-    schedule_rid: str = typer.Argument(
-        ..., help="Schedule Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of results per page"
-    ),
-    page_token: Optional[str] = typer.Option(
-        None, "--page-token", help="Pagination token for next page"
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    schedule_rid: ScheduleRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """List recent execution runs for a schedule."""
-    try:
-        cache_rid(schedule_rid)
-        service = OrchestrationService(profile=profile)
+    """List a schedule's most recent runs and the builds they started.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching runs for schedule {schedule_rid}..."
-        ):
-            response = service.get_schedule_runs(
-                schedule_rid, page_size=page_size, page_token=page_token
-            )
-
-        runs = response.get("runs", [])
-
-        if not runs:
-            formatter.print_warning("No runs found for this schedule")
-            return
-
-        formatter.format_schedule_runs_list(runs, format, output)
-
-        if output:
-            formatter.print_success(f"Runs list saved to {output}")
-
-        if response.get("next_page_token"):
-            formatter.print_info(
-                f"More results available. Use --page-token {response['next_page_token']} to fetch next page."
-            )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get schedule runs: {e}")
-        raise typer.Exit(1)
+    Fetches one page by default (the API's page size is 100); use --all for
+    every page, or --page-token with the nextPageToken of an earlier response
+    to continue.
+    """
+    service = OrchestrationService(profile=profile)
+    with spinner(f"Fetching runs of schedule {schedule_rid}..."):
+        page = collect_pages(
+            lambda token: service.get_schedule_runs(
+                schedule_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(schedule_rid)
+    emit(page, format=format, output=output, columns=SCHEDULE_RUN_LIST_COLUMNS)
 
 
-# ============================================================================
-# Main app setup
-# ============================================================================
+# --------------------------------------------------------------------- app
 
-# Add sub-apps to main app
-app.add_typer(builds_app, name="builds", help="Manage builds")
-app.add_typer(jobs_app, name="jobs", help="Manage jobs")
-app.add_typer(schedules_app, name="schedules", help="Manage schedules")
+app.add_typer(builds_app, name="builds", help="Start, inspect and cancel builds")
+app.add_typer(jobs_app, name="jobs", help="Inspect the jobs of builds")
+app.add_typer(schedules_app, name="schedules", help="Inspect, run and manage schedules")
 
 
 @app.callback()
 def main():
     """
-    Orchestration operations for managing builds, jobs, and schedules.
+    Builds, jobs and schedules (Foundry orchestration API).
 
-    This module provides commands to:
-    - Create, monitor, and cancel builds
-    - View job details and statuses
-    - Create, manage, and execute schedules
+    Everything is addressed by RID: builds
+    (ri.foundry.main.build.<id>), jobs (ri.foundry.main.job.<id>) and
+    schedules (ri.scheduler.main.schedule.<id>). Commands labeled [beta] call
+    beta Foundry endpoints.
 
-    All operations require Resource Identifiers (RIDs) like:
-    ri.orchestration.main.build.12345678-1234-1234-1234-123456789abc
+    Examples:
+
+    \b
+        # Start a build and follow it
+        pltr orchestration builds create \\
+            '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}'
+        pltr orchestration builds get <BUILD_RID>
+        pltr orchestration builds jobs <BUILD_RID>
+    \b
+        # Find recent failed builds
+        pltr orchestration builds search --status FAILED --order-by STARTED_TIME
+    \b
+        # Inspect a schedule and its runs, or run it now
+        pltr orchestration schedules get <SCHEDULE_RID>
+        pltr orchestration schedules runs <SCHEDULE_RID>
+        pltr orchestration schedules run <SCHEDULE_RID>
     """
-    pass

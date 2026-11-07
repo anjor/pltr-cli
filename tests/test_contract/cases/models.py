@@ -1,10 +1,13 @@
 """Contract-test cases for src/pltr/commands/models.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "models model create",
-    "models model get",
-    "models version get",
-    "models version list",
+from tests import foundry_json_models as fm
+from tests.test_contract.cases import CONTRACT_RID
+
+SUCCESS = {
+    "models model create": [{"json": fm.model()}],
+    "models model get": [{"json": fm.model(CONTRACT_RID)}],
+    "models version get": [{"json": fm.model_version(CONTRACT_RID)}],
+    "models version list": [
+        {"json": {"data": [fm.model_version()], "nextPageToken": "next"}}
+    ],
 }

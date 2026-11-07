@@ -1,474 +1,301 @@
 """
-DataHealth management commands for Foundry.
-Provides commands for managing data quality checks and reports.
+Data health commands: checks and check reports (Foundry data health API).
+
+Every data health endpoint is beta, so every command is labeled [beta].
 """
 
-import typer
-import json
 from typing import Optional
-from rich.console import Console
 
-from ..services.data_health import DataHealthService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    Columns,
+    ForceAliasOption,
+    FormatOption,
+    OutputOption,
+    PreviewNoopOption,
+    ProfileOption,
+    YesOption,
+    confirm_destructive,
+    emit,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.data_health import DataHealthService
+from ..utils.completion import cache_rid, complete_rid
 
-# Create main app and sub-apps
 app = typer.Typer(help="Manage data health checks and reports")
-check_app = typer.Typer(help="Manage data health checks")
-report_app = typer.Typer(help="View data health check reports")
-
-# Add sub-apps
+check_app = typer.Typer(help="Create, inspect, replace and delete checks")
+report_app = typer.Typer(help="Inspect the reports (results) of checks")
 app.add_typer(check_app, name="check")
 app.add_typer(report_app, name="report")
 
-console = Console()
-formatter = OutputFormatter(console)
+#: Table/CSV columns for a ``Check``.
+CHECK_COLUMNS: Columns = {
+    "RID": "rid",
+    "Type": "config.type",
+    "Intent": "intent",
+    "Groups": lambda check: ", ".join(check.groups),
+    "Created By": "created_by",
+    "Updated": "updated_time",
+    "Config": "config",
+}
+
+#: Table/CSV columns for a ``CheckReport``.
+REPORT_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "result.status",
+    "Message": "result.message",
+    "Created": "created_time",
+    "Check": "check.rid",
+    "Check Type": "check.config.type",
+}
+
+#: Table/CSV columns for lists of check reports (one row per ``CheckReport``).
+REPORT_LIST_COLUMNS: Columns = {
+    "RID": "rid",
+    "Status": "result.status",
+    "Message": "result.message",
+    "Created": "created_time",
+}
+
+CheckRid = Annotated[
+    str,
+    typer.Argument(
+        help="Check RID (ri.data-health.main.check.<id>).",
+        autocompletion=complete_rid,
+    ),
+]
+IntentOption = Annotated[
+    Optional[str],
+    typer.Option("--intent", "-i", help="Why the check was set up."),
+]
 
 
 @check_app.command("get")
+@pltr_command(sdk="data_health.Check.get", beta=True)
 def get_check(
-    check_rid: str = typer.Argument(
-        ...,
-        help="Check RID (e.g., ri.data-health.main.check.xxx)",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (writes to file instead of stdout)",
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    check_rid: CheckRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get information about a data health check.
-
-    Retrieves check details including configuration, status, and metadata.
+    """Get a check: its type, configuration and intent.
 
     Examples:
 
-        # Get check details
+    \b
         pltr data-health check get ri.data-health.main.check.abc123
-
-        # Get as JSON
         pltr data-health check get ri.data-health.main.check.abc123 --format json
-
-        # Save to file
-        pltr data-health check get ri.data-health.main.check.abc123 \\
-            --format json \\
-            --output check-details.json
     """
-    try:
-        with SpinnerProgressTracker().track_spinner("Fetching check information"):
-            service = DataHealthService(profile=profile)
-            result = service.get_check(
-                check_rid=check_rid,
-                preview=preview,
-            )
-
-        formatter.format_output(result, format, output)
-
-        if output:
-            console.print(f"[green]✓[/green] Check information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    with spinner(f"Fetching check {check_rid}..."):
+        check = DataHealthService(profile=profile).get_check(check_rid)
+    cache_rid(check_rid)
+    emit(check, format=format, output=output, columns=CHECK_COLUMNS, title="Check")
 
 
 @check_app.command("create")
+@pltr_command(sdk="data_health.Check.create", beta=True)
 def create_check(
-    config: str = typer.Argument(
-        ...,
-        help="Check configuration as JSON string or @filepath",
-    ),
-    intent: Optional[str] = typer.Option(
-        None,
-        "--intent",
-        "-i",
-        help="Note about why the check was set up",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (writes to file instead of stdout)",
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    config: Annotated[
+        str,
+        typer.Argument(
+            help="Check configuration as JSON or @file.json (see below).",
+            show_default=False,
+        ),
+    ],
+    intent: IntentOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Create a new data health check.
+    """Create a check.
 
-    The config argument should be a JSON string or @filepath containing
-    the check configuration. The configuration must include a 'type' field.
-
-    Supported check types include:
-    - buildStatus: Check dataset build status
-    - buildDuration: Check dataset build duration
-    - nullPercentage: Check percentage of null values in a column
-    - columnType: Check column existence and type
-    - numericColumnRange: Check numeric column value ranges
-    - And more...
+    CONFIG is the check configuration in the API's JSON shape. Its 'type'
+    picks the kind of check, and 'subject' says what it checks (a dataset
+    and branch, or a schedule). Types: allowedColumnValues,
+    approximateUniquePercentage, buildDuration, buildStatus, columnType,
+    dateColumnRange, jobDuration, jobStatus, nullPercentage,
+    numericColumnMean, numericColumnMedian, numericColumnRange, primaryKey,
+    scheduleDuration, scheduleStatus, schemaComparison, timeSinceLastUpdated,
+    totalColumnCount.
 
     Examples:
 
-        # Create a build status check from JSON string
+    \b
+        # Alert when a dataset's build on master fails
         pltr data-health check create '{
             "type": "buildStatus",
             "subject": {
-                "datasetRid": "ri.foundry.main.dataset.xxx",
+                "datasetRid": "ri.foundry.main.dataset.abc123",
                 "branchId": "master"
             },
-            "statusCheckConfig": {"severity": "WARNING"}
+            "statusCheckConfig": {"severity": "MODERATE"}
         }' --intent "Monitor production builds"
-
-        # Create from JSON file
-        pltr data-health check create @check-config.json
-
-        # Create with JSON output
-        pltr data-health check create @config.json --format json
+    \b
+        # Create from a JSON file
+        pltr data-health check create @check-config.json --format json
     """
-    try:
-        # Parse config from JSON string or file
-        config_dict = _parse_json_config(config)
-
-        with SpinnerProgressTracker().track_spinner("Creating check"):
-            service = DataHealthService(profile=profile)
-            result = service.create_check(
-                config=config_dict,
-                intent=intent,
-                preview=preview,
-            )
-
-        console.print(f"[green]✓[/green] Created check: {result.get('rid')}")
-
-        formatter.format_output(result, format, output)
-
-        if output:
-            console.print(f"[green]✓[/green] Check information saved to {output}")
-
-    except json.JSONDecodeError as e:
-        console.print(f"[red]Invalid JSON configuration: {e}[/red]")
-        raise typer.Exit(1)
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    config_json = load_json_input(config, param_hint="CONFIG")
+    with spinner("Creating check..."):
+        check = DataHealthService(profile=profile).create_check(
+            config=config_json, intent=intent
+        )
+    cache_rid(check.rid)
+    success(f"Created check {check.rid}")
+    emit(check, format=format, output=output, columns=CHECK_COLUMNS, title="Check")
 
 
 @check_app.command("replace")
+@pltr_command(sdk="data_health.Check.replace", beta=True, destructive=True)
 def replace_check(
-    check_rid: str = typer.Argument(
-        ...,
-        help="Check RID (e.g., ri.data-health.main.check.xxx)",
-        autocompletion=complete_rid,
-    ),
-    config: str = typer.Argument(
-        ...,
-        help="New check configuration as JSON string or @filepath",
-    ),
-    intent: Optional[str] = typer.Option(
-        None,
-        "--intent",
-        "-i",
-        help="Updated note about the check",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (writes to file instead of stdout)",
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    check_rid: CheckRid,
+    config: Annotated[
+        str,
+        typer.Argument(
+            help="New check configuration as JSON or @file.json.",
+            show_default=False,
+        ),
+    ],
+    intent: IntentOption = None,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Replace/update a data health check.
+    """Replace a check's configuration.
 
-    Note: Changing the type of a check after creation is not supported.
+    CONFIG has the shape of the create configuration without 'subject': a
+    check's type and subject can't be changed. The new configuration and
+    --intent replace the old ones.
 
     Examples:
 
-        # Update check configuration
+    \b
         pltr data-health check replace ri.data-health.main.check.abc123 \\
-            '{"type": "buildStatus", ...}' \\
-            --intent "Updated threshold"
-
-        # Update from file
-        pltr data-health check replace ri.data-health.main.check.abc123 \\
-            @updated-config.json
+            '{"type": "buildStatus", "statusCheckConfig": {"severity": "CRITICAL"}}' \\
+            --intent "Page on failed builds"
     """
-    try:
-        # Parse config from JSON string or file
-        config_dict = _parse_json_config(config)
-
-        with SpinnerProgressTracker().track_spinner("Updating check"):
-            service = DataHealthService(profile=profile)
-            result = service.replace_check(
-                check_rid=check_rid,
-                config=config_dict,
-                intent=intent,
-                preview=preview,
-            )
-
-        console.print(f"[green]✓[/green] Updated check: {result.get('rid')}")
-
-        formatter.format_output(result, format, output)
-
-        if output:
-            console.print(f"[green]✓[/green] Check information saved to {output}")
-
-    except json.JSONDecodeError as e:
-        console.print(f"[red]Invalid JSON configuration: {e}[/red]")
-        raise typer.Exit(1)
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    config_json = load_json_input(config, param_hint="CONFIG")
+    confirm_destructive(f"Replace the configuration of check {check_rid}?", yes=yes)
+    with spinner(f"Replacing check {check_rid}..."):
+        check = DataHealthService(profile=profile).replace_check(
+            check_rid, config=config_json, intent=intent
+        )
+    success(f"Replaced check {check_rid}")
+    emit(check, format=format, output=output, columns=CHECK_COLUMNS, title="Check")
 
 
 @check_app.command("delete")
+@pltr_command(sdk="data_health.Check.delete", beta=True, destructive=True)
 def delete_check(
-    check_rid: str = typer.Argument(
-        ...,
-        help="Check RID (e.g., ri.data-health.main.check.xxx)",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Skip confirmation prompt",
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    check_rid: CheckRid,
+    yes: YesOption = False,
+    force: ForceAliasOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    preview: PreviewNoopOption = False,
 ):
+    """Delete a check.
+
+    Asks for confirmation; --yes skips it (required when stdin is not a
+    terminal).
     """
-    Delete a data health check.
-
-    Examples:
-
-        # Delete with confirmation
-        pltr data-health check delete ri.data-health.main.check.abc123
-
-        # Delete without confirmation
-        pltr data-health check delete ri.data-health.main.check.abc123 --force
-    """
-    # Handle confirmation outside try-except to avoid catching typer.Exit
-    if not force:
-        confirm = typer.confirm(f"Are you sure you want to delete check '{check_rid}'?")
-        if not confirm:
-            console.print("[yellow]Cancelled[/yellow]")
-            raise typer.Exit(0)
-
-    try:
-        with SpinnerProgressTracker().track_spinner("Deleting check"):
-            service = DataHealthService(profile=profile)
-            service.delete_check(
-                check_rid=check_rid,
-                preview=preview,
-            )
-
-        console.print(f"[green]✓[/green] Deleted check: {check_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    confirm_destructive(f"Delete check {check_rid}?", yes=yes)
+    with spinner(f"Deleting check {check_rid}..."):
+        DataHealthService(profile=profile).delete_check(check_rid)
+    success(f"Deleted check {check_rid}")
+    emit(None, format=format)
 
 
 @report_app.command("get")
+@pltr_command(sdk="data_health.Check.CheckReport.get", beta=True)
 def get_report(
-    check_report_rid: str = typer.Argument(
-        ...,
-        help="CheckReport RID (e.g., ri.data-health.main.check-report.xxx)",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (writes to file instead of stdout)",
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    check_rid: CheckRid,
+    check_report_rid: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Check report RID (find it with 'pltr data-health report "
+                "latest <CHECK_RID>')."
+            ),
+            autocompletion=complete_rid,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get a data health check report.
+    """Get one report of a check: its result status and message.
 
-    Retrieves the result of a check execution including status and details.
-
-    Check result statuses:
-    - PASSED: Check passed successfully
-    - FAILED: Check failed
-    - WARNING: Check completed with warnings
-    - ERROR: Check encountered an error
-    - NOT_APPLICABLE: Check was not applicable
-    - NOT_COMPUTABLE: Check result could not be computed
+    A report is addressed by its check's RID and its own RID. Statuses:
+    PASSED, FAILED, WARNING, ERROR, NOT_APPLICABLE, NOT_COMPUTABLE.
 
     Examples:
 
-        # Get report details
-        pltr data-health report get ri.data-health.main.check-report.abc123
-
-        # Get as JSON
-        pltr data-health report get ri.data-health.main.check-report.abc123 \\
-            --format json
-
-        # Save to file
-        pltr data-health report get ri.data-health.main.check-report.abc123 \\
-            --format json \\
-            --output report.json
+    \b
+        pltr data-health report get ri.data-health.main.check.abc123 \\
+            ri.data-health.main.check-report.def456
     """
-    try:
-        with SpinnerProgressTracker().track_spinner("Fetching check report"):
-            service = DataHealthService(profile=profile)
-            result = service.get_check_report(
-                check_report_rid=check_report_rid,
-                preview=preview,
-            )
-
-        # Display status prominently
-        status = result.get("result", {}).get("status", "UNKNOWN")
-        status_colors = {
-            "PASSED": "green",
-            "FAILED": "red",
-            "WARNING": "yellow",
-            "ERROR": "red",
-            "NOT_APPLICABLE": "dim",
-            "NOT_COMPUTABLE": "dim",
-        }
-        color = status_colors.get(status, "white")
-        console.print(f"Status: [{color}]{status}[/{color}]")
-
-        message = result.get("result", {}).get("message")
-        if message:
-            console.print(f"Message: {message}")
-
-        console.print()
-        formatter.format_output(result, format, output)
-
-        if output:
-            console.print(f"[green]✓[/green] Report information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    with spinner(f"Fetching check report {check_report_rid}..."):
+        report = DataHealthService(profile=profile).get_check_report(
+            check_rid, check_report_rid
+        )
+    cache_rid(check_rid)
+    emit(
+        report,
+        format=format,
+        output=output,
+        columns=REPORT_COLUMNS,
+        title="Check Report",
+    )
 
 
-def _parse_json_config(config: str) -> dict:
+@report_app.command("latest")
+@pltr_command(sdk="data_health.Check.CheckReport.get_latest", beta=True)
+def latest_reports(
+    check_rid: CheckRid,
+    limit: Annotated[
+        Optional[int],
+        typer.Option(
+            "--limit",
+            min=1,
+            max=100,
+            help="Maximum number of reports (the API's default is 10).",
+            show_default=False,
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """List a check's most recent reports.
+
+    JSON output is the API's response: {"data": [...]}.
+
+    Examples:
+
+    \b
+        pltr data-health report latest ri.data-health.main.check.abc123
+        pltr data-health report latest ri.data-health.main.check.abc123 \\
+            --limit 50 --format json
     """
-    Parse JSON configuration from a string or file.
-
-    Args:
-        config: JSON string or @filepath
-
-    Returns:
-        Parsed dictionary
-
-    Raises:
-        json.JSONDecodeError: If JSON is invalid
-        FileNotFoundError: If file doesn't exist
-    """
-    if config.startswith("@"):
-        # Load from file
-        filepath = config[1:]
-        with open(filepath, "r") as f:
-            return json.load(f)
-    else:
-        # Parse JSON string
-        return json.loads(config)
+    with spinner(f"Fetching the latest reports of check {check_rid}..."):
+        response = DataHealthService(profile=profile).get_latest_check_reports(
+            check_rid, limit=limit
+        )
+    cache_rid(check_rid)
+    emit(
+        response,
+        format=format,
+        output=output,
+        columns=REPORT_LIST_COLUMNS,
+        rows=lambda reports: reports.data,
+    )
