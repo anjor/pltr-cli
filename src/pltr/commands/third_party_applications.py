@@ -1,82 +1,66 @@
 """
-Third-party applications management commands for Foundry.
+Third-party application commands (Foundry Third Party Applications API).
+
+Applications are created in Developer Console and addressed by RID. Their
+websites and website versions are available as generated commands
+(``pltr api third-party-applications third-party-application website ...``).
 """
 
 import typer
-from typing import Optional
-from rich.console import Console
+from typing_extensions import Annotated
 
-from ..services.third_party_applications import ThirdPartyApplicationsService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+from ..contract import (
+    Columns,
+    FormatOption,
+    OutputOption,
+    PreviewNoopOption,
+    ProfileOption,
+    emit,
+    pltr_command,
+    spinner,
 )
+from ..services.third_party_applications import ThirdPartyApplicationsService
+from ..utils.completion import cache_rid, complete_rid
 
-app = typer.Typer(help="Manage third-party applications in Foundry")
-console = Console()
-formatter = OutputFormatter(console)
+app = typer.Typer()
+
+#: Table/CSV columns for a ``ThirdPartyApplication`` model (it has only a RID).
+APPLICATION_COLUMNS: Columns = {"RID": "rid"}
 
 
 @app.command("get")
+@pltr_command(sdk="third_party_applications.ThirdPartyApplication.get", beta=True)
 def get_application(
-    application_rid: str = typer.Argument(
-        ...,
-        help="Third-party application Resource Identifier",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    application_rid: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Third-party application RID "
+                "(ri.third-party-applications.main.application.<id>; shown in "
+                "Developer Console)."
+            ),
+            autocompletion=complete_rid,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """Get detailed information about a third-party application."""
-    try:
-        # Cache the RID for future completions
-        cache_rid(application_rid)
+    """Get a third-party application.
 
-        service = ThirdPartyApplicationsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching third-party application {application_rid}..."
-        ):
-            application = service.get_application(application_rid, preview=preview)
-
-        # Format output
-        if output:
-            formatter.save_to_file(application, output, format)
-            formatter.print_success(f"Application information saved to {output}")
-        else:
-            formatter.display(application, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get third-party application: {e}")
-        raise typer.Exit(1)
+    The API returns only the application's RID, so this confirms that the
+    application exists and that you can see it.
+    """
+    with spinner(f"Fetching third-party application {application_rid}..."):
+        application = ThirdPartyApplicationsService(profile=profile).get_application(
+            application_rid
+        )
+    cache_rid(application_rid)
+    emit(
+        application,
+        format=format,
+        output=output,
+        columns=APPLICATION_COLUMNS,
+        title="Third-Party Application",
+    )

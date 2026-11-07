@@ -1,10 +1,11 @@
 """Contract-test cases for src/pltr/commands/aip_agents.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "aip-agents get",
-    "aip-agents sessions get",
-    "aip-agents sessions list",
-    "aip-agents versions list",
+from tests import foundry_json_aip_agents as aj
+from tests.test_contract.cases import CONTRACT_RID
+
+SUCCESS = {
+    "aip-agents get": [{"json": aj.agent(CONTRACT_RID)}],
+    "aip-agents sessions list": [{"json": {"data": [aj.session()]}}],
+    "aip-agents sessions get": [{"json": aj.session(CONTRACT_RID)}],
+    "aip-agents versions list": [{"json": {"data": [aj.agent_version()]}}],
 }
