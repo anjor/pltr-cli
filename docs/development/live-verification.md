@@ -266,8 +266,8 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 - **Arrow decoding in `dataset preview` for every type, and `read_table`'s row
   limit.** Partly: `dataset.read-json` and `dataset.read-csv` decode the types
   of your `dataset.rid`; point it at a dataset with DECIMAL, MAP, STRUCT and
-  BINARY columns. Manual: `pltr dataset preview <non-Parquet dataset> --limit
-  1000000`.
+  BINARY columns. Manual: `pltr dataset preview <csv-dataset-rid> --limit
+  1000000` on a dataset that isn't stored as Parquet.
 
 ### Ontology (b2)
 
@@ -325,7 +325,7 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
   premise: `pltr api admin organization replace <org> --name <name>` on a test
   organization, then `pltr admin org get <org>`.
 - **`--description ''` stores an empty description.** Manual: `pltr admin org
-  replace <test org> <name> --description '' --yes`.
+  replace <test-org-rid> <name> --description '' --yes`.
 - **`Group.create` with empty attributes, `Marking.create` with no
   `--member`.** Manual (the smoke test never creates groups or markings).
 - **Role IDs from `admin org available-roles` work with `admin role get`.**
@@ -401,14 +401,14 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 - **Data Connection source RIDs look like `ri.magritte..source.<id>` and show
   up in `pltr folder list` as `MAGRITTE_SOURCE` resources.** Partly:
   `connectivity.connection-get` with your `connectivity.connection_rid`.
-  Manual: `pltr folder list <folder with a source>`.
+  Manual: `pltr folder list <folder-rid>` for a folder with a source.
 - **`audit list --page-token` sends the start date with the token.** Manual:
   `pltr audit list <org> <date> --max-pages 2`.
 - **`LogFile.list` without an end date returns a `nextPageToken` on every
   page.** Smoke: `audit.list` (its details say "more pages" when a token came
   back).
-- **The format of audit log files.** Manual: `pltr audit get <org> <log file
-  id> --output log.bin`, then `file log.bin`.
+- **The format of audit log files.** Manual: `pltr audit get <org> <log-file-id>
+  --output log.bin`, then `file log.bin`.
 
 ### Widgets, AIP Agents, third-party applications and completion (b8)
 
@@ -431,8 +431,8 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
   filter; manual) and language-models (its endpoints are covered by the
   curated `language-models` checks).
 - **Streaming endpoints write the bytes as they arrive (formats unverified).**
-  Manual: `pltr api ontologies time-series-property-v2 stream-points ...
-  --output points.bin`.
+  Manual: `pltr api ontologies time-series-property-v2 stream-points
+  <ontology> <object-type> <primary-key> <property> --output points.bin`.
 - **`--max-pages`/`--all` resend the other arguments with the `nextPageToken`.**
   Smoke: `api.filesystem` (`--page-size 1 --max-pages 2`; "2 items" means
   the second page was fetched).
