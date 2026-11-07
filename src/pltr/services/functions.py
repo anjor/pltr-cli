@@ -1,223 +1,126 @@
 """
-Functions service wrapper for Foundry SDK.
-Provides access to Functions query execution and value type operations.
+Functions service wrapper for the Foundry SDK (queries and value types).
+
+Every Functions endpoint pltr uses is beta, so every call passes
+``preview=True``. Methods return SDK models unchanged and let SDK exceptions
+propagate so the error layer can classify them.
 """
 
 from typing import Any, Dict, Optional
+
 from .base import BaseService
 
 
 class FunctionsService(BaseService):
-    """Service wrapper for Foundry Functions operations."""
+    """Service wrapper for Foundry Functions (``client.functions``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry Functions service."""
         return self.client.functions
 
-    # ===== Query Operations =====
+    # ----------------------------------------------------------------- queries
 
     def get_query(
         self,
         query_api_name: str,
-        preview: bool = False,
+        *,
         version: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Get query metadata by API name.
+        include_prerelease: Optional[bool] = None,
+        latest_version_resolution: Optional[str] = None,
+    ) -> Any:
+        """Get a query's definition by API name (``Query.get``, beta).
 
-        Args:
-            query_api_name: Query API name (e.g., "myQuery")
-            preview: Enable preview mode (default: False)
-            version: Optional query version (e.g., "1.0.0")
-                If not specified, returns latest version
+        Without ``version`` the API returns the highest semantic version,
+        excluding pre-releases, unless ``include_prerelease`` or
+        ``latest_version_resolution="PUBLISH_TIME"`` say otherwise.
 
         Returns:
-            Query information dictionary containing:
-            - rid: Query resource identifier
-            - apiName: Query API name
-            - version: Query version
-            - parameters: Query parameters with types
-            - output: Output structure definition
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = FunctionsService()
-            >>> query = service.get_query("myQuery")
-            >>> print(query['apiName'])
+            A ``Query`` model.
         """
-        try:
-            query = self.service.Query.get(
-                query_api_name, preview=preview, version=version
-            )
-            return self._serialize_response(query)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get query '{query_api_name}': {e}")
+        return self.service.Query.get(
+            query_api_name,
+            version=version,
+            include_prerelease=include_prerelease,
+            latest_version_resolution=latest_version_resolution,
+            preview=True,
+        )
 
     def get_query_by_rid(
-        self, query_rid: str, preview: bool = False, version: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Get query metadata by RID.
-
-        Args:
-            query_rid: Query Resource Identifier
-                Format: ri.functions.main.query.<id>
-            preview: Enable preview mode (default: False)
-            version: Optional query version (e.g., "1.0.0")
-                If not specified, returns latest version
+        self,
+        query_rid: str,
+        *,
+        version: Optional[str] = None,
+        include_prerelease: Optional[bool] = None,
+    ) -> Any:
+        """Get a query's definition by RID (``Query.get_by_rid``, beta).
 
         Returns:
-            Query information dictionary containing:
-            - rid: Query resource identifier
-            - apiName: Query API name
-            - version: Query version
-            - parameters: Query parameters with types
-            - output: Output structure definition
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = FunctionsService()
-            >>> query = service.get_query_by_rid("ri.functions.main.query.abc123")
-            >>> print(query['rid'])
+            A ``Query`` model.
         """
-        try:
-            query = self.service.Query.get_by_rid(
-                query_rid, preview=preview, version=version
-            )
-            return self._serialize_response(query)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get query {query_rid}: {e}")
+        return self.service.Query.get_by_rid(
+            rid=query_rid,
+            version=version,
+            include_prerelease=include_prerelease,
+            preview=True,
+        )
 
     def execute_query(
         self,
         query_api_name: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        preview: bool = False,
+        *,
+        parameters: Dict[str, Any],
         version: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Execute a query by API name with parameters.
+        include_prerelease: Optional[bool] = None,
+        latest_version_resolution: Optional[str] = None,
+    ) -> Any:
+        """Execute a query by API name (``Query.execute``, beta).
 
         Args:
-            query_api_name: Query API name (e.g., "myQuery")
-            parameters: Query parameters as dictionary with DataValue encoding
-                Examples:
-                - Primitives: {"limit": 10, "name": "John"}
-                - Arrays: {"ids": [1, 2, 3]}
-                - Structs: {"config": {"enabled": true}}
-                - Dates: {"date": "2024-01-01"} (ISO 8601)
-                - Timestamps: {"created": "2021-01-04T05:00:00Z"} (ISO 8601)
-            preview: Enable preview mode (default: False)
-            version: Optional query version (e.g., "1.0.0")
-                If not specified, executes latest version
+            parameters: Parameter values keyed by parameter name, as JSON
+                values (strings, numbers, booleans, lists, objects; dates and
+                timestamps as ISO-8601 strings).
 
         Returns:
-            Query execution result dictionary
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = FunctionsService()
-            >>> result = service.execute_query(
-            ...     "myQuery",
-            ...     parameters={"limit": 10, "filter": "active"}
-            ... )
-            >>> print(result)
+            ``ExecuteQueryResponse``; the result is its ``value``.
         """
-        try:
-            result = self.service.Query.execute(
-                query_api_name,
-                parameters=parameters or {},
-                preview=preview,
-                version=version,
-            )
-            return self._serialize_response(result)
-        except Exception as e:
-            raise RuntimeError(f"Failed to execute query '{query_api_name}': {e}")
+        return self.service.Query.execute(
+            query_api_name,
+            parameters=parameters,
+            version=version,
+            include_prerelease=include_prerelease,
+            latest_version_resolution=latest_version_resolution,
+            preview=True,
+        )
 
     def execute_query_by_rid(
         self,
         query_rid: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        preview: bool = False,
+        *,
+        parameters: Dict[str, Any],
         version: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Execute a query by RID with parameters.
+        include_prerelease: Optional[bool] = None,
+    ) -> Any:
+        """Execute a query given its RID.
 
-        Args:
-            query_rid: Query Resource Identifier
-                Format: ri.functions.main.query.<id>
-            parameters: Query parameters as dictionary with DataValue encoding
-                Examples:
-                - Primitives: {"limit": 10, "name": "John"}
-                - Arrays: {"ids": [1, 2, 3]}
-                - Structs: {"config": {"enabled": true}}
-                - Dates: {"date": "2024-01-01"} (ISO 8601)
-                - Timestamps: {"created": "2021-01-04T05:00:00Z"} (ISO 8601)
-            preview: Enable preview mode (default: False)
-            version: Optional query version (e.g., "1.0.0")
-                If not specified, executes latest version
+        The API executes queries by API name only, so this resolves the RID
+        with ``Query.get_by_rid`` (beta) and then executes exactly the
+        version it resolved with ``Query.execute`` (beta).
 
         Returns:
-            Query execution result dictionary
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = FunctionsService()
-            >>> result = service.execute_query_by_rid(
-            ...     "ri.functions.main.query.abc123",
-            ...     parameters={"limit": 10}
-            ... )
-            >>> print(result)
+            ``ExecuteQueryResponse``; the result is its ``value``.
         """
-        try:
-            result = self.service.Query.execute_by_rid(
-                query_rid,
-                parameters=parameters or {},
-                preview=preview,
-                version=version,
-            )
-            return self._serialize_response(result)
-        except Exception as e:
-            raise RuntimeError(f"Failed to execute query {query_rid}: {e}")
+        query = self.get_query_by_rid(
+            query_rid, version=version, include_prerelease=include_prerelease
+        )
+        return self.service.Query.execute(
+            query.api_name,
+            parameters=parameters,
+            version=query.version,
+            preview=True,
+        )
 
-    # ===== Value Type Operations =====
+    # ------------------------------------------------------------- value types
 
-    def get_value_type(
-        self, value_type_rid: str, preview: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Get value type details by RID.
-
-        Args:
-            value_type_rid: Value Type Resource Identifier
-                Format: ri.functions.main.value-type.<id>
-            preview: Enable preview mode (default: False)
-
-        Returns:
-            Value type information dictionary containing:
-            - rid: Value type resource identifier
-            - apiName: Value type API name
-            - definition: Type definition and structure
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = FunctionsService()
-            >>> value_type = service.get_value_type("ri.functions.main.value-type.xyz")
-            >>> print(value_type['apiName'])
-        """
-        try:
-            value_type = self.service.ValueType.get(value_type_rid, preview=preview)
-            return self._serialize_response(value_type)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get value type {value_type_rid}: {e}")
+    def get_value_type(self, value_type_rid: str) -> Any:
+        """Get a value type (``ValueType.get``, beta); returns a ``ValueType``."""
+        return self.service.ValueType.get(value_type_rid, preview=True)

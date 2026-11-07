@@ -1,259 +1,137 @@
-"""Tests for DataHealth service."""
+"""Tests for DataHealthService against a real FoundryClient (only HTTP is faked).
 
+Every data health endpoint is beta: every request must carry preview=true.
+The module-level filter turns the SDK's UserWarning about a stray preview=
+on a GA call into a failure.
+"""
+
+import json
+
+import pydantic
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.data_health.models import (
+    Check,
+    CheckReport,
+    GetLatestCheckReportsResponse,
+)
+
 from pltr.services.data_health import DataHealthService
+from tests import foundry_json_data_health as fd
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+API = "/api/v2/dataHealth/checks"
 
 
-class TestDataHealthService:
-    """Test DataHealth service functionality."""
+def test_create_check_is_beta_and_sends_config_and_intent(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.data_health = Mock()
-        client.data_health.Check = Mock()
-        client.data_health.CheckReport = Mock()
-        return client
+    check = DataHealthService().create_check(
+        config=fd.BUILD_STATUS_CONFIG, intent="Monitor production builds"
+    )
 
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create DataHealthService with mocked client."""
-        with patch("pltr.services.base.AuthManager") as mock_auth:
-            mock_auth.return_value.get_client.return_value = mock_client
-            service = DataHealthService()
-            return service
+    assert isinstance(check, Check)
+    assert check.config.type == "buildStatus"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", API)
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "config": fd.BUILD_STATUS_CONFIG,
+        "intent": "Monitor production builds",
+    }
 
-    # ===== Check Creation Tests =====
 
-    def test_create_check(self, service, mock_client):
-        """Test creating a check."""
-        # Setup
-        config = {
-            "type": "buildStatus",
-            "subject": {
-                "datasetRid": "ri.foundry.main.dataset.xxx",
-                "branchId": "master",
-            },
-            "statusCheckConfig": {"severity": "WARNING"},
-        }
-        intent = "Monitor build health"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": "ri.data-health.main.check.abc123",
-            "config": config,
-            "intent": intent,
-            "groups": [],
-        }
-        mock_client.data_health.Check.create.return_value = mock_response
+def test_create_check_without_intent(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check(intent=None))
 
-        # Execute
-        result = service.create_check(config=config, intent=intent)
+    DataHealthService().create_check(config=fd.BUILD_STATUS_CONFIG)
 
-        # Assert
-        mock_client.data_health.Check.create.assert_called_once_with(
-            config=config,
-            intent=intent,
-            preview=False,
-        )
-        assert result["rid"] == "ri.data-health.main.check.abc123"
-        assert result["config"] == config
-        assert result["intent"] == intent
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "config": fd.BUILD_STATUS_CONFIG
+    }
 
-    def test_create_check_with_preview(self, service, mock_client):
-        """Test creating a check with preview mode."""
-        # Setup
-        config = {"type": "buildStatus", "subject": {}, "statusCheckConfig": {}}
-        mock_response = Mock()
-        mock_response.dict.return_value = {"rid": "ri.data-health.main.check.abc123"}
-        mock_client.data_health.Check.create.return_value = mock_response
 
-        # Execute
-        service.create_check(config=config, preview=True)
+def test_create_check_rejects_an_unknown_type_before_sending(stub_foundry_http):
+    with pytest.raises(pydantic.ValidationError):
+        DataHealthService().create_check(config={"type": "vibes"})
+    assert stub_foundry_http.requests == []
 
-        # Assert
-        mock_client.data_health.Check.create.assert_called_once_with(
-            config=config,
-            intent=None,
-            preview=True,
-        )
 
-    def test_create_check_error(self, service, mock_client):
-        """Test error handling in create_check."""
-        # Setup
-        mock_client.data_health.Check.create.side_effect = Exception(
-            "Permission denied"
-        )
+def test_get_check_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check())
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to create check"):
-            service.create_check(config={"type": "buildStatus"})
+    check = DataHealthService().get_check(fd.CHECK_RID)
 
-    # ===== Get Check Tests =====
+    assert check.groups == [fd.CHECK_GROUP_RID]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{API}/{fd.CHECK_RID}")
+    assert dict(request.url.params) == {"preview": "true"}
 
-    def test_get_check(self, service, mock_client):
-        """Test getting check information."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": check_rid,
-            "config": {"type": "buildStatus"},
-            "groups": [],
-        }
-        mock_client.data_health.Check.get.return_value = mock_response
 
-        # Execute
-        result = service.get_check(check_rid=check_rid)
+def test_replace_check_is_beta_and_a_put(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check(intent="Page on failed builds"))
 
-        # Assert
-        mock_client.data_health.Check.get.assert_called_once_with(
-            check_rid=check_rid,
-            preview=False,
-        )
-        assert result["rid"] == check_rid
+    check = DataHealthService().replace_check(
+        fd.CHECK_RID,
+        config=fd.REPLACE_BUILD_STATUS_CONFIG,
+        intent="Page on failed builds",
+    )
 
-    def test_get_check_error(self, service, mock_client):
-        """Test error handling in get_check."""
-        # Setup
-        check_rid = "ri.data-health.main.check.notfound"
-        mock_client.data_health.Check.get.side_effect = Exception("Not found")
+    assert check.intent == "Page on failed builds"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("PUT", f"{API}/{fd.CHECK_RID}")
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "config": fd.REPLACE_BUILD_STATUS_CONFIG,
+        "intent": "Page on failed builds",
+    }
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match=f"Failed to get check '{check_rid}'"):
-            service.get_check(check_rid=check_rid)
 
-    # ===== Replace Check Tests =====
+def test_delete_check_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-    def test_replace_check(self, service, mock_client):
-        """Test replacing/updating a check."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        config = {
-            "type": "buildStatus",
-            "subject": {
-                "datasetRid": "ri.foundry.main.dataset.xxx",
-                "branchId": "master",
-            },
-            "statusCheckConfig": {"severity": "ERROR"},
-        }
-        intent = "Updated threshold"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": check_rid,
-            "config": config,
-            "intent": intent,
-        }
-        mock_client.data_health.Check.replace.return_value = mock_response
+    assert DataHealthService().delete_check(fd.CHECK_RID) is None
 
-        # Execute
-        result = service.replace_check(
-            check_rid=check_rid,
-            config=config,
-            intent=intent,
-        )
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("DELETE", f"{API}/{fd.CHECK_RID}")
+    assert dict(request.url.params) == {"preview": "true"}
 
-        # Assert
-        mock_client.data_health.Check.replace.assert_called_once_with(
-            check_rid=check_rid,
-            config=config,
-            intent=intent,
-            preview=False,
-        )
-        assert result["rid"] == check_rid
-        assert result["intent"] == intent
 
-    def test_replace_check_error(self, service, mock_client):
-        """Test error handling in replace_check."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_client.data_health.Check.replace.side_effect = Exception("Not found")
+def test_get_check_report_needs_the_check_rid(stub_foundry_http):
+    stub_foundry_http.respond(json=fd.check_report())
 
-        # Execute & Assert
-        with pytest.raises(
-            RuntimeError, match=f"Failed to replace check '{check_rid}'"
-        ):
-            service.replace_check(check_rid=check_rid, config={"type": "buildStatus"})
+    report = DataHealthService().get_check_report(fd.CHECK_RID, fd.REPORT_RID)
 
-    # ===== Delete Check Tests =====
+    assert isinstance(report, CheckReport)
+    assert (report.result.status, report.check.rid) == ("FAILED", fd.CHECK_RID)
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/{fd.CHECK_RID}/checkReports/{fd.REPORT_RID}",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
 
-    def test_delete_check(self, service, mock_client):
-        """Test deleting a check."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_client.data_health.Check.delete.return_value = None
 
-        # Execute
-        service.delete_check(check_rid=check_rid)
+def test_get_latest_check_reports(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [fd.check_report(), fd.check_report(fd.REPORT_RID_2, "PASSED")]}
+    )
 
-        # Assert
-        mock_client.data_health.Check.delete.assert_called_once_with(
-            check_rid=check_rid,
-            preview=False,
-        )
+    response = DataHealthService().get_latest_check_reports(fd.CHECK_RID, limit=5)
 
-    def test_delete_check_with_preview(self, service, mock_client):
-        """Test deleting a check with preview mode."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_client.data_health.Check.delete.return_value = None
+    assert isinstance(response, GetLatestCheckReportsResponse)
+    assert [report.result.status for report in response.data] == ["FAILED", "PASSED"]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/{fd.CHECK_RID}/checkReports/getLatest",
+    )
+    assert dict(request.url.params) == {"limit": "5", "preview": "true"}
 
-        # Execute
-        service.delete_check(check_rid=check_rid, preview=True)
 
-        # Assert
-        mock_client.data_health.Check.delete.assert_called_once_with(
-            check_rid=check_rid,
-            preview=True,
-        )
+def test_get_latest_check_reports_default_limit(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
 
-    def test_delete_check_error(self, service, mock_client):
-        """Test error handling in delete_check."""
-        # Setup
-        check_rid = "ri.data-health.main.check.abc123"
-        mock_client.data_health.Check.delete.side_effect = Exception(
-            "Permission denied"
-        )
+    DataHealthService().get_latest_check_reports(fd.CHECK_RID)
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match=f"Failed to delete check '{check_rid}'"):
-            service.delete_check(check_rid=check_rid)
-
-    # ===== Get CheckReport Tests =====
-
-    def test_get_check_report(self, service, mock_client):
-        """Test getting check report information."""
-        # Setup
-        check_report_rid = "ri.data-health.main.check-report.abc123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": check_report_rid,
-            "check": {"rid": "ri.data-health.main.check.xxx", "config": {}},
-            "result": {"status": "PASSED", "message": "Check passed"},
-            "createdTime": "2024-01-15T10:30:00Z",
-        }
-        mock_client.data_health.CheckReport.get.return_value = mock_response
-
-        # Execute
-        result = service.get_check_report(check_report_rid=check_report_rid)
-
-        # Assert
-        mock_client.data_health.CheckReport.get.assert_called_once_with(
-            check_report_rid=check_report_rid,
-            preview=False,
-        )
-        assert result["rid"] == check_report_rid
-        assert result["result"]["status"] == "PASSED"
-
-    def test_get_check_report_error(self, service, mock_client):
-        """Test error handling in get_check_report."""
-        # Setup
-        check_report_rid = "ri.data-health.main.check-report.notfound"
-        mock_client.data_health.CheckReport.get.side_effect = Exception("Not found")
-
-        # Execute & Assert
-        with pytest.raises(
-            RuntimeError, match=f"Failed to get check report '{check_report_rid}'"
-        ):
-            service.get_check_report(check_report_rid=check_report_rid)
+    assert dict(stub_foundry_http.requests[0].url.params) == {"preview": "true"}

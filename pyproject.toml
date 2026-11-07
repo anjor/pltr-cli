@@ -79,3 +79,7 @@ dev = [
     "tomli-w>=1.2.0",
     "types-requests>=2.32.4.20250611",
 ]
+
+[tool.pytest.ini_options]
+# Tests import the dev tooling in scripts/ (e.g. scripts.sdk_calls).
+pythonpath = ["."]

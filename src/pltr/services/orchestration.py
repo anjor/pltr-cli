@@ -1,610 +1,232 @@
 """
-Orchestration service wrapper for Foundry SDK v2 API.
-Provides operations for managing builds, jobs, and schedules.
+Orchestration service wrapper for the Foundry SDK (builds, jobs and schedules).
+
+``Build.search``, ``Job.get``, ``Job.get_batch``, ``Schedule.get``,
+``Schedule.create`` and ``Schedule.replace`` are beta endpoints and are always
+called with ``preview=True``; the other methods are GA. Methods return SDK
+models (or SDK iterators) unchanged and let SDK exceptions propagate so the
+error layer can classify them.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from ..config.settings import Settings
-from ..utils.pagination import PaginationConfig, PaginationResult
+from foundry_sdk.v2.orchestration.models import (
+    GetBuildsBatchRequestElement,
+    GetJobsBatchRequestElement,
+)
+
 from .base import BaseService
+
+#: Maximum number of builds ``Build.get_batch`` accepts in one request.
+MAX_BUILDS_BATCH = 100
+
+#: Maximum number of jobs ``Job.get_batch`` accepts in one request.
+MAX_JOBS_BATCH = 500
 
 
 class OrchestrationService(BaseService):
-    """Service wrapper for Foundry orchestration operations using v2 API."""
+    """Service wrapper for Foundry orchestration (``client.orchestration``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry orchestration service."""
         return self.client.orchestration
 
-    # Build operations
-    def get_build(self, build_rid: str) -> Dict[str, Any]:
-        """
-        Get information about a specific build.
+    # ------------------------------------------------------------------ builds
 
-        Args:
-            build_rid: Build Resource Identifier
-
-        Returns:
-            Build information dictionary
-        """
-        try:
-            build = self.service.Build.get(build_rid)
-            return self._format_build_info(build)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get build {build_rid}: {e}")
+    def get_build(self, build_rid: str) -> Any:
+        """Get a build (``Build.get``, GA); returns a ``Build`` model."""
+        return self.service.Build.get(build_rid)
 
     def create_build(
         self,
+        *,
         target: Dict[str, Any],
-        fallback_branches: Optional[Dict[str, Any]] = None,
-        abort_on_failure: Optional[bool] = None,
+        fallback_branches: List[str],
         branch_name: Optional[str] = None,
         force_build: Optional[bool] = None,
+        abort_on_failure: Optional[bool] = None,
         notifications_enabled: Optional[bool] = None,
-        retry_backoff_duration: Optional[int] = None,
         retry_count: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """
-        Create a new build.
+    ) -> Any:
+        """Start a build (``Build.create``, GA); returns the new ``Build``.
 
         Args:
-            target: Build target configuration
-            fallback_branches: Fallback branches configuration
-            abort_on_failure: Whether to abort on failure
-            branch_name: Branch name for the build
-            force_build: Force build even if no changes
-            notifications_enabled: Enable notifications
-            retry_backoff_duration: Retry backoff duration in milliseconds
-            retry_count: Number of retries
-
-        Returns:
-            Created build information
+            target: The build target in the API's JSON shape, e.g.
+                ``{"type": "manual", "targetRids": [...]}`` (``manual``,
+                ``upstream`` or ``connecting``). The SDK validates it.
+            fallback_branches: Branches to read inputs from when an input
+                doesn't exist on ``branch_name`` (may be empty).
         """
-        try:
-            kwargs: Dict[str, Any] = {
-                "target": target,
-                "fallback_branches": fallback_branches or [],
-            }
-
-            # Add optional parameters if provided
-            if abort_on_failure is not None:
-                kwargs["abort_on_failure"] = abort_on_failure
-            if branch_name is not None:
-                kwargs["branch_name"] = branch_name
-            if force_build is not None:
-                kwargs["force_build"] = force_build
-            if notifications_enabled is not None:
-                kwargs["notifications_enabled"] = notifications_enabled
-            if retry_backoff_duration is not None:
-                kwargs["retry_backoff_duration"] = retry_backoff_duration
-            if retry_count is not None:
-                kwargs["retry_count"] = retry_count
-
-            build = self.service.Build.create(**kwargs)
-            return self._format_build_info(build)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create build: {e}")
+        return self.service.Build.create(
+            target=target,
+            fallback_branches=fallback_branches,
+            branch_name=branch_name,
+            force_build=force_build,
+            abort_on_failure=abort_on_failure,
+            notifications_enabled=notifications_enabled,
+            retry_count=retry_count,
+        )
 
     def cancel_build(self, build_rid: str) -> None:
-        """
-        Cancel a build.
-
-        Args:
-            build_rid: Build Resource Identifier
-        """
-        try:
-            self.service.Build.cancel(build_rid)
-        except Exception as e:
-            raise RuntimeError(f"Failed to cancel build {build_rid}: {e}")
+        """Request cancellation of a build's unfinished jobs (``Build.cancel``, GA)."""
+        self.service.Build.cancel(build_rid)
 
     def get_build_jobs(
         self,
         build_rid: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Get jobs in a build.
-
-        Args:
-            build_rid: Build Resource Identifier
-            page_size: Number of results per page
-            page_token: Token for pagination
+    ) -> Any:
+        """List one page of a build's jobs (``Build.jobs``, GA).
 
         Returns:
-            Jobs list with pagination info
+            The SDK ``ResourceIterator[Job]``; constructing it fetched one
+            page (``.data``, ``.next_page_token``).
         """
-        try:
-            kwargs: Dict[str, Any] = {"build_rid": build_rid}
-            if page_size is not None:
-                kwargs["page_size"] = page_size
-            if page_token is not None:
-                kwargs["page_token"] = page_token
-
-            response = self.service.Build.jobs(**kwargs)
-            return self._format_jobs_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get jobs for build {build_rid}: {e}")
+        return self.service.Build.jobs(
+            build_rid, page_size=page_size, page_token=page_token
+        )
 
     def search_builds(
         self,
+        *,
+        where: Dict[str, Any],
+        order_by: Optional[Dict[str, Any]] = None,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-        **search_params,
-    ) -> Dict[str, Any]:
-        """
-        Search for builds.
-
-        DEPRECATED: Use search_builds_paginated() instead for better pagination support.
+    ) -> Any:
+        """Search builds, one page (``Build.search``, beta).
 
         Args:
-            page_size: Number of results per page
-            page_token: Token for pagination
-            **search_params: Additional search parameters
+            where: A ``SearchBuildsFilter`` in the API's JSON shape, e.g.
+                ``{"type": "eq", "field": "STATUS", "value": "FAILED"}``.
+            order_by: A ``SearchBuildsOrderBy``, e.g.
+                ``{"fields": [{"field": "STARTED_TIME", "direction": "DESC"}]}``.
 
         Returns:
-            Search results with pagination info
+            ``SearchBuildsResponse`` (``.data``, ``.next_page_token``).
         """
-        try:
-            kwargs: Dict[str, Any] = {"preview": True}
-            if page_size is not None:
-                kwargs["page_size"] = page_size
-            if page_token is not None:
-                kwargs["page_token"] = page_token
-            kwargs.update(search_params)
+        return self.service.Build.search(
+            where=where,
+            order_by=order_by,
+            page_size=page_size,
+            page_token=page_token,
+            preview=True,
+        )
 
-            response = self._search_with_optional_preview(kwargs)
-            return self._format_builds_search_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to search builds: {e}")
-
-    def search_builds_paginated(
-        self,
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        **search_params,
-    ) -> PaginationResult:
-        """
-        Search for builds with full pagination control.
-
-        Args:
-            config: Pagination configuration
-            progress_callback: Optional progress callback
-            **search_params: Additional search parameters
+    def get_builds_batch(self, build_rids: List[str]) -> Any:
+        """Get up to 100 builds in one request (``Build.get_batch``, GA).
 
         Returns:
-            PaginationResult with builds and metadata
+            ``GetBuildsBatchResponse``; its ``data`` maps build RID to ``Build``.
         """
-        try:
-            settings = Settings()
+        if len(build_rids) > MAX_BUILDS_BATCH:
+            raise ValueError(f"Maximum batch size is {MAX_BUILDS_BATCH} builds")
+        return self.service.Build.get_batch(
+            body=[GetBuildsBatchRequestElement(build_rid=rid) for rid in build_rids]
+        )
 
-            def fetch_page(page_token: Optional[str]) -> Dict[str, Any]:
-                """Fetch a single page of builds."""
-                kwargs: Dict[str, Any] = {
-                    "page_size": config.page_size or settings.get("page_size", 20),
-                    "preview": True,
-                }
-                if page_token:
-                    kwargs["page_token"] = page_token
-                kwargs.update(search_params)
+    # -------------------------------------------------------------------- jobs
 
-                response = self._search_with_optional_preview(kwargs)
-                formatted = self._format_builds_search_response(response)
-                return {
-                    "data": formatted.get("builds", []),
-                    "next_page_token": formatted.get("next_page_token"),
-                }
+    def get_job(self, job_rid: str) -> Any:
+        """Get a job (``Job.get``, beta); returns a ``Job`` model."""
+        return self.service.Job.get(job_rid, preview=True)
 
-            return self._paginate_response(fetch_page, config, progress_callback)
-        except Exception as e:
-            raise RuntimeError(f"Failed to search builds: {e}")
-
-    def _search_with_optional_preview(self, kwargs: Dict[str, Any]) -> Any:
-        """
-        Execute Build.search with preview compatibility fallback.
-
-        Some SDK versions reject the `preview` kwarg at call-time even if preview
-        mode is enabled via client defaults.
-        """
-        try:
-            return self.service.Build.search(**kwargs)
-        except TypeError as e:
-            if "preview" not in str(e):
-                raise
-            fallback_kwargs = dict(kwargs)
-            fallback_kwargs.pop("preview", None)
-            return self.service.Build.search(**fallback_kwargs)
-
-    def get_builds_batch(self, build_rids: List[str]) -> Dict[str, Any]:
-        """
-        Get multiple builds in batch.
-
-        Args:
-            build_rids: List of Build Resource Identifiers (max 100)
+    def get_jobs_batch(self, job_rids: List[str]) -> Any:
+        """Get up to 500 jobs in one request (``Job.get_batch``, beta).
 
         Returns:
-            Batch response with build information
+            ``GetJobsBatchResponse``; its ``data`` maps job RID to ``Job``.
         """
-        if len(build_rids) > 100:
-            raise ValueError("Maximum batch size is 100 builds")
+        if len(job_rids) > MAX_JOBS_BATCH:
+            raise ValueError(f"Maximum batch size is {MAX_JOBS_BATCH} jobs")
+        return self.service.Job.get_batch(
+            body=[GetJobsBatchRequestElement(job_rid=rid) for rid in job_rids],
+            preview=True,
+        )
 
-        try:
-            # SDK expects list of {"rid": ...} objects for batch operations
-            body = [{"rid": rid} for rid in build_rids]
-            response = self.service.Build.get_batch(body)
-            return self._format_builds_batch_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get builds batch: {e}")
+    # --------------------------------------------------------------- schedules
 
-    # Job operations
-    def get_job(self, job_rid: str) -> Dict[str, Any]:
-        """
-        Get information about a specific job.
-
-        Args:
-            job_rid: Job Resource Identifier
-
-        Returns:
-            Job information dictionary
-        """
-        try:
-            job = self.service.Job.get(job_rid)
-            return self._format_job_info(job)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get job {job_rid}: {e}")
-
-    def get_jobs_batch(self, job_rids: List[str]) -> Dict[str, Any]:
-        """
-        Get multiple jobs in batch.
-
-        Args:
-            job_rids: List of Job Resource Identifiers (max 500)
-
-        Returns:
-            Batch response with job information
-        """
-        try:
-            if len(job_rids) > 500:
-                raise ValueError("Maximum batch size is 500 jobs")
-
-            body = [{"rid": rid} for rid in job_rids]
-            response = self.service.Job.get_batch(body)
-            return self._format_jobs_batch_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get jobs batch: {e}")
-
-    # Schedule operations
-    def get_schedule(
-        self, schedule_rid: str, preview: Optional[bool] = None
-    ) -> Dict[str, Any]:
-        """
-        Get information about a specific schedule.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-            preview: Enable preview mode
-
-        Returns:
-            Schedule information dictionary
-        """
-        try:
-            kwargs: Dict[str, Any] = {"schedule_rid": schedule_rid}
-            if preview is not None:
-                kwargs["preview"] = preview
-
-            schedule = self.service.Schedule.get(**kwargs)
-            return self._format_schedule_info(schedule)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get schedule {schedule_rid}: {e}")
+    def get_schedule(self, schedule_rid: str) -> Any:
+        """Get a schedule (``Schedule.get``, beta); returns a ``Schedule``."""
+        return self.service.Schedule.get(schedule_rid, preview=True)
 
     def create_schedule(
         self,
+        *,
         action: Dict[str, Any],
-        description: Optional[str] = None,
         display_name: Optional[str] = None,
+        description: Optional[str] = None,
         trigger: Optional[Dict[str, Any]] = None,
-        scope_mode: Optional[str] = None,
-        preview: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        scope_mode: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Create a schedule (``Schedule.create``, beta); returns the ``Schedule``.
+
+        ``action``, ``trigger`` and ``scope_mode`` are in the API's JSON shape;
+        the SDK validates them.
         """
-        Create a new schedule.
-
-        Args:
-            action: Schedule action configuration
-            description: Schedule description
-            display_name: Display name for the schedule
-            trigger: Trigger configuration
-            scope_mode: Scope mode for the schedule
-            preview: Enable preview mode
-
-        Returns:
-            Created schedule information
-        """
-        try:
-            kwargs: Dict[str, Any] = {"action": action}
-
-            if description is not None:
-                kwargs["description"] = description
-            if display_name is not None:
-                kwargs["display_name"] = display_name
-            if trigger is not None:
-                kwargs["trigger"] = trigger
-            if scope_mode is not None:
-                kwargs["scope_mode"] = scope_mode
-            if preview is not None:
-                kwargs["preview"] = preview
-
-            schedule = self.service.Schedule.create(**kwargs)
-            return self._format_schedule_info(schedule)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create schedule: {e}")
-
-    def delete_schedule(self, schedule_rid: str) -> None:
-        """
-        Delete a schedule.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-        """
-        try:
-            self.service.Schedule.delete(schedule_rid)
-        except Exception as e:
-            raise RuntimeError(f"Failed to delete schedule {schedule_rid}: {e}")
-
-    def pause_schedule(self, schedule_rid: str) -> None:
-        """
-        Pause a schedule.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-        """
-        try:
-            self.service.Schedule.pause(schedule_rid)
-        except Exception as e:
-            raise RuntimeError(f"Failed to pause schedule {schedule_rid}: {e}")
-
-    def unpause_schedule(self, schedule_rid: str) -> None:
-        """
-        Unpause a schedule.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-        """
-        try:
-            self.service.Schedule.unpause(schedule_rid)
-        except Exception as e:
-            raise RuntimeError(f"Failed to unpause schedule {schedule_rid}: {e}")
-
-    def run_schedule(self, schedule_rid: str) -> None:
-        """
-        Execute a schedule immediately.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-        """
-        try:
-            self.service.Schedule.run(schedule_rid)
-        except Exception as e:
-            raise RuntimeError(f"Failed to run schedule {schedule_rid}: {e}")
+        return self.service.Schedule.create(
+            action=action,
+            display_name=display_name,
+            description=description,
+            trigger=trigger,
+            scope_mode=scope_mode,
+            preview=True,
+        )
 
     def replace_schedule(
         self,
         schedule_rid: str,
+        *,
         action: Dict[str, Any],
-        description: Optional[str] = None,
         display_name: Optional[str] = None,
+        description: Optional[str] = None,
         trigger: Optional[Dict[str, Any]] = None,
-        scope_mode: Optional[str] = None,
-        preview: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        scope_mode: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Replace a schedule's definition (``Schedule.replace``, beta).
+
+        This is a full replacement (HTTP PUT): only the fields passed here are
+        sent. Returns the updated ``Schedule``.
         """
-        Replace an existing schedule.
+        return self.service.Schedule.replace(
+            schedule_rid,
+            action=action,
+            display_name=display_name,
+            description=description,
+            trigger=trigger,
+            scope_mode=scope_mode,
+            preview=True,
+        )
 
-        Args:
-            schedule_rid: Schedule Resource Identifier
-            action: Schedule action configuration
-            description: Schedule description
-            display_name: Display name for the schedule
-            trigger: Trigger configuration
-            scope_mode: Scope mode for the schedule
-            preview: Enable preview mode
+    def delete_schedule(self, schedule_rid: str) -> None:
+        """Delete a schedule (``Schedule.delete``, GA)."""
+        self.service.Schedule.delete(schedule_rid)
 
-        Returns:
-            Updated schedule information
-        """
-        try:
-            kwargs: Dict[str, Any] = {
-                "schedule_rid": schedule_rid,
-                "action": action,
-            }
+    def pause_schedule(self, schedule_rid: str) -> None:
+        """Pause a schedule (``Schedule.pause``, GA)."""
+        self.service.Schedule.pause(schedule_rid)
 
-            if description is not None:
-                kwargs["description"] = description
-            if display_name is not None:
-                kwargs["display_name"] = display_name
-            if trigger is not None:
-                kwargs["trigger"] = trigger
-            if scope_mode is not None:
-                kwargs["scope_mode"] = scope_mode
-            if preview is not None:
-                kwargs["preview"] = preview
+    def unpause_schedule(self, schedule_rid: str) -> None:
+        """Unpause a schedule (``Schedule.unpause``, GA)."""
+        self.service.Schedule.unpause(schedule_rid)
 
-            schedule = self.service.Schedule.replace(**kwargs)
-            return self._format_schedule_info(schedule)
-        except Exception as e:
-            raise RuntimeError(f"Failed to replace schedule {schedule_rid}: {e}")
+    def run_schedule(self, schedule_rid: str) -> Any:
+        """Run a schedule now (``Schedule.run``, GA); returns the ``ScheduleRun``."""
+        return self.service.Schedule.run(schedule_rid)
 
     def get_schedule_runs(
         self,
         schedule_rid: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Get recent execution runs for a schedule.
-
-        Args:
-            schedule_rid: Schedule Resource Identifier
-            page_size: Number of results per page
-            page_token: Token for pagination
+    ) -> Any:
+        """List one page of a schedule's most recent runs (``Schedule.runs``, GA).
 
         Returns:
-            Runs list with pagination info
+            The SDK ``ResourceIterator[ScheduleRun]``; constructing it fetched
+            one page (``.data``, ``.next_page_token``).
         """
-        try:
-            kwargs: Dict[str, Any] = {"schedule_rid": schedule_rid}
-            if page_size is not None:
-                kwargs["page_size"] = page_size
-            if page_token is not None:
-                kwargs["page_token"] = page_token
-
-            response = self.service.Schedule.runs(**kwargs)
-            return self._format_schedule_runs_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get runs for schedule {schedule_rid}: {e}")
-
-    # Formatting methods
-    def _format_build_info(self, build: Any) -> Dict[str, Any]:
-        """Format build information for consistent output."""
-        info = {}
-
-        # Extract available attributes
-        for attr in [
-            "rid",
-            "status",
-            "created_time",
-            "started_time",
-            "finished_time",
-            "created_by",
-            "branch_name",
-            "commit_hash",
-        ]:
-            if hasattr(build, attr):
-                info[attr] = getattr(build, attr)
-
-        return info
-
-    def _format_job_info(self, job: Any) -> Dict[str, Any]:
-        """Format job information for consistent output."""
-        info = {}
-
-        # Extract available attributes
-        for attr in [
-            "rid",
-            "status",
-            "created_time",
-            "started_time",
-            "finished_time",
-            "job_type",
-            "build_rid",
-        ]:
-            if hasattr(job, attr):
-                info[attr] = getattr(job, attr)
-
-        return info
-
-    def _format_schedule_info(self, schedule: Any) -> Dict[str, Any]:
-        """Format schedule information for consistent output."""
-        info = {}
-
-        # Extract available attributes
-        for attr in [
-            "rid",
-            "display_name",
-            "description",
-            "paused",
-            "created_time",
-            "created_by",
-            "modified_time",
-            "modified_by",
-        ]:
-            if hasattr(schedule, attr):
-                info[attr] = getattr(schedule, attr)
-
-        # Handle nested objects
-        if hasattr(schedule, "trigger"):
-            info["trigger"] = str(schedule.trigger)
-        if hasattr(schedule, "action"):
-            info["action"] = str(schedule.action)
-
-        return info
-
-    def _format_jobs_response(self, response: Any) -> Dict[str, Any]:
-        """Format jobs list response."""
-        result: Dict[str, Any] = {"jobs": []}
-
-        if hasattr(response, "data"):
-            result["jobs"] = [self._format_job_info(job) for job in response.data]
-
-        if hasattr(response, "next_page_token"):
-            result["next_page_token"] = response.next_page_token
-
-        return result
-
-    def _format_builds_search_response(self, response: Any) -> Dict[str, Any]:
-        """Format builds search response."""
-        result: Dict[str, Any] = {"builds": []}
-
-        if hasattr(response, "data"):
-            result["builds"] = [
-                self._format_build_info(build) for build in response.data
-            ]
-
-        if hasattr(response, "next_page_token"):
-            result["next_page_token"] = response.next_page_token
-
-        return result
-
-    def _format_jobs_batch_response(self, response: Any) -> Dict[str, Any]:
-        """Format jobs batch response."""
-        result: Dict[str, Any] = {"jobs": []}
-
-        if hasattr(response, "data"):
-            for item in response.data:
-                if hasattr(item, "data"):
-                    result["jobs"].append(self._format_job_info(item.data))
-
-        return result
-
-    def _format_builds_batch_response(self, response: Any) -> Dict[str, Any]:
-        """Format builds batch response."""
-        result: Dict[str, Any] = {"builds": []}
-
-        if hasattr(response, "data"):
-            for item in response.data:
-                if hasattr(item, "data"):
-                    result["builds"].append(self._format_build_info(item.data))
-
-        return result
-
-    def _format_run_info(self, run: Any) -> Dict[str, Any]:
-        """Format schedule run information for consistent output."""
-        info = {}
-
-        for attr in [
-            "rid",
-            "schedule_rid",
-            "status",
-            "created_time",
-            "started_time",
-            "finished_time",
-            "build_rid",
-            "result",
-        ]:
-            if hasattr(run, attr):
-                info[attr] = getattr(run, attr)
-
-        return info
-
-    def _format_schedule_runs_response(self, response: Any) -> Dict[str, Any]:
-        """Format schedule runs response."""
-        result: Dict[str, Any] = {"runs": []}
-
-        if hasattr(response, "data"):
-            result["runs"] = [self._format_run_info(run) for run in response.data]
-
-        if hasattr(response, "next_page_token"):
-            result["next_page_token"] = response.next_page_token
-
-        return result
+        return self.service.Schedule.runs(
+            schedule_rid, page_size=page_size, page_token=page_token
+        )
