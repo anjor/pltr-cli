@@ -7,13 +7,9 @@ Manage third-party applications
 
 ### pltr third-party-apps get
 
-Get detailed information about a third-party application.
+[beta] Get a third-party application.
 
 `pltr third-party-apps get APPLICATION_RID [OPTIONS]`
 
-- `APPLICATION_RID`: Third-party application Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `APPLICATION_RID`: Third-party application RID (ri.third-party-applications.main.application.<id>; shown in Developer Console).
+- beta · SDK: `third_party_applications.ThirdPartyApplication.get`

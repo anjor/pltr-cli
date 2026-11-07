@@ -7,41 +7,39 @@ Manage command aliases
 
 ### pltr alias add
 
-Create a new command alias.
+Create an alias (--force replaces an existing one).
 
 `pltr alias add NAME COMMAND [OPTIONS]`
 
-- `NAME`: Alias name
-- `COMMAND`: Command to alias
-- `--force`, `-f`: Overwrite existing alias
-- output: text (no `--format`) · local (no Foundry call)
+- `NAME`: Alias name.
+- `COMMAND`: Command line to run instead, e.g. "dataset get".
+- `--force`, `-f`: Replace an existing alias of this name.
+- local (no Foundry call)
 
 ### pltr alias clear
 
-Clear all command aliases.
+Remove every alias (asks first; --yes skips).
 
 `pltr alias clear [OPTIONS]`
 
-- `--confirm`, `--no-confirm` (default: True): Confirm clearing all aliases
-- output: text (no `--format`) · local (no Foundry call)
+- **destructive** (asks first; `--yes` skips) · local (no Foundry call)
 
 ### pltr alias edit
 
-Edit an existing command alias.
+Change the command an alias runs.
 
-`pltr alias edit NAME COMMAND`
+`pltr alias edit NAME COMMAND [OPTIONS]`
 
-- `NAME`: Alias name to edit
-- `COMMAND`: New command for the alias
-- output: text (no `--format`) · local (no Foundry call)
+- `NAME`: Alias name (see 'pltr alias list').
+- `COMMAND`: New command line for the alias.
+- local (no Foundry call)
 
 ### pltr alias export
 
-Export aliases to JSON format.
+Write all aliases as a JSON object ({"name": "command", ...}).
 
 `pltr alias export [OPTIONS]`
 
-- `--output`, `-o` TEXT: Output file (default: stdout)
 - output: text (no `--format`) · local (no Foundry call)
 
 ### pltr alias import
@@ -50,42 +48,41 @@ Import aliases from a JSON file.
 
 `pltr alias import INPUT_FILE [OPTIONS]`
 
-- `INPUT_FILE`: JSON file containing aliases
-- `--merge`, `-m`: Merge with existing aliases (default: replace)
-- output: text (no `--format`) · local (no Foundry call)
+- `INPUT_FILE`: JSON file of aliases ({"name": "command", ...}), as written by 'pltr alias export'.
+- `--merge`, `-m`: Keep existing aliases (default: replace them all).
+- **destructive** (asks first; `--yes` skips) · local (no Foundry call)
 
 ### pltr alias list
 
-List all command aliases.
+List all aliases.
 
-`pltr alias list`
+`pltr alias list [OPTIONS]`
 
-- output: text (no `--format`) · local (no Foundry call)
+- local (no Foundry call)
 
 ### pltr alias remove
 
-Remove a command alias.
+Remove an alias (asks first; --yes skips).
 
 `pltr alias remove NAME [OPTIONS]`
 
-- `NAME`: Alias name to remove
-- `--confirm`, `--no-confirm` (default: True): Confirm removal
-- output: text (no `--format`) · local (no Foundry call)
+- `NAME`: Alias name (see 'pltr alias list').
+- **destructive** (asks first; `--yes` skips) · local (no Foundry call)
 
 ### pltr alias resolve
 
-Resolve an alias to show the actual command.
+Show the command an alias finally runs, following aliases of aliases.
 
-`pltr alias resolve COMMAND`
+`pltr alias resolve NAME [OPTIONS]`
 
-- `COMMAND`: Command to resolve
-- output: text (no `--format`) · local (no Foundry call)
+- `NAME`: Alias name (see 'pltr alias list').
+- local (no Foundry call)
 
 ### pltr alias show
 
-Show details of a specific alias.
+Show the command an alias runs.
 
-`pltr alias show NAME`
+`pltr alias show NAME [OPTIONS]`
 
-- `NAME`: Alias name to show
-- output: text (no `--format`) · local (no Foundry call)
+- `NAME`: Alias name (see 'pltr alias list').
+- local (no Foundry call)

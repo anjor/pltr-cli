@@ -7,41 +7,39 @@ Manage authentication profiles
 
 ### pltr configure configure
 
-Configure authentication for Palantir Foundry.
+Create a profile, or replace an existing one (asks first; --yes skips).
 
 `pltr configure configure [OPTIONS]`
 
-- `--profile`, `-p` TEXT (default: default): Profile name
-- `--auth-type` TEXT: Authentication type (token or oauth)
-- `--host` TEXT: Foundry host URL
-- `--token` TEXT: Bearer token (for token auth)
-- `--client-id` TEXT: OAuth client ID
-- `--client-secret` TEXT: OAuth client secret
-- output: text (no `--format`) · local (no Foundry call)
+- `--auth-type` token|oauth: Authentication type: token or oauth (default: implied by --token or --client-id/--client-secret).
+- `--host` TEXT: Foundry host, e.g. https://your-stack.palantirfoundry.com.
+- `--token` TEXT: Bearer token (token auth).
+- `--client-id` TEXT: OAuth client ID (oauth auth).
+- `--client-secret` TEXT: OAuth client secret (oauth auth).
+- **destructive** (asks first; `--yes` skips) · local (no Foundry call)
 
 ### pltr configure delete
 
-Delete a profile.
+Delete a profile and its stored credentials (asks first; --yes skips).
 
 `pltr configure delete PROFILE [OPTIONS]`
 
-- `PROFILE`: Profile name to delete
-- `--force`, `-f`: Skip confirmation
-- output: text (no `--format`) · local (no Foundry call)
+- `PROFILE`: Profile name (see 'pltr configure list-profiles').
+- **destructive** (asks first; `--yes` skips) · local (no Foundry call)
 
 ### pltr configure list-profiles
 
-List all configured profiles.
+List the configured profiles and which one is the default.
 
-`pltr configure list-profiles`
+`pltr configure list-profiles [OPTIONS]`
 
-- output: text (no `--format`) · local (no Foundry call)
+- local (no Foundry call)
 
 ### pltr configure set-default
 
-Set a profile as the default.
+Make a profile the default for commands run without --profile.
 
-`pltr configure set-default PROFILE`
+`pltr configure set-default PROFILE [OPTIONS]`
 
-- `PROFILE`: Profile name to set as default
-- output: text (no `--format`) · local (no Foundry call)
+- `PROFILE`: Profile name (see 'pltr configure list-profiles').
+- local (no Foundry call)

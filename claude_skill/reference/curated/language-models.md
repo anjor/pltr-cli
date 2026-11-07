@@ -9,38 +9,29 @@ Interact with language models (Claude, OpenAI embeddings)
 
 ### pltr language-models enroll
 
-Enroll/enable a language model via direct API fallback endpoints.
+Enroll (enable) a language model for API use.
 
 `pltr language-models enroll MODEL_ID [OPTIONS]`
 
-- `MODEL_ID`: Model Resource Identifier (ri.language-model-service..language-model.<id>)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `MODEL_ID`: Model RID (ri.language-model-service..language-model.<name>) or API name.
+- HTTP (direct, labeled exception): `POST /api/v2/languageModels/{model_id}/enroll`, `POST /api/v2/llm/models/{model_id}/enroll`
 
 ### pltr language-models list
 
-List available language models for the current enrollment.
+List the language models available to you.
 
 `pltr language-models list [OPTIONS]`
 
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- HTTP (direct, labeled exception): `GET /api/v2/languageModels`, `GET /api/v2/llm/proxy/openai/v1/models`
 
 ### pltr language-models status
 
-Check enrollment status for a language model via direct API fallback endpoints.
+Show a language model's enrollment status.
 
 `pltr language-models status MODEL_ID [OPTIONS]`
 
-- `MODEL_ID`: Model Resource Identifier (ri.language-model-service..language-model.<id>)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `MODEL_ID`: Model RID (ri.language-model-service..language-model.<name>) or API name.
+- HTTP (direct, labeled exception): `GET /api/v2/languageModels/{model_id}`, `GET /api/v2/llm/models/{model_id}`, `GET /api/v2/llm/proxy/openai/v1/models`
 
 ## pltr language-models anthropic
 
@@ -48,37 +39,29 @@ Anthropic Claude models
 
 ### pltr language-models anthropic messages
 
-Send a single message to an Anthropic Claude model.
+[beta] Send one message to an Anthropic Claude model.
 
 `pltr language-models anthropic messages MODEL_ID --message TEXT [OPTIONS]`
 
-- `MODEL_ID`: Model Resource Identifier (ri.language-models.main.model.<id>)
-- `--message`, `-m` TEXT (required): User message text
-- `--max-tokens` INTEGER (default: 1024): Maximum tokens to generate
-- `--system`, `-s` TEXT: System prompt to guide model behavior
+- `MODEL_ID`: The model's API name (LanguageModelApiName in the Foundry API).
+- `--message`, `-m` TEXT (required): User message text.
+- `--max-tokens` INTEGER (default: 1024): Maximum number of tokens to generate.
+- `--system`, `-s` TEXT: System prompt to guide the model.
 - `--temperature`, `-t` NUMBER: Sampling temperature (0.0-1.0).
-- `--stop` TEXT (repeatable): Stop sequences (can be specified multiple times)
-- `--top-k` INTEGER: Sample from top K tokens (Anthropic models only)
-- `--top-p` NUMBER: Nucleus sampling threshold (0.0-1.0)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: json): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `--stop` TEXT (repeatable): Stop sequence (repeat for several).
+- `--top-k` INTEGER: Sample from the top K tokens.
+- `--top-p` NUMBER: Nucleus sampling threshold (0.0-1.0).
+- beta · SDK: `language_models.AnthropicModel.messages`
 
 ### pltr language-models anthropic messages-advanced
 
-Send messages to Anthropic Claude model with advanced features.
+[beta] Send a full messages request to an Anthropic Claude model.
 
 `pltr language-models anthropic messages-advanced MODEL_ID --request TEXT [OPTIONS]`
 
-- `MODEL_ID`: Model Resource Identifier (ri.language-models.main.model.<id>)
-- `--request`, `-r` TEXT (required): Request JSON (inline or @file.json).
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: json): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `MODEL_ID`: The model's API name (LanguageModelApiName in the Foundry API).
+- `--request`, `-r` TEXT (required): The API's messages request as JSON, inline or @file.json.
+- beta · SDK: `language_models.AnthropicModel.messages`
 
 ## pltr language-models openai
 
@@ -86,16 +69,12 @@ OpenAI models
 
 ### pltr language-models openai embeddings
 
-Generate embeddings for text using an OpenAI model.
+[beta] Embed texts with an OpenAI embedding model.
 
 `pltr language-models openai embeddings MODEL_ID --input TEXT [OPTIONS]`
 
-- `MODEL_ID`: Model Resource Identifier (ri.language-models.main.model.<id>)
-- `--input`, `-i` TEXT (required): Input text(s).
-- `--dimensions`, `-d` INTEGER: Custom embedding dimensions (not all models support this)
-- `--encoding`, `-e` TEXT: Output encoding format: 'float' or 'base64'
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: json): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `MODEL_ID`: The model's API name (LanguageModelApiName in the Foundry API).
+- `--input`, `-i` TEXT (required): Text to embed: a string, a JSON array of strings ('["a", "b"]') or @file.json.
+- `--dimensions`, `-d` INTEGER: Number of dimensions of the embeddings (not every model supports it).
+- `--encoding`, `-e` float|base64: Encoding of the embeddings: float or base64.
+- beta · SDK: `language_models.OpenAiModel.embeddings`

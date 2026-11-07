@@ -9,64 +9,46 @@ Manage AIP Agents, sessions, and versions
 
 ### pltr aip-agents get
 
-Get detailed information about an AIP Agent.
+[beta] Get an agent's metadata, parameters and version.
 
 `pltr aip-agents get AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent Resource Identifier (e.g., ri.foundry.main.agent.abc123)
-- `--version`, `-v` TEXT: Agent version to retrieve (e.g., '1.0').
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `--version`, `-v` TEXT: Agent version (e.g. 1.0; default: the latest published version).
+- beta · SDK: `aip_agents.Agent.get`
 
 ## pltr aip-agents sessions
 
-Manage agent conversation sessions
+Your conversation sessions with an agent.
 
 ### pltr aip-agents sessions get
 
-Get detailed information about a conversation session.
+[beta] Get a conversation session's metadata.
 
 `pltr aip-agents sessions get AGENT_RID SESSION_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent Resource Identifier
-- `SESSION_RID`: Session Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `SESSION_RID`: Session RID (ri.aip-agents..session.<id>; see 'sessions list').
+- beta · SDK: `aip_agents.Agent.Session.get`
 
 ### pltr aip-agents sessions list
 
-List conversation sessions for an agent.
+[beta] List your conversation sessions with an agent.
 
 `pltr aip-agents sessions list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of sessions per page
-- `--max-pages` INTEGER (default: 1): Maximum number of pages to fetch (default: 1)
-- `--all`: Fetch all available sessions (overrides --max-pages)
-- SDK: not recorded yet
+- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- beta · paged · SDK: `aip_agents.Agent.Session.list`
 
 ## pltr aip-agents versions
 
-Manage agent versions
+Published versions of an agent.
 
 ### pltr aip-agents versions list
 
-List all versions for an AIP Agent.
+[beta] List an agent's published versions, most recent first.
 
 `pltr aip-agents versions list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of versions per page
-- `--max-pages` INTEGER (default: 1): Maximum number of pages to fetch (default: 1)
-- `--all`: Fetch all available versions (overrides --max-pages)
-- SDK: not recorded yet
+- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- beta · paged · SDK: `aip_agents.Agent.AgentVersion.list`

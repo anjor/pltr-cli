@@ -9,6 +9,4 @@ Verify authentication
 
 `pltr verify [OPTIONS]`
 
-- `--profile`, `-p` TEXT: Profile to verify (default: whatever other commands would use)
-- `--format`, `-f` TEXT: Output format: table, json or csv (default: PLTR_FORMAT, else table)
-- SDK: not recorded yet
+- SDK: `admin.User.get_current`

@@ -11,21 +11,18 @@ Manage streaming datasets
 
 ### pltr streams dataset create
 
-Create a new streaming dataset with an initial stream.
+[beta] Create a streaming dataset with a stream on one branch.
 
 `pltr streams dataset create NAME --folder TEXT --schema TEXT [OPTIONS]`
 
-- `NAME`: Dataset name
-- `--folder`, `-f` TEXT (required): Parent folder RID (e.g., ri.compass.main.folder.xxx)
-- `--schema`, `-s` TEXT (required): Stream schema as JSON or @file.json.
-- `--branch`, `-b` TEXT: Branch name (default: master)
-- `--compressed`: Enable compression
+- `NAME`: Name of the new streaming dataset.
+- `--folder`, `-f` TEXT (required): RID of the folder or project to create the dataset in (ri.compass.main.folder.<id>; not a user folder).
+- `--schema`, `-s` TEXT (required): Foundry stream schema as JSON, @file.json or @- (stdin): a "fields" list of {"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional "keyFieldNames", e.g. {"fields": [{"name"...
+- `--branch`, `-b` TEXT: Branch of the initial stream (default: the default branch, usually master).
+- `--compressed`, `--no-compressed`: Compress the stream (default: off for a new stream).
 - `--partitions` INTEGER: Number of partitions (default: 1).
-- `--type` TEXT: Stream type: HIGH_THROUGHPUT or LOW_LATENCY (default: LOW_LATENCY)
-- `--profile`, `-p` TEXT: Profile name
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `--type` LOW_LATENCY|HIGH_THROUGHPUT: Stream type (default: LOW_LATENCY).
+- beta · SDK: `streams.Dataset.create`
 
 ## pltr streams stream
 
@@ -33,72 +30,62 @@ Manage streams and publish records
 
 ### pltr streams stream create
 
-Create a new stream on a branch of an existing streaming dataset.
+[beta] Create a branch of a streaming dataset with a new stream on it.
 
 `pltr streams stream create DATASET_RID --branch TEXT --schema TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset RID (e.g., ri.foundry.main.dataset.xxx)
-- `--branch`, `-b` TEXT (required): Branch name to create stream on
-- `--schema`, `-s` TEXT (required): Stream schema as JSON or @file.json
-- `--compressed`: Enable compression
-- `--partitions` INTEGER: Number of partitions (default: 1)
-- `--type` TEXT: Stream type: HIGH_THROUGHPUT or LOW_LATENCY
-- `--profile`, `-p` TEXT: Profile name
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (required): Name of the new branch to create the stream on.
+- `--schema`, `-s` TEXT (required): Foundry stream schema as JSON, @file.json or @- (stdin): a "fields" list of {"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional "keyFieldNames", e.g. {"fields": [{"name"...
+- `--compressed`, `--no-compressed`: Compress the stream (default: off for a new stream).
+- `--partitions` INTEGER: Number of partitions (default: 1).
+- `--type` LOW_LATENCY|HIGH_THROUGHPUT: Stream type (default: LOW_LATENCY).
+- beta · SDK: `streams.Dataset.Stream.create`
 
 ### pltr streams stream get
 
-Get information about a stream.
+Get the stream on a branch: its schema, view RID and settings.
 
 `pltr streams stream get DATASET_RID --branch TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset RID
-- `--branch`, `-b` TEXT (required): Stream branch name
-- `--profile`, `-p` TEXT: Profile name
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (required): Branch of the stream.
+- SDK: `streams.Dataset.Stream.get`
 
 ### pltr streams stream publish
 
-Publish a single record to a stream.
+Publish one record to a stream.
 
 `pltr streams stream publish DATASET_RID --branch TEXT --record TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset RID
-- `--branch`, `-b` TEXT (required): Stream branch name
-- `--record`, `-r` TEXT (required): Record data as JSON or @file.json
-- `--view` TEXT: View RID for partitioning
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (required): Branch of the stream.
+- `--record`, `-r` TEXT (required): Record as a JSON object, @file.json or @- (stdin).
+- `--view` TEXT: Write only to the stream view with this RID (advanced; default: the branch's latest stream).
+- SDK: `streams.Dataset.Stream.publish_record`
 
 ### pltr streams stream publish-batch
 
-Publish multiple records to a stream in a batch.
+Publish a batch of records to a stream in one request.
 
 `pltr streams stream publish-batch DATASET_RID --branch TEXT --records TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset RID
-- `--branch`, `-b` TEXT (required): Stream branch name
-- `--records`, `-r` TEXT (required): Records as JSON array or @file.json
-- `--view` TEXT: View RID for partitioning
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (required): Branch of the stream.
+- `--records`, `-r` TEXT (required): Records as a JSON array of objects, @file.json or @- (stdin).
+- `--view` TEXT: Write only to the stream view with this RID (advanced; default: the branch's latest stream).
+- SDK: `streams.Dataset.Stream.publish_records`
 
 ### pltr streams stream reset
 
-Reset a stream, clearing all existing data.
+[beta] Reset the stream on a branch: delete all of its records.
 
 `pltr streams stream reset DATASET_RID --branch TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset RID
-- `--branch`, `-b` TEXT (required): Stream branch name to reset
-- `--profile`, `-p` TEXT: Profile name
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--preview`: Enable preview mode
-- `--confirm`: Skip confirmation prompt
-- SDK: not recorded yet
+- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (required): Branch of the stream.
+- `--schema`, `-s` TEXT: New stream schema as JSON, @file.json or @-, in the format of 'pltr streams dataset create --schema' (default: keep the current schema).
+- `--compressed`, `--no-compressed`: Turn compression on or off (default: keep the current setting).
+- `--partitions` INTEGER: New number of partitions (default: keep the current one).
+- `--type` LOW_LATENCY|HIGH_THROUGHPUT: New stream type (default: keep the current one).
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `streams.Dataset.Stream.reset`

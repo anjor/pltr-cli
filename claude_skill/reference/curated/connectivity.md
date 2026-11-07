@@ -3,7 +3,7 @@
 
 Manage connections and data imports
 
-13 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+14 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ## pltr connectivity connection
 
@@ -11,172 +11,155 @@ Manage connections
 
 ### pltr connectivity connection create
 
-Create a new connection.
+Create a connection with a direct-connection (Foundry worker) runtime.
 
 `pltr connectivity connection create DISPLAY_NAME PARENT_FOLDER_RID [CONFIGURATION] [WORKER] [OPTIONS]`
 
-- `DISPLAY_NAME`: Display name for the connection
-- `PARENT_FOLDER_RID`: Parent folder Resource Identifier
-- `CONFIGURATION` (optional): Connection configuration in JSON format
-- `WORKER` (optional): Worker configuration in JSON format
-- `--config-file` TEXT: Path to JSON file with connection configuration
-- `--worker-file` TEXT: Path to JSON file with worker configuration
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DISPLAY_NAME`: Display name of the connection.
+- `PARENT_FOLDER_RID`: RID of the folder to create the connection in.
+- `CONFIGURATION` (optional): Connection configuration as JSON (inline or @file.json), with its "type": s3, rest, snowflake, databricks, smb or jdbc.
+- `WORKER` (optional): Worker as JSON (inline or @file.json), e.g. {"type": "foundryWorker", "networkEgressPolicyRids": ["<RID>"]}.
+- `--config-file` TEXT: JSON file with the configuration.
+- `--worker-file` TEXT: JSON file with the worker.
+- SDK: `connectivity.Connection.create`
 
 ### pltr connectivity connection get
 
-Get detailed information about a specific connection.
+Get a connection: its configuration type, worker and export settings.
 
 `pltr connectivity connection get CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- SDK: `connectivity.Connection.get`
 
 ### pltr connectivity connection get-config
 
-Get connection configuration.
+Get a connection's configuration.
 
 `pltr connectivity connection get-config CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: json): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
-
-### pltr connectivity connection list
-
-List available connections.
-
-`pltr connectivity connection list [OPTIONS]`
-
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- SDK: `connectivity.Connection.get_configuration`
 
 ### pltr connectivity connection update-export-settings
 
-Update connection export settings.
+Replace a connection's export settings.
 
 `pltr connectivity connection update-export-settings CONNECTION_RID [SETTINGS] [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `SETTINGS` (optional): Export settings in JSON format
-- `--settings-file` TEXT: Path to JSON file with export settings
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `SETTINGS` (optional): Export settings as JSON (inline or @file.json): {"exportsEnabled": true, "exportEnabledWithoutMarkingsValidation": false}.
+- `--settings-file` TEXT: JSON file with the export settings.
+- **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.update_export_settings`
 
 ### pltr connectivity connection update-secrets
 
-Update connection secrets.
+Overwrite secret values on a connection.
 
-`pltr connectivity connection update-secrets CONNECTION_RID --secrets-file TEXT [OPTIONS]`
+`pltr connectivity connection update-secrets CONNECTION_RID --secrets-file PATH [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `--secrets-file`, `-s` TEXT (required): Path to JSON file containing secrets (mapping secret names to values)
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `--secrets-file`, `-s` PATH (required): JSON file mapping secret names to their new values.
+- **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.update_secrets`
 
 ### pltr connectivity connection upload-jdbc-drivers
 
-Upload custom JDBC drivers to a connection.
+Upload custom JDBC driver JARs to a JDBC connection.
 
 `pltr connectivity connection upload-jdbc-drivers CONNECTION_RID DRIVER_FILES... [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `DRIVER_FILES...`: Path(s) to JAR file(s) to upload
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `DRIVER_FILES...`: JDBC driver JAR file(s) to upload.
+- SDK: `connectivity.Connection.upload_custom_jdbc_drivers`
 
 ## pltr connectivity import
 
-Manage data imports
+Manage file and table imports
+
+### pltr connectivity import execute-file
+
+Run a file import; prints the RID of the build that runs it.
+
+`pltr connectivity import execute-file CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
+
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `FILE_IMPORT_RID`: File import RID (find it with 'pltr connectivity import list-file').
+- SDK: `connectivity.Connection.FileImport.execute`
+
+### pltr connectivity import execute-table
+
+Run a table import; prints the RID of the build that runs it.
+
+`pltr connectivity import execute-table CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
+
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `TABLE_IMPORT_RID`: Table import RID (find it with 'pltr connectivity import list-table').
+- SDK: `connectivity.Connection.TableImport.execute`
 
 ### pltr connectivity import file
 
-Create and optionally execute a file import via connection.
+Create a file import (batch sync) from a connection into a dataset.
 
-`pltr connectivity import file CONNECTION_RID SOURCE_PATH TARGET_DATASET_RID [OPTIONS]`
+`pltr connectivity import file CONNECTION_RID DATASET_RID --name TEXT --mode SNAPSHOT|APPEND|UPDATE [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `SOURCE_PATH`: Source file path in the connection
-- `TARGET_DATASET_RID`: Target dataset RID
-- `--profile`, `-p` TEXT: Profile name
-- `--config`, `-c` TEXT: Import configuration in JSON format
-- `--execute`: Execute the import immediately after creation
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `DATASET_RID`: RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
+- `--name`, `-n` TEXT (required): Display name of the import.
+- `--mode` SNAPSHOT|APPEND|UPDATE (required): SNAPSHOT replaces the dataset's files on each run, APPEND adds new files, UPDATE replaces files by name.
+- `--subfolder` TEXT: Folder in the source system to import (default: its root).
+- `--branch` TEXT: Dataset branch to write to (default: the API's, usually master).
+- `--filters` TEXT (default: []): File filters as a JSON array (inline or @file.json), e.g. '[{"type": "pathMatchesFilter", "regex": ".*\\.csv"}]'.
+- SDK: `connectivity.Connection.FileImport.create`
 
 ### pltr connectivity import get-file
 
-Get detailed information about a specific file import.
+Get a file import.
 
-`pltr connectivity import get-file IMPORT_RID [OPTIONS]`
+`pltr connectivity import get-file CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `IMPORT_RID`: File import Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `FILE_IMPORT_RID`: File import RID (find it with 'pltr connectivity import list-file').
+- SDK: `connectivity.Connection.FileImport.get`
 
 ### pltr connectivity import get-table
 
-Get detailed information about a specific table import.
+Get a table import.
 
-`pltr connectivity import get-table IMPORT_RID [OPTIONS]`
+`pltr connectivity import get-table CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `IMPORT_RID`: Table import Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `TABLE_IMPORT_RID`: Table import RID (find it with 'pltr connectivity import list-table').
+- SDK: `connectivity.Connection.TableImport.get`
 
 ### pltr connectivity import list-file
 
-List file imports, optionally filtered by connection.
+List a connection's file imports (those you can see).
 
-`pltr connectivity import list-file [OPTIONS]`
+`pltr connectivity import list-file CONNECTION_RID [OPTIONS]`
 
-- `--connection`, `-c` TEXT: Filter by connection RID
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- paged · SDK: `connectivity.Connection.FileImport.list`
 
 ### pltr connectivity import list-table
 
-List table imports, optionally filtered by connection.
+List a connection's table imports (those you can see).
 
-`pltr connectivity import list-table [OPTIONS]`
+`pltr connectivity import list-table CONNECTION_RID [OPTIONS]`
 
-- `--connection`, `-c` TEXT: Filter by connection RID
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- paged · SDK: `connectivity.Connection.TableImport.list`
 
 ### pltr connectivity import table
 
-Create and optionally execute a table import via connection.
+Create a table import (batch sync) from a connection into a dataset.
 
-`pltr connectivity import table CONNECTION_RID SOURCE_TABLE TARGET_DATASET_RID [OPTIONS]`
+`pltr connectivity import table CONNECTION_RID DATASET_RID --name TEXT --mode SNAPSHOT|APPEND --config TEXT [OPTIONS]`
 
-- `CONNECTION_RID`: Connection Resource Identifier
-- `SOURCE_TABLE`: Source table name in the connection
-- `TARGET_DATASET_RID`: Target dataset RID
-- `--profile`, `-p` TEXT: Profile name
-- `--config`, `-c` TEXT: Import configuration in JSON format
-- `--execute`: Execute the import immediately after creation
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `DATASET_RID`: RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
+- `--name`, `-n` TEXT (required): Display name of the import.
+- `--mode` SNAPSHOT|APPEND (required): SNAPSHOT replaces the dataset on each run, APPEND adds rows.
+- `--config`, `-c` TEXT (required): Import config as JSON (inline or @file.json): its "type" (jdbcImportConfig, postgreSqlImportConfig, snowflakeImportConfig, databricksImportConfig, microsoftSqlServerImportConfig...
+- `--allow-schema-changes`: Let runs succeed when the imported schema doesn't match the dataset's.
+- `--branch` TEXT: Dataset branch to write to (default: the API's, usually master).
+- SDK: `connectivity.Connection.TableImport.create`

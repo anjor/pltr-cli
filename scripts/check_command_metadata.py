@@ -195,59 +195,104 @@ def _service_class(name: str) -> bool:
     return name.endswith("Service") and name != "BaseService"
 
 
+#: Service instances a function receives in its parameters: ((name, (file, class)), ...).
+Bindings = Tuple[Tuple[str, Tuple[str, str]], ...]
+
+
 def reached_functions(source: Source, start: Function) -> Set[Function]:
     """Every function of pltr's own code reached from a command function."""
-    reached: Set[Function] = set()
-    queue = [start]
+    seen: Set[Tuple[Function, Bindings]] = set()
+    queue: List[Tuple[Function, Bindings]] = [(start, ())]
     while queue:
-        function = queue.pop()
-        if function in reached:
+        item = queue.pop()
+        if item in seen:
             continue
-        reached.add(function)
+        seen.add(item)
+        function, bindings = item
         node = source.function_node(function)
-        if node is None:
-            continue
-        queue.extend(_callees(source, function, node))
-    return reached
+        if node is not None:
+            queue.extend(_callees(source, function, node, dict(bindings)))
+    return {function for function, _ in seen}
 
 
-def _callees(source: Source, function: Function, node: ast.AST) -> List[Function]:
+def _service_value(
+    value: ast.AST,
+    bound: Dict[str, Tuple[str, str]],
+    imports: Dict[str, str],
+    file: str,
+) -> Optional[Tuple[str, str]]:
+    """The service an expression evaluates to: `FooService(...)` or a bound name."""
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+        if _service_class(value.func.id):
+            return (imports.get(value.func.id, file), value.func.id)
+    if isinstance(value, ast.Name):
+        return bound.get(value.id)
+    return None
+
+
+def _helper_bindings(
+    helper: ast.AST,
+    call: ast.Call,
+    bound: Dict[str, Tuple[str, str]],
+    imports: Dict[str, str],
+    file: str,
+) -> Bindings:
+    """Services passed to a module helper, by the helper's parameter names."""
+    if not isinstance(helper, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return ()
+    names = [arg.arg for arg in helper.args.posonlyargs + helper.args.args]
+    found: Dict[str, Tuple[str, str]] = {}
+    for name, value in zip(names, call.args):
+        service = _service_value(value, bound, imports, file)
+        if service is not None:
+            found[name] = service
+    for keyword in call.keywords:
+        if keyword.arg is not None:
+            service = _service_value(keyword.value, bound, imports, file)
+            if service is not None:
+                found[keyword.arg] = service
+    return tuple(sorted(found.items()))
+
+
+def _callees(
+    source: Source,
+    function: Function,
+    node: ast.AST,
+    bound: Dict[str, Tuple[str, str]],
+) -> List[Tuple[Function, Bindings]]:
     file, cls, _ = function
     imports = source.imported_classes(file)
     module_functions = {
-        item.name
+        item.name: item
         for item in source.modules[file].body
         if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     attributes = source.attribute_services(file, cls) if cls else {}
-    bound: Dict[str, Tuple[str, str]] = {}
     for item in ast.walk(node):  # locals bound to a service instance
-        if isinstance(item, (ast.Assign, ast.AnnAssign)) and isinstance(
-            item.value, ast.Call
-        ):
-            callee = item.value.func
-            if isinstance(callee, ast.Name) and _service_class(callee.id):
-                targets = (
-                    item.targets if isinstance(item, ast.Assign) else [item.target]
-                )
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        bound[target.id] = (imports.get(callee.id, file), callee.id)
-    found: List[Function] = []
+        if isinstance(item, (ast.Assign, ast.AnnAssign)) and item.value is not None:
+            service = _service_value(item.value, {}, imports, file)
+            if service is None:
+                continue
+            targets = item.targets if isinstance(item, ast.Assign) else [item.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    bound[target.id] = service
+    found: List[Tuple[Function, Bindings]] = []
     for item in ast.walk(node):
         if isinstance(item, ast.Attribute):
             owner = item.value
             target: Optional[Tuple[str, str]] = None
-            if isinstance(owner, ast.Call) and isinstance(owner.func, ast.Name):
-                if _service_class(owner.func.id):
-                    target = (imports.get(owner.func.id, file), owner.func.id)
-            elif isinstance(owner, ast.Name):
-                if owner.id in bound:
-                    target = bound[owner.id]
-                elif owner.id == "self" and cls is not None:
+            if isinstance(owner, (ast.Call, ast.Name)):
+                target = _service_value(owner, bound, imports, file)
+                if (
+                    target is None
+                    and isinstance(owner, ast.Name)
+                    and owner.id == "self"
+                    and cls is not None
+                ):
                     method = source.method(file, cls, item.attr)
                     if method is not None:
-                        found.append(method)
+                        found.append((method, ()))
             elif (
                 isinstance(owner, ast.Attribute)
                 and isinstance(owner.value, ast.Name)
@@ -258,14 +303,23 @@ def _callees(source: Source, function: Function, node: ast.AST) -> List[Function
             if target is not None:
                 method = source.method(target[0], target[1], item.attr)
                 if method is not None:
-                    found.append(method)
+                    found.append((method, ()))
         elif isinstance(item, ast.Call) and isinstance(item.func, ast.Name):
-            if item.func.id in module_functions and cls is None:
-                found.append((file, None, item.func.id))
+            helper = module_functions.get(item.func.id)
+            if helper is not None and cls is None:
+                bindings = _helper_bindings(helper, item, bound, imports, file)
+                found.append(((file, None, item.func.id), bindings))
     return found
 
 
 # ------------------------------------------------------------------ checking
+
+
+def _logical_method(sdk_path: str) -> str:
+    """`X.with_streaming_response.m` and `X.with_raw_response.m` call `X.m`."""
+    for accessor in (".with_streaming_response.", ".with_raw_response."):
+        sdk_path = sdk_path.replace(accessor, ".")
+    return sdk_path
 
 
 def _records(calls: Iterable[SdkCall]) -> Dict[Function, List[SdkCall]]:
@@ -305,7 +359,7 @@ def check(app: Any = None) -> List[Report]:
                 if call.kind == "http":
                     http.add(f"{call.sdk_path} in {where}")
                 elif call.resolved:
-                    sdk.add(call.sdk_path)
+                    sdk.add(_logical_method(call.sdk_path))
                 else:
                     unresolved.add(f"{call.sdk_path} in {where}")
         reports.append(

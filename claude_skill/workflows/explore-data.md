@@ -70,12 +70,17 @@ API name.
 pltr ontology list --format json
 pltr ontology object-type-list ri.ontology.main.ontology.<id> --format json
 pltr ontology object-get ri.ontology.main.ontology.<id> Aircraft N123AB --format json
-pltr api ontologies ontology-object count ri.ontology.main.ontology.<id> Aircraft --format json
+pltr ontology object-count ri.ontology.main.ontology.<id> Aircraft --format json
 
-# Typed search (the API's SearchJsonQueryV2 filter), one page at a time
-pltr api ontologies ontology-object search ri.ontology.main.ontology.<id> Aircraft \
+# Typed search (Foundry's SearchJsonQueryV2), one page at a time
+pltr ontology object-search ri.ontology.main.ontology.<id> Aircraft \
   --where '{"type": "and", "value": [{"type": "eq", "field": "status", "value": "ACTIVE"}, {"type": "gt", "field": "seats", "value": 100}]}' \
-  --select tailNumber --select seats --page-size 100 --format json
+  --properties tailNumber,seats --page-size 100 --format json
+
+# The same endpoint with the API's exact request options
+pltr api ontologies ontology-object search ri.ontology.main.ontology.<id> Aircraft \
+  --where '{"type": "eq", "field": "status", "value": "ACTIVE"}' \
+  --select tailNumber --snapshot --format json
 ```
 
 Pass the response's `nextPageToken` to `--page-token` for the next page.

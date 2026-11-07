@@ -7,91 +7,70 @@ Execute SQL queries
 
 ### pltr sql cancel
 
-Cancel a running query.
+Cancel a running query, then print its status.
 
 `pltr sql cancel QUERY_ID [OPTIONS]`
 
-- `QUERY_ID`: Query ID to cancel
-- `--profile` TEXT: Auth profile to use
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- output: text (no `--format`) · SDK: not recorded yet
+- `QUERY_ID`: Query ID, as printed by 'pltr sql submit' (queryId in JSON).
+- **destructive** (asks first; `--yes` skips) · SDK: `sql_queries.SqlQuery.cancel`, `sql_queries.SqlQuery.get_status`
 
 ### pltr sql execute
 
-Execute a SQL query and display results.
+Run a SQL query, wait for it to finish and print its rows.
 
 `pltr sql execute QUERY [OPTIONS]`
 
-- `QUERY`: SQL query to execute
-- `--profile` TEXT: Auth profile to use
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--output` PATH: Save results to file
-- `--timeout` INTEGER (default: 300): Query timeout in seconds
-- `--fallback-branches` TEXT: Comma-separated list of fallback branch IDs
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- SDK: not recorded yet
+- `QUERY`: SQL query (Spark SQL dialect, SELECT only).
+- `--timeout` INTEGER (default: 300): Seconds to wait for the query to finish.
+- `--fallback-branches` TEXT: Comma-separated branch names to read datasets from when the query names no branch; the first that exists is used (default: the default branch, usually master).
+- SDK: `sql_queries.SqlQuery.execute`, `sql_queries.SqlQuery.get_status`, `sql_queries.SqlQuery.get_results`
 
 ### pltr sql export
 
-Execute a SQL query and export results to a file.
+Run a SQL query and write its rows to a file.
 
 `pltr sql export QUERY OUTPUT_FILE [OPTIONS]`
 
-- `QUERY`: SQL query to execute and export
-- `OUTPUT_FILE`: Output file path
-- `--profile` TEXT: Auth profile to use
-- `--format` TEXT: Output format (auto-detected from file extension if not specified)
-- `--timeout` INTEGER (default: 300): Query timeout in seconds
-- `--fallback-branches` TEXT: Comma-separated list of fallback branch IDs
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- SDK: not recorded yet
+- `QUERY`: SQL query (Spark SQL dialect, SELECT only).
+- `OUTPUT_FILE`: File to write the rows to (overwritten if it exists).
+- `--timeout` INTEGER (default: 300): Seconds to wait for the query to finish.
+- `--fallback-branches` TEXT: Comma-separated branch names to read datasets from when the query names no branch; the first that exists is used (default: the default branch, usually master).
+- SDK: `sql_queries.SqlQuery.execute`, `sql_queries.SqlQuery.get_status`, `sql_queries.SqlQuery.get_results`
 
 ### pltr sql results
 
-Get the results of a completed query.
+Print the rows of a finished query.
 
 `pltr sql results QUERY_ID [OPTIONS]`
 
-- `QUERY_ID`: Query ID to get results for
-- `--profile` TEXT: Auth profile to use
-- `--format` TEXT (default: table): Output format (table, json, csv)
-- `--output` PATH: Save results to file
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- SDK: not recorded yet
+- `QUERY_ID`: Query ID, as printed by 'pltr sql submit' (queryId in JSON).
+- SDK: `sql_queries.SqlQuery.get_results`
 
 ### pltr sql status
 
-Get the status of a submitted query.
+Get a query's status: running, succeeded, failed (with the error) or canceled.
 
 `pltr sql status QUERY_ID [OPTIONS]`
 
-- `QUERY_ID`: Query ID to check
-- `--profile` TEXT: Auth profile to use
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- output: text (no `--format`) · SDK: not recorded yet
+- `QUERY_ID`: Query ID, as printed by 'pltr sql submit' (queryId in JSON).
+- SDK: `sql_queries.SqlQuery.get_status`
 
 ### pltr sql submit
 
-Submit a SQL query without waiting for completion.
+Start a SQL query without waiting; print its status and query ID.
 
 `pltr sql submit QUERY [OPTIONS]`
 
-- `QUERY`: SQL query to submit
-- `--profile` TEXT: Auth profile to use
-- `--fallback-branches` TEXT: Comma-separated list of fallback branch IDs
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- output: text (no `--format`) · SDK: not recorded yet
+- `QUERY`: SQL query (Spark SQL dialect, SELECT only).
+- `--fallback-branches` TEXT: Comma-separated branch names to read datasets from when the query names no branch; the first that exists is used (default: the default branch, usually master).
+- SDK: `sql_queries.SqlQuery.execute`
 
 ### pltr sql wait
 
-Wait for a query to complete and optionally display results.
+Wait for a submitted query to finish, then print its rows.
 
 `pltr sql wait QUERY_ID [OPTIONS]`
 
-- `QUERY_ID`: Query ID to wait for
-- `--profile` TEXT: Auth profile to use
-- `--timeout` INTEGER (default: 300): Maximum wait time in seconds
-- `--format` TEXT (default: table): Output format for results (table, json, csv)
-- `--output` PATH: Save results to file when completed
-- `--preview`, `--no-preview` (default: True): Enable preview mode (required for SQL API)
-- SDK: not recorded yet
+- `QUERY_ID`: Query ID, as printed by 'pltr sql submit' (queryId in JSON).
+- `--timeout` INTEGER (default: 300): Seconds to wait for the query to finish.
+- SDK: `sql_queries.SqlQuery.get_status`, `sql_queries.SqlQuery.get_results`

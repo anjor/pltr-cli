@@ -7,27 +7,21 @@ Audit log operations for compliance and security monitoring
 
 ### pltr audit get
 
-Get the content of a specific audit log file.
+Download an audit log file.
 
 `pltr audit get ORGANIZATION_RID LOG_FILE_ID [OPTIONS]`
 
-- `ORGANIZATION_RID`: Organization Resource Identifier (e.g., ri.multipass..organization.xxx)
-- `LOG_FILE_ID`: Log file identifier (from list command)
-- `--output`, `-o` TEXT: Output file path (required for binary content)
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `ORGANIZATION_RID`: Organization RID (ri.multipass..organization.<id>); yours is the organization of 'pltr admin user current'.
+- `LOG_FILE_ID`: Log file ID (an id from 'pltr audit list').
+- SDK: `audit.Organization.LogFile.content`
 
 ### pltr audit list
 
-List audit log files for an organization.
+List an organization's audit log files.
 
 `pltr audit list ORGANIZATION_RID START_DATE [OPTIONS]`
 
-- `ORGANIZATION_RID`: Organization Resource Identifier (e.g., ri.multipass..organization.xxx)
-- `START_DATE`: Start date for audit events (YYYY-MM-DD format, required)
-- `--end-date`, `-e` TEXT: End date for audit events (YYYY-MM-DD format, inclusive)
-- `--page-size` INTEGER: Number of results per page
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ORGANIZATION_RID`: Organization RID (ri.multipass..organization.<id>); yours is the organization of 'pltr admin user current'.
+- `START_DATE`: List log files for audit events from this date on (YYYY-MM-DD).
+- `--end-date`, `-e` DATETIME: List log files for audit events up to this date, inclusive (YYYY-MM-DD).
+- paged · SDK: `audit.Organization.LogFile.list`

@@ -11,24 +11,24 @@ Install shell completions for pltr CLI.
 
 `pltr completion install [OPTIONS]`
 
-- `--shell`, `-s` TEXT: Shell type (bash, zsh, fish).
-- `--path`, `-p` PATH: Custom path to install completion file.
+- `--shell`, `-s` bash|zsh|fish: Shell: bash, zsh or fish (default: detected from $SHELL).
+- `--path`, `-p` PATH: Where to write the completion file (default: the shell's usual place).
 - output: text (no `--format`) · local (no Foundry call)
 
 ### pltr completion show
 
-Show the completion script for the specified shell.
+Print the completion script for a shell.
 
 `pltr completion show [OPTIONS]`
 
-- `--shell`, `-s` TEXT: Shell type (bash, zsh, fish).
+- `--shell`, `-s` bash|zsh|fish: Shell: bash, zsh or fish (default: detected from $SHELL).
 - output: text (no `--format`) · local (no Foundry call)
 
 ### pltr completion uninstall
 
-Uninstall shell completions for pltr CLI.
+Remove the completion file 'pltr completion install' wrote.
 
 `pltr completion uninstall [OPTIONS]`
 
-- `--shell`, `-s` TEXT: Shell type (bash, zsh, fish).
+- `--shell`, `-s` bash|zsh|fish: Shell: bash, zsh or fish (default: detected from $SHELL).
 - output: text (no `--format`) · local (no Foundry call)

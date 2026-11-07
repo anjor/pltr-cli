@@ -3,409 +3,352 @@
 
 Manage datasets
 
-31 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+30 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ## pltr dataset
 
 ### pltr dataset create
 
-Create a new dataset.
+Create an empty dataset in a project or folder.
 
 `pltr dataset create NAME --parent-folder TEXT [OPTIONS]`
 
-- `NAME`: Dataset name
-- `--profile`, `-p` TEXT: Profile name
-- `--parent-folder` TEXT (required): Parent folder RID.
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `NAME`: Name of the new dataset.
+- `--parent-folder` TEXT (required): RID of the project or folder to create it in (ri.compass.main.folder.<id>); find one with 'pltr project list' or 'pltr folder list'.
+- SDK: `datasets.Dataset.create`
 
 ### pltr dataset get
 
-Get detailed information about a specific dataset.
+Get a dataset's metadata: its RID, name and parent folder.
 
 `pltr dataset get DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- SDK: `datasets.Dataset.get`
 
 ### pltr dataset preview
 
-Preview dataset contents.
+Read rows of a dataset as a table, JSON or CSV.
 
 `pltr dataset preview DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--limit`, `-n` INTEGER (default: 10): Number of rows to display
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--limit`, `-n` INTEGER (default: 10): Maximum number of rows to read.
+- `--column` TEXT (repeatable): Only read this column (repeat for several; default: all).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- SDK: `datasets.Dataset.read_table`
 
 ## pltr dataset branches
 
-
+Manage a dataset's branches.
 
 ### pltr dataset branches create
 
-Create a new branch for a dataset.
+Create a branch, starting from a parent branch or a transaction.
 
 `pltr dataset branches create DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `BRANCH_NAME`: Branch name
-- `--parent` TEXT (default: master): Parent branch to branch from
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `BRANCH_NAME`: Name of the new branch.
+- `--parent` TEXT: Branch to start from: the new branch points at its latest transaction (default: master).
+- `--transaction-rid` TEXT: Start the new branch at this committed transaction (RID) instead of a parent branch.
+- SDK: `datasets.Dataset.Branch.get`, `datasets.Dataset.Branch.create`
 
 ### pltr dataset branches delete
 
-Delete a branch from a dataset.
+Delete a branch (not master). Asks for confirmation; --yes skips it.
 
 `pltr dataset branches delete DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `BRANCH_NAME`: Branch name to delete
-- `--yes`, `-y`: Skip confirmation prompt
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `BRANCH_NAME`: Name of the branch to delete.
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.Branch.delete`
 
 ### pltr dataset branches get
 
-Get detailed information about a specific branch.
+Get a branch: its name and latest open or committed transaction.
 
 `pltr dataset branches get DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `BRANCH_NAME`: Branch name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `BRANCH_NAME`: Branch name, e.g. master.
+- SDK: `datasets.Dataset.Branch.get`
 
 ### pltr dataset branches list
 
-List branches for a dataset.
+List a dataset's branches.
 
 `pltr dataset branches list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- paged · SDK: `datasets.Dataset.Branch.list`
 
 ### pltr dataset branches transactions
 
-Get transaction history for a specific branch.
+[beta] List a branch's transactions, newest first.
 
 `pltr dataset branches transactions DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `BRANCH_NAME`: Branch name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `BRANCH_NAME`: Branch name, e.g. master.
+- beta · paged · SDK: `datasets.Dataset.Branch.transactions`
 
 ## pltr dataset files
 
-
+Upload, download and manage files.
 
 ### pltr dataset files delete
 
-Delete a file from a dataset.
+Delete a file from a dataset's current view.
 
 `pltr dataset files delete DATASET_RID FILE_PATH [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `FILE_PATH`: Path of file within dataset to delete
-- `--branch` TEXT (default: master): Dataset branch
-- `--yes`, `-y`: Skip confirmation prompt
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `FILE_PATH`: Path of the file in the dataset, e.g. data/sales.csv.
+- `--branch` TEXT: Branch to delete the file on, in a new DELETE transaction that is committed (default: the dataset's default branch).
+- `--transaction-rid` TEXT: Delete the file in this open DELETE transaction.
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.File.delete`
 
 ### pltr dataset files get
 
-Download a file from a dataset.
+Download a file, or a folder with --recursive, from a dataset.
 
 `pltr dataset files get DATASET_RID FILE_PATH OUTPUT_PATH [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `FILE_PATH`: Path of file within dataset
-- `OUTPUT_PATH`: Local path to save the file
-- `--branch` TEXT (default: master): Dataset branch
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `FILE_PATH`: Path of the file in the dataset; with --recursive, a folder (/ for the whole dataset).
+- `OUTPUT_PATH`: Local file to write (an existing directory keeps the file's name), or - for stdout; with --recursive, the local directory to write into.
+- `--recursive`, `-r`: Download every file under the FILE_PATH folder, keeping their paths relative to it.
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--start-transaction-rid` TEXT: Start of a transaction range (RID); with --end-transaction-rid set to the same RID, only that transaction's files.
+- `--end-transaction-rid` TEXT: Read the dataset as of this transaction (RID).
+- SDK: `datasets.Dataset.File.get`, `datasets.Dataset.File.content`, `datasets.Dataset.File.list`
 
 ### pltr dataset files info
 
-Get metadata information about a file in a dataset.
+Get a file's metadata: path, size, last update and transaction.
 
 `pltr dataset files info DATASET_RID FILE_PATH [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `FILE_PATH`: Path of file within dataset
-- `--branch` TEXT (default: master): Dataset branch
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `FILE_PATH`: Path of the file in the dataset, e.g. data/sales.csv.
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--start-transaction-rid` TEXT: Start of a transaction range (RID); with --end-transaction-rid set to the same RID, only that transaction's files.
+- `--end-transaction-rid` TEXT: Read the dataset as of this transaction (RID).
+- SDK: `datasets.Dataset.File.get`
 
 ### pltr dataset files list
 
-List files in a dataset with pagination support.
+List the files in a dataset's current view of a branch.
 
 `pltr dataset files list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch` TEXT (default: master): Dataset branch
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of files per page (default: from settings)
-- `--max-pages` INTEGER (default: 1): Maximum number of pages to fetch (default: 1)
-- `--page-token` TEXT: Page token to resume from previous response
-- `--all`: Fetch all available pages (overrides --max-pages)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--path-prefix` TEXT: Only files whose path starts with this, e.g. data/2024/.
+- `--start-transaction-rid` TEXT: Start of a transaction range (RID); with --end-transaction-rid set to the same RID, only that transaction's files.
+- `--end-transaction-rid` TEXT: Read the dataset as of this transaction (RID).
+- paged · SDK: `datasets.Dataset.File.list`
 
 ### pltr dataset files upload
 
-Upload a file to a dataset.
+Upload a local file or directory to a dataset.
 
 `pltr dataset files upload FILE_PATH DATASET_RID [OPTIONS]`
 
-- `FILE_PATH`: Local path to file to upload
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch` TEXT (default: master): Dataset branch
-- `--transaction-rid` TEXT: Transaction RID for the upload
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `FILE_PATH`: Local file or directory to upload (directories recursively).
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--path` TEXT: Where to put it in the dataset: the file's path (default: the local file name; a path ending in / is a folder), or for a directory the folder to upload into (default: the dataset root).
+- `--branch` TEXT: Branch to upload to, in a new transaction that is committed (default: the dataset's default branch).
+- `--transaction-rid` TEXT: Upload into this open transaction and leave it open (commit it with 'pltr dataset transactions commit').
+- `--transaction-type` APPEND|UPDATE|SNAPSHOT: Type of the transaction the upload creates (default: UPDATE).
+- SDK: `datasets.Dataset.File.upload`, `datasets.Dataset.Transaction.create`, `datasets.Dataset.Transaction.commit`, `datasets.Dataset.Transaction.abort`
 
 ## pltr dataset jobs
 
-
+Jobs that built a dataset.
 
 ### pltr dataset jobs list
 
-List jobs for a specific dataset.
+[beta] List the RIDs of a dataset's jobs, newest first.
 
 `pltr dataset jobs list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch` TEXT (default: master): Dataset branch
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--order-by` started|finished (default: started): Sort by job start or finish time.
+- `--ascending`: Oldest first (default: newest first).
+- beta · paged · SDK: `datasets.Dataset.jobs`
 
 ## pltr dataset schedules
 
-
+Schedules that target a dataset.
 
 ### pltr dataset schedules list
 
-List schedules that target a specific dataset.
+List the RIDs of the schedules that target a dataset.
 
 `pltr dataset schedules list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- paged · SDK: `datasets.Dataset.get_schedules`
 
 ## pltr dataset schema
 
-
+Get, set or infer a dataset's schema.
 
 ### pltr dataset schema apply
 
-Apply/infer schema for a dataset.
+Infer a dataset's schema from its files and apply it to a branch.
 
 `pltr dataset schema apply DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch`, `-b` TEXT (default: master): Dataset branch name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch`, `-b` TEXT (default: master): Branch to infer and apply the schema on.
+- **destructive** (asks first; `--yes` skips) · HTTP (direct, labeled exception): `POST /foundry-schema-inference/api/datasets/{datasetRid}/branches/{branchName}/schema`, `POST /foundry-metadata/api/schemas/datasets/{datasetRid}/branches/{branchName}`
 
 ### pltr dataset schema get
 
-Get the schema of a dataset (requires API preview access).
+Get a dataset's schema (one row per field in table and CSV output).
 
 `pltr dataset schema get DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--transaction-rid` TEXT: Get the schema as of this transaction (RID).
+- `--version-id` TEXT: Get this schema version (UUID).
+- SDK: `datasets.Dataset.get_schema`
 
 ### pltr dataset schema set
 
-Set or update the schema of a dataset.
+Replace a dataset's schema on a branch.
 
 `pltr dataset schema set DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--from-csv` TEXT: Infer schema from CSV file
-- `--json` TEXT: JSON string defining the schema
-- `--json-file` TEXT: Path to JSON file containing schema definition
-- `--branch` TEXT (default: master): Dataset branch
-- `--transaction-rid` TEXT: Transaction RID to use
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--from-csv` PATH: Infer the schema from a local CSV file (header and first 100 rows).
+- `--json` TEXT: Schema as JSON, inline or @file.json: {"fieldSchemaList": [{"name": "id", "type": "LONG", "nullable": false}]}.
+- `--json-file` PATH: Path of a JSON file with the schema (same forms as --json).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--transaction-rid` TEXT: Transaction the schema applies to (default: the latest committed transaction).
+- `--dataframe-reader` AVRO|CSV|PARQUET|DATASOURCE: How Foundry reads the dataset's files with this schema (default: PARQUET).
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.put_schema`
 
 ## pltr dataset transactions
 
-
+Open, commit and inspect transactions.
 
 ### pltr dataset transactions abort
 
-Abort an open transaction.
+Abort an open transaction, discarding its changes.
 
 `pltr dataset transactions abort DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `TRANSACTION_RID`: Transaction Resource Identifier
-- `--yes`, `-y`: Skip confirmation prompt
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `TRANSACTION_RID`: Transaction RID (ri.foundry.main.transaction.<id>).
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.Transaction.abort`
 
 ### pltr dataset transactions build
 
-Get build information for a transaction.
+[beta] Get the RID of the build that computed a transaction.
 
 `pltr dataset transactions build DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `TRANSACTION_RID`: Transaction Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `TRANSACTION_RID`: Transaction RID (ri.foundry.main.transaction.<id>).
+- beta · SDK: `datasets.Dataset.Transaction.build`
 
 ### pltr dataset transactions commit
 
-Commit an open transaction.
+Commit an open transaction, making its changes visible.
 
 `pltr dataset transactions commit DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `TRANSACTION_RID`: Transaction Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `TRANSACTION_RID`: Transaction RID (ri.foundry.main.transaction.<id>).
+- SDK: `datasets.Dataset.Transaction.commit`
 
 ### pltr dataset transactions list
 
-List transactions for a dataset branch.
+[beta] List a dataset's transactions, newest first.
 
 `pltr dataset transactions list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch` TEXT (default: master): Dataset branch
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Only this branch's transactions (default: every branch).
+- beta · paged · SDK: `datasets.Dataset.transactions`, `datasets.Dataset.Branch.transactions`
 
 ### pltr dataset transactions start
 
-Start a new transaction for a dataset.
+Open a transaction on a branch (one open transaction per branch).
 
 `pltr dataset transactions start DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `--branch` TEXT (default: master): Dataset branch
-- `--type` TEXT (default: APPEND): Transaction type (APPEND, UPDATE, SNAPSHOT, DELETE)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch name (default: the dataset's default branch, master on most enrollments).
+- `--type` APPEND|UPDATE|SNAPSHOT|DELETE (default: APPEND): APPEND adds files; UPDATE adds and replaces files; SNAPSHOT replaces all files; DELETE removes files.
+- SDK: `datasets.Dataset.Transaction.create`
 
 ### pltr dataset transactions status
 
-Get the status of a specific transaction.
+Get a transaction: type, status (OPEN, COMMITTED, ABORTED) and times.
 
 `pltr dataset transactions status DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `TRANSACTION_RID`: Transaction Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
+- `TRANSACTION_RID`: Transaction RID (ri.foundry.main.transaction.<id>).
+- SDK: `datasets.Dataset.Transaction.get`
 
 ## pltr dataset views
 
-
+Manage views (virtual datasets).
 
 ### pltr dataset views add-datasets
 
-Add backing datasets to a view.
+Add backing datasets to a view (datasets it already has are ignored).
 
 `pltr dataset views add-datasets VIEW_RID DATASET_RIDS... [OPTIONS]`
 
-- `VIEW_RID`: View Resource Identifier
-- `DATASET_RIDS...`: Dataset RIDs to add as backing datasets
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `VIEW_RID`: View RID (views are datasets: ri.foundry.main.dataset.<id>).
+- `DATASET_RIDS...`: Backing dataset RIDs, each DATASET_RID or DATASET_RID@BRANCH (default branch: the view's).
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- SDK: `datasets.View.add_backing_datasets`
 
 ### pltr dataset views add-primary-key
 
-Add a primary key to a view.
+Add a primary key to a view that has none.
 
-`pltr dataset views add-primary-key VIEW_RID KEY_FIELDS... [OPTIONS]`
+`pltr dataset views add-primary-key VIEW_RID COLUMNS... [OPTIONS]`
 
-- `VIEW_RID`: View Resource Identifier
-- `KEY_FIELDS...`: Field names to use as primary key
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `VIEW_RID`: View RID (views are datasets: ri.foundry.main.dataset.<id>).
+- `COLUMNS...`: Columns that make up the key (types BYTE, SHORT, DECIMAL, INTEGER, LONG, STRING, BOOLEAN, TIMESTAMP or DATE).
+- `--latest-wins` TEXT (repeatable): Allow duplicate keys and keep the row with the highest value of this column (repeat to compare several in order).
+- `--deletion-column` TEXT: With --latest-wins: boolean column; a kept row with true in it counts as deleted.
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- SDK: `datasets.View.add_primary_key`
 
 ### pltr dataset views create
 
-Create a new view for a dataset.
+Create a view: a virtual dataset that unions its backing datasets.
 
-`pltr dataset views create DATASET_RID VIEW_NAME [OPTIONS]`
+`pltr dataset views create VIEW_NAME --parent-folder TEXT --backing-dataset TEXT [OPTIONS]`
 
-- `DATASET_RID`: Dataset Resource Identifier
-- `VIEW_NAME`: View name
-- `--description` TEXT: View description
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `VIEW_NAME`: Name of the new view.
+- `--parent-folder` TEXT (required): RID of the project or folder to create it in (ri.compass.main.folder.<id>); find one with 'pltr project list' or 'pltr folder list'.
+- `--backing-dataset` TEXT (required; repeatable): A dataset backing the view: DATASET_RID or DATASET_RID@BRANCH (repeat for several).
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- SDK: `datasets.View.create`
 
 ### pltr dataset views get
 
-Get detailed information about a view.
+Get a view: its backing datasets, primary key and parent folder.
 
 `pltr dataset views get VIEW_RID [OPTIONS]`
 
-- `VIEW_RID`: View Resource Identifier
-- `--branch` TEXT (default: master): Branch name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
-
-### pltr dataset views list
-
-List views for a dataset.
-
-`pltr dataset views list DATASET_RID [OPTIONS]`
-
-- `DATASET_RID`: Dataset Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `VIEW_RID`: View RID (views are datasets: ri.foundry.main.dataset.<id>).
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- SDK: `datasets.View.get`
 
 ### pltr dataset views remove-datasets
 
@@ -413,20 +356,18 @@ Remove backing datasets from a view.
 
 `pltr dataset views remove-datasets VIEW_RID DATASET_RIDS... [OPTIONS]`
 
-- `VIEW_RID`: View Resource Identifier
-- `DATASET_RIDS...`: Dataset RIDs to remove as backing datasets
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `VIEW_RID`: View RID (views are datasets: ri.foundry.main.dataset.<id>).
+- `DATASET_RIDS...`: Backing dataset RIDs, each DATASET_RID or DATASET_RID@BRANCH (default branch: the view's).
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.View.remove_backing_datasets`
 
 ### pltr dataset views replace-datasets
 
-Replace all backing datasets in a view.
+Replace all of a view's backing datasets with these.
 
 `pltr dataset views replace-datasets VIEW_RID DATASET_RIDS... [OPTIONS]`
 
-- `VIEW_RID`: View Resource Identifier
-- `DATASET_RIDS...`: Dataset RIDs to set as backing datasets
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `VIEW_RID`: View RID (views are datasets: ri.foundry.main.dataset.<id>).
+- `DATASET_RIDS...`: Backing dataset RIDs, each DATASET_RID or DATASET_RID@BRANCH (default branch: the view's).
+- `--branch` TEXT: Branch of the view (default: master on most enrollments).
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.View.replace_backing_datasets`

@@ -3,154 +3,136 @@
 
 Manage media sets and media content
 
-11 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+12 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ### pltr media-sets abort
 
-Abort a transaction, deleting any uploaded items.
+[beta] Abort a transaction, deleting the items uploaded in it.
 
 `pltr media-sets abort MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `TRANSACTION_ID`: Transaction ID to abort
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--yes`, `-y`: Skip confirmation prompt
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `TRANSACTION_ID`: Transaction ID (a UUID, from 'pltr media-sets create').
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `media_sets.MediaSet.abort`
+
+### pltr media-sets clear
+
+[beta] Delete (soft-delete) the media item at a path in a media set.
+
+`pltr media-sets clear MEDIA_SET_RID MEDIA_ITEM_PATH [OPTIONS]`
+
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_PATH`: Path of the media item to clear within the media set.
+- `--branch` TEXT: Media set branch (default: the default branch, usually master).
+- `--transaction-id` TEXT: ID of an open transaction to clear the item in; required for transactional media sets (the deletion shows once it's committed).
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `media_sets.MediaSet.clear`
 
 ### pltr media-sets commit
 
-Commit a transaction, making uploaded items available.
+[beta] Commit a transaction: the items uploaded in it become available.
 
 `pltr media-sets commit MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `TRANSACTION_ID`: Transaction ID to commit
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--yes`, `-y`: Skip confirmation prompt
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `TRANSACTION_ID`: Transaction ID (a UUID, from 'pltr media-sets create').
+- beta · SDK: `media_sets.MediaSet.commit`
 
 ### pltr media-sets create
 
-Create a new transaction for uploading to a media set.
+[beta] Open a transaction for uploading to a transactional media set.
 
 `pltr media-sets create MEDIA_SET_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--branch` TEXT: Branch name
-- `--preview`: Enable preview mode
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `--branch` TEXT: Media set branch (default: the default branch, usually master).
+- beta · SDK: `media_sets.MediaSet.create`
 
 ### pltr media-sets download
 
-Download a media item from a media set.
+Download a media item's content to a file, or to stdout with -.
 
 `pltr media-sets download MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier
-- `OUTPUT_PATH`: Local path where file should be saved
-- `--profile`, `-p` TEXT: Profile name
-- `--original`: Download original version instead of processed
-- `--overwrite`: Overwrite existing file
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
+- `OUTPUT_PATH`: File to save the media item's content to, or - for stdout.
+- `--original`: Download the file as originally uploaded, not the processed version.
+- `--overwrite`: Replace OUTPUT_PATH if it exists.
+- SDK: `media_sets.MediaSet.read`, `media_sets.MediaSet.read_original`
 
 ### pltr media-sets get
 
-Get detailed information about a specific media item.
+Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets get MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
+- SDK: `media_sets.MediaSet.info`
 
 ### pltr media-sets get-by-path
 
-Get media item RID by its path within the media set.
+[beta] Look up the RID of the media item at a path in a media set.
 
 `pltr media-sets get-by-path MEDIA_SET_RID MEDIA_ITEM_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_PATH`: Path to media item within the media set
-- `--profile`, `-p` TEXT: Profile name
-- `--branch` TEXT: Branch name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_PATH`: Path of the media item within the media set.
+- `--branch` TEXT: Media set branch (default: the default branch, usually master).
+- beta · SDK: `media_sets.MediaSet.get_rid_by_path`
 
 ### pltr media-sets reference
 
-Get a reference to a media item (e.g., for embedding).
+[beta] Get a media item's media reference (the value of ontology media properties).
 
 `pltr media-sets reference MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
+- beta · SDK: `media_sets.MediaSet.reference`
 
 ### pltr media-sets thumbnail-calculate
 
-Initiate thumbnail generation for an image.
+[beta] Start calculating an image's thumbnail; prints the calculation status.
 
 `pltr media-sets thumbnail-calculate MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-- SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
+- beta · SDK: `media_sets.MediaSet.calculate`
 
 ### pltr media-sets thumbnail-retrieve
 
-Download a calculated thumbnail from a media set (200px wide webp).
+[beta] Download an image's calculated thumbnail (200px wide webp), or to stdout with -.
 
 `pltr media-sets thumbnail-retrieve MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier
-- `OUTPUT_PATH`: Local path where thumbnail should be saved
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--overwrite`: Overwrite existing file
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
+- `OUTPUT_PATH`: File to save the thumbnail (webp) to, or - for stdout.
+- `--overwrite`: Replace OUTPUT_PATH if it exists.
+- beta · SDK: `media_sets.MediaSet.retrieve`
 
 ### pltr media-sets upload
 
-Upload a media file to a media set within a transaction.
+[beta] Upload a file as a media item.
 
-`pltr media-sets upload MEDIA_SET_RID FILE_PATH MEDIA_ITEM_PATH TRANSACTION_ID [OPTIONS]`
+`pltr media-sets upload MEDIA_SET_RID FILE_PATH MEDIA_ITEM_PATH [TRANSACTION_ID] [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media Set Resource Identifier
-- `FILE_PATH`: Local path to the file to upload
-- `MEDIA_ITEM_PATH`: Path within media set where file should be stored
-- `TRANSACTION_ID`: Transaction ID for the upload
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- output: text (no `--format`) · SDK: not recorded yet
+- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `FILE_PATH`: Local file to upload.
+- `MEDIA_ITEM_PATH`: Path of the new item within the media set, e.g. images/photo.jpg.
+- `TRANSACTION_ID` (optional): ID of an open transaction (from 'pltr media-sets create'); required for transactional media sets.
+- `--branch` TEXT: Media set branch (default: the default branch, usually master).
+- beta · SDK: `media_sets.MediaSet.upload`
 
 ### pltr media-sets upload-temp
 
-Upload temporary media (auto-deleted after 1 hour if not persisted).
+Upload temporary media; prints its media reference.
 
 `pltr media-sets upload-temp FILE_PATH [OPTIONS]`
 
-- `FILE_PATH`: Local path to the file to upload
-- `--profile`, `-p` TEXT: Profile name
-- `--filename` TEXT: Override filename for the upload
-- `--attribution` TEXT: Attribution string for the media
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `FILE_PATH`: Local file to upload.
+- `--filename` TEXT: Name for the uploaded media (default: the file's name).
+- `--attribution` TEXT: Usage attribution for the upload.
+- SDK: `media_sets.MediaSet.upload_media`

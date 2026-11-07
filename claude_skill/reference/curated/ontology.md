@@ -3,226 +3,206 @@
 
 Ontology operations
 
-15 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+16 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ### pltr ontology action-apply
 
-Apply an action with given parameters.
+Apply an action: validate its parameters and make its edits.
 
-`pltr ontology action-apply ONTOLOGY_RID ACTION_TYPE PARAMETERS [OPTIONS]`
+`pltr ontology action-apply ONTOLOGY ACTION PARAMETERS [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `ACTION_TYPE`: Action type API name
-- `PARAMETERS`: JSON string of action parameters
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `ACTION`: Action type API name (see Ontology Manager).
+- `PARAMETERS`: Action parameters: a JSON object keyed by parameter ID, inline, @file.json or @- (stdin), e.g. {"employee": "EMP001", "newDepartment": "Sales"}.
+- `--return-edits` ALL|ALL_V2_WITH_DELETIONS|NONE: Return the edits the action made (Foundry's default: NONE).
+- `--attribution` TEXT: Attribution to record for the request (sent as the attribution header).
+- `--scenario-rid` TEXT: RID of an ontology scenario to work in.
+- SDK: `ontologies.Action.apply`
+
+### pltr ontology action-apply-batch
+
+Apply several actions of one action type in a single request.
+
+`pltr ontology action-apply-batch ONTOLOGY ACTION REQUESTS [OPTIONS]`
+
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `ACTION`: Action type API name (see Ontology Manager).
+- `REQUESTS`: The actions to apply: a JSON list of {"parameters": {...}} objects, inline, @file.json or @- (stdin), e.g. [{"parameters": {"employee": "EMP001"}}, {"parameters": {"employee": "EMP002"}}].
+- `--return-edits` ALL|NONE: Return the edits the actions made (Foundry's default: NONE).
+- `--scenario-rid` TEXT: RID of an ontology scenario to work in.
+- SDK: `ontologies.Action.apply_batch`
 
 ### pltr ontology action-validate
 
-Validate action parameters without executing.
+Check an action's parameters without applying it.
 
-`pltr ontology action-validate ONTOLOGY_RID ACTION_TYPE PARAMETERS [OPTIONS]`
+`pltr ontology action-validate ONTOLOGY ACTION PARAMETERS [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `ACTION_TYPE`: Action type API name
-- `PARAMETERS`: JSON string of action parameters
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `ACTION`: Action type API name (see Ontology Manager).
+- `PARAMETERS`: Action parameters: a JSON object keyed by parameter ID, inline, @file.json or @- (stdin), e.g. {"employee": "EMP001", "newDepartment": "Sales"}.
+- SDK: `ontologies.Action.apply`
 
 ### pltr ontology get
 
-Get details of a specific ontology.
+Get an ontology's metadata.
 
-`pltr ontology get ONTOLOGY_RID [OPTIONS]`
+`pltr ontology get ONTOLOGY [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- SDK: `ontologies.Ontology.get`
 
 ### pltr ontology link-type-create
 
-Create a new link type in an ontology.
+Create a link type (direct HTTP: the SDK can't create link types).
 
 `pltr ontology link-type-create ONTOLOGY_RID --api-name TEXT --from TEXT --to TEXT [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `--api-name` TEXT (required): Link type API name
-- `--from` TEXT (required): Source object type API name
-- `--to` TEXT (required): Target object type API name
-- `--display-name` TEXT: Link type display name
-- `--description` TEXT: Link type description
-- `--reverse-api-name` TEXT: Reverse direction link type API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY_RID`: Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `--api-name` TEXT (required): Link type API name.
+- `--from` TEXT (required): API name of the source object type.
+- `--to` TEXT (required): API name of the target object type.
+- `--display-name` TEXT: Link type display name.
+- `--description` TEXT: Link type description.
+- `--reverse-api-name` TEXT: API name of the reverse (target to source) link.
+- HTTP (direct, labeled exception): `POST /v2/ontologies/{ontology}/linkTypes`, `POST /v1/ontologies/{ontology}/linkTypes`, `POST /ontology-manager/api/ontologies/{ontology}/linkTypes`
 
 ### pltr ontology list
 
-List all available ontologies.
+List the ontologies you can see.
 
 `pltr ontology list [OPTIONS]`
 
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- SDK: `ontologies.Ontology.list`
 
 ### pltr ontology object-aggregate
 
-Aggregate objects with specified functions.
+Aggregate objects: counts, sums, averages and more, optionally grouped.
 
-`pltr ontology object-aggregate ONTOLOGY_RID OBJECT_TYPE AGGREGATIONS [OPTIONS]`
+`pltr ontology object-aggregate ONTOLOGY OBJECT_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `AGGREGATIONS`: JSON string of aggregation specs
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--group-by` TEXT: Comma-separated list of fields to group by
-- `--filter` TEXT: JSON string of filter criteria
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `--aggregation` TEXT: Required.
+- `--group-by` TEXT: Groups: a JSON list of Foundry group-bys (AggregationGroupByV2), e.g. [{"type": "exact", "field": "department"}], or comma-separated property API names as shorthand for exact groupings...
+- `--where` TEXT: Only aggregate objects matching this Foundry search query (SearchJsonQueryV2), as JSON, e.g. {"type": "eq", "field": "department", "value": "Engineering"}.
+- `--accuracy` REQUIRE_ACCURATE|ALLOW_APPROXIMATE: Whether approximate results are acceptable (default: Foundry's).
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- SDK: `ontologies.OntologyObject.aggregate`
 
 ### pltr ontology object-count
 
-Count objects of a specific type.
+[beta] Count the objects of an object type.
 
-`pltr ontology object-count ONTOLOGY_RID OBJECT_TYPE [OPTIONS]`
+`pltr ontology object-count ONTOLOGY OBJECT_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--branch`, `-b` TEXT: Branch name
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- beta · SDK: `ontologies.OntologyObject.count`
 
 ### pltr ontology object-get
 
-Get a specific object by primary key.
+Get an object by primary key.
 
-`pltr ontology object-get ONTOLOGY_RID OBJECT_TYPE PRIMARY_KEY [OPTIONS]`
+`pltr ontology object-get ONTOLOGY OBJECT_TYPE PRIMARY_KEY [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `PRIMARY_KEY`: Object primary key
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--properties` TEXT: Comma-separated list of properties to include
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `PRIMARY_KEY`: The object's primary key value.
+- `--properties` TEXT: Comma-separated property API names to return (default: every property).
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- `--scenario-rid` TEXT: RID of an ontology scenario to read the object from.
+- `--transaction-id` TEXT: ID of an ontology transaction to read from (experimental in Foundry).
+- `--derived-properties`, `--no-derived-properties`: Whether to load ontology-defined derived properties (loadOntologyDefinedDerivedProperties; experimental in Foundry).
+- SDK: `ontologies.OntologyObject.get`
 
 ### pltr ontology object-linked
 
-List objects linked to a specific object.
+List the objects linked to an object through a link type.
 
-`pltr ontology object-linked ONTOLOGY_RID OBJECT_TYPE PRIMARY_KEY LINK_TYPE [OPTIONS]`
+`pltr ontology object-linked ONTOLOGY OBJECT_TYPE PRIMARY_KEY LINK_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `PRIMARY_KEY`: Object primary key
-- `LINK_TYPE`: Link type API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of results per page
-- `--properties` TEXT: Comma-separated list of properties to include
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `PRIMARY_KEY`: The object's primary key value.
+- `LINK_TYPE`: Link type API name, as seen from OBJECT_TYPE.
+- `--properties` TEXT: Comma-separated property API names to return (default: every property).
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- `--derived-properties`, `--no-derived-properties`: Whether to load ontology-defined derived properties (loadOntologyDefinedDerivedProperties; experimental in Foundry).
+- paged · SDK: `ontologies.LinkedObject.list_linked_objects`
 
 ### pltr ontology object-list
 
-List objects of a specific type with pagination support.
+List the objects of an object type.
 
-`pltr ontology object-list ONTOLOGY_RID OBJECT_TYPE [OPTIONS]`
+`pltr ontology object-list ONTOLOGY OBJECT_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of objects per page (default: from settings)
-- `--max-pages` INTEGER (default: 1): Maximum number of pages to fetch (default: 1)
-- `--page-token` TEXT: Page token to resume from previous response
-- `--all`: Fetch all available pages (overrides --max-pages)
-- `--properties` TEXT: Comma-separated list of properties to include
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `--properties` TEXT: Comma-separated property API names to return (default: every property).
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- `--derived-properties`, `--no-derived-properties`: Whether to load ontology-defined derived properties (loadOntologyDefinedDerivedProperties; experimental in Foundry).
+- paged · SDK: `ontologies.OntologyObject.list`
 
 ### pltr ontology object-search
 
-Search objects by query.
+Search the objects of an object type with a typed query.
 
-`pltr ontology object-search ONTOLOGY_RID OBJECT_TYPE --query TEXT [OPTIONS]`
+`pltr ontology object-search ONTOLOGY OBJECT_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `--query`, `-q` TEXT (required): Search query string
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of results per page
-- `--properties` TEXT: Comma-separated list of properties to include
-- `--branch`, `-b` TEXT: Branch name
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `--where` TEXT: Filter: a Foundry search query (SearchJsonQueryV2) as JSON, inline or @file.json, e.g. {"type": "eq", "field": "department", "value": "Engineering"}.
+- `--order-by` TEXT: Sort order (SearchOrderByV2) as JSON, e.g. {"fields": [{"field": "salary", "direction": "desc"}]}.
+- `--properties` TEXT: Comma-separated property API names to return (default: every property).
+- `--branch`, `-b` TEXT: Foundry branch (default: the default branch; branches are experimental in Foundry).
+- `--default-load-level` applyReducersAndExtractMainValue|applyReducers|extractMainValue|noLoadLevel: How to load properties that have reducers or struct main values (defaultLoadLevel): applyReducersAndExtractMainValue, applyReducers, extractMainValue, noLoadLevel.
+- `--derived-properties`, `--no-derived-properties`: Whether to load ontology-defined derived properties (loadOntologyDefinedDerivedProperties; experimental in Foundry).
+- paged · SDK: `ontologies.OntologyObject.search`
 
 ### pltr ontology object-type-create
 
-Create a new object type in an ontology.
+Create an object type (direct HTTP: the SDK can't create object types).
 
 `pltr ontology object-type-create ONTOLOGY_RID --api-name TEXT --display-name TEXT --primary-key TEXT --backing-dataset TEXT [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `--api-name` TEXT (required): Object type API name
-- `--display-name` TEXT (required): Object type display name
-- `--primary-key` TEXT (required): Primary key property API name
-- `--backing-dataset` TEXT (required): Backing dataset RID
-- `--description` TEXT: Object type description
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY_RID`: Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `--api-name` TEXT (required): Object type API name.
+- `--display-name` TEXT (required): Object type display name.
+- `--primary-key` TEXT (required): API name of the primary key property.
+- `--backing-dataset` TEXT (required): RID of the backing dataset (ri.foundry.main.dataset.<id>).
+- `--description` TEXT: Object type description.
+- HTTP (direct, labeled exception): `POST /v2/ontologies/{ontology}/objectTypes`, `POST /v1/ontologies/{ontology}/objectTypes`, `POST /ontology-manager/api/ontologies/{ontology}/objectTypes`
 
 ### pltr ontology object-type-get
 
-Get details of a specific object type.
+Get an object type: its primary key, title property and properties.
 
-`pltr ontology object-type-get ONTOLOGY_RID OBJECT_TYPE [OPTIONS]`
+`pltr ontology object-type-get ONTOLOGY OBJECT_TYPE [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `OBJECT_TYPE`: Object type API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `OBJECT_TYPE`: Object type API name; find it with 'pltr ontology object-type-list'.
+- `--include-datasources`: Include the datasources that back each object type.
+- SDK: `ontologies.Ontology.ObjectType.get`
 
 ### pltr ontology object-type-list
 
-List object types in an ontology.
+List an ontology's object types.
 
-`pltr ontology object-type-list ONTOLOGY_RID [OPTIONS]`
+`pltr ontology object-type-list ONTOLOGY [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `--include-datasources`: Include the datasources that back each object type.
+- paged · SDK: `ontologies.Ontology.ObjectType.list`
 
 ### pltr ontology query-execute
 
-Execute a predefined query.
+Execute an ontology query function.
 
-`pltr ontology query-execute ONTOLOGY_RID QUERY_NAME [OPTIONS]`
+`pltr ontology query-execute ONTOLOGY QUERY_NAME [OPTIONS]`
 
-- `ONTOLOGY_RID`: Ontology Resource Identifier
-- `QUERY_NAME`: Query API name
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--parameters` TEXT: JSON string of query parameters
-- SDK: not recorded yet
+- `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
+- `QUERY_NAME`: Query API name (see Ontology Manager).
+- `--parameters` TEXT: Query parameters: a JSON object keyed by parameter ID, inline, @file.json or @- (stdin).
+- SDK: `ontologies.Query.execute`

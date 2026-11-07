@@ -169,14 +169,17 @@ pltr orchestration builds get ri.foundry.main.build.<id> --format json
 pltr orchestration builds jobs ri.foundry.main.build.<id> --format json
 ```
 
-**Search ontology objects** with the API's typed filter (`pltr api` takes the
-endpoint's request exactly as Foundry's API docs describe it):
+**Search ontology objects** with Foundry's typed query (`SearchJsonQueryV2`):
 
 ```bash
-pltr api ontologies ontology-object search my-ontology Aircraft \
+pltr ontology object-search my-ontology Aircraft \
   --where '{"type": "eq", "field": "status", "value": "ACTIVE"}' \
-  --select tailNumber --select status --format json
+  --properties tailNumber,status --format json
 ```
+
+`pltr api ontologies ontology-object search` takes the endpoint's request
+exactly as Foundry's API docs describe it, for options the curated command
+doesn't have.
 
 **Grant access to a project**
 

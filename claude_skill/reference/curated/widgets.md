@@ -3,121 +3,62 @@
 
 Manage widget sets, releases, and repositories
 
-9 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+5 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ## pltr widgets
 
 ### pltr widgets get
 
-Get details of a widget set.
+[beta] Get a widget set.
 
 `pltr widgets get WIDGET_SET_RID [OPTIONS]`
 
-- `WIDGET_SET_RID`: Widget set RID (e.g., ri.widgetregistry..widget-set.xxx)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
-
-## pltr widgets dev-mode
-
-Dev mode settings management
-
-### pltr widgets dev-mode disable
-
-Disable dev mode for the current user.
-
-`pltr widgets dev-mode disable [OPTIONS]`
-
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
-
-### pltr widgets dev-mode enable
-
-Enable dev mode for the current user.
-
-`pltr widgets dev-mode enable [OPTIONS]`
-
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
-
-### pltr widgets dev-mode get
-
-Get dev mode settings for the current user.
-
-`pltr widgets dev-mode get [OPTIONS]`
-
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
-
-### pltr widgets dev-mode pause
-
-Pause dev mode for the current user.
-
-`pltr widgets dev-mode pause [OPTIONS]`
-
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- SDK: not recorded yet
+- `WIDGET_SET_RID`: Widget set RID (ri.widgetregistry..widget-set.<id>).
+- beta · SDK: `widgets.WidgetSet.get`
 
 ## pltr widgets release
 
-Widget release management
+Releases of a widget set.
 
 ### pltr widgets release delete
 
-Delete a specific release.
+[beta] Delete a release of a widget set.
 
 `pltr widgets release delete WIDGET_SET_RID RELEASE_VERSION [OPTIONS]`
 
-- `WIDGET_SET_RID`: Widget set RID (e.g., ri.widgetregistry..widget-set.xxx)
-- `RELEASE_VERSION`: Release version to delete (semver, e.g., 1.2.0)
-- `--yes`, `-y`: Skip confirmation prompt
-- `--profile`, `-p` TEXT: Profile name
-- output: text (no `--format`) · SDK: not recorded yet
+- `WIDGET_SET_RID`: Widget set RID (ri.widgetregistry..widget-set.<id>).
+- `RELEASE_VERSION`: Release version (a semantic version, e.g. 1.2.0).
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `widgets.WidgetSet.Release.delete`
 
 ### pltr widgets release get
 
-Get details of a specific release.
+[beta] Get a release of a widget set.
 
 `pltr widgets release get WIDGET_SET_RID RELEASE_VERSION [OPTIONS]`
 
-- `WIDGET_SET_RID`: Widget set RID (e.g., ri.widgetregistry..widget-set.xxx)
-- `RELEASE_VERSION`: Release version (semver, e.g., 1.2.0)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `WIDGET_SET_RID`: Widget set RID (ri.widgetregistry..widget-set.<id>).
+- `RELEASE_VERSION`: Release version (a semantic version, e.g. 1.2.0).
+- beta · SDK: `widgets.WidgetSet.Release.get`
 
 ### pltr widgets release list
 
-List releases for a widget set.
+[beta] List the releases of a widget set.
 
 `pltr widgets release list WIDGET_SET_RID [OPTIONS]`
 
-- `WIDGET_SET_RID`: Widget set RID (e.g., ri.widgetregistry..widget-set.xxx)
-- `--page-size` INTEGER: Number of results per page
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `WIDGET_SET_RID`: Widget set RID (ri.widgetregistry..widget-set.<id>).
+- `--branch` TEXT: Foundry branch (RID or branch name) to list releases from (default: the default branch).
+- beta · paged · SDK: `widgets.WidgetSet.Release.list`
 
 ## pltr widgets repository
 
-Widget repository management
+Repositories that store widget set releases.
 
 ### pltr widgets repository get
 
-Get details of a widget repository.
+[beta] Get a widget repository.
 
 `pltr widgets repository get REPOSITORY_RID [OPTIONS]`
 
-- `REPOSITORY_RID`: Repository RID (e.g., ri.stemma.main.repository.xxx)
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT (default: table): Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- SDK: not recorded yet
+- `REPOSITORY_RID`: Repository RID (ri.stemma.main.repository.<id>).
+- beta · SDK: `widgets.Repository.get`

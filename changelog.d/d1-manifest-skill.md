@@ -80,8 +80,9 @@
   sentence or move the entries.
 - After every merge that changes commands (help texts, options, metadata),
   run `uv run python scripts/generate_skill_reference.py` and commit
-  `claude_skill/reference/`; the staleness test fails until then. Commands
-  that still lack metadata show "SDK: not recorded yet" in the reference.
+  `claude_skill/reference/`; the staleness test fails until then. A command
+  without `@pltr_command` metadata shows "SDK: not recorded yet" there (none
+  does at the time of writing).
 
 ### Not verified live
 
