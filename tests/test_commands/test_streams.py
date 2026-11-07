@@ -1,579 +1,632 @@
-"""Tests for Streams commands."""
+"""Tests for `pltr streams` against a real FoundryClient (only HTTP is faked)."""
+
+import csv
+import io
+import json
 
 import pytest
-from unittest.mock import Mock, patch
 from typer.testing import CliRunner
+
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_streams as st
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+
+SCHEMA = json.dumps(st.SCHEMA)
 
 
-class TestStreamsCommands:
-    """Test Streams CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, list(args), **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock StreamsService."""
-        with patch("pltr.commands.streams.StreamsService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
-    # ===== Dataset Create Tests =====
 
-    def test_dataset_create_success(self, runner, mock_service):
-        """Test successful dataset creation."""
-        # Setup
-        dataset_result = {
-            "rid": "ri.foundry.main.dataset.abc123",
-            "name": "test-stream",
-            "streamRid": "ri.foundry.main.stream.xyz789",
+@pytest.fixture
+def interactive(monkeypatch):
+    """Pretend stdin is a terminal so confirmation prompts are allowed."""
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
+
+
+# -------------------------------------------------------------------- help
+
+
+def help_line(help_text: str, command: str) -> str:
+    return next(row for row in help_text.splitlines() if f" {command} " in row)
+
+
+def test_beta_commands_are_labeled():
+    dataset_help = invoke("streams", "dataset", "--help").stdout
+    assert "[beta]" in help_line(dataset_help, "create")
+
+    stream_help = invoke("streams", "stream", "--help").stdout
+    for command in ("create", "reset"):
+        assert "[beta]" in help_line(stream_help, command), command
+    for command in ("get", "publish", "publish-batch"):
+        assert "[beta]" not in help_line(stream_help, command), command
+
+
+def test_schema_help_documents_the_real_stream_schema_format():
+    help_text = invoke("streams", "dataset", "create", "--help").stdout
+    assert '"fields"' in help_text
+    assert "fieldSchemaList" not in help_text
+
+
+# ---------------------------------------------------------- dataset create
+
+
+def test_create_dataset(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=st.dataset())
+    schema_file = tmp_path / "schema.json"
+    schema_file.write_text(SCHEMA)
+
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "sensor-data",
+        "--folder",
+        st.FOLDER_RID,
+        "--schema",
+        f"@{schema_file}",
+        "--partitions",
+        "5",
+        "--type",
+        "high_throughput",
+        "--compressed",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == st.dataset()
+    assert result.stderr == ""
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.params["preview"]) == ("POST", "true")
+    assert json.loads(request.content) == {
+        "name": "sensor-data",
+        "parentFolderRid": st.FOLDER_RID,
+        "schema": st.SCHEMA,
+        "partitionsCount": 5,
+        "streamType": "HIGH_THROUGHPUT",
+        "compressed": True,
+    }
+
+
+def test_create_dataset_table_and_short_flags(stub_foundry_http):
+    stub_foundry_http.respond(json=st.dataset())
+
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "sensor-data",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        SCHEMA,
+        "-b",
+        "develop",
+    )
+
+    assert result.exit_code == 0, result.output
+    for expected in (st.DATASET_RID, "sensor-data", st.FOLDER_RID):
+        assert expected in result.stdout
+    assert (
+        f"Created streaming dataset 'sensor-data' ({st.DATASET_RID})" in result.stderr
+    )
+    assert json.loads(stub_foundry_http.requests[0].content)["branchName"] == "develop"
+
+
+def test_create_dataset_rejects_the_old_documented_schema_format(stub_foundry_http):
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "x",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        '{"fieldSchemaList": [{"name": "value", "type": "STRING"}]}',
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert '"fields" list' in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_create_dataset_invalid_schema_field_is_a_usage_error(stub_foundry_http):
+    bad = json.dumps({"fields": [{"name": "id"}]})  # no "schema"
+
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "x",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        bad,
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+def test_create_dataset_invalid_json(stub_foundry_http):
+    result = invoke("streams", "dataset", "create", "x", "-f", st.FOLDER_RID, "-s", "{")
+
+    assert result.exit_code == 2
+    assert "invalid JSON" in result.stderr
+
+
+def test_create_dataset_rejects_unknown_stream_type(stub_foundry_http):
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "x",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        SCHEMA,
+        "--type",
+        "FAST",
+    )
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+
+
+def test_create_dataset_name_conflict(stub_foundry_http):
+    stub_foundry_http.respond(
+        409,
+        json=fj.error(
+            "ResourceNameAlreadyExists",
+            "CONFLICT",
+            parameters={"parentFolderRid": st.FOLDER_RID, "displayName": "sensor-data"},
+        ),
+    )
+
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "sensor-data",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        SCHEMA,
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 7
+    assert json_lines(result.stderr)[-1]["errorName"] == "ResourceNameAlreadyExists"
+
+
+def test_create_dataset_preview_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json=st.dataset())
+
+    result = invoke(
+        "streams",
+        "dataset",
+        "create",
+        "x",
+        "-f",
+        st.FOLDER_RID,
+        "-s",
+        SCHEMA,
+        "--preview",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    [warning] = json_lines(result.stderr)
+    assert "--preview is deprecated" in warning["message"]
+    assert stub_foundry_http.requests[0].url.params["preview"] == "true"
+
+
+# ----------------------------------------------------------- stream create
+
+
+def test_create_stream(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream("feature"))
+
+    result = invoke(
+        "streams",
+        "stream",
+        "create",
+        st.DATASET_RID,
+        "--branch",
+        "feature",
+        "--schema",
+        SCHEMA,
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == st.stream("feature")
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"/api/v2/streams/datasets/{st.DATASET_RID}/streams"
+    assert request.url.params["preview"] == "true"
+    assert json.loads(request.content) == {"branchName": "feature", "schema": st.SCHEMA}
+
+
+def test_create_stream_branch_exists(stub_foundry_http):
+    stub_foundry_http.respond(
+        409,
+        json=fj.error(
+            "BranchAlreadyExists",
+            "CONFLICT",
+            parameters={"datasetRid": st.DATASET_RID, "branchName": "feature"},
+        ),
+    )
+
+    result = invoke(
+        "streams", "stream", "create", st.DATASET_RID, "-b", "feature", "-s", SCHEMA
+    )
+
+    assert result.exit_code == 7
+    assert "BranchAlreadyExists" in result.stderr
+    assert result.stdout == ""
+
+
+# -------------------------------------------------------------- stream get
+
+
+def test_get_stream_table(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
+
+    result = invoke("streams", "stream", "get", st.DATASET_RID, "--branch", "master")
+
+    assert result.exit_code == 0, result.output
+    for expected in ("master", st.VIEW_RID, "LOW_LATENCY", "id (long), value (string)"):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert dict(request.url.params) == {}  # GA
+
+
+def test_get_stream_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream(compressed=True))
+
+    result = invoke(
+        "streams", "stream", "get", st.DATASET_RID, "-b", "master", "-f", "csv"
+    )
+
+    assert list(csv.DictReader(io.StringIO(result.stdout))) == [
+        {
+            "Branch": "master",
+            "View RID": st.VIEW_RID,
+            "Stream Type": "LOW_LATENCY",
+            "Partitions": "1",
+            "Compressed": "true",
+            "Fields": "id (long), value (string)",
+            "Key Fields": "id",
         }
-        mock_service.create_dataset.return_value = dataset_result
+    ]
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "dataset",
-                "create",
-                "test-stream",
-                "--folder",
-                "ri.compass.main.folder.123",
-                "--schema",
-                '{"fieldSchemaList": [{"name": "value", "type": "STRING"}]}',
-                "--format",
-                "json",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        assert "Created streaming dataset" in result.output
-        mock_service.create_dataset.assert_called_once()
+def test_get_stream_json_is_the_sdk_serialization(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
 
-    def test_dataset_create_with_options(self, runner, mock_service):
-        """Test dataset creation with all options."""
-        # Setup
-        dataset_result = {
-            "rid": "ri.foundry.main.dataset.abc123",
-            "name": "high-throughput-stream",
+    result = invoke(
+        "streams", "stream", "get", st.DATASET_RID, "-b", "master", "-f", "json"
+    )
+
+    assert json.loads(result.stdout) == st.stream()
+
+
+def test_get_stream_not_found(stub_foundry_http):
+    stub_foundry_http.respond(404, json=st.stream_not_found("nope"))
+
+    result = invoke(
+        "streams", "stream", "get", st.DATASET_RID, "-b", "nope", "-f", "json"
+    )
+
+    assert result.exit_code == 5
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "StreamNotFound")
+    assert error["parameters"]["streamBranchName"] == "nope"
+
+
+def test_get_stream_invalid_rid(stub_foundry_http):
+    result = invoke(
+        "streams", "stream", "get", "not-a-rid", "-b", "master", "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert "is not a valid RID" in json_lines(result.stderr)[-1]["message"]
+    assert stub_foundry_http.requests == []
+
+
+# ----------------------------------------------------------------- publish
+
+
+def test_publish_record(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "streams",
+        "stream",
+        "publish",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "--record",
+        '{"id": 1, "value": "a"}',
+        "--view",
+        st.VIEW_RID,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""
+    assert "Published 1 record to the stream on branch 'master'" in result.stderr
+    [request] = stub_foundry_http.requests
+    assert request.url.path.endswith("/streams/master/publishRecord")
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "record": {"id": 1, "value": "a"},
+        "viewRid": st.VIEW_RID,
+    }
+
+
+def test_publish_record_json_prints_null(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "streams",
+        "stream",
+        "publish",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "-r",
+        '{"id": 1}',
+        "-f",
+        "json",
+    )
+
+    assert json.loads(result.stdout) is None
+    assert result.stderr == ""
+
+
+def test_publish_record_from_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(204)
+    record_file = tmp_path / "record.json"
+    record_file.write_text('{"id": 7}')
+
+    result = invoke(
+        "streams",
+        "stream",
+        "publish",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "-r",
+        f"@{record_file}",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(stub_foundry_http.requests[0].content) == {"record": {"id": 7}}
+
+
+@pytest.mark.parametrize("record", ["[1, 2]", "{"])
+def test_publish_record_rejects_non_objects(stub_foundry_http, record):
+    result = invoke(
+        "streams", "stream", "publish", st.DATASET_RID, "-b", "master", "-r", record
+    )
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+
+
+def test_publish_record_permission_denied(stub_foundry_http):
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "PublishRecordToStreamPermissionDenied",
+            "PERMISSION_DENIED",
+            parameters={"datasetRid": st.DATASET_RID, "streamBranchName": "master"},
+        ),
+    )
+
+    result = invoke(
+        "streams",
+        "stream",
+        "publish",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "-r",
+        '{"id": 1}',
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 4
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == (
+        "permission_denied",
+        "PublishRecordToStreamPermissionDenied",
+    )
+
+
+def test_publish_batch(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "streams",
+        "stream",
+        "publish-batch",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "--records",
+        '[{"id": 1}, {"id": 2}]',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Published 2 records" in result.stderr
+    [request] = stub_foundry_http.requests
+    assert request.url.path.endswith("/streams/master/publishRecords")
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {"records": [{"id": 1}, {"id": 2}]}
+
+
+@pytest.mark.parametrize("records", ["[]", '{"id": 1}', "[1]"])
+def test_publish_batch_needs_an_array_of_objects(stub_foundry_http, records):
+    result = invoke(
+        "streams",
+        "stream",
+        "publish-batch",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "-r",
+        records,
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert "non-empty JSON array of objects" in json_lines(result.stderr)[-1]["message"]
+    assert stub_foundry_http.requests == []
+
+
+# ------------------------------------------------------------------- reset
+
+
+def test_reset_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke("streams", "stream", "reset", st.DATASET_RID, "-b", "master")
+
+    assert result.exit_code == 2
+    assert "Re-run with --yes" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_reset_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
+
+    result = invoke(
+        "streams",
+        "stream",
+        "reset",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "--yes",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == st.stream()
+    [request] = stub_foundry_http.requests
+    assert request.url.path.endswith(f"{st.DATASET_RID}/streams/master/reset")
+    assert request.url.params["preview"] == "true"
+    assert json.loads(request.content) == {}
+
+
+def test_reset_with_new_settings(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream(partitionsCount=4))
+
+    result = invoke(
+        "streams",
+        "stream",
+        "reset",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "-y",
+        "--schema",
+        SCHEMA,
+        "--partitions",
+        "4",
+        "--type",
+        "LOW_LATENCY",
+        "--no-compressed",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"new view {st.VIEW_RID}" in result.stderr
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "schema": st.SCHEMA,
+        "partitionsCount": 4,
+        "streamType": "LOW_LATENCY",
+        "compressed": False,
+    }
+
+
+def test_reset_validates_the_schema_before_asking(stub_foundry_http):
+    result = invoke(
+        "streams", "stream", "reset", st.DATASET_RID, "-b", "master", "-s", "[]"
+    )
+
+    assert result.exit_code == 2
+    assert '"fields" list' in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_reset_confirm_is_a_deprecated_alias_for_yes(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
+
+    result = invoke(
+        "streams",
+        "stream",
+        "reset",
+        st.DATASET_RID,
+        "-b",
+        "master",
+        "--confirm",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json_lines(result.stderr) == [
+        {
+            "type": "warning",
+            "message": "--confirm is deprecated and will be removed in a future "
+            "release; use --yes.",
         }
-        mock_service.create_dataset.return_value = dataset_result
+    ]
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "dataset",
-                "create",
-                "high-throughput-stream",
-                "--folder",
-                "ri.compass.main.folder.123",
-                "--schema",
-                '{"fieldSchemaList": []}',
-                "--branch",
-                "develop",
-                "--compressed",
-                "--partitions",
-                "5",
-                "--type",
-                "HIGH_THROUGHPUT",
-                "--preview",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        call_kwargs = mock_service.create_dataset.call_args[1]
-        assert call_kwargs["branch_name"] == "develop"
-        assert call_kwargs["compressed"] is True
-        assert call_kwargs["partitions_count"] == 5
-        assert call_kwargs["stream_type"] == "HIGH_THROUGHPUT"
-        assert call_kwargs["preview"] is True
+def test_reset_prompts_on_stderr_when_interactive(stub_foundry_http, interactive):
+    stub_foundry_http.respond(json=st.stream())
 
-    def test_dataset_create_invalid_schema(self, runner, mock_service):
-        """Test dataset creation with invalid JSON schema."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "dataset",
-                "create",
-                "test-stream",
-                "--folder",
-                "ri.compass.main.folder.123",
-                "--schema",
-                "invalid-json",
-            ],
-        )
+    result = invoke(
+        "streams", "stream", "reset", st.DATASET_RID, "-b", "master", input="y\n"
+    )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error parsing schema" in result.output
+    assert result.exit_code == 0, result.output
+    assert "Reset the stream on branch 'master'" in result.stderr
+    assert "deletes all of its records" in result.stderr
+    assert len(stub_foundry_http.requests) == 1
 
-    def test_dataset_create_error(self, runner, mock_service):
-        """Test dataset creation with service error."""
-        # Setup
-        mock_service.create_dataset.side_effect = Exception("Permission denied")
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "dataset",
-                "create",
-                "test-stream",
-                "--folder",
-                "ri.compass.main.folder.123",
-                "--schema",
-                "{}",
-            ],
-        )
+def test_reset_answering_no_aborts(stub_foundry_http, interactive):
+    result = invoke(
+        "streams", "stream", "reset", st.DATASET_RID, "-b", "master", input="n\n"
+    )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error:" in result.output
-
-    # ===== Stream Create Tests =====
-
-    def test_stream_create_success(self, runner, mock_service):
-        """Test successful stream creation."""
-        # Setup
-        stream_result = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": "feature-branch",
-        }
-        mock_service.create_stream.return_value = stream_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "create",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "feature-branch",
-                "--schema",
-                '{"fieldSchemaList": []}',
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Created stream" in result.output
-        mock_service.create_stream.assert_called_once()
-
-    def test_stream_create_with_options(self, runner, mock_service):
-        """Test stream creation with all options."""
-        # Setup
-        stream_result = {"streamRid": "ri.foundry.main.stream.xyz789"}
-        mock_service.create_stream.return_value = stream_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "create",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "production",
-                "--schema",
-                "{}",
-                "--compressed",
-                "--partitions",
-                "10",
-                "--type",
-                "LOW_LATENCY",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        call_kwargs = mock_service.create_stream.call_args[1]
-        assert call_kwargs["branch_name"] == "production"
-        assert call_kwargs["compressed"] is True
-        assert call_kwargs["partitions_count"] == 10
-        assert call_kwargs["stream_type"] == "LOW_LATENCY"
-
-    def test_stream_create_error(self, runner, mock_service):
-        """Test stream creation with service error."""
-        # Setup
-        mock_service.create_stream.side_effect = Exception("Branch already exists")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "create",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "main",
-                "--schema",
-                "{}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error:" in result.output
-
-    # ===== Stream Get Tests =====
-
-    def test_stream_get_success(self, runner, mock_service):
-        """Test successful get stream."""
-        # Setup
-        stream_result = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": "master",
-            "schema": {"fieldSchemaList": []},
-        }
-        mock_service.get_stream.return_value = stream_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "get",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_stream.assert_called_once_with(
-            dataset_rid="ri.foundry.main.dataset.123",
-            stream_branch_name="master",
-            preview=False,
-        )
-
-    def test_stream_get_with_preview(self, runner, mock_service):
-        """Test get stream with preview mode."""
-        # Setup
-        stream_result = {"streamRid": "ri.foundry.main.stream.xyz789"}
-        mock_service.get_stream.return_value = stream_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "get",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        call_kwargs = mock_service.get_stream.call_args[1]
-        assert call_kwargs["preview"] is True
-
-    def test_stream_get_error(self, runner, mock_service):
-        """Test get stream with service error."""
-        # Setup
-        mock_service.get_stream.side_effect = Exception("Stream not found")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "get",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error:" in result.output
-
-    # ===== Publish Record Tests =====
-
-    def test_publish_record_success(self, runner, mock_service):
-        """Test successful record publishing."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--record",
-                '{"id": 123, "name": "test"}',
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Record published successfully" in result.output
-        mock_service.publish_record.assert_called_once()
-
-    def test_publish_record_with_view(self, runner, mock_service):
-        """Test publishing record with view RID."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--record",
-                "{}",
-                "--view",
-                "ri.foundry.main.view.abc",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        call_kwargs = mock_service.publish_record.call_args[1]
-        assert call_kwargs["view_rid"] == "ri.foundry.main.view.abc"
-        assert call_kwargs["preview"] is True
-
-    def test_publish_record_invalid_json(self, runner, mock_service):
-        """Test publishing record with invalid JSON."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--record",
-                "invalid-json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error parsing record" in result.output
-
-    def test_publish_record_error(self, runner, mock_service):
-        """Test publishing record with service error."""
-        # Setup
-        mock_service.publish_record.side_effect = Exception("Schema mismatch")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--record",
-                "{}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error:" in result.output
-
-    # ===== Publish Batch Tests =====
-
-    def test_publish_batch_success(self, runner, mock_service):
-        """Test successful batch record publishing."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish-batch",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--records",
-                '[{"id": 1}, {"id": 2}]',
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Published 2 records successfully" in result.output
-        mock_service.publish_records.assert_called_once()
-
-    def test_publish_batch_invalid_json(self, runner, mock_service):
-        """Test batch publishing with invalid JSON."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish-batch",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--records",
-                "not-a-list",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error parsing records" in result.output
-
-    def test_publish_batch_not_array(self, runner, mock_service):
-        """Test batch publishing with non-array JSON."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "publish-batch",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--records",
-                '{"id": 1}',
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "must be a JSON array" in result.output
-
-    # ===== Reset Stream Tests =====
-
-    def test_reset_stream_with_confirm(self, runner, mock_service):
-        """Test stream reset with confirmation flag."""
-        # Setup
-        stream_result = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": "master",
-        }
-        mock_service.reset_stream.return_value = stream_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "reset",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--confirm",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Stream reset successfully" in result.output
-        mock_service.reset_stream.assert_called_once()
-
-    def test_reset_stream_cancelled(self, runner, mock_service):
-        """Test stream reset cancelled by user."""
-        # Execute (simulate user saying 'no' to confirmation)
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "reset",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-            ],
-            input="n\n",
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Operation cancelled" in result.output
-        mock_service.reset_stream.assert_not_called()
-
-    def test_reset_stream_confirmed(self, runner, mock_service):
-        """Test stream reset with user confirmation."""
-        # Setup
-        stream_result = {"streamRid": "ri.foundry.main.stream.xyz789"}
-        mock_service.reset_stream.return_value = stream_result
-
-        # Execute (simulate user saying 'yes' to confirmation)
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "reset",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-            ],
-            input="y\n",
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "Stream reset successfully" in result.output
-        mock_service.reset_stream.assert_called_once()
-
-    def test_reset_stream_error(self, runner, mock_service):
-        """Test stream reset with service error."""
-        # Setup
-        mock_service.reset_stream.side_effect = Exception("Reset failed")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "streams",
-                "stream",
-                "reset",
-                "ri.foundry.main.dataset.123",
-                "--branch",
-                "master",
-                "--confirm",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Error:" in result.output
+    assert result.exit_code == 1
+    assert "Aborted" in result.stderr
+    assert stub_foundry_http.requests == []

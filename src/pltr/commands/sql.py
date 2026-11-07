@@ -1,405 +1,418 @@
 """
-SQL commands for the pltr CLI.
-Provides commands for executing SQL queries against Foundry datasets.
+SQL commands (Foundry SQL queries API).
+
+Queries use the Spark SQL dialect (SELECT only) and reference datasets by
+path or RID. The SQL endpoints pltr calls are GA. Query results are rows:
+JSON output is ``{"data": [...]}`` with one object per row, keyed by column
+name.
 """
 
+import base64
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import click
 import typer
-from rich.console import Console
-
-from ..services.sql import SqlService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..utils.completion import (
-    complete_profile,
-    complete_output_format,
-    complete_sql_query,
+from click.core import ParameterSource
+from foundry_sdk.v2.sql_queries.models import (
+    CanceledQueryStatus,
+    FailedQueryStatus,
+    RunningQueryStatus,
 )
+from typing_extensions import Annotated
+
+from ..contract import (
+    Columns,
+    FormatOption,
+    OutputOption,
+    ProfileOption,
+    YesOption,
+    confirm_destructive,
+    emit,
+    format_option,
+    info,
+    pltr_command,
+    spinner,
+    success,
+    warn,
+)
+from ..services.sql import SqlService, check_not_failed, query_id_of
+from ..utils.completion import complete_sql_query
 
 app = typer.Typer(name="sql", help="Execute SQL queries against Foundry datasets")
 
+_EXECUTE_SDK = (
+    "sql_queries.SqlQuery.execute",
+    "sql_queries.SqlQuery.get_status",
+    "sql_queries.SqlQuery.get_results",
+)
+
+#: File extensions `sql export` maps to an output format.
+_EXPORT_FORMATS = {".json": "json", ".csv": "csv"}
+
+
+def _deprecated_preview(
+    ctx: click.Context, param: click.Parameter, value: Optional[bool]
+) -> Optional[bool]:
+    if value is not None and not ctx.resilient_parsing:
+        warn(
+            "--preview/--no-preview is deprecated and has no effect: the SQL "
+            "endpoints are GA. It will be removed in a future release."
+        )
+    return value
+
+
+QueryArgument = Annotated[
+    str,
+    typer.Argument(
+        help=(
+            "SQL query (Spark SQL dialect, SELECT only). Reference datasets by "
+            "path or RID, e.g. SELECT * FROM `ri.foundry.main.dataset.<id>` LIMIT 10."
+        ),
+        autocompletion=complete_sql_query,
+        show_default=False,
+    ),
+]
+QueryIdArgument = Annotated[
+    str,
+    typer.Argument(
+        help="Query ID, as printed by 'pltr sql submit' (queryId in JSON).",
+        show_default=False,
+    ),
+]
+TimeoutOption = Annotated[
+    int,
+    typer.Option("--timeout", min=1, help="Seconds to wait for the query to finish."),
+]
+FallbackBranchesOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--fallback-branches",
+        help=(
+            "Comma-separated branch names to read datasets from when the query "
+            "names no branch; the first that exists is used (default: the "
+            "default branch, usually master)."
+        ),
+        show_default=False,
+    ),
+]
+
+
+def _export_format_option() -> Any:
+    """The shared --format option, whose default (None) means "from the file
+    extension" for `sql export`."""
+    option = format_option()
+    option.show_default = False
+    return option
+
+
+#: Hidden, deprecated no-op: the SQL commands used to have --preview/--no-preview.
+PreviewFlagNoopOption = Annotated[
+    Optional[bool],
+    typer.Option(
+        "--preview/--no-preview",
+        hidden=True,
+        help="Deprecated; has no effect.",
+        callback=_deprecated_preview,
+    ),
+]
+
+
+# ------------------------------------------------------------------ helpers
+
+
+def _branches(value: Optional[str]) -> Optional[List[str]]:
+    """Parse --fallback-branches into a list (None when not given)."""
+    if value is None:
+        return None
+    branches = [branch.strip() for branch in value.split(",") if branch.strip()]
+    if not branches:
+        raise typer.BadParameter(
+            "give at least one branch name", param_hint="'--fallback-branches'"
+        )
+    return branches
+
+
+def _status_columns(status: Any, query_id: Optional[str] = None) -> Columns:
+    """Table/CSV columns for a ``QueryStatus`` (its variants differ in fields).
+
+    Failed and canceled statuses don't carry the query ID; ``query_id`` (the
+    one the user passed) fills the column then.
+    """
+    columns: Dict[str, Any] = {
+        "Query ID": lambda item: query_id_of(item) or query_id,
+        "Status": "type",
+    }
+    if isinstance(status, FailedQueryStatus):
+        columns["Error"] = "error_message"
+    return columns
+
+
+def _unique_names(names: List[str]) -> List[str]:
+    """Column names with duplicates suffixed ``_2``, ``_3``, ... (in order)."""
+    seen = set()
+    unique = []
+    for name in names:
+        candidate, number = name, 2
+        while candidate in seen:
+            candidate, number = f"{name}_{number}", number + 1
+        seen.add(candidate)
+        unique.append(candidate)
+    return unique
+
+
+def _json_safe(value: Any) -> Any:
+    """Replace bytes (binary columns, also nested) with base64 strings."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    if isinstance(value, (list, tuple)):  # lists, and map entries (tuples)
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):  # structs
+        return {key: _json_safe(item) for key, item in value.items()}
+    return value
+
+
+def _column(name: str) -> Callable[[Dict[str, Any]], Any]:
+    def value(row: Dict[str, Any]) -> Any:
+        return row[name]
+
+    return value
+
+
+def result_rows(table: Any) -> Tuple[Columns, List[Dict[str, Any]]]:
+    """The rows of a query result (a ``pyarrow.Table``) and their columns.
+
+    Rows are dicts keyed by column name, in the result's column order, with
+    JSON-safe values: binary values become base64 strings. Duplicate column
+    names (``SELECT a.id, b.id ...``) get a ``_2``, ``_3`` suffix so no value
+    is lost, with a warning on stderr.
+    """
+    names = _unique_names(list(table.column_names))
+    if names != list(table.column_names):
+        renamed = ", ".join(
+            f"{old} -> {new}"
+            for old, new in zip(table.column_names, names)
+            if old != new
+        )
+        warn(f"The result has duplicate column names; renamed {renamed}.")
+        table = table.rename_columns(names)
+    rows: List[Dict[str, Any]] = table.to_pylist()
+    binary = [field.name for field in table.schema if "binary" in str(field.type)]
+    if binary:
+        for row in rows:
+            for name in binary:
+                row[name] = _json_safe(row[name])
+    return {name: _column(name) for name in names}, rows
+
+
+def _emit_rows(table: Any, *, format: str, output: Optional[str]) -> None:
+    columns, rows = result_rows(table)
+    emit(rows, format=format, output=output, columns=columns)
+
+
+def _export_format(output_file: Path, format: Optional[str]) -> str:
+    """Format for `sql export`: --format from the command line, else the file
+    extension, else --format from $PLTR_FORMAT, else table."""
+    ctx = click.get_current_context()
+    if format and ctx.get_parameter_source("format") is ParameterSource.COMMANDLINE:
+        return format
+    return _EXPORT_FORMATS.get(output_file.suffix.lower(), format or "table")
+
+
+# ----------------------------------------------------------------- commands
+
 
 @app.command("execute")
+@pltr_command(sdk=_EXECUTE_SDK)
 def execute_query(
-    query: str = typer.Argument(
-        ..., help="SQL query to execute", autocompletion=complete_sql_query
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use", autocompletion=complete_profile
-    ),
-    output_format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output_file: Optional[Path] = typer.Option(
-        None, "--output", help="Save results to file"
-    ),
-    timeout: int = typer.Option(300, "--timeout", help="Query timeout in seconds"),
-    fallback_branches: Optional[str] = typer.Option(
-        None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Execute a SQL query and display results.
+    query: QueryArgument,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    timeout: TimeoutOption = 300,
+    fallback_branches: FallbackBranchesOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Run a SQL query, wait for it to finish and print its rows.
 
-    Note: SQL queries are currently in preview and may be modified or removed at any time."""
-    console = Console()
-    formatter = OutputFormatter()
-
-    try:
-        # Parse fallback branches if provided
-        fallback_branch_ids = (
-            fallback_branches.split(",") if fallback_branches else None
+    JSON output is {"data": [...]} with one object per row, keyed by column
+    name; binary values are base64-encoded. The query ID goes to stderr. For
+    long-running queries use 'pltr sql submit' and 'pltr sql wait'.
+    """
+    service = SqlService(profile=profile)
+    with spinner("Running SQL query..."):
+        query_id, table = service.execute_query(
+            query, fallback_branch_ids=_branches(fallback_branches), timeout=timeout
         )
-
-        # Create service and execute query
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Executing SQL query..."):
-            result = service.execute_query(
-                query=query,
-                fallback_branch_ids=fallback_branch_ids,
-                timeout=timeout,
-                format="table" if output_format in ["table", "csv"] else "json",
-                preview=preview,
-            )
-
-        # Extract results
-        query_results = result.get("results", {})
-
-        # Display results
-        if output_file:
-            formatter.save_to_file(query_results, output_file, output_format)
-            console.print(f"[green]Results saved to {output_file}[/green]")
-        else:
-            formatter.display(query_results, output_format)
-
-        # Show query metadata
-        if "query_id" in result:
-            console.print(f"\n[dim]Query ID: {result['query_id']}[/dim]")
-
-    except Exception as e:
-        formatter.print_error(f"Failed to execute query: {e}")
-        raise typer.Exit(1)
+    _emit_rows(table, format=format, output=output)
+    info(f"Query ID: {query_id}")
 
 
 @app.command("submit")
+@pltr_command(sdk="sql_queries.SqlQuery.execute")
 def submit_query(
-    query: str = typer.Argument(..., help="SQL query to submit"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    fallback_branches: Optional[str] = typer.Option(
-        None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Submit a SQL query without waiting for completion.
+    query: QueryArgument,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    fallback_branches: FallbackBranchesOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Start a SQL query without waiting; print its status and query ID.
 
-    Note: SQL queries are currently in preview and may be modified or removed at any time."""
-    console = Console()
-    formatter = OutputFormatter()
-
-    try:
-        # Parse fallback branches if provided
-        fallback_branch_ids = (
-            fallback_branches.split(",") if fallback_branches else None
+    Follow up with 'pltr sql status', 'pltr sql wait' or 'pltr sql results'.
+    In a script: QUERY_ID=$(pltr sql submit "..." --format json | jq -r .queryId)
+    Fails if the query fails or is canceled right away.
+    """
+    with spinner("Submitting SQL query..."):
+        status = SqlService(profile=profile).submit_query(
+            query, fallback_branch_ids=_branches(fallback_branches)
         )
-
-        # Create service and submit query
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Submitting SQL query..."):
-            result = service.submit_query(
-                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
-            )
-
-        console.print("[green]Query submitted successfully[/green]")
-        console.print(f"Query ID: [bold]{result.get('query_id', 'N/A')}[/bold]")
-        console.print(f"Status: [yellow]{result.get('status', 'unknown')}[/yellow]")
-
-        if result.get("status") == "succeeded":
-            console.print("[green]Query completed immediately[/green]")
-        elif result.get("status") == "running":
-            console.print(
-                "Use [bold]pltr sql status <query-id>[/bold] to check progress"
-            )
-            console.print(
-                "Use [bold]pltr sql results <query-id>[/bold] to get results when completed"
-            )
-
-    except Exception as e:
-        formatter.print_error(f"Failed to submit query: {e}")
-        raise typer.Exit(1)
+    check_not_failed(status)
+    query_id = query_id_of(status)
+    success(f"Submitted query {query_id}")
+    if isinstance(status, RunningQueryStatus):
+        info(f"Wait for its results with: pltr sql wait {query_id}")
+    emit(
+        status,
+        format=format,
+        output=output,
+        columns=_status_columns(status),
+        title="SQL Query",
+    )
 
 
 @app.command("status")
+@pltr_command(sdk="sql_queries.SqlQuery.get_status")
 def get_query_status(
-    query_id: str = typer.Argument(..., help="Query ID to check"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Get the status of a submitted query."""
-    console = Console()
-    formatter = OutputFormatter()
-
-    try:
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Checking query status..."):
-            result = service.get_query_status(query_id, preview=preview)
-
-        console.print(f"Query ID: [bold]{query_id}[/bold]")
-
-        status = result.get("status", "unknown")
-        if status == "running":
-            console.print(f"Status: [yellow]{status}[/yellow]")
-            console.print("Query is still executing...")
-        elif status == "succeeded":
-            console.print(f"Status: [green]{status}[/green]")
-            console.print("Use [bold]pltr sql results <query-id>[/bold] to get results")
-        elif status == "failed":
-            console.print(f"Status: [red]{status}[/red]")
-            error_msg = result.get("error_message", "Unknown error")
-            console.print(f"Error: {error_msg}")
-        elif status == "canceled":
-            console.print(f"Status: [red]{status}[/red]")
-            console.print("Query was canceled")
-        else:
-            console.print(f"Status: [dim]{status}[/dim]")
-
-    except Exception as e:
-        formatter.print_error(f"Failed to get query status: {e}")
-        raise typer.Exit(1)
+    query_id: QueryIdArgument,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Get a query's status: running, succeeded, failed (with the error) or canceled."""
+    with spinner(f"Checking query {query_id}..."):
+        status = SqlService(profile=profile).get_query_status(query_id)
+    emit(
+        status,
+        format=format,
+        output=output,
+        columns=_status_columns(status, query_id),
+        title="SQL Query",
+    )
 
 
 @app.command("results")
+@pltr_command(sdk="sql_queries.SqlQuery.get_results")
 def get_query_results(
-    query_id: str = typer.Argument(..., help="Query ID to get results for"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    output_format: str = typer.Option(
-        "table", "--format", help="Output format (table, json, csv)"
-    ),
-    output_file: Optional[Path] = typer.Option(
-        None, "--output", help="Save results to file"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Get the results of a completed query."""
-    console = Console()
-    formatter = OutputFormatter()
+    query_id: QueryIdArgument,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Print the rows of a finished query.
 
-    try:
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Retrieving query results..."):
-            result = service.get_query_results(
-                query_id,
-                format="table" if output_format in ["table", "csv"] else "json",
-                preview=preview,
-            )
-
-        # Display or save results
-        if output_file:
-            formatter.save_to_file(result, output_file, output_format)
-            console.print(f"[green]Results saved to {output_file}[/green]")
-        else:
-            formatter.display(result, output_format)
-
-        console.print(f"\n[dim]Query ID: {query_id}[/dim]")
-
-    except Exception as e:
-        formatter.print_error(f"Failed to get query results: {e}")
-        raise typer.Exit(1)
+    While the query is still running the API waits up to a minute for it and
+    then fails with QueryRunning; use 'pltr sql wait' to wait longer. JSON
+    output is {"data": [...]} with one object per row.
+    """
+    with spinner(f"Fetching results of query {query_id}..."):
+        table = SqlService(profile=profile).get_query_results(query_id)
+    _emit_rows(table, format=format, output=output)
 
 
 @app.command("cancel")
+@pltr_command(
+    sdk=("sql_queries.SqlQuery.cancel", "sql_queries.SqlQuery.get_status"),
+    destructive=True,
+)
 def cancel_query(
-    query_id: str = typer.Argument(..., help="Query ID to cancel"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Cancel a running query."""
-    console = Console()
-    formatter = OutputFormatter()
+    query_id: QueryIdArgument,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Cancel a running query, then print its status.
 
-    try:
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Canceling query..."):
-            result = service.cancel_query(query_id, preview=preview)
-
-        console.print(f"Query ID: [bold]{query_id}[/bold]")
-
-        status = result.get("status", "unknown")
-        if status == "canceled":
-            console.print(f"Status: [red]{status}[/red]")
-            console.print("Query has been canceled successfully")
-        else:
-            console.print(f"Status: [yellow]{status}[/yellow]")
-            console.print("Query may have already completed or was not running")
-
-    except Exception as e:
-        formatter.print_error(f"Failed to cancel query: {e}")
-        raise typer.Exit(1)
+    Canceling a query that has already finished changes nothing.
+    """
+    confirm_destructive(f"Cancel SQL query {query_id}?", yes=yes)
+    service = SqlService(profile=profile)
+    with spinner(f"Canceling query {query_id}..."):
+        service.cancel_query(query_id)
+        status = service.get_query_status(query_id)
+    if isinstance(status, CanceledQueryStatus):
+        success(f"Canceled query {query_id}")
+    else:
+        info(f"Query {query_id} is {status.type}.")
+    emit(
+        status,
+        format=format,
+        output=output,
+        columns=_status_columns(status, query_id),
+        title="SQL Query",
+    )
 
 
 @app.command("export")
+@pltr_command(sdk=_EXECUTE_SDK)
 def export_query_results(
-    query: str = typer.Argument(..., help="SQL query to execute and export"),
-    output_file: Path = typer.Argument(..., help="Output file path"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    output_format: Optional[str] = typer.Option(
-        None,
-        "--format",
-        help="Output format (auto-detected from file extension if not specified)",
-    ),
-    timeout: int = typer.Option(300, "--timeout", help="Query timeout in seconds"),
-    fallback_branches: Optional[str] = typer.Option(
-        None, "--fallback-branches", help="Comma-separated list of fallback branch IDs"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Execute a SQL query and export results to a file.
+    query: QueryArgument,
+    output_file: Annotated[
+        Path,
+        typer.Argument(
+            help="File to write the rows to (overwritten if it exists).",
+            dir_okay=False,
+            show_default=False,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: Annotated[Optional[str], _export_format_option()] = None,
+    timeout: TimeoutOption = 300,
+    fallback_branches: FallbackBranchesOption = None,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Run a SQL query and write its rows to a file.
 
-    Note: SQL queries are currently in preview and may be modified or removed at any time."""
-    console = Console()
-    formatter = OutputFormatter()
-
-    try:
-        # Auto-detect format from file extension if not specified
-        if output_format is None:
-            ext = output_file.suffix.lower()
-            if ext == ".json":
-                output_format = "json"
-            elif ext == ".csv":
-                output_format = "csv"
-            else:
-                output_format = "table"  # Default
-
-        # Parse fallback branches if provided
-        fallback_branch_ids = (
-            fallback_branches.split(",") if fallback_branches else None
+    The file format follows its extension (.json, .csv; anything else gets a
+    table) unless --format is given on the command line. Nothing is printed
+    on stdout.
+    """
+    file_format = _export_format(output_file, format)
+    service = SqlService(profile=profile)
+    with spinner("Running SQL query..."):
+        query_id, table = service.execute_query(
+            query, fallback_branch_ids=_branches(fallback_branches), timeout=timeout
         )
-
-        # Create service and execute query
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Executing SQL query..."):
-            result = service.execute_query(
-                query=query,
-                fallback_branch_ids=fallback_branch_ids,
-                timeout=timeout,
-                format="table" if output_format in ["table", "csv"] else "json",
-                preview=preview,
-            )
-
-        # Save results to file
-        query_results = result.get("results", {})
-        formatter.save_to_file(query_results, output_file, output_format)
-
-        console.print(
-            f"[green]Query executed and results saved to {output_file}[/green]"
-        )
-
-        # Show query metadata
-        if "query_id" in result:
-            console.print(f"[dim]Query ID: {result['query_id']}[/dim]")
-
-    except Exception as e:
-        formatter.print_error(f"Failed to export query results: {e}")
-        raise typer.Exit(1)
+    _emit_rows(table, format=file_format, output=str(output_file))
+    info(f"Query ID: {query_id}")
 
 
 @app.command("wait")
+@pltr_command(
+    sdk=("sql_queries.SqlQuery.get_status", "sql_queries.SqlQuery.get_results")
+)
 def wait_for_query(
-    query_id: str = typer.Argument(..., help="Query ID to wait for"),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Auth profile to use"
-    ),
-    timeout: int = typer.Option(300, "--timeout", help="Maximum wait time in seconds"),
-    output_format: str = typer.Option(
-        "table", "--format", help="Output format for results (table, json, csv)"
-    ),
-    output_file: Optional[Path] = typer.Option(
-        None, "--output", help="Save results to file when completed"
-    ),
-    preview: bool = typer.Option(
-        True,
-        "--preview/--no-preview",
-        help="Enable preview mode (required for SQL API)",
-    ),
-) -> None:
-    """Wait for a query to complete and optionally display results."""
-    console = Console()
-    formatter = OutputFormatter()
+    query_id: QueryIdArgument,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    timeout: TimeoutOption = 300,
+    preview: PreviewFlagNoopOption = None,
+):
+    """Wait for a submitted query to finish, then print its rows.
 
-    try:
-        service = SqlService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Waiting for query to complete..."):
-            status_result = service.wait_for_completion(
-                query_id, timeout, preview=preview
-            )
-
-        console.print(f"Query ID: [bold]{query_id}[/bold]")
-        console.print(
-            f"Status: [green]{status_result.get('status', 'completed')}[/green]"
-        )
-
-        # Get and display results if requested
-        if output_file or output_format != "table":
-            with SpinnerProgressTracker().track_spinner("Retrieving results..."):
-                result = service.get_query_results(
-                    query_id,
-                    format="table" if output_format in ["table", "csv"] else "json",
-                    preview=preview,
-                )
-
-            if output_file:
-                formatter.save_to_file(result, output_file, output_format)
-                console.print(f"[green]Results saved to {output_file}[/green]")
-            else:
-                formatter.display(result, output_format)
-        else:
-            console.print("Use [bold]pltr sql results <query-id>[/bold] to get results")
-
-    except Exception as e:
-        formatter.print_error(f"Failed while waiting for query: {e}")
-        raise typer.Exit(1)
+    Fails if the query failed or was canceled, or is still running after
+    --timeout seconds (it keeps running then). Output is the same as
+    'pltr sql results'.
+    """
+    service = SqlService(profile=profile)
+    with spinner(f"Waiting for query {query_id}..."):
+        service.wait_for_query(query_id, timeout=timeout)
+        table = service.get_query_results(query_id)
+    success(f"Query {query_id} succeeded")
+    _emit_rows(table, format=format, output=output)

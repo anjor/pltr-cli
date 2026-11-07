@@ -1,13 +1,22 @@
 """Contract-test cases for src/pltr/commands/sql.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "sql cancel",
-    "sql execute",
-    "sql export",
-    "sql results",
-    "sql status",
-    "sql submit",
-    "sql wait",
+from tests import foundry_json_sql as sj
+
+# execute polls getStatus while the query runs, then fetches the results.
+_EXECUTE = [{"json": sj.running()}, {"json": sj.succeeded()}, sj.results()]
+
+SUCCESS = {
+    "sql execute": _EXECUTE,
+    "sql submit": [{"json": sj.running()}],
+    "sql status": [{"json": sj.running()}],
+    "sql results": [sj.results()],
+    "sql cancel": [{"status_code": 204}, {"json": sj.canceled()}],
+    "sql wait": [{"json": sj.succeeded()}, sj.results()],
+}
+
+SUCCESS_EXEMPT = {
+    "sql export": (
+        "writes the rows to OUTPUT_FILE (like --output), so stdout stays empty by "
+        "design; tests/test_commands/test_sql.py covers the success path"
+    ),
 }
