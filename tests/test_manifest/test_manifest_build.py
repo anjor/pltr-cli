@@ -105,7 +105,8 @@ def test_manifest_doesnt_depend_on_the_environment(manifest, tmp_path):
         env=env,
     ).stdout
     expected = json.dumps(to_document(manifest), indent=2, ensure_ascii=True) + "\n"
-    assert output.decode("ascii") == expected
+    # Windows writes text-mode stdout with CRLF line endings.
+    assert output.decode("ascii").replace("\r\n", "\n") == expected
 
 
 def test_manifest_holds_no_local_paths(manifest):
