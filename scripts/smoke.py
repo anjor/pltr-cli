@@ -517,6 +517,18 @@ def note(path: str, label: str) -> Validator:
     return validate
 
 
+def note_count(path: str, noun: str) -> Validator:
+    """Report how many items the list at path has, or that it is missing."""
+
+    def validate(doc: Any, ctx: Context) -> Optional[str]:
+        value = get_path(doc, path, _MISSING)
+        if not isinstance(value, list):
+            return f"no {path} in the output"
+        return _count(len(value), noun)
+
+    return validate
+
+
 def describe_verify(doc: Any, ctx: Context) -> Optional[str]:
     user = doc.get("user") or {}
     source = doc.get("authSource") or {}
@@ -976,7 +988,7 @@ CHECKS: Tuple[Check, ...] = (
         expect=(
             equals("apiName", "{ontology.object_type}"),
             has("primaryKey"),
-            note("datasources", "datasources"),
+            note_count("datasources", "datasource"),
         ),
         capture={"ontology.pk_property": "primaryKey"},
     ),
