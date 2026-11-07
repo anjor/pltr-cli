@@ -36,16 +36,6 @@ services/language_models.py::LanguageModelsService.generate_embeddings::language
 services/language_models.py::LanguageModelsService.send_message::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
 services/language_models.py::LanguageModelsService.send_messages_advanced::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
 
-# src/pltr/services/mediasets.py
-services/mediasets.py::MediaSetsService.abort_transaction::media_sets.MediaSet.abort::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.calculate_thumbnail::media_sets.MediaSet.calculate::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.commit_transaction::media_sets.MediaSet.commit::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.create_transaction::media_sets.MediaSet.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.get_media_item_by_path::media_sets.MediaSet.get_rid_by_path::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet.reference::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/ontology.py
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::too-many-positional  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
@@ -57,25 +47,6 @@ services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.Ontolo
 services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(filter)  # #182 ontology object-aggregate: OntologyObject.aggregate filters with where=, not filter=
 services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
 services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
-
-# src/pltr/services/sql.py
-services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.cancel_query::sql_queries.SqlQuery.cancel::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.cancel_query::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.execute_query::sql_queries.SqlQuery.execute::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_results::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_results::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_status::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.submit_query::sql_queries.SqlQuery.execute::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.wait_for_completion::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/streams.py
-services/streams.py::StreamsService.create_dataset::streams.Dataset.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/streams.py::StreamsService.create_stream::streams.Dataset.Stream.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/streams.py::StreamsService.get_stream::streams.Dataset.Stream.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.publish_record::streams.Dataset.Stream.publish_record::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.publish_records::streams.Dataset.Stream.publish_records::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.reset_stream::streams.Dataset.Stream.reset::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
 # src/pltr/services/third_party_applications.py
 services/third_party_applications.py::ThirdPartyApplicationsService.get_application::third_party_applications.ThirdPartyApplication.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
