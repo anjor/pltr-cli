@@ -74,7 +74,7 @@ BranchOption = Annotated[
     typer.Option("--branch", "-b", help="Branch of the stream.", show_default=False),
 ]
 SchemaHelp = (
-    'Foundry stream schema as JSON or @file.json: a "fields" list of '
+    'Foundry stream schema as JSON, @file.json or @- (stdin): a "fields" list of '
     '{"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional '
     '"keyFieldNames", e.g. ' + _SCHEMA_EXAMPLE + ". Types include string, "
     "integer, long, double, float, boolean, date, timestamp and decimal."
@@ -119,12 +119,13 @@ ViewRidOption = Annotated[
             "branch's latest stream)."
         ),
         autocompletion=complete_rid,
+        show_default=False,
     ),
 ]
 
 
 def _load_schema(value: str) -> Dict[str, Any]:
-    """Parse --schema (inline JSON or @file.json) into a stream schema dict."""
+    """Parse --schema (inline JSON, @file.json or @-) into a stream schema dict."""
     schema = load_json_input(value, param_hint="'--schema'")
     if not isinstance(schema, dict) or "fields" not in schema:
         raise typer.BadParameter(
@@ -168,6 +169,7 @@ def create_dataset(
             "--branch",
             "-b",
             help="Branch of the initial stream (default: the default branch, usually master).",
+            show_default=False,
         ),
     ] = None,
     compressed: CompressedOption = None,
@@ -286,7 +288,7 @@ def publish_record(
             "--record",
             "-r",
             help=(
-                "Record as a JSON object or @file.json. It must match the stream's "
+                "Record as a JSON object, @file.json or @- (stdin). It must match the stream's "
                 "schema; timestamps used as keys are epoch milliseconds."
             ),
             show_default=False,
@@ -326,7 +328,7 @@ def publish_records(
             "--records",
             "-r",
             help=(
-                "Records as a JSON array of objects or @file.json. The batch is "
+                "Records as a JSON array of objects, @file.json or @- (stdin). The batch is "
                 "rejected if any record doesn't match the stream's schema."
             ),
             show_default=False,
@@ -373,10 +375,11 @@ def reset_stream(
             "--schema",
             "-s",
             help=(
-                "New stream schema as JSON or @file.json, in the format of "
+                "New stream schema as JSON, @file.json or @-, in the format of "
                 "'pltr streams dataset create --schema' (default: keep the "
                 "current schema)."
             ),
+            show_default=False,
         ),
     ] = None,
     compressed: Annotated[

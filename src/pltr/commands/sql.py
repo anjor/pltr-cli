@@ -93,8 +93,19 @@ FallbackBranchesOption = Annotated[
             "names no branch; the first that exists is used (default: the "
             "default branch, usually master)."
         ),
+        show_default=False,
     ),
 ]
+
+
+def _export_format_option() -> Any:
+    """The shared --format option, whose default (None) means "from the file
+    extension" for `sql export`."""
+    option = format_option()
+    option.show_default = False
+    return option
+
+
 #: Hidden, deprecated no-op: the SQL commands used to have --preview/--no-preview.
 PreviewFlagNoopOption = Annotated[
     Optional[bool],
@@ -360,7 +371,7 @@ def export_query_results(
         ),
     ],
     profile: ProfileOption = None,
-    format: Annotated[Optional[str], format_option()] = None,
+    format: Annotated[Optional[str], _export_format_option()] = None,
     timeout: TimeoutOption = 300,
     fallback_branches: FallbackBranchesOption = None,
     preview: PreviewFlagNoopOption = None,
