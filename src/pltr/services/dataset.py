@@ -10,10 +10,6 @@ called with a literal ``preview=True``; GA endpoints never get ``preview``.
 ``apply_schema`` is a labeled direct-HTTP exception: schema inference has no
 public API, so it calls Foundry's schema-inference and foundry-metadata
 endpoints through ``BaseService._make_request``.
-
-The methods under "Compat for services/copy.py" keep the dict results that
-``CopyService`` reads; they are removed when ``pltr cp`` moves to the
-model-returning methods.
 """
 
 import base64
@@ -749,68 +745,6 @@ class DatasetService(BaseService):
                 DatasetFieldSchema(name=name, type=field_type, nullable=nullable)  # type: ignore[arg-type]
             )
         return DatasetSchema(field_schema_list=fields)
-
-    # --------------------------------------- compat for services/copy.py
-    #
-    # CopyService (services/copy.py) reads dict-shaped results from these
-    # methods. They return the SDK's own serialization (``model.to_dict()``:
-    # API field names). Compat for services/copy.py; remove when cp migrates
-    # to the model-returning methods named in each docstring.
-
-    def create_dataset(self, name: str, parent_folder_rid: str) -> Dict[str, Any]:
-        """Create a dataset; returns ``Dataset.to_dict()``.
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`create`).
-        """
-        return self.create(name, parent_folder_rid).to_dict()
-
-    def get_schema(self, dataset_rid: str) -> Dict[str, Any]:
-        """Get a dataset's schema; returns ``GetDatasetSchemaResponse.to_dict()``.
-
-        Its ``"schema"`` key can be passed to :meth:`put_schema`. Compat for
-        services/copy.py; remove when cp migrates (use
-        :meth:`get_dataset_schema`).
-        """
-        return self.get_dataset_schema(dataset_rid).to_dict()
-
-    def list_files(
-        self, dataset_rid: str, branch: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """Every file on a branch (all pages), each as ``File.to_dict()``.
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`list_dataset_files`).
-        """
-        return [
-            file.to_dict()
-            for file in self.service.Dataset.File.list(dataset_rid, branch_name=branch)
-        ]
-
-    def create_transaction(
-        self,
-        dataset_rid: str,
-        branch: Optional[str] = None,
-        transaction_type: str = "APPEND",
-    ) -> Dict[str, Any]:
-        """Open a transaction; returns ``Transaction.to_dict()`` (``"rid"`` key).
-
-        Compat for services/copy.py; remove when cp migrates (use
-        :meth:`start_transaction`).
-        """
-        return self.start_transaction(
-            dataset_rid, transaction_type=transaction_type, branch=branch
-        ).to_dict()
-
-    def delete_dataset(self, dataset_rid: str) -> None:
-        """Move a dataset to the trash (``filesystem.Resource.delete``, GA).
-
-        The datasets API can't delete datasets; a dataset is a Compass
-        resource, so it is trashed (restorable) like any other resource.
-        Used only for cp's cleanup of a partially copied dataset. Compat for
-        services/copy.py; remove when cp migrates.
-        """
-        self.client.filesystem.Resource.delete(dataset_rid)
 
 
 # ------------------------------------------------------------------ helpers

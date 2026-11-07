@@ -1,7 +1,7 @@
 """
 High-level service that copies Foundry resources between Compass folders.
 
-``pltr cp`` copies a dataset (its schema and the files of one branch) or,
+``pltr cp`` copies a dataset (the files of one branch and their schema) or,
 recursively, a folder with its datasets and subfolders into a target folder.
 Progress messages go to stderr through :mod:`pltr.contract`; the resources
 created (or, in a dry run, the ones that would be copied) are returned to the
@@ -14,9 +14,7 @@ import tempfile
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
-
-from foundry_sdk.v2.datasets.models import Dataset
+from typing import Any, Dict, List, Optional, Sequence
 
 from ..contract import ExitCode, PltrError, classify_error, info, success, warn
 from .dataset import DatasetService
@@ -26,6 +24,25 @@ from .resource import ResourceService
 #: ``Resource.type`` of the resources cp copies.
 DATASET_TYPE = "FOUNDRY_DATASET"
 FOLDER_TYPE = "COMPASS_FOLDER"
+
+#: Dataframe readers ``put_schema`` accepts that cp picks from file extensions.
+#: The API doesn't report the source dataset's reader; anything else gets the
+#: API's default (PARQUET), which fits datasets that Foundry builds.
+_READERS_BY_EXTENSION = {".csv": "CSV", ".avro": "AVRO"}
+
+
+def dataframe_reader_for(paths: Sequence[str]) -> Optional[str]:
+    """The dataframe reader for a copied schema, from the copied files' paths.
+
+    ``CSV`` when every file is a ``.csv`` file, ``AVRO`` when every file is an
+    ``.avro`` file, otherwise ``None`` (the API's default, PARQUET).
+    """
+    readers = {
+        _READERS_BY_EXTENSION.get(PurePosixPath(path).suffix.lower()) for path in paths
+    }
+    if len(readers) == 1:
+        return readers.pop()
+    return None
 
 
 @dataclass
@@ -65,6 +82,14 @@ class CopyResult:
 
 class _StopCopy(Exception):
     """Raised after the first failure when ``fail_fast`` is set."""
+
+
+@dataclass
+class _CopiedFiles:
+    """The committed transaction holding a dataset copy's files."""
+
+    transaction_rid: str
+    paths: List[str]
 
 
 class CopyService:
@@ -157,23 +182,24 @@ class CopyService:
             self.result.items.append(source)
             return
 
-        new_dataset = self.dataset_service.create_dataset(new_name, target_folder_rid)
-        new_dataset_rid = new_dataset["rid"]
+        new_dataset = self.dataset_service.create(
+            new_name, parent_folder_rid=target_folder_rid
+        )
+        new_dataset_rid = new_dataset.rid
         success(
             f"Created dataset '{new_name}' ({new_dataset_rid}) in {target_folder_rid}"
         )
 
         try:
+            copied = self._copy_dataset_files(dataset_rid, new_dataset_rid)
             if self.copy_schema:
-                self._copy_dataset_schema(dataset_rid, new_dataset_rid)
-
-            self._copy_dataset_files(dataset_rid, new_dataset_rid)
+                self._copy_dataset_schema(dataset_rid, new_dataset_rid, copied)
         except Exception:
-            # Clean up the partly created dataset, then report the failure.
+            # Trash the partly copied dataset, then report the failure.
             warn(f"Removing the partly copied dataset {new_dataset_rid}")
             try:
-                self.dataset_service.delete_dataset(new_dataset_rid)
-                info(f"  Removed dataset {new_dataset_rid}")
+                self.resource_service.delete_resource(new_dataset_rid)
+                info(f"  Moved dataset {new_dataset_rid} to the trash")
             except Exception as delete_exc:
                 warn(
                     f"Could not remove dataset {new_dataset_rid}: "
@@ -182,82 +208,58 @@ class CopyService:
             raise
 
         self.result.stats.datasets += 1
-        self.result.items.append(
-            Dataset(
-                rid=new_dataset_rid, name=new_name, parent_folder_rid=target_folder_rid
-            )
-        )
+        self.result.items.append(new_dataset)
         success(f"Finished copying dataset to {new_dataset_rid}")
 
-    def _copy_dataset_schema(self, source_rid: str, target_rid: str) -> None:
-        """Copy schema metadata, warning if not available."""
-        try:
-            schema_info = self.dataset_service.get_schema(source_rid)
-            schema = schema_info.get("schema")
-            if schema:
-                self.dataset_service.put_schema(target_rid, schema)
-                info("  Copied dataset schema")
-            else:
-                info("  Source dataset has no schema to copy")
-        except Exception as exc:
-            warn(
-                f"Could not copy the schema of {source_rid}: "
-                f"{classify_error(exc).message}"
-            )
-            if self.debug:
-                traceback.print_exc()
+    def _copy_dataset_files(
+        self, source_rid: str, target_rid: str
+    ) -> Optional[_CopiedFiles]:
+        """Copy the files of ``self.branch`` into one SNAPSHOT transaction.
 
-    def _copy_dataset_files(self, source_rid: str, target_rid: str) -> None:
-        """Download files from source and upload them into the target dataset."""
-        files = self.dataset_service.list_files(source_rid, branch=self.branch)
-        if not files:
-            info("  Source dataset has no files on the requested branch")
-            return
-
-        # Wrap transaction creation in try block to ensure cleanup on any failure
-        transaction_rid = None
-        transaction_created = False
+        Returns the committed transaction and the copied paths, or ``None``
+        when the source has no files on the branch (nothing is committed).
+        """
+        transaction_rid: Optional[str] = None
         try:
-            transaction = self.dataset_service.create_transaction(
-                target_rid, branch=self.branch, transaction_type="SNAPSHOT"
+            # Iterating the SDK iterator reads every page of the listing.
+            files = list(
+                self.dataset_service.list_dataset_files(source_rid, branch=self.branch)
             )
-            # Check both possible key names for the transaction RID
-            transaction_rid = transaction.get("transaction_rid") or transaction.get(
-                "rid"
-            )
-            if not transaction_rid:
-                raise RuntimeError(
-                    f"Transaction response missing RID: {list(transaction.keys())}"
+            if not files:
+                info(
+                    f"  Source dataset has no files on branch '{self.branch}'; "
+                    "the copy is empty"
                 )
-            transaction_created = True
+                return None
 
+            transaction_rid = self.dataset_service.start_transaction(
+                target_rid, transaction_type="SNAPSHOT", branch=self.branch
+            ).rid
+            paths: List[str] = []
             with tempfile.TemporaryDirectory(prefix="pltr-cp-") as tmpdir:
                 temp_dir = Path(tmpdir)
-                for file_info in files:
-                    dataset_path = file_info.get("path")
-                    if not dataset_path:
-                        self._skip(
-                            "a file", source_rid, "File path missing; skipping file."
-                        )
-                        continue
-
-                    local_rel_path = self._sanitize_local_path(dataset_path)
-                    download_path = temp_dir / local_rel_path
-                    download_path.parent.mkdir(parents=True, exist_ok=True)
-
+                for file in files:
+                    download_path = temp_dir / self._sanitize_local_path(file.path)
                     self.dataset_service.download_file(
-                        source_rid, dataset_path, download_path, branch=self.branch
+                        source_rid, file.path, download_path, branch=self.branch
                     )
-                    self._upload_dataset_file(
-                        target_rid, dataset_path, download_path, transaction_rid
+                    remote_path = PurePosixPath(file.path.lstrip("/")).as_posix()
+                    # Into the open transaction: no branch (the API rejects both).
+                    self.dataset_service.upload_file(
+                        target_rid,
+                        download_path,
+                        remote_path,
+                        transaction_rid=transaction_rid,
                     )
-                    info(f"  Copied dataset file: {dataset_path}")
+                    paths.append(remote_path)
+                    info(f"  Copied dataset file: {file.path}")
 
-            self.dataset_service.commit_transaction(target_rid, transaction_rid)
-            info(f"  Committed transaction {transaction_rid}")
+            committed = self.dataset_service.commit_transaction(
+                target_rid, transaction_rid
+            )
+            info(f"  Committed transaction {committed.rid}")
         except Exception as exc:
-            # Only attempt rollback if we successfully created a transaction
-            if transaction_created and transaction_rid:
+            if transaction_rid is not None:
                 try:
                     self.dataset_service.abort_transaction(target_rid, transaction_rid)
                     warn(f"Rolled back transaction {transaction_rid}")
@@ -270,26 +272,45 @@ class CopyService:
             raise RuntimeError(
                 f"Failed to copy the files of {source_rid} to {target_rid}"
             ) from exc
+        return _CopiedFiles(transaction_rid=committed.rid, paths=paths)
 
-    def _upload_dataset_file(
-        self,
-        dataset_rid: str,
-        dataset_path: str,
-        local_file: Path,
-        transaction_rid: Optional[str],
+    def _copy_dataset_schema(
+        self, source_rid: str, target_rid: str, copied: Optional[_CopiedFiles]
     ) -> None:
-        """Upload the downloaded file bytes into a dataset (``Dataset.File.upload``, GA)."""
-        body = Path(local_file).read_bytes()
-        remote_path = PurePosixPath(dataset_path.lstrip("/")).as_posix()
-        # The API takes either a transaction or a branch, not both
-        # (InvalidParameterCombination): send the branch only without one.
-        self.dataset_service.service.Dataset.File.upload(
-            dataset_rid,
-            remote_path,
-            body,
-            transaction_rid=transaction_rid,
-            branch_name=None if transaction_rid else self.branch,
-        )
+        """Put the source's schema on the committed copy of its files.
+
+        A schema applies to a committed transaction, so this runs after the
+        files are committed, on the same branch. A source without a schema
+        (``SchemaNotFound``) has nothing to copy; any other failure is raised.
+        """
+        if copied is None:
+            info("  No files were copied, so there is no schema to copy either")
+            return
+
+        from foundry_sdk.v2.datasets.errors import SchemaNotFound
+
+        reader = dataframe_reader_for(copied.paths)
+        try:
+            response = self.dataset_service.get_dataset_schema(
+                source_rid, branch=self.branch
+            )
+            self.dataset_service.put_schema(
+                target_rid,
+                response.schema_,
+                branch=self.branch,
+                transaction_rid=copied.transaction_rid,
+                dataframe_reader=reader,
+            )
+        except SchemaNotFound:
+            info("  Source dataset has no schema to copy")
+            return
+        except Exception as exc:
+            if self.debug:
+                traceback.print_exc()
+            raise RuntimeError(
+                f"Failed to copy the schema of {source_rid} to {target_rid}"
+            ) from exc
+        info(f"  Copied dataset schema ({reader or 'PARQUET'} reader)")
 
     # ------------------------------------------------------------------ folders
     def _copy_folder(self, folder: Any, target_folder_rid: str) -> None:

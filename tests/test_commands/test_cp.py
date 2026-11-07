@@ -1,21 +1,16 @@
-"""Tests for `pltr cp` against a real FoundryClient (only HTTP is faked).
-
-Dataset steps that go through the dataset area's DatasetService
-compatibility methods are patched as in tests/test_services/test_copy.py.
-"""
+"""Tests for `pltr cp` against a real FoundryClient (only HTTP is faked)."""
 
 import csv
 import io
 import json
-from pathlib import Path
-from unittest.mock import patch
+from typing import Optional
 
 import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
-from pltr.services.dataset import DatasetService
 from tests import foundry_json as fj
+from tests import foundry_json_dataset as dj
 from tests import foundry_json_filesystem as fs
 
 pytestmark = [
@@ -43,47 +38,27 @@ def json_lines(stderr: str) -> list:
     return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
 
-@pytest.fixture
-def dataset_compat():
-    def fake_download(self, dataset_rid, file_path, output_path, branch="master"):
-        Path(output_path).write_bytes(b"data")
+def queue_dataset_copy(
+    stub, name: str = "Source Dataset-copy", put_schema: Optional[dict] = None
+) -> None:
+    """Queue the responses of a dataset copy with one file and a schema.
 
-    with (
-        patch.object(
-            DatasetService,
-            "create_dataset",
-            autospec=True,
-            return_value={"rid": NEW_DATASET_RID},
-        ),
-        patch.object(
-            DatasetService, "get_schema", autospec=True, return_value={"schema": None}
-        ),
-        patch.object(DatasetService, "put_schema", autospec=True),
-        patch.object(
-            DatasetService,
-            "list_files",
-            autospec=True,
-            return_value=[{"path": "part-0.csv"}],
-        ),
-        patch.object(
-            DatasetService,
-            "create_transaction",
-            autospec=True,
-            return_value={"transaction_rid": fs.TRANSACTION_RID},
-        ),
-        patch.object(
-            DatasetService, "download_file", autospec=True, side_effect=fake_download
-        ),
-        patch.object(DatasetService, "commit_transaction", autospec=True),
-        patch.object(DatasetService, "abort_transaction", autospec=True),
-        patch.object(DatasetService, "delete_dataset", autospec=True),
-    ):
-        yield
+    ``put_schema`` replaces the ``Dataset.put_schema`` response (the kwargs of
+    ``stub.respond``).
+    """
+    stub.respond(json=SOURCE_DATASET)  # Resource.get
+    stub.respond(json=fs.dataset(NEW_DATASET_RID, name, TARGET))  # Dataset.create
+    stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))  # File.list
+    stub.respond(json=fs.transaction())  # Transaction.create
+    stub.respond(content=b"data")  # File.content
+    stub.respond(json=fs.dataset_file("part-0.csv"))  # File.upload
+    stub.respond(json=fs.transaction(status="COMMITTED"))  # Transaction.commit
+    stub.respond(json=dj.schema_response())  # Dataset.get_schema
+    stub.respond(**(put_schema or {"json": dj.schema_response()}))
 
 
-def test_cp_dataset_json_prints_the_created_dataset(stub_foundry_http, dataset_compat):
-    stub_foundry_http.respond(json=SOURCE_DATASET)
-    stub_foundry_http.respond(json=fs.dataset_file("part-0.csv"))
+def test_cp_dataset_json_prints_the_created_dataset(stub_foundry_http):
+    queue_dataset_copy(stub_foundry_http)
 
     result = invoke("cp", fs.DATASET_RID, TARGET, "--format", "json")
 
@@ -94,11 +69,12 @@ def test_cp_dataset_json_prints_the_created_dataset(stub_foundry_http, dataset_c
         ]
     }
     assert result.stderr == ""  # progress messages are suppressed in JSON mode
+    put_schema = stub_foundry_http.requests[-1]
+    assert put_schema.url.path == f"/api/v2/datasets/{NEW_DATASET_RID}/putSchema"
 
 
-def test_cp_dataset_table_reports_progress_on_stderr(stub_foundry_http, dataset_compat):
-    stub_foundry_http.respond(json=SOURCE_DATASET)
-    stub_foundry_http.respond(json=fs.dataset_file("part-0.csv"))
+def test_cp_dataset_table_reports_progress_on_stderr(stub_foundry_http):
+    queue_dataset_copy(stub_foundry_http, name="Source Dataset (copy)")
 
     result = invoke("cp", fs.DATASET_RID, TARGET, "--name-suffix", " (copy)")
 
@@ -106,8 +82,19 @@ def test_cp_dataset_table_reports_progress_on_stderr(stub_foundry_http, dataset_
     for expected in ("FOUNDRY_DATASET", "Source Dataset (copy)", NEW_DATASET_RID):
         assert expected in result.stdout
     assert "Copying dataset 'Source Dataset'" in result.stderr
+    assert "Copied dataset schema (CSV reader)" in result.stderr
     assert "Copied 0 folder(s) and 1 dataset(s); 0 skipped, 0 failed" in result.stderr
     assert "Copying" not in result.stdout
+
+
+def test_cp_no_schema_copies_only_the_files(stub_foundry_http):
+    queue_dataset_copy(stub_foundry_http)
+
+    result = invoke("cp", fs.DATASET_RID, TARGET, "--no-schema", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    paths = [request.url.path for request in stub_foundry_http.requests]
+    assert not any(path.endswith(("/getSchema", "/putSchema")) for path in paths)
 
 
 def test_cp_folder_recursive(stub_foundry_http):
@@ -204,8 +191,14 @@ def test_cp_partial_failure_prints_what_was_created_and_fails(stub_foundry_http)
     assert error["message"].startswith("1 item(s) could not be copied")
 
 
-def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http, dataset_compat):
+def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_DATASET)
+    stub_foundry_http.respond(
+        json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET)
+    )
+    stub_foundry_http.respond(json=fs.page([fs.dataset_file("part-0.csv")]))
+    stub_foundry_http.respond(json=fs.transaction())
+    stub_foundry_http.respond(content=b"data")
     stub_foundry_http.respond(
         403,
         json=fj.error(
@@ -218,15 +211,44 @@ def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http, dataset_compat)
             },
         ),
     )
+    stub_foundry_http.respond(json=fs.transaction(status="ABORTED"))
+    stub_foundry_http.respond(204)  # Resource.delete (to the trash)
 
     result = invoke("cp", fs.DATASET_RID, TARGET, "--format", "json")
 
     assert result.exit_code == 4
     assert result.stdout == ""
-    error = json_lines(result.stderr)[-1]
+    lines = json_lines(result.stderr)
+    assert [line["type"] for line in lines[:-1]] == ["warning", "warning"]
+    assert "Removing the partly copied dataset" in lines[1]["message"]
+    error = lines[-1]
     assert error["errorName"] == "UploadFilePermissionDenied"
     assert error["message"].startswith("Failed to copy the files")
-    assert DatasetService.delete_dataset.call_count == 1  # type: ignore[attr-defined]
+    trash = stub_foundry_http.requests[-1]
+    assert (trash.method, trash.url.path) == (
+        "DELETE",
+        f"/api/v2/filesystem/resources/{NEW_DATASET_RID}",
+    )
+
+
+def test_cp_failed_schema_copy_fails_the_dataset_copy(stub_foundry_http):
+    invalid = fj.error(
+        "InvalidSchema",
+        "INVALID_ARGUMENT",
+        {"errorType": "INVALID_FIELD", "message": "Unsupported field type"},
+    )
+    queue_dataset_copy(
+        stub_foundry_http, put_schema={"status_code": 400, "json": invalid}
+    )
+    stub_foundry_http.respond(204)  # Resource.delete (to the trash)
+
+    result = invoke("cp", fs.DATASET_RID, TARGET, "--format", "json")
+
+    assert result.exit_code == 6
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["errorName"] == "InvalidSchema"
+    assert error["message"].startswith("Failed to copy the schema")
 
 
 def test_cp_debug_is_deprecated(stub_foundry_http):
