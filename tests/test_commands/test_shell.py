@@ -239,6 +239,19 @@ class TestShellSession:
         assert "Command-line interface for Palantir Foundry APIs" in output
         assert "list-profiles" in output
 
+    def test_aliases_expand(self):
+        result = run_shell(
+            'alias add hi "hello"',
+            'alias add ls "alias list --format json"',
+            "hi",
+            "ls",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Hello from pltr!" in result.stdout
+        document = result.stdout[result.stdout.index("{") :]
+        assert {"name": "hi", "command": "hello"} in json.loads(document)["data"]
+
     def test_nested_shell_is_refused(self):
         result = run_shell("shell", "hello")
 
@@ -284,6 +297,14 @@ class TestShellCompletion:
         assert complete(completer, "fo") == ["folder"]
         assert "--format" in complete(completer, "folder get --f")
         assert complete(completer, "folder get --format ") == ["table", "json", "csv"]
+
+    def test_alias_names(self, completer, isolated_home):
+        from pltr.config.aliases import AliasManager
+
+        AliasManager().add_alias("dsg", "dataset get")
+
+        assert "dsg" in complete(completer, "ds")
+        assert "dsg" not in complete(completer, "folder ")
 
     def test_help_completes_like_the_command(self, completer):
         assert complete(completer, "help fol") == ["folder"]

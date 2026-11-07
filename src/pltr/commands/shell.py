@@ -25,8 +25,10 @@ from typing import Any, Callable, Iterator, List, Optional
 import click
 import typer
 
+from ..config.aliases import AliasManager
 from ..config.profiles import ProfileManager
 from ..contract import stdin_is_interactive
+from ..utils.alias_resolver import resolve_command_aliases
 
 shell_app = typer.Typer(
     name="shell",
@@ -103,11 +105,16 @@ def build_completer(root: click.Command) -> Any:
                 items = complete.get_completions(list(words), incomplete)
             except Exception:  # completion must never break the prompt
                 return
-            if not words:
+            if not words and not incomplete.startswith("-"):
                 items = [item for item in items if item.value != "shell"]
                 for word in shell_words:
-                    if word.startswith(incomplete) and not incomplete.startswith("-"):
+                    if word.startswith(incomplete):
                         yield Completion(word, -len(incomplete), display_meta="shell")
+                for name, command in sorted(AliasManager().list_aliases().items()):
+                    if name.startswith(incomplete):
+                        yield Completion(
+                            name, -len(incomplete), display_meta=f"alias: {command}"
+                        )
             path_document = Document(incomplete, len(incomplete))
             for item in items:
                 if item.type in ("file", "dir"):
@@ -146,6 +153,7 @@ def run_line(root: click.Command, line: str) -> bool:
     args = split_line(text)
     if args[0] in HELP_WORDS:
         args = args[1:] + ["--help"]
+    args = resolve_command_aliases(args)
     if args and args[0] == "shell":
         click.echo("Already in the pltr shell; type 'exit' to leave it.", err=True)
         return True
