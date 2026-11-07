@@ -235,14 +235,14 @@ structured error on stderr):
    pltr alias resolve myalias
    ```
 
-2. Run the resolved command directly:
+2. Run the resolved command directly, to see whether the command itself
+   fails:
    ```bash
    pltr <resolved command>
    ```
 
-3. If `pltr myalias` reports "No such command", run it through
-   `python -m pltr myalias` or inside `pltr shell`: in this release the
-   `pltr` executable itself doesn't expand aliases yet.
+3. Remember that only the first word is expanded: options and arguments go
+   after the alias name.
 
 ### Circular Reference Error
 

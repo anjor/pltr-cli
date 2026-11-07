@@ -1,184 +1,136 @@
 # Quick Start Guide
 
-Get up and running with pltr-cli in under 5 minutes! This guide will take you from installation to your first successful Foundry query.
+From installation to your first Foundry commands.
 
-## 📦 Installation
+## Install
 
-### Option 1: Install from PyPI (Recommended)
+An isolated install keeps pltr with the foundry-platform-sdk version it was
+tested with (recommended):
+
 ```bash
-pip install pltr-cli
+uv tool install pltr-cli    # or: pipx install pltr-cli
 ```
 
-### Option 2: Install with pipx (Isolated)
-```bash
-pipx install pltr-cli
-```
-
-### Option 3: Install from source
-```bash
-git clone https://github.com/anjor/pltr-cli.git
-cd pltr-cli
-pip install .
-```
-
-## ✅ Verify Installation
-
-Check that pltr-cli is installed correctly:
+Or install it into the current environment with `pip install pltr-cli`.
+Check the installation:
 
 ```bash
 pltr --version
 ```
 
-You should see the version number. If you get a "command not found" error, ensure your Python scripts directory is in your PATH.
+If the shell can't find `pltr`, the directory your installer puts commands in
+isn't on your `PATH` (`uv tool update-shell` fixes that for uv).
 
-## 🔐 Setup Authentication
+## Authenticate
 
-pltr-cli needs to authenticate with your Foundry instance. You have two options:
+### With a profile
 
-### Quick Setup (Token)
 If you have a Foundry API token:
 
 ```bash
 pltr configure configure
 ```
 
-Follow the prompts to enter:
-- **Foundry hostname** (e.g., `foundry.company.com`)
-- **API token** (from your Foundry settings)
-- **Profile name** (e.g., `production`)
+pltr asks for the Foundry hostname (for example `foundry.company.com`), the
+authentication type (`token` or `oauth`) and the token or client
+credentials. The credentials are stored in the system keyring. The profile
+is called `default` unless you pass `--profile NAME`, and the first profile
+you create becomes the default.
 
-### Environment Variables (CI/CD)
-For scripts or CI/CD, use environment variables:
+### With environment variables
+
+In CI, containers and agents, skip `configure` and export the credentials:
 
 ```bash
-export FOUNDRY_TOKEN="your-token-here"
 export FOUNDRY_HOST="foundry.company.com"
+export FOUNDRY_TOKEN="your-token-here"
 ```
 
-## 🧪 Test Your Connection
+These are used only when no profile is selected, so on a machine that also
+has a default profile, the profile wins. See
+[Authentication](authentication.md).
 
-Verify authentication is working:
+### Check it
 
 ```bash
 pltr verify
 ```
 
-You should see: `✅ Authentication successful!`
+`verify` prints your user, and "Authentication successful" on stderr.
+`pltr verify --format json` also shows which credentials were used.
 
-## 🚀 Your First Query
+## First Commands
 
-Now let's run your first Foundry operation! Try these examples:
-
-### 1. Check Current User
 ```bash
+# Who am I?
 pltr admin user current
-```
 
-### 2. List Available Ontologies
-```bash
+# The ontologies you can see
 pltr ontology list
+
+# Builds that failed on master
+pltr orchestration builds search --status FAILED --branch master
+
+# A SQL query
+pltr sql execute "SELECT 1 AS test"
+
+# A dataset's metadata and its first rows (datasets are addressed by RID)
+pltr dataset get <dataset-rid>
+pltr dataset preview <dataset-rid>
 ```
 
-### 3. Search for Builds (Orchestration)
+Most commands take RIDs (Resource Identifiers) such as
+`ri.foundry.main.dataset.<uuid>`. Copy them from Foundry's web interface, or
+look them up: `pltr resource get-by-path "/Space/Project/name"`,
+`pltr folder list <folder-rid>`.
+
+## Output Formats
+
 ```bash
-pltr orchestration builds search
+pltr admin user list                    # a table (the default)
+pltr admin user list --format json      # JSON, in the API's own field names
+pltr admin user list --format csv       # CSV
+pltr admin user list --format csv --output users.csv
 ```
 
-### 4. Execute a Simple SQL Query
-```bash
-pltr sql execute "SELECT 1 as test"
-```
+Set `PLTR_FORMAT=json` to make JSON the default. Data goes to stdout;
+messages, warnings and errors go to stderr.
 
-### 5. Get Dataset Information (if you have a dataset RID)
-```bash
-pltr dataset get ri.foundry.main.dataset.your-dataset-rid
-```
-
-## 🎯 Interactive Mode
-
-For exploratory work, try the interactive shell:
+## Interactive Mode
 
 ```bash
 pltr shell
 ```
 
-In shell mode, you can run commands without the `pltr` prefix:
+In the shell, run commands without the `pltr` prefix:
+
 ```
 pltr> admin user current
-pltr> sql execute "SELECT COUNT(*) FROM my_table"
+pltr> ontology list
 pltr> exit
 ```
 
-## 📊 Output Formats
-
-pltr-cli supports multiple output formats:
+## Shell Completion
 
 ```bash
-# Table format (default)
-pltr admin user list
-
-# JSON format
-pltr admin user list --format json
-
-# CSV format
-pltr admin user list --format csv
-
-# Save to file
-pltr sql execute "SELECT * FROM dataset" --output results.csv
+pltr completion install                 # detects your shell
+pltr completion install --shell zsh     # or name it: bash, zsh, fish
 ```
 
-## 🔧 Shell Completion
+## What's Next?
 
-Enable tab completion for your shell:
+- [Command Reference](commands.md): every command, with examples, for
+  [SQL](commands.md#sql-pltr-sql),
+  [datasets](commands.md#datasets-pltr-dataset),
+  [orchestration](commands.md#orchestration-pltr-orchestration),
+  [ontologies](commands.md#ontology-pltr-ontology),
+  [admin](commands.md#admin-pltr-admin) and more
+- [Common Workflows](workflows.md): multi-step tasks and scripts
+- [Multiple profiles](authentication.md#multiple-profiles): several Foundry
+  instances
+- [`pltr api`](../api-commands.md): a command for every Foundry Platform SDK
+  method
+- [Troubleshooting](troubleshooting.md): common problems
 
-```bash
-# Install completions
-pltr completion install
-
-# For specific shells
-pltr completion install --shell bash
-pltr completion install --shell zsh
-pltr completion install --shell fish
-```
-
-## ✨ What's Next?
-
-Now that you're set up, explore these key areas:
-
-### Data Analysis
-- **[SQL Commands](commands.md#sql-commands)**: Execute queries and export results
-- **[Dataset Operations](commands.md#dataset-commands)**: Work with Foundry datasets
-- **[Common Workflows](workflows.md)**: Real-world analysis patterns
-
-### Advanced Features
-- **[Multi-Profile Setup](authentication.md#multiple-profiles)**: Work with multiple Foundry instances
-- **[Orchestration Operations](commands.md#orchestration-commands)**: Manage builds, jobs, and schedules
-- **[Ontology Operations](commands.md#ontology-commands)**: Work with Foundry ontologies
-- **[Admin Tasks](commands.md#admin-commands)**: User and group management
-
-### Get Help
-- Run `pltr --help` to see all available commands
-- Run `pltr <command> --help` for specific command help
-- Check the [Command Reference](commands.md) for complete documentation
-- See [Troubleshooting](troubleshooting.md) for common issues
-
-## 🆘 Common Issues
-
-### Authentication Errors
-- **Token expired**: Run `pltr configure` to update your token
-- **Wrong hostname**: Ensure hostname doesn't include `https://`
-- **Network issues**: Check VPN/proxy settings
-
-### Command Not Found
-- **Path issues**: Ensure Python scripts directory is in PATH
-- **Virtual environment**: Make sure you're in the correct environment
-
-### Permission Denied
-- **Admin commands**: Some commands require Foundry admin permissions
-- **Dataset access**: Ensure you have read permissions for datasets
-
----
-
-🎉 **Congratulations!** You're now ready to use pltr-cli. For complete documentation, see the [Command Reference](commands.md) and [Common Workflows](workflows.md).
-
-*Need help? Check the [Troubleshooting Guide](troubleshooting.md) or run `pltr --help`*
+Run `pltr --help` for the command groups and `pltr <command> --help` for a
+command's options.

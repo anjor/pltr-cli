@@ -1,10 +1,11 @@
-# The command contract: converting a command module
+# The command contract: writing a command
 
 Every curated command and every generated `pltr api` command talks to the user
 through one shared layer, `pltr.contract`. This guide is the checklist for
-converting a command module to it. `pltr folder` and `pltr space`
-(`src/pltr/commands/{folder,space}.py`, `src/pltr/services/{folder,space}.py`
-and their tests) are the reference implementations: copy their shape.
+adding a command or a command module, and for changing one. Every module
+follows it; `pltr folder` and `pltr space` (`src/pltr/commands/{folder,space}.py`,
+`src/pltr/services/{folder,space}.py` and their tests) are the reference
+implementations: copy their shape.
 
 Import everything from `pltr.contract` and nothing from its submodules.
 
@@ -33,7 +34,7 @@ Import everything from `pltr.contract` and nothing from its submodules.
    the command's help starts with `[beta]`. GA endpoints never get `preview`.
 8. The default format is `table`. `PLTR_FORMAT=json|csv|table` changes it.
 
-## Checklist for converting a module
+## Checklist for a command module
 
 1. **Service** (`src/pltr/services/<module>.py`):
    - Return SDK models, SDK iterators or responses unchanged. Delete the
@@ -71,8 +72,12 @@ Import everything from `pltr.contract` and nothing from its submodules.
 5. **Contract-test cases:** in `tests/test_contract/cases/<module>.py`, delete
    the command from `NOT_CONVERTED` and add its `SUCCESS` case (see
    [The contract test](#the-contract-test)).
-6. **Changelog:** write a fragment `changelog.d/<branch-suffix>.md` (see
-   [Changelog](#changelog-fragment)).
+6. **Changelog:** add your entries under `## [Unreleased]` in
+   `CHANGELOG.md` (see [Changelog](#changelog)).
+7. **Agent skill:** when you add or change a command (its help, options or
+   metadata), run `uv run python scripts/generate_skill_reference.py` and
+   commit `claude_skill/reference/`. A test fails while the reference is
+   stale.
 
 ## Before and after: `pltr folder get`
 
@@ -488,18 +493,18 @@ parallel conversions don't conflict:
   RID-like parameters (named `*rid`/`*rids`, or with "RID" in their help)
   get `CONTRACT_RID`; others get `"contract-test"`, `1`, the first choice,
   or a temporary file.
-- `LOCAL` (only in `local.py`): commands that make no API call, each with a
+- `LOCAL`: commands that make no API call, each with a
   reason.
 - `SUCCESS_EXEMPT`: `{prefix: reason}`, command-path prefixes whose commands
   don't need a `SUCCESS` case. The error checks still run. It's meant for
   the generated `pltr api` tree, whose generator tests the success path.
   Curated commands don't use it.
 
-## Changelog fragment
+## Changelog
 
-Don't edit `CHANGELOG.md`. Write `changelog.d/<branch-suffix>.md` with
-Keep a Changelog headings (`### Breaking`, `### Added`, `### Changed`,
-`### Deprecated`, `### Removed`, `### Fixed`). Record every removed
+Add your entries under `## [Unreleased]` in `CHANGELOG.md`, in the Keep a
+Changelog sections (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`),
+and mark changes that break scripts with **Breaking**. Record every removed
 command, renamed or removed flag, changed default and changed output shape.
 For a converted module that always includes:
 
@@ -510,12 +515,15 @@ For a converted module that always includes:
 - `[beta]` labels;
 - deprecated aliases.
 
-End with `### Docs to update` and `### Not verified live`.
+Say in the pull request what you couldn't verify against a live stack, and
+update the README and `docs/` examples you changed; `tests/test_docs_examples.py`
+fails on examples that name a command or option that doesn't exist.
 
 ## Gotchas
 
-- Don't print with `console.print`, `typer.echo` or `print` in a converted
-  command. If it's data, `emit` it; otherwise use `info`/`success`/`warn`.
+- Don't print with `console.print`, `typer.echo` or `print` in a command.
+  If it's data, `emit` it; otherwise use `info`/`success`/`warn`. Every
+  command prints only through `pltr.contract`.
 - `emit` must be called once per command, with the command's `format`.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page

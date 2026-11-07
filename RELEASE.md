@@ -8,6 +8,21 @@ The release script (`scripts/release.py`) supports both interactive and non-inte
 - **Interactive mode**: For human developers who want to review and confirm each step
 - **Non-interactive mode**: For AI agents and automated systems that need to create releases programmatically
 
+## Before You Release: the Changelog
+
+Changes are recorded as they are made, under `## [Unreleased]` in
+`CHANGELOG.md`. The release script doesn't touch the changelog, so before
+running it:
+
+1. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and start a new,
+   empty `## [Unreleased]` section above it.
+2. Update the links at the bottom: `[Unreleased]` compares `vX.Y.Z...HEAD`,
+   and a new `[X.Y.Z]` line compares the previous tag with `vX.Y.Z`.
+3. Check that every breaking change is listed under "Breaking changes" or
+   marked **Breaking**.
+
+Commit this with the release.
+
 ## Quick Start
 
 ### For Humans (Interactive Mode)

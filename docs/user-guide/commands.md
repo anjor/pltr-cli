@@ -1,1987 +1,790 @@
 # Command Reference
 
-Complete reference for all pltr-cli commands. The CLI provides 80+ commands across 10 major command groups for comprehensive Foundry API access.
+Every curated pltr command, by group, with examples. Each command's `--help`
+lists all of its options; this page explains what the commands are for and
+how they fit together. For the generated commands that mirror the SDK one to
+one, see [`pltr api`](../api-commands.md).
 
-## Global Options
+## How every command works
 
-All commands support these global options:
-- `--help`: Show help message and exit
-- `--version`: Show version and exit
+- **Help**: `pltr --help`, `pltr <group> --help` and `pltr <command> --help`.
+  To find a command for a task, search the manifest:
+  `pltr commands search "list dataset files"`.
+- **Profiles**: `--profile NAME` (`-p` on most commands) picks the
+  credentials; see [Authentication](authentication.md).
+- **Output**: `--format table|json|csv` (`-f`) and `--output FILE` (`-o`).
+  The default is `table`; set `PLTR_FORMAT=json` to change it. JSON is the
+  Foundry API's own shape (camelCase field names, null fields left out), and
+  stdout carries only data: messages, warnings, prompts and errors go to
+  stderr. Exit codes and error JSON are described in the README's
+  [Output, errors and exit codes](../../README.md#output-errors-and-exit-codes).
+- **Paging**: commands marked *paged* fetch one page by default and take
+  `--page-size`, `--page-token` (resume from an earlier `nextPageToken`),
+  `--max-pages N` and `--all`. See [Pagination](../pagination.md).
+- **Confirmation**: commands marked *asks first* ask on stderr before they
+  change anything; `--yes` (`-y`) skips the question. Without a terminal on
+  stdin they never prompt: they exit with code 2 unless you pass `--yes`.
+- **Beta**: commands whose help starts with `[beta]` call beta Foundry
+  endpoints. pltr sends `preview=true` for you; beta endpoints can change
+  without notice.
+- **RIDs**: most arguments are Resource Identifiers, such as
+  `ri.foundry.main.dataset.<uuid>`. The examples below use placeholders like
+  `<dataset-rid>`.
 
-## Common Patterns
+Contents: [Setup](#setup-configure-verify-commands) ·
+[Datasets](#datasets-pltr-dataset) · [Copying](#copying-pltr-cp) ·
+[Filesystem](#filesystem-folder-space-project-resource-resource-role) ·
+[Ontology](#ontology-pltr-ontology) · [SQL](#sql-pltr-sql) ·
+[Orchestration](#orchestration-pltr-orchestration) ·
+[Data health](#data-health-pltr-data-health) ·
+[Functions](#functions-pltr-functions) · [Models](#models-pltr-models) ·
+[Streams](#streams-pltr-streams) · [Media sets](#media-sets-pltr-media-sets) ·
+[Connectivity](#connectivity-pltr-connectivity) ·
+[Language models](#language-models-pltr-language-models) ·
+[AIP agents, widgets and third-party apps](#aip-agents-widgets-and-third-party-apps) ·
+[Audit logs](#audit-logs-pltr-audit) · [Admin](#admin-pltr-admin) ·
+[Aliases, shell and completion](#aliases-shell-and-completion)
 
-### Authentication
-Most commands support profile selection:
+## Setup: `configure`, `verify`, `commands`
+
+A profile holds a Foundry host and credentials; the credentials go to the
+system keyring. The first profile you create becomes the default. Without a
+profile, pltr can use `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or
+`FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`) instead; see
+[Authentication](authentication.md).
+
+| Command | What it does |
+|---|---|
+| `configure configure` | Create a profile, or replace an existing one (asks first) |
+| `configure list-profiles` | List the profiles and which one is the default |
+| `configure set-default PROFILE` | Make a profile the default |
+| `configure delete PROFILE` | Delete a profile and its stored credentials (asks first) |
+| `verify` | Check the credentials: fetch your user and show where the credentials came from |
+| `commands list [PATH]...` | List every command; with `--format json`, the whole manifest |
+| `commands search TEXT...` | Search commands by name, description and SDK method, best match first |
+| `commands show COMMAND...` | Show one command's manifest entry: usage, arguments, options and more |
+
 ```bash
-pltr <command> --profile production
-```
-
-### Output Formats
-Most commands support multiple output formats:
-```bash
-pltr <command> --format table    # Default: Rich table format
-pltr <command> --format json     # JSON output
-pltr <command> --format csv      # CSV format
-pltr <command> --output file.csv # Save to file
-```
-
----
-
-## 🔧 Configuration Commands
-
-### `pltr configure`
-
-Manage authentication profiles for different Foundry instances.
-
-#### `pltr configure configure [OPTIONS]`
-Configure authentication for Palantir Foundry.
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name (default: "default")
-- `--auth-type` TEXT: Authentication type (token or oauth)
-- `--host` TEXT: Foundry host URL
-- `--token` TEXT: Bearer token (for token auth)
-- `--client-id` TEXT: OAuth client ID
-- `--client-secret` TEXT: OAuth client secret
-
-**Examples:**
-```bash
-# Interactive setup
+# Interactive: prompts for the host, the auth type and the credentials
 pltr configure configure
 
-# Token authentication
-pltr configure configure --profile prod --auth-type token --host foundry.company.com --token "your-token"
+# Non-interactive (no prompts without a terminal: pass every value)
+pltr configure configure --profile prod --auth-type token \
+  --host foundry.company.com --token "$FOUNDRY_TOKEN"
+pltr configure configure --profile dev --auth-type oauth \
+  --host dev.foundry.com --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"
 
-# OAuth authentication
-pltr configure configure --profile dev --auth-type oauth --host dev.foundry.com --client-id "id" --client-secret "secret"
-```
-
-#### `pltr configure list-profiles`
-List all configured profiles.
-
-**Example:**
-```bash
 pltr configure list-profiles
-```
-
-#### `pltr configure set-default PROFILE`
-Set a profile as the default.
-
-**Example:**
-```bash
-pltr configure set-default production
-```
-
-#### `pltr configure delete [OPTIONS] PROFILE`
-Delete a profile.
-
-**Options:**
-- `--force`, `-f`: Skip confirmation
-
-**Example:**
-```bash
-pltr configure delete old-profile --force
-```
-
----
-
-## ✅ Verification Commands
-
-### `pltr verify [OPTIONS]`
-Verify authentication by connecting to Palantir Foundry.
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile to verify
-
-**Examples:**
-```bash
-pltr verify                    # Verify default profile
-pltr verify --profile staging  # Verify specific profile
-```
-
----
-
-## 📊 Dataset Commands
-
-Comprehensive dataset operations using the foundry-platform-sdk with support for branches, files, transactions, and views. **Note**: SDK requires knowing dataset RIDs in advance.
-
-### Basic Dataset Operations
-
-#### `pltr dataset get [OPTIONS] DATASET_RID`
-Get detailed information about a specific dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Get dataset info
-pltr dataset get ri.foundry.main.dataset.abc123
-
-# Export as JSON
-pltr dataset get ri.foundry.main.dataset.abc123 --format json --output dataset-info.json
-```
-
-#### `pltr dataset create [OPTIONS] NAME`
-Create a new dataset.
-
-**Arguments:**
-- `NAME` (required): Dataset name
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--parent-folder` TEXT: Parent folder RID
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Examples:**
-```bash
-# Create dataset
-pltr dataset create "My New Dataset"
-
-# Create in specific folder
-pltr dataset create "Analysis Results" --parent-folder ri.foundry.main.folder.xyz789
-```
-
-#### `pltr dataset preview [OPTIONS] DATASET_RID`
-Preview the contents of a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--limit`, `-n` INTEGER: Number of rows to display [default: 10]
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Preview first 10 rows
-pltr dataset preview ri.foundry.main.dataset.abc123
-
-# Preview first 50 rows
-pltr dataset preview ri.foundry.main.dataset.abc123 --limit 50
-
-# Export preview as CSV
-pltr dataset preview ri.foundry.main.dataset.abc123 --format csv --output preview.csv
-```
-
-### Branch Operations
-
-#### `pltr dataset branches list [OPTIONS] DATASET_RID`
-List all branches for a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List dataset branches
-pltr dataset branches list ri.foundry.main.dataset.abc123
-
-# Export branch list as CSV
-pltr dataset branches list ri.foundry.main.dataset.abc123 --format csv --output branches.csv
-```
-
-#### `pltr dataset branches create [OPTIONS] DATASET_RID BRANCH_NAME`
-Create a new branch for a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-- `BRANCH_NAME` (required): Name for the new branch
-
-**Options:**
-- `--parent` TEXT: Parent branch to branch from [default: master]
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Examples:**
-```bash
-# Create branch from master
-pltr dataset branches create ri.foundry.main.dataset.abc123 "feature-branch"
-
-# Create branch from specific parent
-pltr dataset branches create ri.foundry.main.dataset.abc123 "hotfix" --parent development
-```
-
-### File Operations
-
-#### `pltr dataset files list [OPTIONS] DATASET_RID`
-List all files in a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--branch` TEXT: Dataset branch [default: master]
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List files in master branch
-pltr dataset files list ri.foundry.main.dataset.abc123
-
-# List files in specific branch
-pltr dataset files list ri.foundry.main.dataset.abc123 --branch development
-
-# Export file list
-pltr dataset files list ri.foundry.main.dataset.abc123 --format json --output files.json
-```
-
-#### `pltr dataset files get [OPTIONS] DATASET_RID FILE_PATH OUTPUT_PATH`
-Download a file from a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-- `FILE_PATH` (required): Path of file within dataset
-- `OUTPUT_PATH` (required): Local path to save the downloaded file
-
-**Options:**
-- `--branch` TEXT: Dataset branch [default: master]
-- `--profile`, `-p` TEXT: Profile name
-
-**Examples:**
-```bash
-# Download file from master branch
-pltr dataset files get ri.foundry.main.dataset.abc123 "/data/results.csv" "./downloaded_results.csv"
-
-# Download from specific branch
-pltr dataset files get ri.foundry.main.dataset.abc123 "/analysis/report.pdf" "./report.pdf" --branch feature-branch
-```
-
-### Transaction Operations
-
-#### `pltr dataset transactions list [OPTIONS] DATASET_RID`
-List transactions for a dataset branch.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--branch` TEXT: Dataset branch [default: master]
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List transactions for master branch
-pltr dataset transactions list ri.foundry.main.dataset.abc123
-
-# List transactions for specific branch
-pltr dataset transactions list ri.foundry.main.dataset.abc123 --branch development
-```
-
-**Note:** Transaction operations may not be available in all foundry-platform-python SDK versions. If unavailable, a warning message will be displayed.
-
-### View Operations
-
-#### `pltr dataset views list [OPTIONS] DATASET_RID`
-List all views for a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List dataset views
-pltr dataset views list ri.foundry.main.dataset.abc123
-
-# Export views as JSON
-pltr dataset views list ri.foundry.main.dataset.abc123 --format json --output views.json
-```
-
-#### `pltr dataset views create [OPTIONS] DATASET_RID VIEW_NAME`
-Create a new view for a dataset.
-
-**Arguments:**
-- `DATASET_RID` (required): Dataset Resource Identifier
-- `VIEW_NAME` (required): Name for the new view
-
-**Options:**
-- `--description` TEXT: Optional description for the view
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Examples:**
-```bash
-# Create a simple view
-pltr dataset views create ri.foundry.main.dataset.abc123 "analysis-view"
-
-# Create view with description
-pltr dataset views create ri.foundry.main.dataset.abc123 "monthly-report" --description "Monthly analysis report view"
-```
-
-**Note:** View operations may not be available in all foundry-platform-python SDK versions. If unavailable, a warning message will be displayed.
-
-### Dataset RID Format
-Dataset Resource Identifiers follow the pattern: `ri.foundry.main.dataset.{uuid}`
-
-### SDK Compatibility Notes
-- Branch and file operations are available in most SDK versions
-- Transaction and view operations require newer SDK versions and will gracefully degrade with informative messages if unavailable
-- **Schema get** (`pltr dataset schema get`) requires API preview access. If you encounter `ApiFeaturePreviewUsageOnly` errors, use `pltr dataset schema apply` instead, which works for all users
-- All dataset operations work with the RID-based API and require knowing dataset RIDs in advance
-- Find dataset RIDs in the Foundry web interface or via other API calls
-
----
-
-## 📁 Folder Commands
-
-Folder operations for managing the Foundry filesystem structure using the foundry-platform-sdk.
-
-### `pltr folder create [OPTIONS] NAME`
-Create a new folder in Foundry.
-
-**Arguments:**
-- `NAME` (required): Folder display name
-
-**Options:**
-- `--parent-folder`, `-p` TEXT: Parent folder RID [default: ri.compass.main.folder.0 (root)]
-- `--profile` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Examples:**
-```bash
-# Create folder in root
-pltr folder create "My Project"
-
-# Create folder in specific parent
-pltr folder create "Sub Folder" --parent-folder ri.compass.main.folder.xyz123
-
-# Create with JSON output
-pltr folder create "Analysis" --format json
-```
-
-### `pltr folder get [OPTIONS] FOLDER_RID`
-Get detailed information about a specific folder.
-
-**Arguments:**
-- `FOLDER_RID` (required): Folder Resource Identifier
-
-**Options:**
-- `--profile` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Get folder info
-pltr folder get ri.compass.main.folder.abc123
-
-# Export as JSON
-pltr folder get ri.compass.main.folder.abc123 --format json --output folder-info.json
-```
-
-### `pltr folder list [OPTIONS] FOLDER_RID`
-List all child resources of a folder.
-
-**Arguments:**
-- `FOLDER_RID` (required): Folder Resource Identifier (use 'ri.compass.main.folder.0' for root)
-
-**Options:**
-- `--profile` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of items per page
-
-**Examples:**
-```bash
-# List root folder contents
-pltr folder list ri.compass.main.folder.0
-
-# List with pagination
-pltr folder list ri.compass.main.folder.abc123 --page-size 50
-
-# Export children list
-pltr folder list ri.compass.main.folder.abc123 --format csv --output children.csv
-```
-
-### `pltr folder batch-get [OPTIONS] FOLDER_RIDS...`
-Get multiple folders in a single request (max 1000).
-
-**Arguments:**
-- `FOLDER_RIDS...` (required): Space-separated list of folder Resource Identifiers
-
-**Options:**
-- `--profile` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Get multiple folders
-pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def456
-
-# Export batch results
-pltr folder batch-get ri.compass.main.folder.abc123 ri.compass.main.folder.def456 --format json --output folders.json
-```
-
-**Root Folder RID**: `ri.compass.main.folder.0` - Use this as the parent folder RID to create folders in the root directory.
-
-### `pltr cp [OPTIONS] SOURCE_RID TARGET_FOLDER_RID`
-Copy a dataset or folder (and its children) into another Compass folder.
-
-**Arguments:**
-- `SOURCE_RID` (required): Dataset or folder RID to copy
-- `TARGET_FOLDER_RID` (required): Destination folder RID
-
-**Options:**
-- `--profile` TEXT: Profile name
-- `--branch`, `-b` TEXT: Dataset branch used when reading files [default: master]
-- `--recursive`, `-r`: Required when copying folders (recursively copies children)
-- `--name-suffix` TEXT: Suffix appended to cloned names [default: -copy]
-- `--schema / --no-schema`: Copy dataset schemas when available [default: true]
-- `--dry-run`: Log the planned copy without writing to Foundry
-- `--fail-fast`: Stop immediately on first error when copying folders recursively
-- `--debug`: Print stack traces when an error occurs
-
-**Examples:**
-```bash
-# Copy a dataset into another folder
-pltr cp ri.foundry.main.dataset.abc123 ri.compass.main.folder.dest456
-
-# Copy a folder (and all children) into another folder
-pltr cp ri.compass.main.folder.source789 ri.compass.main.folder.dest456 --recursive
-
-# Mirror all datasets from one folder into another using shell composition
-for rid in $(pltr folder list ri.compass.main.folder.source789 --format json | jq -r '.[] | select(.type=="dataset") | .rid'); do
-  pltr cp "$rid" ri.compass.main.folder.dest456
-done
-```
-
-**Notes:**
-- Dataset copies download each file locally and re-upload it to the target dataset. Ensure you have adequate disk space and bandwidth.
-- **Memory usage**: Files are loaded entirely into memory during upload. For very large files (multi-GB), ensure sufficient RAM is available.
-- Schema copying requires preview access to the schema endpoints. When unavailable, a warning is logged and the copy continues with files only.
-- Folder copies always create a new folder inside the destination, applying the name suffix to avoid collisions. Use `--name-suffix ""` if you prefer to keep the original name.
-- By default, folder copies continue on error (logging failures and incrementing the error count). Use `--fail-fast` to stop immediately on any error.
-- If a dataset copy fails after the dataset is created, the partially created dataset is automatically deleted.
-
----
-
-## 🏗️ Orchestration Commands
-
-Comprehensive orchestration operations for managing builds, jobs, and schedules in Foundry.
-
-### Build Commands
-
-#### `pltr orchestration builds search [OPTIONS]`
-Search for builds.
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of results per page
-
-**Example:**
-```bash
-pltr orchestration builds search --format table
-```
-
-#### `pltr orchestration builds get [OPTIONS] BUILD_RID`
-Get detailed information about a specific build.
-
-**Arguments:**
-- `BUILD_RID` (required): Build Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr orchestration builds get ri.orchestration.main.build.abc123
-```
-
-#### `pltr orchestration builds create [OPTIONS] TARGET`
-Create a new build.
-
-**Arguments:**
-- `TARGET` (required): Build target configuration in JSON format
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--branch` TEXT: Branch name for the build
-- `--force`: Force build even if no changes
-- `--abort-on-failure`: Abort on failure
-- `--notifications/--no-notifications`: Enable notifications [default: enabled]
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Example:**
-```bash
-pltr orchestration builds create '{"dataset_rid": "ri.foundry.main.dataset.abc"}' --branch main --force
-```
-
-#### `pltr orchestration builds cancel [OPTIONS] BUILD_RID`
-Cancel a build and all its unfinished jobs.
-
-**Arguments:**
-- `BUILD_RID` (required): Build Resource Identifier
-
-**Example:**
-```bash
-pltr orchestration builds cancel ri.orchestration.main.build.abc123
-```
-
-#### `pltr orchestration builds jobs [OPTIONS] BUILD_RID`
-List all jobs in a build.
-
-**Arguments:**
-- `BUILD_RID` (required): Build Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--page-size` INTEGER: Number of results per page
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr orchestration builds jobs ri.orchestration.main.build.abc123
-```
-
-### Job Commands
-
-#### `pltr orchestration jobs get [OPTIONS] JOB_RID`
-Get detailed information about a specific job.
-
-**Arguments:**
-- `JOB_RID` (required): Job Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr orchestration jobs get ri.orchestration.main.job.def456
-```
-
-#### `pltr orchestration jobs get-batch [OPTIONS] JOB_RIDS`
-Get multiple jobs in batch (max 500).
-
-**Arguments:**
-- `JOB_RIDS` (required): Comma-separated list of Job RIDs
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr orchestration jobs get-batch "ri.orchestration.main.job.abc,ri.orchestration.main.job.def"
-```
-
-### Schedule Commands
-
-#### `pltr orchestration schedules get [OPTIONS] SCHEDULE_RID`
-Get detailed information about a specific schedule.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr orchestration schedules get ri.orchestration.main.schedule.ghi789 --preview
-```
-
-#### `pltr orchestration schedules create [OPTIONS] ACTION`
-Create a new schedule.
-
-**Arguments:**
-- `ACTION` (required): Schedule action configuration in JSON format
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--name` TEXT: Display name for the schedule
-- `--description` TEXT: Schedule description
-- `--trigger` TEXT: Trigger configuration in JSON format
-- `--preview`: Enable preview mode
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Example:**
-```bash
-pltr orchestration schedules create '{"type": "BUILD", "target": "ri.foundry.main.dataset.abc"}' \
-  --name "Daily Build" \
-  --description "Automated daily build" \
-  --trigger '{"type": "CRON", "expression": "0 2 * * *"}'
-```
-
-#### `pltr orchestration schedules delete [OPTIONS] SCHEDULE_RID`
-Delete a schedule.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--yes`, `-y`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr orchestration schedules delete ri.orchestration.main.schedule.ghi789 --yes
-```
-
-#### `pltr orchestration schedules pause [OPTIONS] SCHEDULE_RID`
-Pause a schedule.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-
-**Example:**
-```bash
-pltr orchestration schedules pause ri.orchestration.main.schedule.ghi789
-```
-
-#### `pltr orchestration schedules unpause [OPTIONS] SCHEDULE_RID`
-Unpause a schedule.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-
-**Example:**
-```bash
-pltr orchestration schedules unpause ri.orchestration.main.schedule.ghi789
-```
-
-#### `pltr orchestration schedules run [OPTIONS] SCHEDULE_RID`
-Execute a schedule immediately.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-
-**Example:**
-```bash
-pltr orchestration schedules run ri.orchestration.main.schedule.ghi789
-```
-
-#### `pltr orchestration schedules replace [OPTIONS] SCHEDULE_RID ACTION`
-Replace an existing schedule.
-
-**Arguments:**
-- `SCHEDULE_RID` (required): Schedule Resource Identifier
-- `ACTION` (required): Schedule action configuration in JSON format
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--name` TEXT: Display name for the schedule
-- `--description` TEXT: Schedule description
-- `--trigger` TEXT: Trigger configuration in JSON format
-- `--preview`: Enable preview mode
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Example:**
-```bash
-pltr orchestration schedules replace ri.orchestration.main.schedule.ghi789 \
-  '{"type": "BUILD", "target": "ri.foundry.main.dataset.new"}' \
-  --name "Updated Schedule"
-```
-
-**Note**: All orchestration operations require Resource Identifiers (RIDs) which can be found in the Foundry web interface. RIDs follow the pattern:
-- Builds: `ri.orchestration.main.build.{uuid}`
-- Jobs: `ri.orchestration.main.job.{uuid}`
-- Schedules: `ri.orchestration.main.schedule.{uuid}`
-
----
-
-## 🎬 MediaSets Commands
-
-Manage media sets and media content with support for uploading, downloading, and transaction-based operations.
-
-### Media Item Information
-
-#### `pltr media-sets get [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID`
-Get detailed information about a specific media item.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-
-**Example:**
-```bash
-pltr media-sets get ri.mediasets.main.media-set.abc123 ri.mediasets.main.media-item.def456
-```
-
-#### `pltr media-sets get-by-path [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_PATH`
-Get media item RID by its path within the media set.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `MEDIA_ITEM_PATH`: Path to media item within the media set (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--branch` TEXT: Branch name
-- `--format`, `-f` TEXT: Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-
-**Example:**
-```bash
-pltr media-sets get-by-path ri.mediasets.main.media-set.abc123 "/images/photo.jpg"
-```
-
-#### `pltr media-sets reference [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID`
-Get a reference to a media item (e.g., for embedding).
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv)
-- `--output`, `-o` TEXT: Output file path
-- `--preview`: Enable preview mode
-
-**Example:**
-```bash
-pltr media-sets reference ri.mediasets.main.media-set.abc123 ri.mediasets.main.media-item.def456
-```
-
-### Transaction Management
-
-#### `pltr media-sets create [OPTIONS] MEDIA_SET_RID`
-Create a new transaction for uploading to a media set.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--branch` TEXT: Branch name
-- `--preview`: Enable preview mode
-
-**Example:**
-```bash
-pltr media-sets create ri.mediasets.main.media-set.abc123 --branch main
-```
-
-#### `pltr media-sets commit [OPTIONS] MEDIA_SET_RID TRANSACTION_ID`
-Commit a transaction, making uploaded items available.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `TRANSACTION_ID`: Transaction ID to commit (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--yes`, `-y`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr media-sets commit ri.mediasets.main.media-set.abc123 transaction-id-12345 --yes
-```
-
-#### `pltr media-sets abort [OPTIONS] MEDIA_SET_RID TRANSACTION_ID`
-Abort a transaction, deleting any uploaded items.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `TRANSACTION_ID`: Transaction ID to abort (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-- `--yes`, `-y`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr media-sets abort ri.mediasets.main.media-set.abc123 transaction-id-12345 --yes
-```
-
-### Upload and Download Operations
-
-#### `pltr media-sets upload [OPTIONS] MEDIA_SET_RID FILE_PATH MEDIA_ITEM_PATH TRANSACTION_ID`
-Upload a media file to a media set within a transaction.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `FILE_PATH`: Local path to the file to upload (required)
-- `MEDIA_ITEM_PATH`: Path within media set where file should be stored (required)
-- `TRANSACTION_ID`: Transaction ID for the upload (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--preview`: Enable preview mode
-
-**Example:**
-```bash
-pltr media-sets upload ri.mediasets.main.media-set.abc123 \
-  /local/path/image.jpg "/media/images/image.jpg" transaction-id-12345
-```
-
-#### `pltr media-sets download [OPTIONS] MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH`
-Download a media item from a media set.
-
-**Arguments:**
-- `MEDIA_SET_RID`: Media Set Resource Identifier (required)
-- `MEDIA_ITEM_RID`: Media Item Resource Identifier (required)
-- `OUTPUT_PATH`: Local path where file should be saved (required)
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--original`: Download original version instead of processed
-- `--preview`: Enable preview mode
-- `--overwrite`: Overwrite existing file
-
-**Example:**
-```bash
-# Download processed version
-pltr media-sets download ri.mediasets.main.media-set.abc123 \
-  ri.mediasets.main.media-item.def456 /local/download/image.jpg
-
-# Download original version
-pltr media-sets download ri.mediasets.main.media-set.abc123 \
-  ri.mediasets.main.media-item.def456 /local/download/original.jpg --original
-```
-
-### MediaSets Workflow
-
-The typical workflow for working with MediaSets involves transactions:
-
-1. **Create a transaction**: `pltr media-sets create <media-set-rid>`
-2. **Upload files**: `pltr media-sets upload <media-set-rid> <local-file> <remote-path> <transaction-id>`
-3. **Commit or abort**: `pltr media-sets commit <media-set-rid> <transaction-id>`
-
-**Note**: All MediaSets operations require Resource Identifiers (RIDs) which can be found in the Foundry web interface. RIDs follow the pattern:
-- Media Sets: `ri.mediasets.main.media-set.{uuid}`
-- Media Items: `ri.mediasets.main.media-item.{uuid}`
-
----
-
-## 🎯 Ontology Commands
-
-Comprehensive ontology operations for interacting with Foundry ontologies.
-
-### `pltr ontology list [OPTIONS]`
-List all available ontologies.
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-- `--page-size` INTEGER: Number of results per page
-
-**Example:**
-```bash
-pltr ontology list --format table
-```
-
-### `pltr ontology get [OPTIONS] ONTOLOGY_RID`
-Get details of a specific ontology.
-
-**Arguments:**
-- `ONTOLOGY_RID` (required): Ontology Resource Identifier
-
-**Example:**
-```bash
-pltr ontology get ri.ontology.main.ontology.abc123
-```
-
-### Object Type Operations
-
-#### `pltr ontology object-type-list [OPTIONS] ONTOLOGY_RID`
-List object types in an ontology.
-
-**Example:**
-```bash
-pltr ontology object-type-list ri.ontology.main.ontology.abc123
-```
-
-#### `pltr ontology object-type-get [OPTIONS] ONTOLOGY_RID OBJECT_TYPE`
-Get details of a specific object type.
-
-**Arguments:**
-- `ONTOLOGY_RID` (required): Ontology Resource Identifier
-- `OBJECT_TYPE` (required): Object type API name
-
-**Example:**
-```bash
-pltr ontology object-type-get ri.ontology.main.ontology.abc123 Employee
-```
-
-### Object Operations
-
-#### `pltr ontology object-list [OPTIONS] ONTOLOGY_RID OBJECT_TYPE`
-List objects of a specific type.
-
-**Options:**
-- `--page-size` INTEGER: Number of results per page
-- `--properties` TEXT: Comma-separated list of properties to include
-
-**Example:**
-```bash
-pltr ontology object-list ri.ontology.main.ontology.abc123 Employee --properties "name,department,email"
-```
-
-#### `pltr ontology object-get [OPTIONS] ONTOLOGY_RID OBJECT_TYPE PRIMARY_KEY`
-Get a specific object by primary key.
-
-**Arguments:**
-- `PRIMARY_KEY` (required): Object primary key
-
-**Example:**
-```bash
-pltr ontology object-get ri.ontology.main.ontology.abc123 Employee "john.doe"
-```
-
-#### `pltr ontology object-aggregate [OPTIONS] ONTOLOGY_RID OBJECT_TYPE AGGREGATIONS`
-Aggregate objects with specified functions.
-
-**Arguments:**
-- `AGGREGATIONS` (required): JSON string of aggregation specs
-
-**Options:**
-- `--group-by` TEXT: Comma-separated list of fields to group by
-- `--filter` TEXT: JSON string of filter criteria
-
-**Example:**
-```bash
-pltr ontology object-aggregate ri.ontology.main.ontology.abc123 Employee '{"count": "count"}' --group-by department
-```
-
-#### `pltr ontology object-linked [OPTIONS] ONTOLOGY_RID OBJECT_TYPE PRIMARY_KEY LINK_TYPE`
-List objects linked to a specific object.
-
-**Arguments:**
-- `LINK_TYPE` (required): Link type API name
-
-**Example:**
-```bash
-pltr ontology object-linked ri.ontology.main.ontology.abc123 Employee "john.doe" worksIn
-```
-
-### Action Operations
-
-#### `pltr ontology action-apply [OPTIONS] ONTOLOGY_RID ACTION_TYPE PARAMETERS`
-Apply an action with given parameters.
-
-**Arguments:**
-- `ACTION_TYPE` (required): Action type API name
-- `PARAMETERS` (required): JSON string of action parameters
-
-**Example:**
-```bash
-pltr ontology action-apply ri.ontology.main.ontology.abc123 promoteEmployee '{"employeeId": "john.doe", "newLevel": "senior"}'
-```
-
-#### `pltr ontology action-validate [OPTIONS] ONTOLOGY_RID ACTION_TYPE PARAMETERS`
-Validate action parameters without executing.
-
-**Example:**
-```bash
-pltr ontology action-validate ri.ontology.main.ontology.abc123 promoteEmployee '{"employeeId": "john.doe", "newLevel": "senior"}'
-```
-
-### Query Operations
-
-#### `pltr ontology query-execute [OPTIONS] ONTOLOGY_RID QUERY_NAME`
-Execute a predefined query.
-
-**Arguments:**
-- `QUERY_NAME` (required): Query API name
-
-**Options:**
-- `--parameters` TEXT: JSON string of query parameters
-
-**Example:**
-```bash
-pltr ontology query-execute ri.ontology.main.ontology.abc123 getEmployeesByDepartment --parameters '{"department": "Engineering"}'
-```
-
----
-
-## 🔍 SQL Commands
-
-Execute SQL queries against Foundry datasets with comprehensive query lifecycle management.
-
-**⚠️ Preview Feature:** SQL query functionality is currently in preview and may be modified or removed at any time. All SQL commands default to `--preview` mode, which is required by the Foundry API.
-
-### `pltr sql execute [OPTIONS] QUERY`
-Execute a SQL query and display results.
-
-**Arguments:**
-- `QUERY` (required): SQL query to execute
-
-**Options:**
-- `--timeout` INTEGER: Query timeout in seconds [default: 300]
-- `--fallback-branches` TEXT: Comma-separated list of fallback branch IDs
-- `--preview/--no-preview`: Enable preview mode (required for SQL API) [default: True]
-
-**Examples:**
-```bash
-# Simple query
-pltr sql execute "SELECT COUNT(*) FROM my_dataset"
-
-# Complex query with timeout
-pltr sql execute "SELECT * FROM large_dataset WHERE category = 'important'" --timeout 600
-
-# Export results
-pltr sql execute "SELECT * FROM dataset" --format csv --output results.csv
-```
-
-### `pltr sql submit [OPTIONS] QUERY`
-Submit a SQL query without waiting for completion.
-
-**Example:**
-```bash
-pltr sql submit "SELECT * FROM huge_dataset"
-# Returns: Query submitted with ID: abc-123-def
-```
-
-### `pltr sql status [OPTIONS] QUERY_ID`
-Get the status of a submitted query.
-
-**Example:**
-```bash
-pltr sql status abc-123-def
-```
-
-### `pltr sql results [OPTIONS] QUERY_ID`
-Get the results of a completed query.
-
-**Example:**
-```bash
-pltr sql results abc-123-def --format json --output results.json
-```
-
-### `pltr sql cancel [OPTIONS] QUERY_ID`
-Cancel a running query.
-
-**Example:**
-```bash
-pltr sql cancel abc-123-def
-```
-
-### `pltr sql export [OPTIONS] QUERY OUTPUT_FILE`
-Execute a SQL query and export results to a file.
-
-**Arguments:**
-- `OUTPUT_FILE` (required): Output file path
-
-**Example:**
-```bash
-pltr sql export "SELECT * FROM dataset WHERE date > '2025-01-01'" analysis_results.csv
-```
-
-### `pltr sql wait [OPTIONS] QUERY_ID`
-Wait for a query to complete and optionally display results.
-
-**Options:**
-- `--timeout` INTEGER: Maximum wait time in seconds [default: 300]
-
-**Example:**
-```bash
-pltr sql wait abc-123-def --format table
-```
-
----
-
-## 🔗 Connectivity Commands
-
-Manage connections and data imports from external systems. The connectivity module provides comprehensive support for connecting to external data sources and importing files or tables into Foundry datasets.
-
-### Connection Management
-
-#### `pltr connectivity connection list [OPTIONS]`
-List all available connections.
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr connectivity connection list
-pltr connectivity connection list --format json --output connections.json
-```
-
-#### `pltr connectivity connection get [OPTIONS] CONNECTION_RID`
-Get detailed information about a specific connection.
-
-**Arguments:**
-- `CONNECTION_RID` (required): Connection Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr connectivity connection get ri.conn.main.connection.12345
-```
-
-### Data Import Management
-
-#### `pltr connectivity import file [OPTIONS] CONNECTION_RID SOURCE_PATH TARGET_DATASET_RID`
-Create and optionally execute a file import via connection.
-
-**Arguments:**
-- `CONNECTION_RID` (required): Connection Resource Identifier
-- `SOURCE_PATH` (required): Source file path in the connection
-- `TARGET_DATASET_RID` (required): Target dataset RID
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--config`, `-c` TEXT: Import configuration in JSON format
-- `--execute`: Execute the import immediately after creation
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Create a file import
-pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456
-
-# Create and execute with custom configuration
-pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456 \
-  --config '{"format": "CSV", "delimiter": ",", "header": true}' \
-  --execute
-
-# Import with custom profile
-pltr connectivity import file ri.conn.main.connection.123 "/data/sales.csv" ri.foundry.main.dataset.456 \
-  --profile production --execute
-```
-
-#### `pltr connectivity import table [OPTIONS] CONNECTION_RID SOURCE_TABLE TARGET_DATASET_RID`
-Create and optionally execute a table import via connection.
-
-**Arguments:**
-- `CONNECTION_RID` (required): Connection Resource Identifier
-- `SOURCE_TABLE` (required): Source table name in the connection
-- `TARGET_DATASET_RID` (required): Target dataset RID
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--config`, `-c` TEXT: Import configuration in JSON format
-- `--execute`: Execute the import immediately after creation
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# Create a table import
-pltr connectivity import table ri.conn.main.connection.123 "sales_data" ri.foundry.main.dataset.456
-
-# Create and execute with incremental sync
-pltr connectivity import table ri.conn.main.connection.123 "sales_data" ri.foundry.main.dataset.456 \
-  --config '{"sync_mode": "incremental", "primary_key": "id"}' \
-  --execute
-
-# Import with JDBC connection
-pltr connectivity import table ri.conn.main.connection.123 "public.customer_data" ri.foundry.main.dataset.789 \
-  --execute --format json
-```
-
-### Import Listing and Management
-
-#### `pltr connectivity import list-file [OPTIONS]`
-List file imports, optionally filtered by connection.
-
-**Options:**
-- `--connection`, `-c` TEXT: Filter by connection RID
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List all file imports
-pltr connectivity import list-file
-
-# List file imports for specific connection
-pltr connectivity import list-file --connection ri.conn.main.connection.123
-```
-
-#### `pltr connectivity import list-table [OPTIONS]`
-List table imports, optionally filtered by connection.
-
-**Options:**
-- `--connection`, `-c` TEXT: Filter by connection RID
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List all table imports
-pltr connectivity import list-table
-
-# List table imports for specific connection
-pltr connectivity import list-table --connection ri.conn.main.connection.123
-```
-
-#### `pltr connectivity import get-file [OPTIONS] IMPORT_RID`
-Get detailed information about a specific file import.
-
-**Arguments:**
-- `IMPORT_RID` (required): File import Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr connectivity import get-file ri.import.main.file.12345
-```
-
-#### `pltr connectivity import get-table [OPTIONS] IMPORT_RID`
-Get detailed information about a specific table import.
-
-**Arguments:**
-- `IMPORT_RID` (required): Table import Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr connectivity import get-table ri.import.main.table.12345
-```
-
-### Common Use Cases
-
-#### Setting up a Daily Data Import
-```bash
-# 1. List available connections
-pltr connectivity connection list
-
-# 2. Create a table import with configuration
-pltr connectivity import table ri.conn.main.connection.123 "daily_sales" ri.foundry.main.dataset.456 \
-  --config '{"sync_mode": "incremental", "primary_key": "transaction_id", "updated_at_column": "last_modified"}'
-
-# 3. Execute the import
-pltr connectivity import table ri.conn.main.connection.123 "daily_sales" ri.foundry.main.dataset.456 --execute
-```
-
-#### Bulk File Import from S3
-```bash
-# Import multiple files with custom S3 configuration
-pltr connectivity import file ri.conn.main.s3.123 "/data/2024/sales/*.csv" ri.foundry.main.dataset.456 \
-  --config '{"format": "CSV", "delimiter": ",", "compression": "gzip", "multiline": true}' \
-  --execute --format json --output import_results.json
-```
-
-**All connectivity commands support:**
-- Multiple output formats (table, JSON, CSV)
-- File output (`--output filename`)
-- Profile selection (`--profile production`)
-- Import configuration via JSON (`--config '{"key": "value"}'`)
-- Immediate execution (`--execute` for import commands)
-
----
-
-## 👥 Admin Commands
-
-Administrative operations for user, group, role, and organization management. **Note**: Requires admin permissions.
-
-### User Management
-
-#### `pltr admin user list [OPTIONS]`
-List all users in the organization.
-
-**Options:**
-- `--page-size` INTEGER: Number of users per page
-- `--page-token` TEXT: Pagination token from previous response
-
-**Example:**
-```bash
-pltr admin user list --page-size 50
-```
-
-#### `pltr admin user get [OPTIONS] USER_ID`
-Get information about a specific user.
-
-**Example:**
-```bash
-pltr admin user get john.doe@company.com
-```
-
-#### `pltr admin user current [OPTIONS]`
-Get information about the current authenticated user.
-
-**Example:**
-```bash
-pltr admin user current --format json
-```
-
-#### `pltr admin user search [OPTIONS] QUERY`
-Search for users by query string.
-
-**Example:**
-```bash
-pltr admin user search "john" --page-size 20
-```
-
-#### `pltr admin user markings [OPTIONS] USER_ID`
-Get markings/permissions for a specific user.
-
-**Example:**
-```bash
-pltr admin user markings john.doe@company.com
-```
-
-#### `pltr admin user revoke-tokens [OPTIONS] USER_ID`
-Revoke all tokens for a specific user.
-
-**Options:**
-- `--confirm`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr admin user revoke-tokens john.doe@company.com --confirm
-```
-
-### Group Management
-
-#### `pltr admin group list [OPTIONS]`
-List all groups in the organization.
-
-**Example:**
-```bash
-pltr admin group list
-```
-
-#### `pltr admin group get [OPTIONS] GROUP_ID`
-Get information about a specific group.
-
-**Example:**
-```bash
-pltr admin group get engineering-team
-```
-
-#### `pltr admin group search [OPTIONS] QUERY`
-Search for groups by query string.
-
-**Example:**
-```bash
-pltr admin group search "engineering"
-```
-
-#### `pltr admin group create [OPTIONS] NAME`
-Create a new group.
-
-**Options:**
-- `--description` TEXT: Group description
-- `--org-rid` TEXT: Organization RID
-
-**Example:**
-```bash
-pltr admin group create "Data Science Team" --description "Team for ML and analytics"
-```
-
-#### `pltr admin group delete [OPTIONS] GROUP_ID`
-Delete a specific group.
-
-**Options:**
-- `--confirm`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr admin group delete old-team --confirm
-```
-
-### Role Management
-
-#### `pltr admin role get [OPTIONS] ROLE_ID`
-Get information about a specific role.
-
-**Example:**
-```bash
-pltr admin role get admin-role
-```
-
-### Organization Management
-
-#### `pltr admin org get [OPTIONS] ORGANIZATION_ID`
-Get information about a specific organization.
-
-**Example:**
-```bash
-pltr admin org get my-organization
-```
-
----
-
-## 💻 Interactive Shell
-
-### `pltr shell [OPTIONS]`
-Start an interactive shell session with enhanced features.
-
-**Options:**
-- `--profile` TEXT: Auth profile to use for the session
-
-**Features:**
-- Tab completion for all commands
-- Persistent command history across sessions
-- Current profile displayed in prompt
-- All pltr commands available without the 'pltr' prefix
-- Multi-line editing support
-- History search with Ctrl+R
-
-**Example:**
-```bash
-pltr shell --profile production
-
-# In shell mode:
-pltr (production)> admin user current
-pltr (production)> sql execute "SELECT COUNT(*) FROM my_table"
-pltr (production)> exit
-```
-
----
-
-## 🌐 Space Commands
-
-Manage Foundry spaces, including creation, member management, and space administration.
-
-### `pltr space create [OPTIONS] DISPLAY_NAME`
-Create a new space in Foundry.
-
-**Arguments:**
-- `DISPLAY_NAME` (required): Display name for the space
-
-**Required Options:**
-- `--enrollment-rid`, `-e` TEXT: Enrollment Resource Identifier
-- `--organization`, `-org` TEXT: Organization RID(s) (can specify multiple)
-- `--deletion-policy-org`, `-dpo` TEXT: Organization RID(s) for deletion policy (can specify multiple)
-
-**Optional:**
-- `--description` TEXT: Space description
-- `--profile` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-
-**Examples:**
-```bash
-# Create space with required parameters
-pltr space create "Data Science Team" \
-  --enrollment-rid ri.enrollment.main.enrollment.xyz123 \
-  --organization ri.compass.main.organization.abc123 \
-  --deletion-policy-org ri.compass.main.organization.abc123
-
-# Create with description
-pltr space create "Analytics Space" \
-  --enrollment-rid ri.enrollment.main.enrollment.xyz123 \
-  --organization ri.compass.main.organization.abc123 \
-  --deletion-policy-org ri.compass.main.organization.abc123 \
-  --description "Space for analytics work"
-```
-
-### `pltr space get [OPTIONS] SPACE_RID`
-Get detailed information about a specific space.
-
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
-
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-pltr space get ri.compass.main.space.def456
-```
-
-### `pltr space list [OPTIONS]`
-List all accessible spaces.
-
-**Options:**
-- `--organization-rid` TEXT: Filter by organization RID
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-# List all spaces
+pltr configure set-default prod
+pltr configure delete old-profile --yes
+
+# Check authentication (exit code 3: no usable or rejected credentials)
+pltr verify
+pltr verify --profile dev --format json   # {"authSource": {...}, "user": {...}}
+
+# Find commands
+pltr commands search "list dataset branches"
+pltr commands show dataset branches list --format json
+pltr commands list api datasets
+```
+
+`pltr verify` fetches your user with the SDK's `User.get_current`; OAuth
+clients need the `api:admin-read` scope for it, or verify exits with code 4.
+`pltr commands` makes no Foundry call.
+
+## Datasets: `pltr dataset`
+
+Datasets are addressed by RID (`ri.foundry.main.dataset.<uuid>`). Commands
+that take `--branch` default to the dataset's default branch (`master` on
+most enrollments). Files change in transactions: you open one, upload or
+delete files in it, and commit it to make the changes visible (or abort it).
+
+| Command | What it does |
+|---|---|
+| `dataset get` | Get a dataset's metadata: its RID, name and parent folder |
+| `dataset create` | Create an empty dataset in a project or folder |
+| `dataset preview` | Read rows of a dataset as a table, JSON or CSV |
+| `dataset branches list` | List a dataset's branches (paged) |
+| `dataset branches create` | Create a branch, starting from a parent branch or a transaction |
+| `dataset branches get` | Get a branch: its name and latest open or committed transaction |
+| `dataset branches delete` | Delete a branch, but not master (asks first) |
+| `dataset branches transactions` | [beta] List a branch's transactions, newest first (paged) |
+| `dataset files list` | List the files in a dataset's current view of a branch (paged) |
+| `dataset files upload` | Upload a local file or directory to a dataset |
+| `dataset files get` | Download a file, or a folder with `--recursive`, from a dataset |
+| `dataset files delete` | Delete a file from a dataset's current view (asks first) |
+| `dataset files info` | Get a file's metadata: path, size, last update and transaction |
+| `dataset transactions start` | Open a transaction on a branch (one open transaction per branch) |
+| `dataset transactions commit` | Commit an open transaction, making its changes visible |
+| `dataset transactions abort` | Abort an open transaction, discarding its changes (asks first) |
+| `dataset transactions status` | Get a transaction: type, status (OPEN, COMMITTED, ABORTED) and times |
+| `dataset transactions list` | [beta] List a dataset's transactions, newest first (paged) |
+| `dataset transactions build` | [beta] Get the RID of the build that computed a transaction |
+| `dataset views create` | Create a view: a virtual dataset that unions its backing datasets |
+| `dataset views get` | Get a view: its backing datasets, primary key and parent folder |
+| `dataset views add-datasets` | Add backing datasets to a view |
+| `dataset views remove-datasets` | Remove backing datasets from a view (asks first) |
+| `dataset views replace-datasets` | Replace all of a view's backing datasets (asks first) |
+| `dataset views add-primary-key` | Add a primary key to a view that has none |
+| `dataset schema get` | Get a dataset's schema |
+| `dataset schema set` | Replace a dataset's schema on a branch (asks first) |
+| `dataset schema apply` | Infer a dataset's schema from its files and apply it (asks first) |
+| `dataset schedules list` | List the RIDs of the schedules that target a dataset (paged) |
+| `dataset jobs list` | [beta] List the RIDs of a dataset's jobs, newest first (paged) |
+
+```bash
+# Metadata, rows and schema
+pltr dataset get <dataset-rid>
+pltr dataset preview <dataset-rid> --limit 20 --column name --column revenue
+pltr dataset schema get <dataset-rid> --format json
+
+# Create a dataset in a project or folder
+pltr dataset create "Sales 2026" --parent-folder <project-or-folder-rid>
+
+# Files: list, download one, download a folder, print one to stdout
+pltr dataset files list <dataset-rid> --path-prefix raw/
+pltr dataset files get <dataset-rid> raw/sales.csv sales.csv
+pltr dataset files get <dataset-rid> raw ./raw --recursive
+pltr dataset files get <dataset-rid> raw/sales.csv - | head
+
+# Upload one file (the API commits it at once), or a directory in one
+# transaction that pltr opens and commits
+pltr dataset files upload sales.csv <dataset-rid> --path raw/sales.csv
+pltr dataset files upload ./exports <dataset-rid> --path raw --transaction-type SNAPSHOT
+
+# Several uploads in one transaction of your own
+TXN=$(pltr dataset transactions start <dataset-rid> --type APPEND --format json | jq -r .rid)
+pltr dataset files upload a.csv <dataset-rid> --transaction-rid "$TXN"
+pltr dataset files upload b.csv <dataset-rid> --transaction-rid "$TXN"
+pltr dataset transactions commit <dataset-rid> "$TXN"
+
+# Branches
+pltr dataset branches list <dataset-rid>
+pltr dataset branches create <dataset-rid> feature-x --parent master
+pltr dataset branches delete <dataset-rid> feature-x --yes
+
+# Schema: infer it from the uploaded CSV files, or set it yourself
+pltr dataset schema apply <dataset-rid> --yes
+pltr dataset schema set <dataset-rid> --from-csv sales.csv --yes
+pltr dataset schema set <dataset-rid> --json @schema.json --dataframe-reader CSV --yes
+
+# Views
+pltr dataset views create "All regions" --parent-folder <project-or-folder-rid> \
+  --backing-dataset <dataset-rid> --backing-dataset <other-dataset-rid>@master
+pltr dataset views add-primary-key <view-rid> order_id --latest-wins updated_at
+```
+
+Notes:
+
+- `files get` streams to disk and never leaves a partial file. With `-` as
+  the output path, the content goes to stdout and the metadata isn't printed.
+- `schema set --json` takes the API's `{"fieldSchemaList": [...]}`, the JSON
+  output of `schema get`, or the older `{"fields": [...]}` form, inline or as
+  `@file.json`. `--from-csv FILE` infers the column types from a local CSV.
+- `schema apply` calls the endpoints Foundry's web interface uses for schema
+  inference (direct HTTP, not the SDK). Its `--branch` defaults to `master`.
+- `transactions list` lists every branch's transactions unless you pass
+  `--branch`. `schedules list` prints RIDs only, as the API returns them.
+- JSON output: a transaction's RID is `.rid`; `preview` prints
+  `{"data": [{column: value}]}` with BINARY values in base64.
+
+## Copying: `pltr cp`
+
+`pltr cp SOURCE_RID TARGET_FOLDER_RID` copies a dataset, or a folder and
+everything in it with `--recursive`, into another folder.
+
+```bash
+pltr cp <dataset-rid> <target-folder-rid>
+pltr cp <folder-rid> <target-folder-rid> --recursive --name-suffix "-copy"
+pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
+```
+
+It prints the resources it created (JSON: `{"data": [...]}`) and its progress
+on stderr. When some items of a folder fail, it copies the others (or stops
+with `--fail-fast`) and exits with the first failure's error.
+
+## Filesystem: `folder`, `space`, `project`, `resource`, `resource-role`
+
+Compass is Foundry's filesystem: spaces hold projects, and projects hold
+folders and resources such as datasets. Project and folder RIDs look like
+`ri.compass.main.folder.<uuid>`. Find RIDs with `pltr space list`,
+`pltr project list`, `pltr folder list` and `pltr resource get-by-path`.
+
+| Command | What it does |
+|---|---|
+| `folder create` | Create a folder inside a project or another folder |
+| `folder get` | Get a folder's metadata |
+| `folder list` | List the resources directly inside a folder or project (paged) |
+| `folder batch-get` | Get several folders in one request |
+| `space create` | [beta] Create a space |
+| `space get` | [beta] Get a space's metadata |
+| `space list` | List the spaces you can see (paged) |
+| `space update` | [beta] Change a space's name, description, default role set or usage account |
+| `space delete` | [beta] Delete an empty space (asks first) |
+| `project create` | Create a project in a space |
+| `project get` | Get a project's metadata |
+| `project list` | List the projects in a space, or in every space you can see (paged) |
+| `project update` | [beta] Change a project's display name or description |
+| `project delete` | Move a project, and everything in it, to the trash (asks first) |
+| `project add-orgs` | Apply organizations to a project; they must also be on its space |
+| `project remove-orgs` | Remove organizations from a project (asks first) |
+| `project list-orgs` | List the RIDs of the organizations applied directly to a project (paged) |
+| `project create-from-template` | Create a project from a project template |
+| `resource get` | Get a resource's metadata by RID |
+| `resource get-by-path` | Get a resource's metadata by its path |
+| `resource list` | List the resources directly inside a folder (paged) |
+| `resource search` | Find resources below a folder by name, path, description, RID or type |
+| `resource batch-get` | Get several resources in one request |
+| `resource batch-get-by-path` | Get several resources by path in one request |
+| `resource delete` | Move a resource to the trash (asks first) |
+| `resource restore` | Restore a resource, and its directly trashed ancestors, from the trash |
+| `resource permanently-delete` | Permanently delete a resource that is in the trash (asks first) |
+| `resource add-markings` | Apply markings to a resource |
+| `resource remove-markings` | Remove markings from a resource (asks first) |
+| `resource list-markings` | List the IDs of the markings applied directly to a resource (paged) |
+| `resource access-requirements` | Show the organizations and markings a user needs to view a resource |
+| `resource-role grant` | Grant a role on a resource to a user, a group or everyone |
+| `resource-role revoke` | Revoke a role on a resource (asks first) |
+| `resource-role list` | List the role grants on a resource (paged) |
+
+```bash
+# Find your way around
 pltr space list
+pltr project list --space-rid <space-rid>
+pltr folder list <project-or-folder-rid> --all
+pltr resource get-by-path "/My Space/My Project/sales"
+pltr resource search sales --folder-rid <project-rid> --type dataset
 
-# Filter by organization
-pltr space list --organization-rid ri.compass.main.organization.abc123
+# Folders and projects
+pltr folder create "Reports" --parent-folder <project-or-folder-rid>
+pltr project create "Forecasting" --space-rid <space-rid> --description "Demand forecasts"
+pltr project update <project-rid> --description "Demand and supply forecasts"
+pltr project delete <project-rid> --yes     # moves it to the trash
+pltr resource restore <project-rid>
+
+# Spaces
+pltr space create "Analytics" --enrollment-rid <enrollment-rid> \
+  --organization <organization-rid> --deletion-policy-org <organization-rid>
+pltr space update <space-rid> --description "Shared analytics work"
+
+# Trash and markings
+pltr resource delete <resource-rid> --yes
+pltr resource permanently-delete <resource-rid> --yes
+pltr resource add-markings <resource-rid> --marking <marking-id>
+pltr resource list-markings <resource-rid>
+
+# Role grants
+pltr resource-role list <resource-rid> --include-inherited
+pltr resource-role grant <resource-rid> --principal-id <user-or-group-id> --role <role-id>
+pltr resource-role grant <resource-rid> --everyone --role <role-id>
+pltr resource-role revoke <resource-rid> --principal-id <user-or-group-id> --role <role-id> --yes
 ```
 
-### `pltr space update [OPTIONS] SPACE_RID`
-Update space information.
+Notes:
 
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
+- `folder create` and `dataset create` need a parent project or folder:
+  folders can't be created directly in a space.
+- `resource-role grant` and `revoke` take user and group IDs (UUIDs), not
+  names: find them with `pltr admin user search` and
+  `pltr admin group search`. Role IDs come from the role set of the
+  resource's space (`compass:manage` is Owner in Foundry's default role set);
+  `pltr resource-role list` shows the ones in use.
+- `resource search` scans folders, because the API has no search endpoint:
+  start from the narrowest `--folder-rid` you can. It stops after
+  `--max-folders` folders (default 1000) and warns that the results may be
+  incomplete. `--type` takes API type names such as `FOUNDRY_DATASET` or
+  `COMPASS_FOLDER` (`dataset` and `folder` work too).
+- `project list` without `--space-rid` lists every space's projects (all
+  pages; `--page-token` and `--max-pages` need `--space-rid`).
+- `project update` and `space update` send back the fields you don't change,
+  so they keep their values.
+- `project list-orgs` and `resource list-markings` print IDs only, as the API
+  returns them.
 
-**Options:**
-- `--display-name` TEXT: New display name
-- `--description` TEXT: New description
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+## Ontology: `pltr ontology`
 
-**Example:**
+The ontology argument is the ontology's API name or RID; object types,
+link types, actions and queries are named by API name. JSON inputs
+(`--where`, `--aggregation`, `--group-by`, `--order-by`, action parameters
+and batch requests) use the Foundry API's shapes, inline, as `@file.json` or
+as `@-` for stdin, and are checked against the SDK's models before anything
+is sent.
+
+| Command | What it does |
+|---|---|
+| `ontology list` | List the ontologies you can see |
+| `ontology get` | Get an ontology's metadata |
+| `ontology object-type-list` | List an ontology's object types (paged) |
+| `ontology object-type-get` | Get an object type: its primary key, title property and properties |
+| `ontology object-type-create` | Create an object type (direct HTTP: the SDK can't create object types) |
+| `ontology link-type-create` | Create a link type (direct HTTP: the SDK can't create link types) |
+| `ontology object-list` | List the objects of an object type (paged) |
+| `ontology object-get` | Get an object by primary key |
+| `ontology object-search` | Search the objects of an object type with a typed query (paged) |
+| `ontology object-aggregate` | Aggregate objects: counts, sums, averages and more, optionally grouped |
+| `ontology object-count` | [beta] Count the objects of an object type |
+| `ontology object-linked` | List the objects linked to an object through a link type (paged) |
+| `ontology action-apply` | Apply an action: validate its parameters and make its edits |
+| `ontology action-validate` | Check an action's parameters without applying it |
+| `ontology action-apply-batch` | Apply several actions of one action type in a single request |
+| `ontology query-execute` | Execute an ontology query function |
+
 ```bash
-pltr space update ri.compass.main.space.def456 \
-  --display-name "Updated Space Name" \
-  --description "Updated description"
+pltr ontology list
+pltr ontology object-type-list <ontology>
+pltr ontology object-type-get <ontology> Employee --format json
+
+# Objects
+pltr ontology object-list <ontology> Employee --properties name,department --page-size 50
+pltr ontology object-get <ontology> Employee E-12345
+pltr ontology object-linked <ontology> Employee E-12345 reportsTo
+
+# Search with the API's typed query (there is no free-text search)
+pltr ontology object-search <ontology> Employee \
+  --where '{"type": "eq", "field": "department", "value": "Engineering"}' --all
+
+# Count and aggregate
+pltr ontology object-count <ontology> Employee
+pltr ontology object-aggregate <ontology> Employee \
+  --aggregation '[{"type": "count", "name": "employees"}, {"type": "avg", "field": "salary", "name": "avgSalary"}]' \
+  --group-by department
+
+# Actions: validate, then apply
+pltr ontology action-validate <ontology> promote-employee '{"employee": "E-12345", "level": 5}'
+pltr ontology action-apply <ontology> promote-employee @params.json
+pltr ontology action-apply-batch <ontology> promote-employee @requests.json
+
+# Query functions
+pltr ontology query-execute <ontology> employeeStats --parameters '{"department": "Engineering"}'
 ```
 
-### `pltr space delete [OPTIONS] SPACE_RID`
-Delete a space.
+Notes:
 
-**Arguments:**
-- `SPACE_RID` (required): Space Resource Identifier
+- `--where` takes the API's search query: `eq`, `gt`, `lt`, `isNull`,
+  `containsAnyTerm`, `and`, `or`, `not` and more, with `field` and `value`.
+  A mistake is a usage error (exit code 2) that names the location and the
+  problem.
+- `object-aggregate --group-by` takes the API's group-by objects as JSON, or
+  comma-separated property names for exact groupings.
+- `action-apply` exits with code 6 when Foundry reports the parameters
+  invalid; `action-validate` exits with 0 and prints the validation result.
+- `object-type-create` and `link-type-create` call schema endpoints that
+  aren't part of the public API and may not exist on your stack (exit code
+  5 when none does).
 
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--yes`, `-y`: Skip confirmation prompt
+## SQL: `pltr sql`
 
-**Example:**
+Queries use the Spark SQL dialect and support SELECT only. Refer to datasets
+by path or by RID in backticks; use single quotes in the shell so the
+backticks reach pltr.
+
+| Command | What it does |
+|---|---|
+| `sql execute QUERY` | Run a query, wait for it to finish and print its rows |
+| `sql submit QUERY` | Start a query without waiting; print its status and query ID |
+| `sql status QUERY_ID` | Get a query's status: running, succeeded, failed or canceled |
+| `sql results QUERY_ID` | Print the rows of a finished query |
+| `sql cancel QUERY_ID` | Cancel a running query (asks first) |
+| `sql export QUERY OUTPUT_FILE` | Run a query and write its rows to a file |
+| `sql wait QUERY_ID` | Wait for a submitted query to finish, then print its rows |
+
 ```bash
-pltr space delete ri.compass.main.space.def456 --yes
+pltr sql execute 'SELECT region, COUNT(*) AS orders FROM `/My Space/My Project/orders` GROUP BY region'
+pltr sql execute 'SELECT * FROM `<dataset-rid>` LIMIT 10' --format csv --output sample.csv
+pltr sql export 'SELECT * FROM `<dataset-rid>`' orders.csv   # .json, .csv or a table
+
+# Long-running queries
+QUERY_ID=$(pltr sql submit 'SELECT * FROM `<dataset-rid>`' --format json | jq -r .queryId)
+pltr sql status "$QUERY_ID"
+pltr sql wait "$QUERY_ID" --timeout 600 --format json > rows.json
+pltr sql cancel "$QUERY_ID" --yes
 ```
 
----
+JSON output of `execute`, `results`, `wait` and `export` to a `.json` file
+is `{"data": [...]}`, one object per row. `submit`, `status` and `cancel`
+print the query status (`{"type": "running", "queryId": "..."}`). A failed or
+canceled query exits with code 7, and so does `--timeout` (the query keeps
+running). `sql results` exits with 6 while the query is still running.
 
-## 🏗️ Project Commands
+## Orchestration: `pltr orchestration`
 
-Manage Foundry projects within spaces, including creation, updates, and project administration.
+| Command | What it does |
+|---|---|
+| `orchestration builds get` | Get a build: its status, branch, jobs and timing |
+| `orchestration builds create` | Start a build of datasets (or other build targets) |
+| `orchestration builds cancel` | Cancel a build's unfinished jobs (asks first) |
+| `orchestration builds jobs` | List the jobs of a build (paged) |
+| `orchestration builds search` | [beta] Search builds by status, branch, creator and time (paged) |
+| `orchestration builds get-batch` | Get several builds in one request |
+| `orchestration jobs get` | [beta] Get a job: its status, build, outputs and timing |
+| `orchestration jobs get-batch` | [beta] Get several jobs in one request |
+| `orchestration schedules get` | [beta] Get a schedule: its trigger, build target, scope and paused state |
+| `orchestration schedules create` | [beta] Create a schedule |
+| `orchestration schedules replace` | [beta] Replace a schedule's definition (asks first) |
+| `orchestration schedules delete` | Delete a schedule (asks first) |
+| `orchestration schedules pause` | Pause a schedule |
+| `orchestration schedules unpause` | Unpause a schedule |
+| `orchestration schedules run` | Run a schedule now, and show the run and the build it started |
+| `orchestration schedules runs` | List a schedule's recent runs (paged) |
 
-### `pltr project create [OPTIONS] DISPLAY_NAME SPACE_RID`
-Create a new project within a space.
-
-**Arguments:**
-- `DISPLAY_NAME` (required): Display name for the project
-- `SPACE_RID` (required): Space Resource Identifier where project will be created
-
-**Options:**
-- `--description` TEXT: Project description
-- `--organization-rids` TEXT: Comma-separated list of organization RIDs
-- `--default-roles` TEXT: Comma-separated list of default roles
-- `--role-grants` TEXT: JSON string of role grants configuration
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
 ```bash
-# Create basic project
-pltr project create "ML Pipeline" ri.compass.main.space.abc123
+# Search needs at least one filter
+pltr orchestration builds search --status FAILED --branch master --order-by STARTED_TIME:DESC
+pltr orchestration builds search --started-after 2026-01-31T00:00:00Z --all --format json
 
-# Create with full configuration
-pltr project create "Analytics Project" ri.compass.main.space.abc123 \
-  --description "Project for data analytics" \
-  --organization-rids "ri.compass.main.org.def456" \
-  --default-roles "viewer"
+# Build a dataset (manual, upstream or connecting target) and follow it
+pltr orchestration builds create '{"type": "manual", "targetRids": ["<dataset-rid>"]}' --branch master
+pltr orchestration builds get <build-rid>
+pltr orchestration builds jobs <build-rid>
+pltr orchestration builds cancel <build-rid> --yes
+pltr orchestration jobs get-batch <job-rid> <other-job-rid>
+
+# Schedules
+pltr orchestration schedules create \
+  '{"target": {"type": "manual", "targetRids": ["<dataset-rid>"]}}' \
+  --name "Nightly build" \
+  --trigger '{"type": "time", "cronExpression": "0 2 * * *", "timeZone": "UTC"}'
+pltr orchestration schedules run <schedule-rid>
+pltr orchestration schedules runs <schedule-rid>
+pltr orchestration schedules pause <schedule-rid>
+pltr orchestration schedules delete <schedule-rid> --yes
 ```
 
-### `pltr project get [OPTIONS] PROJECT_RID`
-Get detailed information about a specific project.
+`builds create --help` documents the three build target types.
+`schedules replace` replaces the whole definition: fields you leave out
+aren't kept.
 
-**Arguments:**
-- `PROJECT_RID` (required): Project Resource Identifier
+## Data health: `pltr data-health`
 
-**Example:**
+Every data health endpoint is beta.
+
+| Command | What it does |
+|---|---|
+| `data-health check get` | [beta] Get a check: its type, configuration and intent |
+| `data-health check create` | [beta] Create a check |
+| `data-health check replace` | [beta] Replace a check's configuration (asks first) |
+| `data-health check delete` | [beta] Delete a check (asks first) |
+| `data-health report get` | [beta] Get one report of a check: its result status and message |
+| `data-health report latest` | [beta] List a check's most recent reports |
+
 ```bash
-pltr project get ri.compass.main.project.ghi789
+pltr data-health check create @check-config.json --intent "Monitor production builds"
+pltr data-health check get <check-rid> --format json
+pltr data-health report latest <check-rid> --limit 5
+pltr data-health report get <check-rid> <check-report-rid>
+pltr data-health check delete <check-rid> --yes
 ```
 
-### `pltr project list [OPTIONS]`
-List all accessible projects.
+A check's configuration is the API's JSON: its `type` (`buildStatus`,
+`nullPercentage`, `timeSinceLastUpdated`, ...) and `subject`; see
+`pltr data-health check create --help`. Severities are `MODERATE` and
+`CRITICAL`. The API can't list checks.
 
-**Options:**
-- `--space-rid` TEXT: Filter by space RID
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
+## Functions: `pltr functions`
 
-**Examples:**
+| Command | What it does |
+|---|---|
+| `functions query get` | [beta] Get a query's definition by API name |
+| `functions query get-by-rid` | [beta] Get a query's definition by RID |
+| `functions query execute` | [beta] Execute a query by API name |
+| `functions query execute-by-rid` | [beta] Execute a query given its RID |
+| `functions value-type get` | [beta] Get a value type: its base type, constraints and version |
+
 ```bash
-# List all projects
-pltr project list
-
-# Filter by space
-pltr project list --space-rid ri.compass.main.space.abc123
+pltr functions query get myQuery
+pltr functions query execute myQuery --parameters '{"limit": 10}'
+pltr functions query execute myQuery --parameters @params.json --version 1.0.0 --format json
+pltr functions query execute-by-rid <query-rid> --parameters '{"limit": 10}'
 ```
 
-### `pltr project update [OPTIONS] PROJECT_RID`
-Update project information.
+Without `--version`, the latest version is used (`--include-prerelease`
+and `--latest-version-resolution` say how it's picked). `execute-by-rid`
+looks the query up by RID, then executes it by API name. JSON output of
+`execute` is `{"value": ...}`.
 
-**Arguments:**
-- `PROJECT_RID` (required): Project Resource Identifier
+## Models: `pltr models`
 
-**Options:**
-- `--display-name` TEXT: New display name
-- `--description` TEXT: New description
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
+The model registry (not language models). The API can't list models, so keep
+the RID `model create` prints.
 
-**Example:**
+| Command | What it does |
+|---|---|
+| `models model create` | [beta] Create a model (with no versions) in the model registry |
+| `models model get` | [beta] Get a model (the API returns only its RID) |
+| `models version get` | [beta] Get a model version: its inputs, outputs, dependencies and source |
+| `models version list` | [beta] List a model's versions (paged) |
+
 ```bash
-pltr project update ri.compass.main.project.ghi789 \
-  --display-name "Updated Project" \
-  --description "Updated project description"
+pltr models model create "fraud-detector" --folder <folder-rid>
+pltr models version list <model-rid> --all
+pltr models version get <model-rid> <model-version-rid> --format json
 ```
 
-### `pltr project delete [OPTIONS] PROJECT_RID`
-Delete a project.
+## Streams: `pltr streams`
 
-**Arguments:**
-- `PROJECT_RID` (required): Project Resource Identifier
+A streaming dataset has a stream per branch. Schemas use the API's format:
+a `fields` list, each with a `name` and a `schema`
+(`{"nullable": ..., "dataType": {"type": ...}}`), and optional
+`keyFieldNames`.
 
-**Options:**
-- `--profile`, `-p` TEXT: Profile name
-- `--yes`, `-y`: Skip confirmation prompt
+| Command | What it does |
+|---|---|
+| `streams dataset create` | [beta] Create a streaming dataset with a stream on one branch |
+| `streams stream create` | [beta] Create a branch of a streaming dataset with a new stream |
+| `streams stream get` | Get the stream on a branch: its schema, view RID and settings |
+| `streams stream publish` | Publish one record to a stream |
+| `streams stream publish-batch` | Publish a batch of records in one request |
+| `streams stream reset` | [beta] Delete all of a stream's records, optionally with new settings (asks first) |
 
-**Example:**
 ```bash
-pltr project delete ri.compass.main.project.ghi789 --yes
+pltr streams dataset create sensor-data --folder <folder-rid> \
+  --schema '{"fields": [{"name": "id", "schema": {"nullable": false, "dataType": {"type": "long"}}}], "keyFieldNames": ["id"]}'
+pltr streams stream publish <dataset-rid> --branch master --record '{"id": 123}'
+pltr streams stream publish-batch <dataset-rid> --branch master --records @records.json
+pltr streams stream get <dataset-rid> --branch master
+pltr streams stream reset <dataset-rid> --branch master --partitions 4 --yes
 ```
 
----
+`--type` is `LOW_LATENCY` (the default) or `HIGH_THROUGHPUT`.
 
-## 📄 Resource Commands
+## Media sets: `pltr media-sets`
 
-Generic resource operations for managing any Foundry resource, including metadata and search capabilities.
+Media set RIDs look like `ri.mio.main.media-set.<uuid>` and media item RIDs
+like `ri.mio.main.media-item.<uuid>`.
 
-### `pltr resource get [OPTIONS] RESOURCE_RID`
-Get information about any Foundry resource.
+| Command | What it does |
+|---|---|
+| `media-sets get` | Get a media item's metadata: path, MIME type, size and uploader |
+| `media-sets get-by-path` | [beta] Look up the RID of the media item at a path |
+| `media-sets create` | [beta] Open a transaction on a transactional media set |
+| `media-sets commit` | [beta] Commit a transaction: its uploads become available |
+| `media-sets abort` | [beta] Abort a transaction, deleting its uploads (asks first) |
+| `media-sets upload` | [beta] Upload a file as a media item |
+| `media-sets download` | Download a media item to a file, or to stdout with `-` |
+| `media-sets reference` | [beta] Get a media item's media reference (for ontology media properties) |
+| `media-sets thumbnail-calculate` | [beta] Start calculating an image's thumbnail; prints the status |
+| `media-sets thumbnail-retrieve` | [beta] Download an image's thumbnail (200px wide webp) |
+| `media-sets upload-temp` | Upload temporary media; prints its media reference |
+| `media-sets clear` | [beta] Soft-delete the media item at a path (asks first) |
 
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-
-**Example:**
 ```bash
-pltr resource get ri.foundry.main.dataset.abc123
+pltr media-sets get <media-set-rid> <media-item-rid>
+pltr media-sets get-by-path <media-set-rid> /images/photo.jpg
+
+# Non-transactional media sets: upload directly
+pltr media-sets upload <media-set-rid> photo.jpg /images/photo.jpg
+
+# Transactional media sets: upload in a transaction, then commit it
+TXN=$(pltr media-sets create <media-set-rid> --format json | jq -r .)
+pltr media-sets upload <media-set-rid> photo.jpg /images/photo.jpg "$TXN"
+pltr media-sets commit <media-set-rid> "$TXN"
+
+pltr media-sets download <media-set-rid> <media-item-rid> photo.jpg --overwrite
+pltr media-sets download <media-set-rid> <media-item-rid> - --original > original.jpg
+pltr media-sets thumbnail-calculate <media-set-rid> <media-item-rid>
+pltr media-sets thumbnail-retrieve <media-set-rid> <media-item-rid> thumb.webp
+pltr media-sets clear <media-set-rid> /images/photo.jpg --yes
 ```
 
-### `pltr resource list [OPTIONS]`
-List resources in the filesystem.
+Downloads stream to the file; without `--overwrite`, an existing file is a
+usage error (exit code 2).
 
-**Options:**
-- `--folder-rid` TEXT: Filter by folder RID
-- `--resource-type` TEXT: Filter by resource type (dataset, folder, etc.)
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
+## Connectivity: `pltr connectivity`
 
-**Example:**
+The API can't list connections: Data Connection sources appear in
+`pltr folder list` as `MAGRITTE_SOURCE` resources. Imports belong to a
+connection, so their commands take the connection RID first.
+
+| Command | What it does |
+|---|---|
+| `connectivity connection get` | Get a connection: its configuration type, worker and export settings |
+| `connectivity connection create` | Create a connection with a Foundry worker runtime |
+| `connectivity connection get-config` | Get a connection's configuration |
+| `connectivity connection update-secrets` | Overwrite secret values on a connection (asks first) |
+| `connectivity connection update-export-settings` | Replace a connection's export settings (asks first) |
+| `connectivity connection upload-jdbc-drivers` | Upload custom JDBC driver JARs to a JDBC connection |
+| `connectivity import file` | Create a file import from a connection into a dataset |
+| `connectivity import get-file` | Get a file import |
+| `connectivity import list-file` | List a connection's file imports (paged) |
+| `connectivity import execute-file` | Run a file import; prints the RID of the build that runs it |
+| `connectivity import table` | Create a table import from a connection into a dataset |
+| `connectivity import get-table` | Get a table import |
+| `connectivity import list-table` | List a connection's table imports (paged) |
+| `connectivity import execute-table` | Run a table import; prints the RID of the build that runs it |
+
 ```bash
-# List all resources
-pltr resource list
+pltr connectivity connection get <connection-rid>
+pltr connectivity connection get-config <connection-rid> --format json
+pltr connectivity connection update-secrets <connection-rid> --secrets-file secrets.json --yes
 
-# Filter by folder and type
-pltr resource list --folder-rid ri.compass.main.folder.abc123 --resource-type dataset
+# File import: create it, then run it
+pltr connectivity import file <connection-rid> <dataset-rid> \
+  --name "Daily sales" --mode SNAPSHOT --subfolder /exports \
+  --filters '[{"type": "pathMatchesFilter", "regex": ".*\\.csv"}]'
+pltr connectivity import execute-file <connection-rid> <file-import-rid>
+
+# Table import from a JDBC source
+pltr connectivity import table <connection-rid> <dataset-rid> \
+  --name "Orders" --mode SNAPSHOT \
+  --config '{"type": "jdbcImportConfig", "query": "SELECT * FROM orders"}'
+pltr connectivity import list-table <connection-rid>
 ```
 
-### `pltr resource batch-get [OPTIONS] RESOURCE_RIDS...`
-Get multiple resources in a single request (max 1000).
+`update-secrets` reads the secrets from a JSON file so the values stay out of
+your shell history; secrets not in the file keep their values.
 
-**Arguments:**
-- `RESOURCE_RIDS...` (required): Space-separated list of Resource Identifiers
+## Language models: `pltr language-models`
 
-**Example:**
+The model argument of `anthropic messages`, `messages-advanced` and
+`openai embeddings` is the model's API name. `list`, `status` and `enroll`
+call language-model endpoints directly (the SDK has none for them).
+
+| Command | What it does |
+|---|---|
+| `language-models list` | List the language models available to you |
+| `language-models status` | Show a language model's enrollment status |
+| `language-models enroll` | Enroll (enable) a language model for API use |
+| `language-models anthropic messages` | [beta] Send one message to an Anthropic Claude model |
+| `language-models anthropic messages-advanced` | [beta] Send a full messages request to a Claude model |
+| `language-models openai embeddings` | [beta] Embed texts with an OpenAI embedding model |
+
 ```bash
-pltr resource batch-get ri.foundry.main.dataset.abc123 ri.compass.main.folder.def456
+pltr language-models list
+pltr language-models anthropic messages <model-api-name> -m "Explain RIDs" --max-tokens 300
+pltr language-models anthropic messages-advanced <model-api-name> --request @request.json --format json
+pltr language-models openai embeddings <model-api-name> --input '["first text", "second text"]'
 ```
 
-### `pltr resource search [OPTIONS] QUERY`
-Search for resources across Foundry.
+`messages-advanced --request` takes the API's request body (camelCase:
+`messages`, `maxTokens`, `system`, `tools`, `thinking` with `budgetTokens`,
+...); unknown fields are a usage error. The table shows the reply and the
+token counts; `--format json` prints the whole response.
 
-**Arguments:**
-- `QUERY` (required): Search query string
+## AIP agents, widgets and third-party apps
 
-**Options:**
-- `--resource-type` TEXT: Filter by resource type
-- `--folder-rid` TEXT: Filter by folder RID
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
+Every endpoint in these groups is beta.
 
-**Examples:**
+| Command | What it does |
+|---|---|
+| `aip-agents get` | [beta] Get an agent's metadata, parameters and version |
+| `aip-agents sessions list` | [beta] List your conversation sessions with an agent (paged) |
+| `aip-agents sessions get` | [beta] Get a conversation session's metadata |
+| `aip-agents versions list` | [beta] List an agent's published versions (paged) |
+| `widgets get` | [beta] Get a widget set |
+| `widgets release list` | [beta] List the releases of a widget set (paged) |
+| `widgets release get` | [beta] Get a release of a widget set |
+| `widgets release delete` | [beta] Delete a release of a widget set (asks first) |
+| `widgets repository get` | [beta] Get a widget repository |
+| `third-party-apps get` | [beta] Get a third-party application (the API returns only its RID) |
+
 ```bash
-# Search for datasets
-pltr resource search "sales data"
-
-# Search with filters
-pltr resource search "analytics" --resource-type dataset --folder-rid ri.compass.main.folder.abc123
+pltr aip-agents get <agent-rid> --version 1.0
+pltr aip-agents sessions list <agent-rid> --all
+pltr widgets release list <widget-set-rid>
+pltr widgets release delete <widget-set-rid> 1.2.0 --yes
 ```
 
-### Resource Metadata Operations
+Widget dev mode has no curated command; use
+`pltr api widgets dev-mode-settings` and `dev-mode-settings-v2`.
 
-#### `pltr resource metadata get [OPTIONS] RESOURCE_RID`
-Get metadata for a resource.
+## Audit logs: `pltr audit`
 
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
+| Command | What it does |
+|---|---|
+| `audit list ORGANIZATION_RID START_DATE` | List an organization's audit log files (paged) |
+| `audit get ORGANIZATION_RID LOG_FILE_ID` | Download an audit log file |
 
-**Example:**
 ```bash
-pltr resource metadata get ri.foundry.main.dataset.abc123
+pltr audit list <organization-rid> 2026-11-01 --end-date 2026-11-07 --all
+pltr audit get <organization-rid> <log-file-id> --output audit.log
 ```
 
----
+Without `--end-date` the listing has no end: paging stops at the first empty
+page, and its `nextPageToken` picks up new log files later. `audit get`
+never writes to a terminal: pass `--output FILE` or redirect stdout.
 
-## 🔐 Resource Role Commands
+## Admin: `pltr admin`
 
-Manage resource-based permissions, including granting and revoking roles on specific resources.
+User and group IDs are UUIDs: find them with `admin user search` and
+`admin group search` (usernames, emails and group names are not IDs).
+Organizations are RIDs (`ri.multipass..organization.<id>`).
 
-### `pltr resource-role grant [OPTIONS] RESOURCE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
-Grant a role to a user or group on a resource.
+| Command | What it does |
+|---|---|
+| `admin user list` | List users (paged) |
+| `admin user get` | Get a user |
+| `admin user current` | Get the user you are authenticated as |
+| `admin user search` | Search active users by name (paged) |
+| `admin user markings` | List the IDs of the markings a user can access |
+| `admin user revoke-tokens` | Invalidate all of a user's tokens and browser sessions (asks first) |
+| `admin user delete` | Delete a user (asks first) |
+| `admin user batch-get` | Get several users in one request |
+| `admin group list` | List groups (paged) |
+| `admin group get` | Get a group |
+| `admin group search` | Search groups by name (paged) |
+| `admin group create` | Create a group |
+| `admin group delete` | Delete a group (asks first) |
+| `admin group batch-get` | Get several groups in one request |
+| `admin role get` | [beta] Get a role: its operations and the roles it inherits |
+| `admin role batch-get` | [beta] Get several roles in one request |
+| `admin org get` | Get an organization |
+| `admin org create` | [beta] Create an organization |
+| `admin org replace` | Rename an organization, and change its description or host (asks first) |
+| `admin org available-roles` | List the roles that can be assigned in an organization |
+| `admin marking list` | List markings (paged) |
+| `admin marking get` | Get a marking |
+| `admin marking batch-get` | Get several markings in one request |
+| `admin marking create` | Create a marking |
+| `admin marking replace` | Rename a marking, and change its description (asks first) |
 
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `PRINCIPAL_ID` (required): User ID or Group ID
-- `PRINCIPAL_TYPE` (required): "User" or "Group"
-- `ROLE_NAME` (required): Role name to grant
-
-**Examples:**
 ```bash
-# Grant viewer role to user
-pltr resource-role grant ri.foundry.main.dataset.abc123 john.doe User viewer
-
-# Grant editor role to group
-pltr resource-role grant ri.foundry.main.dataset.abc123 data-team Group editor
+pltr admin user current
+pltr admin user search jane --format json
+pltr admin user get <user-id>
+pltr admin group search engineering
+pltr admin group create "Data Science" --organization <organization-rid> \
+  --description "ML team" --attribute team=ds
+pltr admin org available-roles <organization-rid>
+pltr admin marking list --exclude-deleted --marking-type MANDATORY
+pltr admin marking create "Project X" --category-id <category-id> \
+  --role ADMINISTER:<your-user-id> --member <group-id>
+pltr admin group delete <group-id> --yes
 ```
 
-### `pltr resource-role revoke [OPTIONS] RESOURCE_RID PRINCIPAL_ID PRINCIPAL_TYPE ROLE_NAME`
-Revoke a role from a user or group on a resource.
+`org replace` and `marking replace` keep the current description (and host)
+unless you pass new ones. Group members, marking members and role
+assignments are managed with `pltr api admin ...` commands.
 
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `PRINCIPAL_ID` (required): User ID or Group ID
-- `PRINCIPAL_TYPE` (required): "User" or "Group"
-- `ROLE_NAME` (required): Role name to revoke
+## Aliases, shell and completion
 
-**Example:**
+| Command | What it does |
+|---|---|
+| `alias add NAME COMMAND` | Create an alias (`--force` replaces an existing one) |
+| `alias remove NAME` | Remove an alias (asks first) |
+| `alias edit NAME COMMAND` | Change the command an alias runs |
+| `alias list` | List all aliases |
+| `alias show NAME` | Show the command an alias runs |
+| `alias clear` | Remove every alias (asks first) |
+| `alias export` | Write all aliases as a JSON object |
+| `alias import INPUT_FILE` | Import aliases from a JSON file (asks before replacing existing ones) |
+| `alias resolve NAME` | Show the command an alias finally runs |
+| `shell` | Interactive mode: run pltr commands without typing `pltr` |
+| `completion install` | Install the completion script for your shell |
+| `completion show` | Print the completion script |
+| `completion uninstall` | Remove the completion script `install` wrote |
+
 ```bash
-pltr resource-role revoke ri.foundry.main.dataset.abc123 john.doe User viewer
-```
+pltr alias add dsg "dataset get"
+pltr dsg <dataset-rid>
+pltr alias list
 
-### `pltr resource-role list [OPTIONS] RESOURCE_RID`
-List all role grants for a resource.
+pltr shell --profile prod
+pltr shell < commands.txt        # run commands from a file
 
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-
-**Options:**
-- `--principal-type` TEXT: Filter by principal type (User or Group)
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Examples:**
-```bash
-# List all permissions
-pltr resource-role list ri.foundry.main.dataset.abc123
-
-# Filter by users only
-pltr resource-role list ri.foundry.main.dataset.abc123 --principal-type User
-```
-
-### `pltr resource-role get-principal-roles [OPTIONS] PRINCIPAL_ID PRINCIPAL_TYPE`
-Get all resource roles for a specific user or group.
-
-**Arguments:**
-- `PRINCIPAL_ID` (required): User ID or Group ID
-- `PRINCIPAL_TYPE` (required): "User" or "Group"
-
-**Options:**
-- `--resource-rid` TEXT: Filter by specific resource RID
-- `--page-size` INTEGER: Number of results per page
-- `--page-token` TEXT: Pagination token
-- `--profile`, `-p` TEXT: Profile name
-- `--format`, `-f` TEXT: Output format (table, json, csv) [default: table]
-- `--output`, `-o` TEXT: Output file path
-
-**Example:**
-```bash
-# Get all roles for user
-pltr resource-role get-principal-roles john.doe User
-
-# Filter by specific resource
-pltr resource-role get-principal-roles john.doe User --resource-rid ri.foundry.main.dataset.abc123
-```
-
-### Bulk Operations
-
-#### `pltr resource-role bulk-grant [OPTIONS] RESOURCE_RID ROLE_GRANTS`
-Grant multiple roles in a single operation.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `ROLE_GRANTS` (required): JSON array of role grant objects
-
-**Example:**
-```bash
-pltr resource-role bulk-grant ri.foundry.main.dataset.abc123 '[
-  {"principal_id": "john.doe", "principal_type": "User", "role_name": "viewer"},
-  {"principal_id": "jane.smith", "principal_type": "User", "role_name": "editor"},
-  {"principal_id": "data-team", "principal_type": "Group", "role_name": "owner"}
-]'
-```
-
-#### `pltr resource-role bulk-revoke [OPTIONS] RESOURCE_RID ROLE_REVOCATIONS`
-Revoke multiple roles in a single operation.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-- `ROLE_REVOCATIONS` (required): JSON array of role revocation objects
-
-**Example:**
-```bash
-pltr resource-role bulk-revoke ri.foundry.main.dataset.abc123 '[
-  {"principal_id": "john.doe", "principal_type": "User", "role_name": "viewer"},
-  {"principal_id": "old-group", "principal_type": "Group", "role_name": "editor"}
-]'
-```
-
-### `pltr resource-role available-roles [OPTIONS] RESOURCE_RID`
-List all available roles for a resource type.
-
-**Arguments:**
-- `RESOURCE_RID` (required): Resource Identifier
-
-**Example:**
-```bash
-pltr resource-role available-roles ri.foundry.main.dataset.abc123
-```
-
----
-
-## ⚡ Shell Completion
-
-### `pltr completion install [OPTIONS]`
-Install shell completions for enhanced command-line experience.
-
-**Options:**
-- `--shell`, `-s` TEXT: Shell type (bash, zsh, fish). Auto-detected if not specified
-- `--path`, `-p` PATH: Custom path to install completion file
-
-**Examples:**
-```bash
-# Auto-detect shell and install
 pltr completion install
-
-# Install for specific shell
-pltr completion install --shell zsh
-
-# Install to custom path
-pltr completion install --shell bash --path ~/.bash_completions/_pltr
+eval "$(pltr completion show --shell bash)"
 ```
 
-### `pltr completion show [OPTIONS]`
-Show the completion script for manual installation.
-
-**Example:**
-```bash
-pltr completion show --shell bash
-```
-
-### `pltr completion uninstall [OPTIONS]`
-Remove shell completions.
-
-**Example:**
-```bash
-pltr completion uninstall --shell zsh
-```
-
----
-
-## 🔍 Quick Reference
-
-### Most Common Commands
-```bash
-# Setup
-pltr configure configure                    # Configure authentication
-pltr verify                                # Test connection
-
-# Data Analysis
-pltr sql execute "SELECT * FROM table"     # Run SQL query
-pltr ontology list                         # List ontologies
-pltr dataset get <rid>                     # Get dataset info
-pltr dataset branches list <rid>           # List dataset branches
-pltr dataset files list <rid>              # List dataset files
-
-# Filesystem Management
-pltr folder create "My Folder"             # Create folder
-pltr folder list ri.compass.main.folder.0  # List root contents
-pltr space create "Team Space" <org-rid>   # Create space
-pltr project create "ML Project" <space-rid> # Create project
-pltr resource search "dataset name"        # Search resources
-pltr resource-role grant <resource-rid> <user-id> User viewer # Grant permissions
-
-# Admin
-pltr admin user current                    # Current user info
-pltr admin user list                       # List users
-
-# Interactive
-pltr shell                                 # Start interactive mode
-pltr completion install                    # Enable tab completion
-```
-
-### Output and Format Options
-```bash
---format table      # Rich table (default)
---format json       # JSON output
---format csv        # CSV format
---output file.ext   # Save to file
---profile name      # Use specific profile
-```
-
-### Help and Documentation
-```bash
-pltr --help                    # Main help
-pltr <command> --help          # Command help
-pltr <command> <sub> --help    # Subcommand help
-```
-
----
-
-**💡 Tip**: Use `pltr shell` for interactive exploration and `pltr completion install` for the best command-line experience with tab completion and history.
+In `pltr shell`, type commands without `pltr`; `help [command]`, `exit`,
+`quit`, `!command` (a system command) and aliases work too. See
+[Aliases](aliases.md).
