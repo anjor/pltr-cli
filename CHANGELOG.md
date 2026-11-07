@@ -300,6 +300,8 @@ can search. See Added.
 - pltr depends on prompt-toolkit instead of click-repl, and declares click,
   which it imports (click-repl used to bring it in). It also declares httpx,
   pydantic, pydantic-core and typing-extensions, which it imports too.
+- pltr no longer depends on pandas or python-dotenv, which it never imported.
+  A fresh install no longer pulls in pandas and numpy.
 - typer and click are capped at the versions pltr is tested with
   (`typer>=0.16.0,<0.17`, `click>=8.2.0,<8.2.2`). typer 0.26 and later no
   longer install click and don't handle pltr's exit codes, typer 0.21 to 0.25

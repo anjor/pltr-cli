@@ -15,12 +15,10 @@ dependencies = [
     # (tests/test_dependencies.py checks this).
     "httpx>=0.25.0",
     "keyring>=25.6.0",
-    "pandas>=2.0.0",
     "prompt-toolkit>=3.0.36",
     "pyarrow>=15.0.0",
     "pydantic>=2.6.0",
     "pydantic-core>=2.16.1",
-    "python-dotenv>=1.1.1",
     "requests>=2.32.4",
     "rich>=14.1.0",
     "typing-extensions>=4.7.1",
