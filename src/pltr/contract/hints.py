@@ -15,8 +15,10 @@ a vague hint.
 
 from __future__ import annotations
 
+import re
+import shlex
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import click
 
@@ -36,7 +38,207 @@ class Recovery:
 #: context (or None).
 Provider = Callable[[ErrorInfo, Any, Optional[click.Context]], Optional[Recovery]]
 
-PROVIDERS: List[Provider] = []
+# ------------------------------------------------------------------ helpers
+
+
+def _profile(ctx: Optional[click.Context]) -> Optional[str]:
+    while ctx is not None:
+        if "profile" in ctx.params:
+            value = ctx.params["profile"]
+            return value if isinstance(value, str) else None
+        ctx = ctx.parent
+    return None
+
+
+def _client(ctx: Optional[click.Context]) -> Any:
+    """The SDK client of the running command's profile."""
+    from pltr.services import base
+
+    return base.AuthManager().get_client(_profile(ctx))
+
+
+def _q(value: Any) -> str:
+    return shlex.quote(str(value))
+
+
+def _parameters(info: ErrorInfo) -> Dict[str, Any]:
+    return info.parameters if isinstance(info.parameters, dict) else {}
+
+
+_SCOPES = re.compile(r"Required scopes: \[([^\]]*)\]")
+
+
+def _scopes_in(text: str) -> List[str]:
+    match = _SCOPES.search(text or "")
+    if not match:
+        return []
+    return [scope.strip() for scope in match.group(1).split(",") if scope.strip()]
+
+
+def _method_spec(sdk_path: str) -> Optional[Dict[str, Any]]:
+    """The generated ``pltr api`` spec of an SDK method (``datasets.Dataset.get``)."""
+    import importlib
+
+    from pltr.commands.api import _runtime
+
+    namespace, *resources, method = sdk_path.split(".")
+    entry = next(
+        (e for e in _runtime._index().NAMESPACES.values() if e.get("sdk") == namespace),
+        None,
+    )
+    if entry is None:
+        return None
+    node: Dict[str, Any] = importlib.import_module(
+        f"{_runtime.SPECS_PACKAGE}.{entry['module']}"
+    ).SPEC
+    for name in resources:
+        node = next(r for r in node.get("resources", []) if r["sdk"] == name)
+    return next((m for m in node.get("methods", []) if m["sdk"] == method), None)
+
+
+def _command_scopes(ctx: Optional[click.Context]) -> List[str]:
+    """The OAuth scopes the running command's SDK methods need (from their docs)."""
+    from .command import get_command_meta
+
+    if ctx is None:
+        return []
+    spec = getattr(ctx.command, "spec", None)
+    if isinstance(spec, dict):  # a generated `pltr api` command
+        return _scopes_in(spec.get("help", ""))
+    meta = get_command_meta(ctx.command)
+    scopes: List[str] = []
+    for sdk_path in meta.sdk if meta else ():
+        method = _method_spec(sdk_path)
+        for scope in _scopes_in(method.get("help", "") if method else ""):
+            if scope not in scopes:
+                scopes.append(scope)
+    return scopes
+
+
+# ---------------------------------------------------------------- providers
+
+
+def open_transaction(
+    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """409 ``OpenTransactionAlreadyExists``: name the transaction to abort."""
+    if info.error_name != "OpenTransactionAlreadyExists":
+        return None
+    parameters = _parameters(info)
+    dataset, branch = parameters.get("datasetRid"), parameters.get("branchName")
+    if not dataset or not branch:
+        return None
+    transaction = None
+    try:
+        datasets = _client(ctx).datasets.Dataset
+        candidate = datasets.Branch.get(dataset, branch).transaction_rid
+        if candidate and datasets.Transaction.get(dataset, candidate).status == "OPEN":
+            transaction = candidate
+    except Exception:
+        transaction = None
+    if transaction:
+        return Recovery(
+            f"Branch {branch} of {dataset} already has an open transaction, "
+            f"{transaction}: commit it or abort it first.",
+            f"pltr dataset transactions abort {_q(dataset)} {_q(transaction)}",
+        )
+    return Recovery(
+        f"Branch {branch} of {dataset} already has an open transaction: commit "
+        "it or abort it first.",
+        f"pltr dataset transactions list {_q(dataset)} --branch {_q(branch)}",
+    )
+
+
+_GRANT = (
+    "Grant it to the OAuth client in Developer Console, or use a token that has it."
+)
+
+
+def missing_scope(
+    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """403 ``ApiUsageDenied``: name the scope the endpoint needs."""
+    if info.error_name != "ApiUsageDenied":
+        return None
+    scope = _parameters(info).get("missingScope")
+    if isinstance(scope, str) and scope:
+        return Recovery(f"The token or OAuth client lacks the scope {scope}. {_GRANT}")
+    scopes = _command_scopes(ctx)
+    if not scopes:
+        return None
+    noun = "scope" if len(scopes) == 1 else "scopes"
+    return Recovery(
+        f"This command needs the {noun} {', '.join(scopes)}, which the token or "
+        f"OAuth client may lack. {_GRANT}"
+    )
+
+
+def _words(camel: str) -> str:
+    return " ".join(re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", camel)).lower()
+
+
+def permission_denied(
+    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """403 ``<Operation>PermissionDenied``: name the operation and the resource."""
+    from .resources import rid_resource_type
+
+    name = info.error_name or ""
+    if info.type != "permission_denied" or not name.endswith("PermissionDenied"):
+        return None
+    operation = _words(name[: -len("PermissionDenied")])
+    rids = [
+        value
+        for value in _parameters(info).values()
+        if isinstance(value, str) and value.startswith("ri.")
+    ]
+    if not operation or not rids:
+        return None
+    rid = next((r for r in rids if rid_resource_type(r)), rids[0])
+    return Recovery(
+        f"Your account isn't allowed to {operation} on {rid}. Ask someone who "
+        "manages it for a role that allows this.",
+        f"pltr resource-role list {_q(rid)}" if rid_resource_type(rid) else None,
+    )
+
+
+def rejected_token(
+    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """401 with a token: say how to give pltr a new one."""
+    from pltr.services import base
+
+    if info.type != "auth_error" or info.status_code != 401:
+        return None
+    source = base.AuthManager().get_auth_context(_profile(ctx)).source
+    if source.auth_type != "token":
+        return None
+    if source.kind == "environment":
+        return Recovery(
+            "Foundry rejected FOUNDRY_TOKEN: it has expired or been revoked. "
+            "Set a new token.",
+            "export FOUNDRY_TOKEN=<new-token>",
+        )
+    if not source.profile:
+        return None
+    command = (
+        f"pltr configure configure --profile {_q(source.profile)} --auth-type token"
+    )
+    if source.host:
+        command += f" --host {_q(source.host)}"
+    return Recovery(
+        f"Foundry rejected the token of profile {source.profile}: it has expired "
+        "or been revoked. Store a new one.",
+        f"{command} --token <new-token>",
+    )
+
+
+PROVIDERS: List[Provider] = [
+    open_transaction,
+    missing_scope,
+    permission_denied,
+    rejected_token,
+]
 
 
 def api_error_in(exc: BaseException) -> Any:
