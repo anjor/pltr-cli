@@ -466,6 +466,27 @@ def anthropic_messages_advanced(
 # ===== OpenAI =====
 
 
+class _EncodingChoice(click.Choice):
+    """``--encoding``: only ``float``; ``base64`` fails with the reason.
+
+    The API accepts ``BASE64``, but the SDK's response model holds lists of
+    floats (``OpenAiEmbeddingsResponse.data: List[List[float]]``), so a
+    base64 answer can't be decoded and the command would fail after the
+    call (exit 7).
+    """
+
+    def convert(self, value: Any, param: Any, ctx: Any) -> Any:
+        if isinstance(value, str) and value.lower() == "base64":
+            self.fail(
+                "base64 isn't supported: foundry-platform-sdk reads embeddings "
+                "only as lists of floats, so a base64 response can't be decoded. "
+                "Leave out --encoding (float).",
+                param,
+                ctx,
+            )
+        return super().convert(value, param, ctx)
+
+
 @openai_app.command("embeddings")
 @pltr_command(sdk="language_models.OpenAiModel.embeddings", beta=True)
 def openai_embeddings(
@@ -497,8 +518,11 @@ def openai_embeddings(
         typer.Option(
             "--encoding",
             "-e",
-            click_type=click.Choice(["float", "base64"], case_sensitive=False),
-            help="Encoding of the embeddings: float or base64.",
+            click_type=_EncodingChoice(["float"], case_sensitive=False),
+            help=(
+                "Encoding of the embeddings: float (the default). base64 isn't "
+                "supported: the SDK can't decode it."
+            ),
             show_default=False,
         ),
     ] = None,

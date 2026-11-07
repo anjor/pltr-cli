@@ -615,8 +615,10 @@ can search. See Added.
 - `language-models list`, `status` and `enroll` try `/api/v2/languageModels`
   first (they called `/v2/...` at the host root), skip answers that aren't
   JSON, and when every endpoint fails, report each endpoint's status.
-- `openai embeddings --encoding` accepts only `float` or `base64`, and
-  `audit list` dates must be `YYYY-MM-DD`.
+- `openai embeddings --encoding` accepts only `float`, and `audit list` dates
+  must be `YYYY-MM-DD`. `--encoding base64` is a usage error (exit 2) before
+  any call: the SDK reads embeddings only as lists of floats, so a base64
+  answer couldn't be decoded (exit 7). Not verified live.
 - `audit get` streams the log file; a failed download leaves no partial
   `--output` file and keeps an existing one.
 

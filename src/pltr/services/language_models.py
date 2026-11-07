@@ -282,7 +282,9 @@ class LanguageModelsService(BaseService):
             model_id: The model's API name (``LanguageModelApiName``)
             input_texts: Texts to embed
             dimensions: Number of dimensions of the embeddings
-            encoding_format: ``float`` or ``base64`` (any case)
+            encoding_format: ``float`` (any case). The API also takes
+                ``base64``, but the SDK's response model (``data`` is a list
+                of float lists) can't decode a base64 answer.
 
         Returns:
             The ``OpenAiEmbeddingsResponse`` model: one vector per input in ``data``

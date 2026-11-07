@@ -514,6 +514,45 @@ def test_embeddings_rejects_an_unknown_encoding(stub_foundry_http):
     assert stub_foundry_http.requests == []
 
 
+@pytest.mark.parametrize("value", ["base64", "BASE64"])
+def test_embeddings_refuses_base64_before_calling_the_api(stub_foundry_http, value):
+    """The SDK can't decode a base64 answer, so the call couldn't succeed."""
+    result = invoke(
+        "language-models",
+        "openai",
+        "embeddings",
+        lm.EMBEDDING_MODEL,
+        "-i",
+        "x",
+        "--encoding",
+        value,
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "usage_error"
+    assert "base64 isn't supported" in error["message"]
+
+
+def test_the_sdk_cant_decode_base64_embeddings():
+    """Why base64 is refused: re-enable it once the SDK's model takes strings."""
+    from foundry_sdk.v2.language_models.models import OpenAiEmbeddingsResponse
+    from pydantic import ValidationError
+
+    response = {**lm.embeddings_response(), "data": ["AAAAAAAA8D8="]}
+    with pytest.raises(ValidationError):
+        OpenAiEmbeddingsResponse.model_validate(response)
+
+
+def test_embeddings_help_offers_only_float():
+    result = invoke("language-models", "openai", "embeddings", "--help")
+    assert "[float]" in result.stdout
+    assert "base64 isn't supported" in result.stdout
+
+
 def test_embeddings_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
     stub_foundry_http.respond(json=lm.embeddings_response())
 
