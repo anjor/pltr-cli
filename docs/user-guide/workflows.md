@@ -169,7 +169,9 @@ pltr audit get <organization-rid> "$(jq -r '.data[0].id' logs.json)" --output au
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Headless authentication: no profile, keyring or configure step
+# Headless authentication: no profile, keyring or configure step. The
+# variables are used only when no profile is selected: on a machine with a
+# default profile, that profile wins.
 export FOUNDRY_HOST="foundry.company.com"
 export FOUNDRY_TOKEN="$CI_FOUNDRY_TOKEN"
 export PLTR_FORMAT=json          # every command prints JSON
