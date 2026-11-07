@@ -34,7 +34,8 @@ pltr commands list api datasets                   # everything under a path
 commands above generated ones that match as well. `show` prints one command's
 manifest entry:
 
-- `usage`, `arguments` and `options` (flags, type, required, choices, default);
+- `usage`, `arguments` and `options` (flags, type, required, choices, default;
+  `acceptsPath: true` when it takes a Compass path as well as a RID);
 - `beta`, `destructive` and `paged`;
 - `outputFormats` (`binary` means raw bytes);
 - `sdkMethods` (the SDK method it calls, relative to `FoundryClient`);
@@ -92,10 +93,10 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 |---|---|---|
 | 0 | success | |
 | 1 | unexpected error, or "no" at a prompt | read the message; `PLTR_DEBUG=1` shows a traceback |
-| 2 | usage error, or `--yes` required | fix the arguments (`pltr commands show ...`) |
+| 2 | usage error, or `--yes` required; `wrong_resource_type`: a path to the wrong kind of resource | fix the arguments (`pltr commands show ...`) |
 | 3 | authentication | check credentials with `pltr verify` |
 | 4 | permission denied (403) | the account lacks access; tell the user |
-| 5 | not found (404) | check the RID and that the account can see it |
+| 5 | not found (404); `path_not_found`: nothing at a path you gave | check the RID or path and that the account can see it |
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
 | 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
 
@@ -126,9 +127,19 @@ name: `ri.<service>.<instance>.<type>.<id>`. For example:
   list the root folder (`ri.compass.main.folder.0`); start from
   `pltr space list`.
 
+**Paths work too.** Wherever a command takes the RID of a Compass resource
+(dataset, folder, project, any resource, media set, connection, model, agent,
+...), you can pass the resource's full path instead, starting with its space:
+`pltr dataset get "/My Space/My Project/flights"`. pltr resolves it to the RID
+before calling the API (one lookup for all the paths in a command) and fails
+with `wrong_resource_type` if it's the wrong kind of resource. The API is still
+RID-based: output shows RIDs, so save the RID for later calls. Spaces and the
+root folder can't be looked up by path. Usage lines show such options as
+`RID|PATH`, and the reference marks such arguments "(RID or path)".
+
 Users and groups are identified by UUIDs, ontologies by RID or API name, and
-object types by API name. Don't construct RIDs; get them from the user or
-from command output:
+object types by API name. Don't construct RIDs; get them from the user, from
+a path, or from command output:
 
 ```bash
 pltr resource get-by-path "/My Space/My Project/flights" --format json   # path -> RID

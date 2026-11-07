@@ -98,7 +98,9 @@ class FakeFoundry:
         self.unrouted: List[str] = []
         self.seen: List[Tuple[str, str, Any]] = []
         # resource RID -> (type, name, parent); trash status by RID
-        self.resources: Dict[str, Tuple[str, str, str]] = {}
+        self.resources: Dict[str, Tuple[str, str, str]] = {
+            READ_DATASET: ("FOUNDRY_DATASET", "sales", PROJECT)
+        }
         self.trash: Dict[str, str] = {}
         # dataset RID -> {path: content}, {branch: transaction}, schema fields
         self.files: Dict[str, Dict[str, bytes]] = {READ_DATASET: dict(READ_FILES)}
@@ -222,6 +224,7 @@ class FakeFoundry:
                 else fj_fs.page([fj.resource(PROJECT, "Smoke")])
             )
         )
+        r("GET", f"{api}/filesystem/resources/getByPath")(self._get_by_path)
         r("GET", f"{api}/filesystem/resources/{{rid}}")(
             lambda q, rid: js(self.resource(rid))
         )
@@ -487,6 +490,14 @@ class FakeFoundry:
             data["parentFolderRid"],
         )
         return self._folder_get(request, rid)
+
+    def _get_by_path(self, request: httpx.Request) -> Response:
+        path = request.url.params.get("path", "")
+        for rid in self.resources:
+            resource = self.resource(rid)
+            if resource["path"] == path:
+                return js(resource)
+        return js(fj.error("PathNotFound", parameters={"path": path}), 404)
 
     def _folder_get(self, request: httpx.Request, rid: str) -> Response:
         if rid == smoke.MISSING_FOLDER_RID:

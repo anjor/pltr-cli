@@ -29,7 +29,10 @@ one, see [`pltr api`](../api-commands.md).
   without notice.
 - **RIDs**: most arguments are Resource Identifiers, such as
   `ri.foundry.main.dataset.<uuid>`. The examples below use placeholders like
-  `<dataset-rid>`.
+  `<dataset-rid>`. Where an argument or option takes the RID of a Compass
+  resource (a dataset, folder, project, media set, connection, model, agent
+  and so on), its path (`/Space/Project/name`) works too; pltr resolves it
+  to the RID and checks that it's the right kind of resource.
 
 Contents: [Setup](#setup-configure-verify-commands) ·
 [Datasets](#datasets-pltr-dataset) · [Copying](#copying-pltr-cp) ·

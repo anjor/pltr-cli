@@ -82,7 +82,9 @@ pltr dataset preview <dataset-rid>
 Most commands take RIDs (Resource Identifiers) such as
 `ri.foundry.main.dataset.<uuid>`. Copy them from Foundry's web interface, or
 look them up: `pltr resource get-by-path "/Space/Project/name"`,
-`pltr folder list <folder-rid>`.
+`pltr folder list <folder-rid>`. Where a command takes the RID of a dataset,
+folder, project or other Compass resource, its path works too:
+`pltr dataset get "/Space/Project/name"`. pltr looks up the RID for you.
 
 ## Output Formats
 

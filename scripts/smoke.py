@@ -837,6 +837,36 @@ CHECKS: Tuple[Check, ...] = (
         "Dataset metadata.",
         expect=(equals("rid", DS), note("name", "name")),
     ),
+    # ------------------------------------------------ Compass paths (#193)
+    C(
+        "paths.resource-get",
+        f"resource get {DS}",
+        "The dataset as a Compass resource: its path, for the path checks.",
+        expect=(equals("rid", DS), has("path")),
+        capture={"dataset.path": "path"},
+    ),
+    C(
+        "paths.dataset-get",
+        "dataset get {dataset.path}",
+        "A Compass path works where a dataset RID does: resolved to the RID.",
+        expect=(equals("rid", DS),),
+    ),
+    C(
+        "paths.wrong-kind",
+        "project get {dataset.path}",
+        "A dataset's path given for a project exits 2 with wrong_resource_type, "
+        "before the project call.",
+        exit_codes=(2,),
+        error_types=("wrong_resource_type",),
+    ),
+    C(
+        "paths.not-found",
+        "dataset get /pltr-smoke-missing-space/missing-project/missing",
+        "A path with nothing at it exits 5 with path_not_found (a stack that "
+        "answers 403 for unknown paths: exit 4).",
+        exit_codes=(5, 4),
+        error_types=("path_not_found", "permission_denied"),
+    ),
     C(
         "dataset.branches-list",
         f"dataset branches list {DS}",

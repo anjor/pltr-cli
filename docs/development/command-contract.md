@@ -38,6 +38,9 @@ Import everything from `pltr.contract` and nothing from its submodules.
 7. **Beta endpoints** are always called with a literal `preview=True`, and
    the command's help starts with `[beta]`. GA endpoints never get `preview`.
 8. The default format is `table`. `PLTR_FORMAT=json|csv|table` changes it.
+9. **Compass paths work wherever a resource RID does.** A parameter that
+   takes the RID of a Compass resource also takes its path
+   (`/Space/Project/name`); see [Resource parameters](#resource-parameters-rid-or-path).
 
 ## Checklist for a command module
 
@@ -200,6 +203,47 @@ def get_folder(self, folder_rid: str) -> Any:
   `profile`, `format`, `output`, `yes`, `page_size`, `page_token`,
   `max_pages` and `all_pages`.
 
+## Resource parameters: RID or path
+
+Declare every argument or option that takes the RID of a Compass resource
+with `resource_argument(kind, help=...)` or
+`resource_option(*flags, kind=..., help=...)` from `pltr.contract`, inside
+`Annotated[...]`:
+
+```python
+DatasetRid = Annotated[
+    str,
+    resource_argument(
+        "dataset", help="Dataset RID (ri.foundry.main.dataset.<id>).",
+        autocompletion=complete_rid,
+    ),
+]
+```
+
+They give the parameter the click type `ResourceRef(kind)` and append
+"A Compass path such as /Space/Project/name works too." to its help. Before
+the command body runs, `@pltr_command` replaces every path (a value starting
+with `/`) among those parameters' values with its RID
+(`pltr.contract.resources.resolve_resource_paths`):
+
+- one `Resource.get_by_path` call for one path, one `get_by_path_batch` call
+  for several (per 1000), and no call at all when every value is a RID;
+- each resolved resource is checked against the parameter's kind; a wrong
+  kind is a `wrong_resource_type` error (exit 2) that names both types, a
+  missing path is `path_not_found` (exit 5), with the path in `parameters`;
+- text mode reports `Resolved '<path>' to <rid> (<type>)` on stderr, and a
+  path to a trashed resource warns.
+
+The command body only ever sees RIDs. Kinds (`pltr.contract.resources.KINDS`):
+`resource` (any), `folder` (folders and projects), `project`, `dataset`
+(views too), `dataset-or-folder`, `media-set`, `connection`, `model`,
+`agent`, `third-party-application`, `repository`. Spaces can't be resolved by
+path, so `SpaceRid` parameters stay plain. The `pltr api` generator marks
+parameters by their SDK type (`DatasetRid` -> `dataset`, see `SDK_RID_KINDS`),
+and `tests/test_commands/test_resource_paths.py` fails when a curated
+parameter named like a resource RID doesn't take a path. The manifest shows
+`"acceptsPath": true` and the `resourceKind` on such parameters.
+
 ## Output: `emit` and columns
 
 ```python
@@ -308,10 +352,10 @@ Commands contain no `try/except` for reporting.
 |---|---|---|
 | 0 | | success |
 | 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
-| 2 | `usage_error`, `confirmation_required` | bad or missing arguments, invalid JSON input, an invalid RID, a destructive command without `--yes` when stdin is not a terminal |
+| 2 | `usage_error`, `confirmation_required`, `wrong_resource_type` | bad or missing arguments, invalid JSON input, an invalid RID, a path to the wrong kind of resource, a destructive command without `--yes` when stdin is not a terminal |
 | 3 | `auth_error` | no usable profile or credentials, an OAuth token request refused (400, 401, 403), HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
-| 5 | `not_found`, `api_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack) |
+| 5 | `not_found`, `api_not_found`, `path_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack; `path_not_found`: no resource the account can see at a Compass path given for a RID) |
 | 6 | `validation_error` | HTTP 400, 422 |
 | 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
 

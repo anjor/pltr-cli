@@ -18,6 +18,17 @@ example `ri.foundry.main.dataset.<uuid>`. Most commands take RIDs, not
 names; find them in Foundry's web interface, or with commands such as
 `pltr folder list`, `pltr resource get-by-path` and `pltr ontology list`.
 
+Wherever a command takes the RID of a Compass resource (a dataset, folder,
+project, media set, connection, model, agent and so on), you can give its
+path instead, such as `/Space/Project/data/employees`. pltr resolves the path
+to the RID before it calls the API, with one lookup for all the paths in a
+command, and checks that the resource is the right kind: a folder path given
+to `pltr dataset get` fails with a `wrong_resource_type` error. The API itself
+stays RID-based, and output always shows RIDs. A value starting with `/` is a
+path; one starting with `ri.` is a RID. Spaces and the root folder can't be
+looked up by path, so give their RIDs. `pltr commands show <command>` marks the
+parameters that take a path with `"acceptsPath": true`.
+
 ## ✨ Key Features
 
 - **Authentication**: token and OAuth2 profiles with credentials in the
@@ -134,8 +145,9 @@ pltr folder create "Analysis" --parent-folder <project-or-folder-rid>
 # Run a SQL query
 pltr sql execute "SELECT 1 AS test"
 
-# Datasets are addressed by RID
+# Datasets are addressed by RID, or by their Compass path
 pltr dataset get <dataset-rid>
+pltr dataset get "/My Space/My Project/data/employees"
 pltr dataset branches list <dataset-rid>
 pltr dataset files list <dataset-rid>
 
@@ -198,10 +210,10 @@ pltr is built to be scripted, by people and by agents.
 |---|---|---|
 | 0 | Success | |
 | 1 | Unexpected error, or "no" at a confirmation prompt | `unexpected_error`, `aborted` |
-| 2 | Usage error: bad or missing arguments, invalid JSON input, or `--yes` required | `usage_error`, `confirmation_required` |
+| 2 | Usage error: bad or missing arguments, invalid JSON input, a path to the wrong kind of resource, or `--yes` required | `usage_error`, `confirmation_required`, `wrong_resource_type` |
 | 3 | Authentication: no usable credentials, or HTTP 401 | `auth_error` |
 | 4 | Permission denied (HTTP 403) | `permission_denied` |
-| 5 | Not found (HTTP 404) | `not_found`, `api_not_found` |
+| 5 | Not found (HTTP 404), or no resource at a path you gave | `not_found`, `api_not_found`, `path_not_found` |
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
 | 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
 
