@@ -59,25 +59,6 @@ services/data_health.py::DataHealthService.get_check::data_health.Check.get::bet
 services/data_health.py::DataHealthService.get_check_report::data_health.CheckReport.get::missing-method  # #182 data-health report get: use Check.CheckReport.get(check_rid, check_report_rid, preview=True) (beta)
 services/data_health.py::DataHealthService.replace_check::data_health.Check.replace::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/dataset.py
-services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
-services/dataset.py::DatasetService.add_primary_key::datasets.Dataset.View.add_primary_key::missing-method  # #182 dataset views add-primary-key: use datasets.View.add_primary_key(view_dataset_rid, primary_key=)
-services/dataset.py::DatasetService.create_branch::datasets.create_branch::missing-method  # #182 dataset branches create: use Dataset.Branch.create(dataset_rid, name=, transaction_rid=)
-services/dataset.py::DatasetService.create_dataset::datasets.create_dataset::missing-method  # #182: dead except-AttributeError fallback (Dataset.create works); delete it
-services/dataset.py::DatasetService.create_view::datasets.create_view::missing-method  # #182 dataset views create: use datasets.View.create(backing_datasets=, parent_folder_rid=, view_name=)
-services/dataset.py::DatasetService.delete_dataset::datasets.delete_dataset::missing-method  # #182: no SDK equivalent and no command; delete DatasetService.delete_dataset
-services/dataset.py::DatasetService.get_branch_transactions::datasets.Dataset.Branch.transactions::beta-without-preview  # #182 dataset branches transactions: beta; pass preview=True
-services/dataset.py::DatasetService.get_branches::datasets.list_branches::missing-method  # #182 dataset branches list: use Dataset.Branch.list(dataset_rid)
-services/dataset.py::DatasetService.get_jobs::datasets.Dataset.jobs::beta-without-preview  # #182 dataset jobs list: Dataset.jobs is beta; pass preview=True
-services/dataset.py::DatasetService.get_jobs::datasets.Dataset.jobs::missing-required(order_by)  # #182 dataset jobs list: Dataset.jobs requires order_by=
-services/dataset.py::DatasetService.get_transaction_build::datasets.Dataset.Transaction.build::beta-without-preview  # #182 dataset transactions build: beta; pass preview=True
-services/dataset.py::DatasetService.get_transactions::datasets.Dataset.Transaction.list::missing-method  # #182 dataset transactions list: use Dataset.transactions(dataset_rid, preview=True) (beta)
-services/dataset.py::DatasetService.get_view::datasets.Dataset.View.get::missing-method  # #182 dataset views get: use datasets.View.get(view_dataset_rid, branch=)
-services/dataset.py::DatasetService.get_views::datasets.list_views::missing-method  # #182 dataset views list: no SDK endpoint lists views; remove the command
-services/dataset.py::DatasetService.read_table::datasets.read_table::missing-method  # #182: dead except-AttributeError fallback (Dataset.read_table works); delete it
-services/dataset.py::DatasetService.remove_backing_datasets::datasets.Dataset.View.remove_backing_datasets::missing-method  # #182 dataset views remove-datasets: use datasets.View.remove_backing_datasets(view_dataset_rid, backing_datasets=)
-services/dataset.py::DatasetService.replace_backing_datasets::datasets.Dataset.View.replace_backing_datasets::missing-method  # #182 dataset views replace-datasets: use datasets.View.replace_backing_datasets(view_dataset_rid, backing_datasets=)
-
 # src/pltr/services/functions.py
 services/functions.py::FunctionsService.execute_query::functions.Query.execute::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/functions.py::FunctionsService.execute_query_by_rid::functions.Query.execute_by_rid::missing-method  # #182 functions query execute-by-rid: no execute_by_rid; resolve with get_by_rid then execute, or remove

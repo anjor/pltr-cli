@@ -338,31 +338,17 @@ class TestCLIIntegration:
                 assert output_json["rid"] == "ri.foundry.main.dataset.123"
                 assert output_json["name"] == "Test Dataset"
 
-    def test_error_handling_invalid_rid(self, runner, temp_config_dir):
-        """Test error handling for invalid RID format."""
-        with patch.object(Settings, "_get_config_dir", return_value=temp_config_dir):
-            profile_manager = ProfileManager()
-            storage = CredentialStorage()
-            storage.save_profile(
-                "test",
-                {
-                    "auth_type": "token",
-                    "host": "https://test.palantirfoundry.com",
-                    "token": "test_token",
-                },
-            )
-            profile_manager.add_profile("test")
-            profile_manager.set_default("test")
+    def test_error_handling_invalid_rid(self, runner, stub_foundry_http):
+        """An invalid RID is a usage error (exit code 2), and no request is sent.
 
-            # Service mocking handles authentication internally
-            result = runner.invoke(app, ["dataset", "get", "invalid-rid"])
-            assert result.exit_code == 1
-            assert (
-                "Error" in result.output
-                or "error" in result.output.lower()
-                or "Failed" in result.output
-                or "failed" in result.output.lower()
-            )
+        Authentication is faked (stub_foundry_http) so the RID is validated;
+        with the keyring mocked out the command would stop at authentication.
+        """
+        result = runner.invoke(app, ["dataset", "get", "invalid-rid"])
+
+        assert result.exit_code == 2, result.output
+        assert "'invalid-rid' is not a valid RID" in result.stderr
+        assert stub_foundry_http.requests == []
 
     @pytest.mark.skip(
         reason="Requires specific credential mocking setup - skipped in CI"
