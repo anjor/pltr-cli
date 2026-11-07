@@ -20,10 +20,12 @@ from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, Tuple, Union
 
 from .base import (
+    INVALID_CREDENTIAL_CHARACTERS,
     InvalidCredentialsError,
     KeyringUnavailableError,
     MissingCredentialsError,
     ProfileNotFoundError,
+    has_invalid_characters,
     normalize_host,
 )
 from .environment import (
@@ -54,6 +56,42 @@ NO_AUTH_CONFIGURED_MESSAGE = (
 )
 
 Provider = Union[TokenAuthProvider, OAuthClientProvider]
+
+#: A stored profile's credential fields, and what error messages call them.
+_PROFILE_CREDENTIAL_FIELDS = {
+    "token": "token",
+    "client_id": "OAuth client ID",
+    "client_secret": "OAuth client secret",
+}
+
+
+def _clean_profile_credentials(
+    profile: str, credentials: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Return a stored profile's credentials without whitespace around them.
+
+    Profiles stored before configure stripped its options can hold a token
+    with a trailing CR/LF (``--token "$(cat token.txt)"``); that is dropped.
+
+    Raises:
+        InvalidCredentialsError: If a credential contains whitespace or control
+            characters inside it (the message never shows the value)
+    """
+    cleaned = dict(credentials)
+    for key, label in _PROFILE_CREDENTIAL_FIELDS.items():
+        value = cleaned.get(key)
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        if has_invalid_characters(value):
+            raise InvalidCredentialsError(
+                f"The {label} stored in profile '{profile}' contains "
+                f"{INVALID_CREDENTIAL_CHARACTERS}. Run 'pltr configure configure "
+                f"--profile {profile}' to store it again."
+            )
+        cleaned[key] = value
+    return cleaned
 
 
 @dataclass(frozen=True)
@@ -239,6 +277,8 @@ class AuthManager:
             ProfileNotFoundError: If the selected profile doesn't exist, or
                 nothing is configured
             MissingCredentialsError: If credentials are incomplete
+            InvalidCredentialsError: If a credential contains whitespace or
+                control characters (surrounding whitespace is dropped)
             KeyringUnavailableError: If a stored profile is needed but the
                 system keyring can't be used
         """
@@ -264,6 +304,8 @@ class AuthManager:
             ProfileNotFoundError: If the selected profile doesn't exist, or
                 nothing is configured
             MissingCredentialsError: If credentials are incomplete
+            InvalidCredentialsError: If a credential contains whitespace or
+                control characters (surrounding whitespace is dropped)
             KeyringUnavailableError: If a stored profile is needed but the
                 system keyring can't be used
         """
@@ -318,7 +360,7 @@ class AuthManager:
     def _read_profile_credentials(self, source: AuthSource) -> Dict[str, Any]:
         name = source.profile or ""
         try:
-            return self.storage.get_profile(name)
+            return _clean_profile_credentials(name, self.storage.get_profile(name))
         except KeyringUnavailableError as e:
             raise KeyringUnavailableError(f"{e} {self._env_auth_note(source)}") from e
         except ProfileNotFoundError:

@@ -10,7 +10,13 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from .base import MissingCredentialsError, normalize_host
+from .base import (
+    INVALID_CREDENTIAL_CHARACTERS,
+    InvalidCredentialsError,
+    MissingCredentialsError,
+    has_invalid_characters,
+    normalize_host,
+)
 
 PROFILE_ENV_VAR = "PLTR_PROFILE"
 HOST_ENV_VAR = "FOUNDRY_HOST"
@@ -56,7 +62,16 @@ class EnvironmentCredentials:
         return credentials
 
 
+#: What error messages call each credential variable's value.
+_CREDENTIAL_LABELS = {
+    TOKEN_ENV_VAR: "token",
+    CLIENT_ID_ENV_VAR: "OAuth client ID",
+    CLIENT_SECRET_ENV_VAR: "OAuth client secret",
+}
+
+
 def _read(name: str) -> Optional[str]:
+    """The variable's value without surrounding whitespace (e.g. a trailing CR/LF)."""
     value = os.environ.get(name, "").strip()
     return value or None
 
@@ -69,6 +84,7 @@ def read_environment_credentials() -> Optional[EnvironmentCredentials]:
     credentials) needs ``FOUNDRY_HOST``, ``FOUNDRY_CLIENT_ID`` and
     ``FOUNDRY_CLIENT_SECRET``. If ``FOUNDRY_TOKEN`` is set, token auth is used.
     ``FOUNDRY_HOSTNAME`` is accepted when ``FOUNDRY_HOST`` isn't set.
+    Whitespace around a value (such as a trailing CR/LF) is ignored.
 
     Returns:
         The credentials, or None when none of the variables are set
@@ -76,6 +92,9 @@ def read_environment_credentials() -> Optional[EnvironmentCredentials]:
     Raises:
         MissingCredentialsError: If some of the variables are set but they
             don't make a complete set
+        InvalidCredentialsError: If a credential that would be used contains
+            whitespace or control characters (the message names the variable,
+            never its value)
     """
     values = {name: _read(name) for name in AUTH_ENV_VARS}
     if not any(values.values()):
@@ -122,6 +141,12 @@ def read_environment_credentials() -> Optional[EnvironmentCredentials]:
             f"{host_variable} ({raw_host!r}) does not contain a host name. Set it "
             "to your Foundry host, for example your-stack.palantirfoundry.com."
         )
+    for name in credential_variables:
+        if has_invalid_characters(values[name] or ""):
+            raise InvalidCredentialsError(
+                f"{name} contains {INVALID_CREDENTIAL_CHARACTERS} inside its "
+                f"value. Set it to the {_CREDENTIAL_LABELS[name]} alone."
+            )
 
     variables = (host_variable,) + credential_variables
     if token:

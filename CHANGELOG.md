@@ -297,7 +297,17 @@ can search. See Added.
   `verify`; a one-line description used to replace it. `pltr --help` keeps
   the one-line summaries. `admin`, `sql` and `shell` show their modules'
   descriptions, and `pltr cp --help` its full description.
-- pltr depends on prompt-toolkit instead of click-repl.
+- pltr depends on prompt-toolkit instead of click-repl, and declares click,
+  which it imports (click-repl used to bring it in). It also declares httpx,
+  pydantic, pydantic-core and typing-extensions, which it imports too.
+- typer and click are capped at the versions pltr is tested with
+  (`typer>=0.16.0,<0.17`, `click>=8.2.0,<8.2.2`). typer 0.26 and later no
+  longer install click and don't handle pltr's exit codes, typer 0.21 to 0.25
+  hide the `[beta]` label, and click 8.2.2 lets destructive commands run
+  without `--yes` when stdin isn't a terminal. If another tool needs newer
+  versions, install pltr in its own environment (`pipx install pltr-cli` or
+  `uv tool install pltr-cli`). CI installs the built wheel without the lock
+  file on Linux and Windows and runs it.
 - **The Claude Code skill in `claude_skill/` was rewritten** (#188).
   `SKILL.md` is a short guide: headless authentication, the JSON, stdout and
   stderr rules and exit codes, safety rules for destructive commands, beta
@@ -335,6 +345,10 @@ can search. See Added.
   `link-type-create` fallback, `language-models list`, `status` and `enroll`)
   always use `https://` with the profile's or environment's host, like the
   SDK client.
+- `pltr verify` is a plain command, not a command group: its help shows
+  `Usage: pltr verify [OPTIONS]` instead of `[OPTIONS] COMMAND [ARGS]...`, and
+  an extra argument is a usage error ("Got unexpected extra argument", a JSON
+  error with `--format json`) instead of "No such command".
 - Keyring calls have a time limit (`PLTR_KEYRING_TIMEOUT`), and any keyring
   failure gives an error that points to the environment variables.
 - Reading settings or profiles no longer creates `~/.config/pltr`; it is
@@ -839,6 +853,25 @@ from `--help`. They will be removed in the next release.
 - `pltr completion` scripts complete commands, options, option values and the
   `pltr api` tree in bash, zsh and fish; the scripts it installed never
   completed anything.
+- Tracebacks (now printed only with `PLTR_DEBUG=1`) showed every frame's
+  local variables, which included the bearer token, the `Authorization`
+  header and the OAuth client secret. They show the code and the error only.
+- A command whose API call succeeded, a write included, failed with exit
+  code 1 and printed no result when the RID completion cache
+  (`~/.cache/pltr`) couldn't be written, for example with a read-only or
+  missing home directory in a container or agent sandbox; a retry repeated
+  the write. The cache is best-effort now, and a corrupted cache file is
+  replaced.
+- `configure` stored `--token`, `--client-id` and `--client-secret` exactly
+  as given, so `--token "$(cat token.txt)"` on a file with Windows line
+  endings kept a trailing CR, and every command then failed with an
+  unexpected error whose message contained the token. Surrounding whitespace
+  is dropped from credentials wherever pltr reads them (options, prompts,
+  stored profiles, `FOUNDRY_*` variables), so profiles stored that way work
+  again. Whitespace or control characters inside a credential are an error
+  that names the option, variable or profile and never shows the value: a
+  usage error (exit code 2) in `configure`, an auth error (exit code 3) in
+  other commands.
 
 ## [0.16.0] - 2026-06-25
 

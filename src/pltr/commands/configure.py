@@ -14,7 +14,11 @@ import click
 import typer
 from typing_extensions import Annotated
 
-from ..auth.base import ProfileNotFoundError
+from ..auth.base import (
+    INVALID_CREDENTIAL_CHARACTERS,
+    ProfileNotFoundError,
+    has_invalid_characters,
+)
 from ..auth.storage import CredentialStorage
 from ..config.profiles import ProfileManager
 from ..contract import (
@@ -66,8 +70,18 @@ def _profile_not_found(profile: str, manager: ProfileManager) -> PltrError:
     )
 
 
-def _prompt(label: str, *, password: bool = False, choices: Any = None) -> str:
-    """Ask for a value on stderr (never stdout) until one is given."""
+def _prompt(
+    label: str,
+    *,
+    password: bool = False,
+    choices: Any = None,
+    credential: bool = False,
+) -> str:
+    """Ask for a value on stderr (never stdout) until a usable one is given.
+
+    A credential (token, client ID, client secret) is asked for again if it
+    contains whitespace or control characters.
+    """
     from rich.console import Console
     from rich.prompt import Prompt
 
@@ -79,9 +93,34 @@ def _prompt(label: str, *, password: bool = False, choices: Any = None) -> str:
             password=password,
             choices=list(choices) if choices else None,
         )
-        if value and value.strip():
-            return value.strip()
-        console.print("A value is required.", style="red")
+        value = (value or "").strip()
+        if not value:
+            console.print("A value is required.", style="red")
+        elif credential and has_invalid_characters(value):
+            console.print(
+                f"The value can't contain {INVALID_CREDENTIAL_CHARACTERS}.",
+                style="red",
+            )
+        else:
+            return value
+
+
+def _credential_option(value: Optional[str], flag: str) -> Optional[str]:
+    """A credential option's value without surrounding whitespace, or None if blank.
+
+    Drops the trailing CR/LF of ``--token "$(cat token.txt)"`` on a file with
+    Windows line endings. Whitespace or control characters inside the value are
+    a usage error, whose message doesn't show the value.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    if has_invalid_characters(value):
+        raise typer.BadParameter(
+            f"contains {INVALID_CREDENTIAL_CHARACTERS}; pass the value alone.",
+            param_hint=f"'{flag}'",
+        )
+    return value
 
 
 def _infer_auth_type(
@@ -159,6 +198,10 @@ def configure(
     """
     profile = profile or "default"
     interactive = stdin_is_interactive()
+    host = (host or "").strip() or None
+    token = _credential_option(token, "--token")
+    client_id = _credential_option(client_id, "--client-id")
+    client_secret = _credential_option(client_secret, "--client-secret")
 
     auth_type = auth_type or _infer_auth_type(token, client_id, client_secret)
     if auth_type == "token" and (client_id or client_secret):
@@ -204,11 +247,15 @@ def configure(
         host = _prompt("Foundry host (e.g. https://your-stack.palantirfoundry.com)")
     credentials: Dict[str, Any] = {"auth_type": auth_type, "host": host}
     if auth_type == "token":
-        credentials["token"] = token or _prompt("Bearer token", password=True)
+        credentials["token"] = token or _prompt(
+            "Bearer token", password=True, credential=True
+        )
     else:
-        credentials["client_id"] = client_id or _prompt("OAuth client ID")
+        credentials["client_id"] = client_id or _prompt(
+            "OAuth client ID", credential=True
+        )
         credentials["client_secret"] = client_secret or _prompt(
-            "OAuth client secret", password=True
+            "OAuth client secret", password=True, credential=True
         )
 
     storage.save_profile(profile, credentials)

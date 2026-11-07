@@ -53,7 +53,9 @@ def interactive(monkeypatch):
 
         return sys.stdin.readline().rstrip("\n")
 
-    monkeypatch.setattr("rich.console.getpass", getpass)
+    # rich < 15 imports getpass() into rich.console; rich 15 calls getpass.getpass.
+    monkeypatch.setattr("getpass.getpass", getpass)
+    monkeypatch.setattr("rich.console.getpass", getpass, raising=False)
 
 
 def invoke(*args: str, **kwargs):
@@ -218,6 +220,93 @@ def test_configure_asks_before_replacing_a_profile(
     )
     assert "Aborted" in result.stderr
     assert stored(keyring_fake, "work")["token"] == "t"  # unchanged
+
+
+# Credentials with surrounding whitespace (a trailing CR/LF from
+# `--token "$(cat token.txt)"`) or with whitespace or control characters inside.
+
+SECRET = "PltrTestSecret123"
+
+
+def test_configure_strips_surrounding_whitespace(config_dir, keyring_fake):
+    token = invoke("configure", "-p", "a", "--host", "h\r\n", "--token", "tok\r\n")
+    oauth = invoke(
+        "configure",
+        "-p",
+        "b",
+        "--host",
+        "h",
+        "--client-id",
+        " cid\r",
+        "--client-secret",
+        "secret\r\n",
+    )
+
+    assert (token.exit_code, oauth.exit_code) == (0, 0), token.output + oauth.output
+    assert stored(keyring_fake, "a") == {
+        "auth_type": "token",
+        "host": "h",
+        "token": "tok",
+    }
+    assert stored(keyring_fake, "b") == {
+        "auth_type": "oauth",
+        "host": "h",
+        "client_id": "cid",
+        "client_secret": "secret",
+    }
+
+
+@pytest.mark.parametrize("flag", ["--token", "--client-id", "--client-secret"])
+@pytest.mark.parametrize("inner", ["\r\n", " ", "\x00"])
+def test_configure_rejects_whitespace_inside_a_credential(
+    config_dir, keyring_fake, flag, inner
+):
+    values = (
+        {"--token": "t"}
+        if flag == "--token"
+        else {"--client-id": "cid", "--client-secret": "secret"}
+    )
+    values[flag] = f"{SECRET}{inner}{SECRET}"
+    options = [part for item in values.items() for part in item]
+
+    result = invoke("configure", "-p", "work", "--host", "h", *options, "-f", "json")
+
+    assert result.exit_code == 2, result.output
+    error = last_json_line(result.stderr)
+    assert error["type"] == "usage_error"
+    assert f"Invalid value for '{flag}'" in error["message"]
+    assert "whitespace or control characters" in error["message"]
+    assert SECRET not in result.stdout + result.stderr
+    assert keyring_fake.passwords == {}
+
+
+def test_configure_treats_a_blank_credential_as_missing(config_dir):
+    result = invoke(
+        "configure", "-p", "w", "--host", "h", "--token", " \r\n", "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert "missing --token" in last_json_line(result.stderr)["message"]
+
+
+def test_configure_asks_again_for_a_credential_with_whitespace_inside(
+    config_dir, keyring_fake, interactive
+):
+    result = invoke(
+        "configure",
+        "-p",
+        "work",
+        "--host",
+        "h",
+        "--auth-type",
+        "token",
+        input=f"{SECRET} {SECRET}\ngood-token\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "can't contain whitespace or control characters" in result.stderr
+    assert SECRET not in result.stdout + result.stderr
+    assert stored(keyring_fake, "work")["token"] == "good-token"
 
 
 def test_configure_without_a_keyring_fails_fast_with_env_var_guidance(
