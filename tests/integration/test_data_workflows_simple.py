@@ -97,5 +97,6 @@ class TestSimpleDataWorkflows:
         """Test basic ontology list functionality (may fail without real credentials)."""
         # This test may fail but shouldn't crash
         result = runner.invoke(app, ["ontology", "list"])
-        # Just ensure it doesn't crash with a Python error
-        assert result.exit_code in [0, 1]  # Either success or expected failure
+        # Success, or the documented exit code of an expected failure: 3 (no
+        # usable credentials, e.g. no keyring) or 7 (network). A crash is 1.
+        assert result.exit_code in [0, 3, 7]
