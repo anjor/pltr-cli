@@ -1450,6 +1450,7 @@ CHECKS: Tuple[Check, ...] = (
         "admin user search {user.username} --page-size 5",
         "User search (queryString prefix) finds you by username.",
         admin=True,
+        needs=("user.id",),
         expect=(paged(min_items=1), contains("{user.id}", "id")),
     ),
     C(
@@ -1516,6 +1517,7 @@ CHECKS: Tuple[Check, ...] = (
         "folder get {created.folder}",
         "Reads it back.",
         write=True,
+        needs=("writes.scratch_folder",),
         expect=(equals("parentFolderRid", "{writes.scratch_folder}"),),
     ),
     C(
@@ -2074,8 +2076,10 @@ def describe_error(error: Mapping[str, Any]) -> str:
 
 
 def _last_line(text: str) -> str:
+    """The last line of stderr; in text mode the last `Error: ...` line."""
     lines = [line for line in text.splitlines() if line.strip()]
-    return lines[-1] if lines else ""
+    errors = [line for line in lines if line.startswith("Error:")]
+    return (errors or lines or [""])[-1]
 
 
 def _codes(codes: Sequence[int]) -> str:
@@ -2168,6 +2172,8 @@ def evaluate(check: Check, run: RunResult, ctx: Context) -> CheckResult:
                 notes.append(text)
     except Unexpected as exc:
         return result(FAIL, f"unexpected output: {exc}")
+    except KeyError as exc:  # a validator template names a key the check lacks
+        return result(FAIL, f"smoke.py bug: {check.id} has no value for {exc}")
     for key, how in check.capture.items():
         ctx.capture(key, extract(doc, how))
     warnings = [line for line in lines if line.get("type") == "warning"]
