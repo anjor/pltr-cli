@@ -1,241 +1,344 @@
-"""Command alias management commands."""
+"""
+Command alias commands: shortcuts for pltr command lines.
 
-import json
-from typing import Optional
+Aliases live in ``aliases.json`` in the configuration directory; these
+commands make no Foundry API call. An alias replaces the first word of a
+command line: after ``pltr alias add ds "dataset get"``, ``pltr ds <RID>``
+runs ``pltr dataset get <RID>``.
 
+The commands follow the shared contract: data on stdout (``--format json``
+for list/show/resolve), messages on stderr, structured errors with the
+documented exit codes (an unknown alias is ``not_found``, exit 5), and
+removing aliases asks first unless ``--yes``.
+"""
+
+from typing import Any, Dict, List, Optional, Set
+
+import click
 import typer
-from rich import print as rprint
+from typing_extensions import Annotated
 
-from pltr.config.aliases import AliasManager
-from pltr.utils.completion import complete_alias_names
+from ..config.aliases import AliasManager
+from ..contract import (
+    Columns,
+    ExitCode,
+    FormatOption,
+    OutputOption,
+    PltrError,
+    YesOption,
+    confirm_destructive,
+    emit,
+    format_option,
+    info,
+    load_json_input,
+    pltr_command,
+    success,
+    warn,
+)
+from ..utils.completion import complete_alias_names
 
 app = typer.Typer(name="alias", help="Manage command aliases", no_args_is_help=True)
 
+#: Table/CSV columns for alias records (``{"name": ..., "command": ...}``).
+ALIAS_COLUMNS: Columns = {"Alias": "name", "Command": "command"}
+
+AliasName = Annotated[
+    str,
+    typer.Argument(
+        help="Alias name (see 'pltr alias list').", autocompletion=complete_alias_names
+    ),
+]
+
+
+def _confirm_toggle_callback(
+    ctx: click.Context, param: click.Parameter, value: Optional[bool]
+) -> Optional[bool]:
+    if value is not None and not ctx.resilient_parsing:
+        if value:
+            warn(
+                "--confirm is deprecated and will be removed in a future release; "
+                "asking for confirmation is the default."
+            )
+        else:
+            warn(
+                "--no-confirm is deprecated and will be removed in a future release; "
+                "use --yes."
+            )
+    return value
+
+
+#: Hidden, deprecated ``--confirm/--no-confirm`` of ``remove`` and ``clear``:
+#: ``--no-confirm`` skips the prompt (like ``--yes``), ``--confirm`` (asking)
+#: is the default. Not the contract's ConfirmAliasOption, whose ``--confirm``
+#: means the opposite.
+ConfirmToggleOption = Annotated[
+    Optional[bool],
+    typer.Option(
+        "--confirm/--no-confirm",
+        hidden=True,
+        help="Deprecated: use --yes instead of --no-confirm.",
+        callback=_confirm_toggle_callback,
+    ),
+]
+
+
+def _record(name: str, command: str) -> Dict[str, str]:
+    return {"name": name, "command": command}
+
+
+def _alias_not_found(name: str) -> PltrError:
+    return PltrError(
+        f"Alias '{name}' not found.",
+        error_type="not_found",
+        exit_code=ExitCode.NOT_FOUND,
+        hint="List aliases with 'pltr alias list'.",
+    )
+
+
+def reserved_names() -> Set[str]:
+    """Names an alias can't take: pltr's top-level commands, ``help`` and options."""
+    # Imported here: pltr.cli imports this module.
+    from ..cli import app as root_app
+
+    root = typer.main.get_command(root_app)
+    assert isinstance(root, click.Group)
+    names = root.list_commands(click.Context(root, info_name="pltr"))
+    return set(names) | {"help", "--help", "-h", "--version"}
+
+
+def _reject_reserved(names: Any, param_hint: str) -> None:
+    taken = sorted(set(names) & reserved_names())
+    if taken:
+        raise typer.BadParameter(
+            f"{', '.join(repr(name) for name in taken)} "
+            f"{'is a pltr command name' if len(taken) == 1 else 'are pltr command names'}; "
+            "an alias can't replace a pltr command. Choose another name.",
+            param_hint=param_hint,
+        )
+
 
 @app.command()
+@pltr_command()
 def add(
-    name: str = typer.Argument(..., help="Alias name"),
-    command: str = typer.Argument(..., help="Command to alias"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing alias"),
+    name: Annotated[str, typer.Argument(help="Alias name.")],
+    command: Annotated[
+        str,
+        typer.Argument(help='Command line to run instead, e.g. "dataset get".'),
+    ],
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Replace an existing alias of this name."),
+    ] = False,
+    # -f is --force here, so --format has no short flag.
+    format: Annotated[str, format_option(short=False)] = "table",
 ) -> None:
-    """Create a new command alias."""
+    """Create an alias (--force replaces an existing one)."""
+    _reject_reserved([name], "'NAME'")
     manager = AliasManager()
-
-    # Check if alias already exists
-    if manager.get_alias(name) and not force:
-        rprint(f"[red]Alias '{name}' already exists. Use --force to overwrite.[/red]")
-        raise typer.Exit(1)
-
-    # Check for reserved command names
-    reserved_commands = [
-        "configure",
-        "verify",
-        "dataset",
-        "ontology",
-        "sql",
-        "admin",
-        "shell",
-        "completion",
-        "alias",
-        "help",
-        "--version",
-    ]
-    if name in reserved_commands:
-        rprint(f"[red]Cannot use reserved command name '{name}' as alias[/red]")
-        raise typer.Exit(1)
-
+    existing = manager.get_alias(name)
+    if existing is not None and not force:
+        raise typer.BadParameter(
+            f"alias '{name}' already exists ({name} → {existing}); pass --force to "
+            "replace it.",
+            param_hint="'NAME'",
+        )
     try:
-        if force and manager.get_alias(name):
-            success = manager.edit_alias(name, command)
-            action = "Updated"
+        if existing is None:
+            manager.add_alias(name, command)
         else:
-            success = manager.add_alias(name, command)
-            action = "Created"
-
-        if success:
-            rprint(f"[green]{action} alias:[/green] {name} → {command}")
-        else:
-            rprint(f"[red]Failed to create alias '{name}'[/red]")
-            raise typer.Exit(1)
-    except ValueError as e:
-        rprint(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+            manager.edit_alias(name, command)
+    except ValueError as error:  # a circular reference
+        raise typer.BadParameter(str(error), param_hint="'COMMAND'") from error
+    success(f"{'Created' if existing is None else 'Updated'} alias: {name} → {command}")
+    emit(None, format=format)
 
 
 @app.command()
+@pltr_command(destructive=True)
 def remove(
-    name: str = typer.Argument(
-        ..., help="Alias name to remove", autocompletion=complete_alias_names
-    ),
-    confirm: bool = typer.Option(
-        True, "--confirm/--no-confirm", help="Confirm removal"
-    ),
+    name: AliasName,
+    yes: YesOption = False,
+    confirm: ConfirmToggleOption = None,
+    format: FormatOption = "table",
 ) -> None:
-    """Remove a command alias."""
+    """Remove an alias (asks first; --yes skips)."""
     manager = AliasManager()
-
     command = manager.get_alias(name)
-    if not command:
-        rprint(f"[red]Alias '{name}' not found[/red]")
-        raise typer.Exit(1)
-
-    if confirm:
-        confirmation = typer.confirm(f"Remove alias '{name}' → {command}?")
-        if not confirmation:
-            rprint("[yellow]Removal cancelled[/yellow]")
-            return
-
-    if manager.remove_alias(name):
-        rprint(f"[green]Removed alias '{name}'[/green]")
-    else:
-        rprint(f"[red]Failed to remove alias '{name}'[/red]")
-        raise typer.Exit(1)
+    if command is None:
+        raise _alias_not_found(name)
+    confirm_destructive(
+        f"Remove alias '{name}' ({name} → {command})?", yes=yes or confirm is False
+    )
+    manager.remove_alias(name)
+    success(f"Removed alias '{name}'")
+    emit(None, format=format)
 
 
 @app.command()
+@pltr_command()
 def edit(
-    name: str = typer.Argument(
-        ..., help="Alias name to edit", autocompletion=complete_alias_names
-    ),
-    command: str = typer.Argument(..., help="New command for the alias"),
+    name: AliasName,
+    command: Annotated[str, typer.Argument(help="New command line for the alias.")],
+    format: FormatOption = "table",
 ) -> None:
-    """Edit an existing command alias."""
+    """Change the command an alias runs."""
     manager = AliasManager()
-
-    if not manager.get_alias(name):
-        rprint(f"[red]Alias '{name}' not found[/red]")
-        raise typer.Exit(1)
-
+    if manager.get_alias(name) is None:
+        raise _alias_not_found(name)
     try:
-        if manager.edit_alias(name, command):
-            rprint(f"[green]Updated alias:[/green] {name} → {command}")
-        else:
-            rprint(f"[red]Failed to edit alias '{name}'[/red]")
-            raise typer.Exit(1)
-    except ValueError as e:
-        rprint(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        manager.edit_alias(name, command)
+    except ValueError as error:  # a circular reference
+        raise typer.BadParameter(str(error), param_hint="'COMMAND'") from error
+    success(f"Updated alias: {name} → {command}")
+    emit(None, format=format)
 
 
 @app.command("list")
-def list_aliases() -> None:
-    """List all command aliases."""
-    manager = AliasManager()
-    manager.display_aliases()
+@pltr_command()
+def list_aliases(
+    format: FormatOption = "table",
+    output: OutputOption = None,
+) -> None:
+    """List all aliases."""
+    aliases = AliasManager().list_aliases()
+    records: List[Dict[str, str]] = [
+        _record(name, command) for name, command in sorted(aliases.items())
+    ]
+    emit(records, format=format, output=output, columns=ALIAS_COLUMNS)
+    if not records:
+        info('Create one with: pltr alias add NAME "COMMAND"')
 
 
 @app.command()
+@pltr_command()
 def show(
-    name: str = typer.Argument(
-        ..., help="Alias name to show", autocompletion=complete_alias_names
-    ),
+    name: AliasName,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ) -> None:
-    """Show details of a specific alias."""
-    manager = AliasManager()
-    manager.display_aliases(name)
+    """Show the command an alias runs."""
+    command = AliasManager().get_alias(name)
+    if command is None:
+        raise _alias_not_found(name)
+    emit(
+        _record(name, command),
+        format=format,
+        output=output,
+        columns=ALIAS_COLUMNS,
+        title="Alias",
+    )
 
 
 @app.command()
+@pltr_command(destructive=True)
 def clear(
-    confirm: bool = typer.Option(
-        True, "--confirm/--no-confirm", help="Confirm clearing all aliases"
-    ),
+    yes: YesOption = False,
+    confirm: ConfirmToggleOption = None,
+    format: FormatOption = "table",
 ) -> None:
-    """Clear all command aliases."""
+    """Remove every alias (asks first; --yes skips)."""
     manager = AliasManager()
-
-    aliases = manager.list_aliases()
-    if not aliases:
-        rprint("[yellow]No aliases to clear[/yellow]")
-        return
-
-    if confirm:
-        confirmation = typer.confirm(f"Clear all {len(aliases)} aliases?")
-        if not confirmation:
-            rprint("[yellow]Clear cancelled[/yellow]")
-            return
-
-    count = manager.clear_all()
-    rprint(f"[green]Cleared {count} aliases[/green]")
+    count = len(manager.list_aliases())
+    if count:
+        confirm_destructive(f"Remove all {count} aliases?", yes=yes or confirm is False)
+        manager.clear_all()
+        success(f"Cleared {count} aliases")
+    else:
+        info("No aliases to clear")
+    emit(None, format=format)
 
 
 @app.command("export")
-def export_aliases(
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file (default: stdout)"
-    ),
-) -> None:
-    """Export aliases to JSON format."""
-    manager = AliasManager()
-    aliases = manager.export_aliases()
+@pltr_command()
+def export_aliases(output: OutputOption = None) -> None:
+    """Write all aliases as a JSON object ({"name": "command", ...}).
 
+    The output is the file format 'pltr alias import' reads.
+    """
+    aliases = AliasManager().list_aliases()
+    emit(dict(sorted(aliases.items())), format="json", output=output)
     if not aliases:
-        rprint("[yellow]No aliases to export[/yellow]")
-        return
-
-    json_data = json.dumps(aliases, indent=2, sort_keys=True)
-
-    if output:
-        with open(output, "w") as f:
-            f.write(json_data)
-        rprint(f"[green]Exported {len(aliases)} aliases to {output}[/green]")
-    else:
-        print(json_data)
+        info("No aliases to export")
 
 
 @app.command("import")
+@pltr_command(destructive=True)
 def import_aliases(
-    input_file: str = typer.Argument(..., help="JSON file containing aliases"),
-    merge: bool = typer.Option(
-        False, "--merge", "-m", help="Merge with existing aliases (default: replace)"
-    ),
+    input_file: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                'JSON file of aliases ({"name": "command", ...}), as written by '
+                "'pltr alias export'."
+            ),
+        ),
+    ],
+    merge: Annotated[
+        bool,
+        typer.Option(
+            "--merge",
+            "-m",
+            help="Keep existing aliases (default: replace them all).",
+        ),
+    ] = False,
+    yes: YesOption = False,
+    format: FormatOption = "table",
 ) -> None:
-    """Import aliases from a JSON file."""
+    """Import aliases from a JSON file.
+
+    Replaces all existing aliases (asks first; --yes skips) unless --merge,
+    which keeps them and overwrites only aliases of the same name.
+    """
+    data = load_json_input(f"@{input_file}", param_hint="'INPUT_FILE'")
+    if not isinstance(data, dict) or not all(
+        isinstance(name, str) and isinstance(command, str)
+        for name, command in data.items()
+    ):
+        raise typer.BadParameter(
+            'expected a JSON object of alias names to commands ({"name": '
+            "\"command\", ...}), as written by 'pltr alias export'",
+            param_hint="'INPUT_FILE'",
+        )
+    _reject_reserved(data, "'INPUT_FILE'")
+
     manager = AliasManager()
-
-    try:
-        with open(input_file, "r") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        rprint(f"[red]Error reading file: {e}[/red]")
-        raise typer.Exit(1)
-
-    if not isinstance(data, dict):
-        rprint("[red]Invalid format: expected JSON object with alias mappings[/red]")
-        raise typer.Exit(1)
-
-    # Clear existing aliases if not merging
-    if not merge and manager.list_aliases():
-        confirmation = typer.confirm("Replace existing aliases?")
-        if not confirmation:
-            rprint("[yellow]Import cancelled[/yellow]")
-            return
+    existing = len(manager.list_aliases())
+    if existing and not merge:
+        confirm_destructive(
+            f"Replace your {existing} existing aliases? (--merge keeps them)", yes=yes
+        )
         manager.clear_all()
-
     count = manager.import_aliases(data)
-    rprint(f"[green]Imported {count} aliases from {input_file}[/green]")
+    if count < len(data):
+        warn(
+            f"Skipped {len(data) - count} alias(es) that would create a circular "
+            "reference."
+        )
+    success(f"Imported {count} aliases from {input_file}")
+    emit(None, format=format)
 
 
 @app.command()
+@pltr_command()
 def resolve(
-    command: str = typer.Argument(
-        ..., help="Command to resolve", autocompletion=complete_alias_names
-    ),
+    name: AliasName,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ) -> None:
-    """Resolve an alias to show the actual command."""
+    """Show the command an alias finally runs, following aliases of aliases."""
     manager = AliasManager()
-
-    resolved = manager.resolve_alias(command)
-    if resolved == command:
-        if command in manager.list_aliases():
-            rprint(
-                f"[yellow]'{command}' is an alias but may have circular references[/yellow]"
-            )
-        else:
-            rprint(f"[yellow]'{command}' is not an alias[/yellow]")
-    else:
-        rprint(f"[green]{command}[/green] → {resolved}")
-
-
-if __name__ == "__main__":
-    app()
+    if manager.get_alias(name) is None:
+        raise _alias_not_found(name)
+    resolved = manager.resolve_alias(name)
+    if resolved == name:
+        raise PltrError(
+            f"Alias '{name}' refers back to itself through other aliases.",
+            hint="Fix it with 'pltr alias edit'.",
+        )
+    emit(
+        _record(name, resolved),
+        format=format,
+        output=output,
+        columns=ALIAS_COLUMNS,
+        title="Alias",
+    )

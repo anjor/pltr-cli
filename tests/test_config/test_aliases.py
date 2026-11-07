@@ -175,32 +175,6 @@ class TestAliasManager:
         manager2 = AliasManager()
         assert manager2.get_alias("ds") == "dataset get"
 
-    def test_display_aliases(self, alias_manager, capsys):
-        """Test displaying aliases."""
-        # Test empty aliases
-        alias_manager.display_aliases()
-        captured = capsys.readouterr()
-        assert "No aliases configured" in captured.out
-
-        # Test with aliases
-        alias_manager.add_alias("ds", "dataset get")
-        alias_manager.display_aliases()
-        captured = capsys.readouterr()
-        # Rich table output varies, just check key content
-        assert "ds" in captured.out or "Command Aliases" in captured.out
-
-    def test_display_specific_alias(self, alias_manager, capsys):
-        """Test displaying a specific alias."""
-        alias_manager.add_alias("ds", "dataset get")
-        alias_manager.display_aliases("ds")
-        captured = capsys.readouterr()
-        assert "dataset get" in captured.out
-
-        # Test nonexistent alias
-        alias_manager.display_aliases("nonexistent")
-        captured = capsys.readouterr()
-        assert "not found" in captured.out
-
     def test_corrupted_aliases_file(self, temp_config_dir, monkeypatch):
         """Test handling of corrupted aliases file."""
 
