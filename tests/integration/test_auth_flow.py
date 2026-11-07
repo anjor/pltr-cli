@@ -382,7 +382,15 @@ class TestAuthenticationFlow:
             with patch.object(
                 Settings, "_get_config_dir", return_value=temp_config_dir
             ):
-                with patch("pltr.commands.configure.Prompt.ask") as mock_prompt:
+                # configure only prompts when stdin is a terminal (CliRunner's
+                # isn't); prompts go through Rich on stderr.
+                with (
+                    patch(
+                        "pltr.commands.configure.stdin_is_interactive",
+                        return_value=True,
+                    ),
+                    patch("rich.prompt.Prompt.ask") as mock_prompt,
+                ):
                     # Mock user inputs with valid host (no validation implemented yet)
                     mock_prompt.side_effect = [
                         "token",  # Auth type

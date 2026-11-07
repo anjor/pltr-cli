@@ -8,12 +8,6 @@
 # Format: <file>::<Class.method>::<SDK path or HTTP call>::<rule>[<n>]  # <reason>
 # Rewrite (keeps existing reasons): uv run python scripts/check_sdk_calls.py --write-allowlist
 
-# src/pltr/services/aip_agents.py
-services/aip_agents.py::AipAgentsService.get_agent::aip_agents.Agent.get::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
-services/aip_agents.py::AipAgentsService.get_session::aip_agents.Agent.Session.get::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
-services/aip_agents.py::AipAgentsService.list_sessions::aip_agents.Agent.Session.list::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
-services/aip_agents.py::AipAgentsService.list_versions::aip_agents.Agent.AgentVersion.list::beta-preview-not-literal  # #184 (row inaccurate): works today (no --preview flag; the service defaults preview=True); inline the literal preview=True
-
 # src/pltr/services/audit.py
 services/audit.py::AuditService.list_log_files::audit.Organization.LogFile.list::unchecked-kwargs  # #185: dict-built (end_date, page_size; valid keys); pass explicit keywords
 
@@ -66,12 +60,3 @@ services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.Ontolo
 services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(filter)  # #182 ontology object-aggregate: OntologyObject.aggregate filters with where=, not filter=
 services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
 services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
-
-# src/pltr/services/third_party_applications.py
-services/third_party_applications.py::ThirdPartyApplicationsService.get_application::third_party_applications.ThirdPartyApplication.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
-# src/pltr/services/widgets.py
-services/widgets.py::WidgetsService.disable_dev_mode::widgets.DevModeSettings.disable::missing-method  # #182 widgets dev-mode disable: SDK only has enable/set_widget_set_by_id; remove
-services/widgets.py::WidgetsService.get_dev_mode_settings::widgets.DevModeSettings.get::missing-method  # #182 widgets dev-mode get: SDK only has enable/set_widget_set_by_id; remove
-services/widgets.py::WidgetsService.list_releases::widgets.WidgetSet.Release.list::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/widgets.py::WidgetsService.pause_dev_mode::widgets.DevModeSettings.pause::missing-method  # #182 widgets dev-mode pause: SDK only has enable/set_widget_set_by_id; remove
