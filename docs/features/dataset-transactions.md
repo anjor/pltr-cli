@@ -2,17 +2,50 @@
 
 ## Overview
 
-pltr-cli provides comprehensive transaction management for Foundry datasets, enabling atomic operations with full rollback capability. This feature allows for safe, multi-step dataset modifications with data integrity guarantees.
+Foundry datasets change through transactions: you open a transaction on a
+branch, add or delete files in it, then commit it (the changes become visible
+together) or abort it (nothing changes). pltr exposes the whole lifecycle,
+and also manages a transaction for you when you upload a directory.
+
+Datasets and transactions are addressed by RID: datasets look like
+`ri.foundry.main.dataset.<id>`, transactions like
+`ri.foundry.main.transaction.<id>`. Branches are addressed by name.
 
 ## Key Features
 
-- **Atomic Operations**: All changes within a transaction are applied together or not at all
-- **Rollback Capability**: Abort transactions to discard all changes
-- **Concurrent Modification Handling**: Multiple users can work on different transactions
-- **Transaction Types**: Support for APPEND, UPDATE, SNAPSHOT, and DELETE operations
-- **Progress Tracking**: Monitor transaction status throughout lifecycle
+- **Atomic changes**: the files of a transaction become visible together, at commit
+- **Rollback**: abort a transaction to discard everything in it
+- **Transaction types**: APPEND, UPDATE, SNAPSHOT and DELETE
+- **Managed uploads**: `pltr dataset files upload <directory>` uploads every file in one
+  transaction and aborts it if any upload fails
+- **Scriptable**: `--format json` prints only the API's JSON on stdout, and failures
+  exit with documented codes (see [Error Handling](#error-handling))
+
+## Uploading Without Managing Transactions
+
+For most uploads you don't need to open a transaction yourself:
+
+```bash
+# One file: the API opens and commits a transaction for the upload
+pltr dataset files upload data.csv ri.foundry.main.dataset.abc123
+
+# A directory: pltr opens one transaction, uploads every file, commits it,
+# or aborts it if any upload fails
+pltr dataset files upload ./exports ri.foundry.main.dataset.abc123 --path exports
+
+# Replace the dataset's files with the directory's contents
+pltr dataset files upload ./exports ri.foundry.main.dataset.abc123 \
+  --transaction-type SNAPSHOT
+```
+
+`--branch <name>` uploads to another branch (default: the dataset's default
+branch, `master` on most enrollments) and `--transaction-type` sets the type of
+the transaction the upload creates (default: UPDATE).
 
 ## Transaction Lifecycle
+
+Open a transaction yourself when you want to combine several commands (uploads,
+deletes, a validation step) into one change.
 
 ### 1. Starting a Transaction
 
@@ -21,30 +54,56 @@ pltr dataset transactions start <dataset-rid> [options]
 ```
 
 **Options:**
-- `--branch <name>`: Target branch (default: master)
-- `--type <type>`: Transaction type (APPEND, UPDATE, SNAPSHOT, DELETE)
+- `--branch <name>`: Branch to open the transaction on (default: the dataset's default
+  branch, `master` on most enrollments)
+- `--type <type>`: APPEND (default), UPDATE, SNAPSHOT or DELETE
 - `--profile <name>`: Authentication profile to use
 - `--format <format>`: Output format (table, json, csv)
+
+A branch can have only one open transaction at a time.
 
 **Example:**
 ```bash
 pltr dataset transactions start ri.foundry.main.dataset.abc123 --type APPEND
 ```
 
+The JSON output is the API's `Transaction`:
+
+```json
+{
+  "rid": "ri.foundry.main.transaction.xyz",
+  "transactionType": "APPEND",
+  "status": "OPEN",
+  "createdTime": "2024-03-04T05:06:07+00:00"
+}
+```
+
 ### 2. Performing Operations
 
-Once a transaction is started, you can perform operations within it:
+Pass `--transaction-rid` to upload into (or delete from) an open transaction. The
+transaction stays open until you commit or abort it. Don't combine
+`--transaction-rid` with `--branch`: the API rejects the combination.
 
 ```bash
 # Upload files
 pltr dataset files upload data.csv ri.foundry.main.dataset.abc123 \
   --transaction-rid ri.foundry.main.transaction.xyz
 
-# Upload multiple files in the same transaction
-pltr dataset files upload file1.csv ri.foundry.main.dataset.abc123 \
+# Upload a whole directory into the same transaction
+pltr dataset files upload ./more ri.foundry.main.dataset.abc123 \
   --transaction-rid ri.foundry.main.transaction.xyz
-pltr dataset files upload file2.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid ri.foundry.main.transaction.xyz
+
+# Delete a file (the transaction must be a DELETE transaction)
+pltr dataset files delete ri.foundry.main.dataset.abc123 old.csv \
+  --transaction-rid ri.foundry.main.transaction.del --yes
+```
+
+To see which files a transaction changed, list the files of that transaction:
+
+```bash
+pltr dataset files list ri.foundry.main.dataset.abc123 \
+  --start-transaction-rid ri.foundry.main.transaction.xyz \
+  --end-transaction-rid ri.foundry.main.transaction.xyz
 ```
 
 ### 3. Checking Transaction Status
@@ -53,22 +112,13 @@ pltr dataset files upload file2.csv ri.foundry.main.dataset.abc123 \
 pltr dataset transactions status <dataset-rid> <transaction-rid>
 ```
 
-**Example:**
-```bash
-pltr dataset transactions status ri.foundry.main.dataset.abc123 \
-  ri.foundry.main.transaction.xyz
-```
+Shows the transaction's type, status (OPEN, COMMITTED or ABORTED) and its created
+and closed times.
 
 ### 4. Committing Changes
 
 ```bash
 pltr dataset transactions commit <dataset-rid> <transaction-rid>
-```
-
-**Example:**
-```bash
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 \
-  ri.foundry.main.transaction.xyz
 ```
 
 ### 5. Aborting a Transaction
@@ -77,219 +127,157 @@ pltr dataset transactions commit ri.foundry.main.dataset.abc123 \
 pltr dataset transactions abort <dataset-rid> <transaction-rid> [--yes]
 ```
 
-**Options:**
-- `--yes`: Skip confirmation prompt
-
-**Example:**
-```bash
-pltr dataset transactions abort ri.foundry.main.dataset.abc123 \
-  ri.foundry.main.transaction.xyz --yes
-```
+Aborting discards the transaction's changes, so pltr asks for confirmation.
+`--yes` (or `-y`) skips the prompt; scripts and agents must pass it, because pltr
+never prompts when stdin is not a terminal (the command fails with exit code 2
+instead).
 
 ## Transaction Types
 
-### APPEND
-Adds new files to the dataset without affecting existing files.
-
-```bash
-pltr dataset transactions start ri.foundry.main.dataset.abc123 --type APPEND
-```
-
-### UPDATE
-Adds new files and can overwrite existing files with the same path.
-
-```bash
-pltr dataset transactions start ri.foundry.main.dataset.abc123 --type UPDATE
-```
-
-### SNAPSHOT
-Replaces the entire dataset with a new set of files.
-
-```bash
-pltr dataset transactions start ri.foundry.main.dataset.abc123 --type SNAPSHOT
-```
-
-### DELETE
-Removes specified files from the dataset.
-
-```bash
-pltr dataset transactions start ri.foundry.main.dataset.abc123 --type DELETE
-```
+| Type | Effect when committed |
+|---|---|
+| APPEND | Adds new files; existing files are unchanged |
+| UPDATE | Adds files and replaces files with the same path |
+| SNAPSHOT | Replaces all of the dataset's files with the transaction's files |
+| DELETE | Removes the files deleted in the transaction |
 
 ## Listing Transactions
-
-View all transactions for a dataset:
 
 ```bash
 pltr dataset transactions list <dataset-rid> [options]
 ```
 
-**Options:**
-- `--branch <name>`: Filter by branch
-- `--format <format>`: Output format
-- `--output <file>`: Save output to file
+Lists transactions newest first. This calls a beta Foundry endpoint, so the
+command is labeled `[beta]`.
 
-**Example:**
-```bash
-pltr dataset transactions list ri.foundry.main.dataset.abc123 --branch master
-```
+**Options:**
+- `--branch <name>`: Only this branch's transactions (default: every branch)
+- `--page-size`, `--page-token`, `--max-pages`, `--all`: Paging (one page by default)
+- `--format <format>`, `--output <file>`
+
+`pltr dataset branches transactions <dataset-rid> <branch>` lists one branch's
+transactions too, and `pltr dataset transactions build <dataset-rid>
+<transaction-rid>` shows the RID of the build that produced a transaction, if any
+(both `[beta]`).
 
 ## Practical Examples
 
 ### Example 1: Bulk Data Upload
 
 ```bash
-# Start an APPEND transaction
-TRANSACTION=$(pltr dataset transactions start ri.foundry.main.dataset.abc123 \
-  --type APPEND --format json | jq -r '.transaction_rid')
+set -euo pipefail
+DATASET=ri.foundry.main.dataset.abc123
 
-# Upload multiple CSV files
+# The simplest form: one managed transaction for the whole directory
+pltr dataset files upload ./csv-exports "$DATASET"
+```
+
+The same with a transaction you control:
+
+```bash
+TRANSACTION=$(pltr dataset transactions start "$DATASET" --type APPEND \
+  --format json | jq -r '.rid')
+
 for file in *.csv; do
-  pltr dataset files upload "$file" ri.foundry.main.dataset.abc123 \
-    --transaction-rid $TRANSACTION
+  pltr dataset files upload "$file" "$DATASET" --transaction-rid "$TRANSACTION"
 done
 
-# Check status
-pltr dataset transactions status ri.foundry.main.dataset.abc123 $TRANSACTION
-
-# Commit if successful
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
+pltr dataset transactions commit "$DATASET" "$TRANSACTION"
 ```
 
 ### Example 2: Safe Dataset Update with Validation
 
 ```bash
-# Start UPDATE transaction
-TRANSACTION=$(pltr dataset transactions start ri.foundry.main.dataset.abc123 \
-  --type UPDATE --format json | jq -r '.transaction_rid')
+DATASET=ri.foundry.main.dataset.abc123
+TRANSACTION=$(pltr dataset transactions start "$DATASET" --type UPDATE \
+  --format json | jq -r '.rid')
 
-# Upload new data
-pltr dataset files upload updated_data.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid $TRANSACTION
+pltr dataset files upload updated_data.csv "$DATASET" --transaction-rid "$TRANSACTION"
 
-# Perform validation (custom script)
-if validate_dataset.sh ri.foundry.main.dataset.abc123 $TRANSACTION; then
-  # Validation passed, commit
-  pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
-  echo "Dataset updated successfully"
+if validate_dataset.sh "$DATASET" "$TRANSACTION"; then
+  pltr dataset transactions commit "$DATASET" "$TRANSACTION"
+  echo "Dataset updated"
 else
-  # Validation failed, abort
-  pltr dataset transactions abort ri.foundry.main.dataset.abc123 $TRANSACTION --yes
-  echo "Update aborted due to validation failure"
+  pltr dataset transactions abort "$DATASET" "$TRANSACTION" --yes
+  echo "Update aborted: validation failed"
 fi
 ```
 
 ### Example 3: Atomic Multi-File Replacement
 
 ```bash
-# Start SNAPSHOT transaction to replace entire dataset
-TRANSACTION=$(pltr dataset transactions start ri.foundry.main.dataset.abc123 \
-  --type SNAPSHOT --format json | jq -r '.transaction_rid')
+DATASET=ri.foundry.main.dataset.abc123
+TRANSACTION=$(pltr dataset transactions start "$DATASET" --type SNAPSHOT \
+  --format json | jq -r '.rid')
 
-# Upload all new files
-pltr dataset files upload metadata.json ri.foundry.main.dataset.abc123 \
-  --transaction-rid $TRANSACTION
-pltr dataset files upload data_2024.csv ri.foundry.main.dataset.abc123 \
-  --transaction-rid $TRANSACTION
-pltr dataset files upload summary.txt ri.foundry.main.dataset.abc123 \
-  --transaction-rid $TRANSACTION
+pltr dataset files upload metadata.json "$DATASET" --transaction-rid "$TRANSACTION"
+pltr dataset files upload data_2024.csv "$DATASET" --transaction-rid "$TRANSACTION"
+pltr dataset files upload summary.txt "$DATASET" --transaction-rid "$TRANSACTION"
 
-# Commit to replace dataset atomically
-pltr dataset transactions commit ri.foundry.main.dataset.abc123 $TRANSACTION
+# Replace the dataset's files atomically
+pltr dataset transactions commit "$DATASET" "$TRANSACTION"
 ```
 
 ## Best Practices
 
-1. **Always Use Transactions for Multi-File Operations**
-   - Ensures atomicity and consistency
-   - Allows rollback if any part fails
-
-2. **Check Transaction Status Before Committing**
-   - Verify all operations completed successfully
-   - Review changes before making them permanent
-
-3. **Use Appropriate Transaction Types**
-   - APPEND for adding new data
-   - UPDATE for modifying existing data
-   - SNAPSHOT for complete replacements
-   - DELETE for removing specific files
-
-4. **Handle Errors Gracefully**
-   - Always have abort logic for failed operations
-   - Log transaction RIDs for debugging
-
-5. **Clean Up Aborted Transactions**
-   - Aborted transactions free up resources
-   - Don't leave transactions open unnecessarily
+1. **Prefer managed uploads.** `pltr dataset files upload <directory>` gives you one
+   atomic change without bookkeeping.
+2. **Use one transaction for multi-step changes**, so they become visible together
+   and can be rolled back together.
+3. **Pick the right type.** APPEND to add, UPDATE to add or replace, SNAPSHOT to
+   replace everything, DELETE to remove files.
+4. **Always abort on failure.** An open transaction blocks new transactions on its
+   branch; abort it if a step fails.
 
 ## Error Handling
 
-Common errors and solutions:
+Failures print an error on stderr and exit with a documented code. With
+`--format json` the last stderr line is a JSON object with the Foundry
+`errorName`, `statusCode` and `parameters`.
 
-### Transaction Already Exists
-**Error:** "A transaction is already open for this branch"
-**Solution:** Commit or abort the existing transaction before starting a new one
+| Situation | errorName | Exit code |
+|---|---|---|
+| A transaction is already open on the branch | `OpenTransactionAlreadyExists` | 7 (conflict) |
+| The transaction doesn't exist | `TransactionNotFound` | 5 |
+| The transaction is already committed or aborted | `TransactionNotOpen` | 6 |
+| `--branch` and `--transaction-rid` together on upload | `InvalidParameterCombination` | 6 (pltr refuses it first: 2) |
+| No write access to the dataset | e.g. `CreateTransactionPermissionDenied` | 4 |
+| Missing or invalid credentials | | 3 |
 
-### Transaction Not Found
-**Error:** "Transaction not found"
-**Solution:** Verify the transaction RID and ensure it hasn't been committed/aborted
-
-### Permission Denied
-**Error:** "Insufficient permissions to modify dataset"
-**Solution:** Ensure your user has write access to the dataset
+If a managed directory upload fails, pltr aborts its transaction and says so on
+stderr; if even the abort fails, it prints the `pltr dataset transactions abort`
+command to run.
 
 ## Integration with CI/CD
 
-Example GitHub Actions workflow:
+Example GitHub Actions step (pltr reads credentials from `FOUNDRY_HOST` and
+`FOUNDRY_TOKEN`, or `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`):
 
 ```yaml
-- name: Upload Data to Foundry
+- name: Upload data to Foundry
+  env:
+    FOUNDRY_HOST: ${{ vars.FOUNDRY_HOST }}
+    FOUNDRY_TOKEN: ${{ secrets.FOUNDRY_TOKEN }}
   run: |
-    # Start transaction
-    TRANSACTION=$(pltr dataset transactions start $DATASET_RID \
-      --type APPEND --format json | jq -r '.transaction_rid')
-
-    # Upload artifacts
-    pltr dataset files upload build/output.csv $DATASET_RID \
-      --transaction-rid $TRANSACTION
-
-    # Commit on success
-    if [ $? -eq 0 ]; then
-      pltr dataset transactions commit $DATASET_RID $TRANSACTION
-    else
-      pltr dataset transactions abort $DATASET_RID $TRANSACTION --yes
-      exit 1
-    fi
+    # One managed transaction: committed on success, aborted on failure
+    pltr dataset files upload build/output "$DATASET_RID" --path output
 ```
 
 ## Related Commands
 
-- `pltr dataset get`: Get dataset information
-- `pltr dataset branches list`: List dataset branches
-- `pltr dataset files list`: List files in dataset
-- `pltr dataset files upload`: Upload files to dataset
-- `pltr dataset files get`: Download files from dataset
+- `pltr dataset get`: Get a dataset's metadata
+- `pltr dataset branches list`: List a dataset's branches
+- `pltr dataset files list`: List files (filter with `--path-prefix`)
+- `pltr dataset files upload`: Upload files or directories
+- `pltr dataset files get`: Download files, or folders with `--recursive`
 
 ## Technical Details
 
 ### Transaction States
-- **OPEN**: Transaction is active and accepting operations
-- **COMMITTED**: Transaction completed successfully, changes applied
-- **ABORTED**: Transaction cancelled, all changes discarded
+- **OPEN**: Accepting changes
+- **COMMITTED**: Changes applied
+- **ABORTED**: Changes discarded
 
 ### Concurrency
-- Multiple transactions can be open on different branches
-- Only one transaction per branch at a time
-- Transactions are isolated from each other
-
-### Timeouts
-- Transactions may timeout after extended periods of inactivity
-- Check your Foundry instance configuration for specific timeout values
-
-## Support
-
-For issues or questions about dataset transactions:
-1. Check the error message for specific guidance
-2. Verify your permissions on the dataset
-3. Consult your Foundry administrator for system-specific configurations
-4. Report issues at: https://github.com/anjor/pltr-cli/issues
+- A branch has at most one open transaction
+- Transactions on different branches are independent
