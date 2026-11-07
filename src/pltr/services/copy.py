@@ -355,15 +355,13 @@ class CopyService:
         (names can't contain ``/``), so the target is inside the source when
         its path starts with the source's path and a ``/``.
         """
-        if target_folder_rid == folder.rid:
-            where = "is that folder"
-        else:
+        where = "is that folder"
+        if target_folder_rid != folder.rid:
             target = self.resource_service.get_resource(target_folder_rid)
-            if target.rid != folder.rid and not target.path.startswith(
-                folder.path.rstrip("/") + "/"
-            ):
+            if target.path.startswith(folder.path.rstrip("/") + "/"):
+                where = f"is inside it ({target.path})"
+            elif target.rid != folder.rid:
                 return
-            where = f"is inside it ({target.path})"
         raise PltrError(
             f"Can't copy folder '{folder.display_name}' ({folder.rid}) into "
             f"itself: the target {target_folder_rid} {where}.",
