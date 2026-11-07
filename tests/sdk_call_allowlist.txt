@@ -49,9 +49,6 @@ services/connectivity.py::ConnectivityService.list_file_imports::file_imports.Fi
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method[2]  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
 
-# src/pltr/services/copy.py
-services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
-
 # src/pltr/services/data_health.py
 services/data_health.py::DataHealthService.create_check::data_health.Check.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/data_health.py::DataHealthService.delete_check::data_health.Check.delete::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
@@ -131,22 +128,6 @@ services/orchestration.py::OrchestrationService.get_jobs_batch::orchestration.Jo
 services/orchestration.py::OrchestrationService.get_schedule::orchestration.Schedule.get::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.get is beta: pass preview=True
 services/orchestration.py::OrchestrationService.get_schedule_runs::orchestration.Schedule.runs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
 services/orchestration.py::OrchestrationService.replace_schedule::orchestration.Schedule.replace::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.replace is beta: pass preview=True
-
-# src/pltr/services/resource.py
-services/resource.py::ResourceService.add_markings::filesystem.Resource.add_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.delete_resource::filesystem.Resource.delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_access_requirements::filesystem.Resource.get_access_requirements::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource::filesystem.Resource.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_by_path::filesystem.Resource.get_by_path::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_metadata::filesystem.Resource.get_metadata::missing-method  # #182 resource get-metadata: no SDK equivalent; remove
-services/resource.py::ResourceService.get_resources_batch::filesystem.Resource.get_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resources_by_path_batch::filesystem.Resource.get_by_path_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.list_markings::filesystem.Resource.markings::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Resource.markings
-services/resource.py::ResourceService.list_resources::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/resource.py::ResourceService.permanently_delete_resource::filesystem.Resource.permanently_delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.remove_markings::filesystem.Resource.remove_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.restore_resource::filesystem.Resource.restore::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.search_resources::filesystem.Folder.children::preview-on-ga  # #184: GA endpoint; stop passing preview=
 
 # src/pltr/services/sql.py
 services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
