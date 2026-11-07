@@ -13,7 +13,9 @@ every SDK call:
   ``preview`` parameter) always get the literal ``preview=True``.
 
 It also reports direct HTTP calls (``requests``, ``httpx``, ``urllib``,
-``BaseService._make_request``) outside the labeled exceptions.
+``BaseService._make_request``) outside the labeled exceptions, and every
+``get_client(...)`` call outside ``services/base.py`` (a client built elsewhere
+makes SDK calls the checker can't follow).
 
 ``tests/test_sdk_call_guardrail.py`` runs the check against the ratchet allowlist
 ``tests/sdk_call_allowlist.txt``; ``scripts/check_sdk_calls.py`` is the command-line
@@ -95,6 +97,15 @@ LABELED_HTTP_EXCEPTIONS: Dict[str, str] = {
 
 #: Name of the BaseService helper that makes raw HTTP requests.
 MAKE_REQUEST = "BaseService._make_request"
+
+#: Files (relative to ``src/pltr``) that may build an SDK client with
+#: ``get_client(...)``. The checker follows SDK calls from ``self.client`` and
+#: ``self.service`` of service classes; a client built anywhere else is invisible
+#: to it, so every other ``get_client(...)`` call is reported as ``uncheckable``.
+#: (``commands/api/_runtime.py``, the generated ``pltr api`` commands, isn't
+#: scanned: it resolves SDK methods by name at run time and checks their
+#: parameters against the installed SDK there.)
+CLIENT_SEAMS = frozenset({"services/base.py"})
 
 _HTTP_LIBRARIES = frozenset({"requests", "httpx", "urllib", "http", "aiohttp"})
 _HTTP_VERBS = ("request", "get", "options", "head", "post", "put", "patch", "delete")
@@ -481,6 +492,13 @@ _PROBES = frozenset(
         "print",
     }
 )
+
+
+def _is_get_client(func: ast.expr) -> bool:
+    """``get_client(...)`` or ``<anything>.get_client(...)``."""
+    if isinstance(func, ast.Name):
+        return func.id == "get_client"
+    return isinstance(func, ast.Attribute) and func.attr == "get_client"
 
 
 def _is_probe(func: ast.expr) -> bool:
@@ -898,6 +916,8 @@ class _Analyzer:
             if isinstance(node, ast.Call):
                 values = scope.eval(node.func)
                 context = (file, class_name, method, node)
+                if _is_get_client(node.func) and file not in CLIENT_SEAMS:
+                    out.append(self._get_client_record(context))
                 sdk_refs = [v for v in values if isinstance(v, _SdkRef)]
                 for ref in self._viable_candidates(sdk_refs):
                     out.append(self._sdk_record(ref, context))
@@ -937,6 +957,22 @@ class _Analyzer:
                         )
                     )
         return out
+
+    def _get_client_record(self, context: _Context) -> SdkCall:
+        seams = ", ".join(f"src/pltr/{file}" for file in sorted(CLIENT_SEAMS))
+        return self._record(
+            context,
+            sdk_path="get_client",
+            kind="sdk",
+            violations=[
+                Violation(
+                    "uncheckable",
+                    f"builds its own SDK client with get_client() outside {seams}, "
+                    "so the SDK calls made with it can't be checked; call the SDK "
+                    "from a BaseService subclass (self.service / self.client)",
+                )
+            ],
+        )
 
     def _uncheckable_record(
         self,

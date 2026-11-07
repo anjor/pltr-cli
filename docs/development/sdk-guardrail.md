@@ -41,7 +41,7 @@ It runs in about two seconds, most of it importing the SDK modules pltr uses.
 | `beta-without-preview` | A beta method (one with a `preview` parameter) is called without `preview`. The server rejects it with `ApiFeaturePreviewUsageOnly`. |
 | `beta-preview-not-literal` | A beta method gets `preview=` something other than the literal `True`, e.g. `preview=preview`. That's how the "beta command only works with `--preview`" bug happens. |
 | `unchecked-kwargs` | Arguments go through `**kwargs` (usually a dict built up with `params["x"] = ...`) or `*args`, so the call can't be checked. Explicit arguments next to the `**` are still checked. |
-| `uncheckable` | The target can't be pinned down statically: an attribute name computed at runtime, a `_get_service()` the checker can't resolve, or an SDK object passed to other code (for example an SDK method handed to a helper as a callback), where the call that uses it can't be seen. |
+| `uncheckable` | The target can't be pinned down statically: an attribute name computed at runtime, a `_get_service()` the checker can't resolve, an SDK object passed to other code (for example an SDK method handed to a helper as a callback), where the call that uses it can't be seen, or an SDK client built with `get_client(...)` anywhere but `src/pltr/services/base.py` (the calls made with it can't be followed; go through a service's `self.client`/`self.service`). |
 | `direct-http` | A direct HTTP call (`requests.*`, `httpx.*`, `urllib.request.urlopen`, `BaseService._make_request`, ...) outside the labeled exceptions. |
 
 Beta means the SDK method has a `preview` parameter. The rule follows the roadmap's decision:
