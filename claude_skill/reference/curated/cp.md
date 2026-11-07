@@ -12,9 +12,9 @@ Copy a dataset, or a folder with its contents, into another folder.
 - `SOURCE_RID`: RID of the dataset or folder to copy.
 - `TARGET_FOLDER_RID`: RID of the folder or project to copy into.
 - `--recursive`, `-r`: Copy a folder with its contents (required when SOURCE_RID is a folder).
-- `--branch`, `-b` TEXT (default: master): Branch whose files are copied, on both sides.
+- `--branch`, `-b` TEXT (default: master): Branch whose files are copied, to the same branch of the copy (created there if it isn't the copy's default branch).
 - `--name-suffix` TEXT (default: -copy): Suffix appended to the names of the copies.
 - `--schema`, `--no-schema` (default: True): Copy dataset schemas when available.
 - `--dry-run`: Create nothing; list the resources that would be copied.
 - `--fail-fast`: Stop at the first item that fails when copying a folder.
-- SDK: `filesystem.Resource.get`, `filesystem.Folder.create`, `filesystem.Folder.children`, `datasets.Dataset.create`, `datasets.Dataset.get_schema`, `datasets.Dataset.put_schema`, `datasets.Dataset.File.list`, `datasets.Dataset.File.content`, `datasets.Dataset.File.upload`, `datasets.Dataset.Transaction.create`, `datasets.Dataset.Transaction.commit`, `datasets.Dataset.Transaction.abort`, `filesystem.Resource.delete`
+- SDK: `filesystem.Resource.get`, `filesystem.Folder.create`, `filesystem.Folder.children`, `datasets.Dataset.create`, `datasets.Dataset.Branch.list`, `datasets.Dataset.Branch.create`, `datasets.Dataset.get_schema`, `datasets.Dataset.put_schema`, `datasets.Dataset.File.list`, `datasets.Dataset.File.content`, `datasets.Dataset.File.upload`, `datasets.Dataset.Transaction.create`, `datasets.Dataset.Transaction.commit`, `datasets.Dataset.Transaction.abort`, `filesystem.Resource.delete`

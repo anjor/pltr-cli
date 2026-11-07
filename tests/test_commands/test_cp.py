@@ -30,6 +30,8 @@ NEW_FOLDER = fj.folder(
     "ri.compass.main.folder.new", "Source-copy", parentFolderRid=TARGET
 )
 NEW_DATASET_RID = "ri.foundry.main.dataset.new"
+#: ``Branch.list`` of a new dataset: only its default branch, no transactions.
+COPY_BRANCHES = dj.page([dj.branch("master", None)])
 
 
 def invoke(*args: str, **kwargs):
@@ -50,6 +52,7 @@ def queue_dataset_copy(
     """
     stub.respond(json=SOURCE_DATASET)  # Resource.get
     stub.respond(json=fs.dataset(NEW_DATASET_RID, name, TARGET))  # Dataset.create
+    stub.respond(json=COPY_BRANCHES)  # Branch.list of the copy
     stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))  # File.list
     stub.respond(json=fs.transaction())  # Transaction.create
     stub.respond(content=b"data")  # File.content
@@ -87,6 +90,36 @@ def test_cp_dataset_table_reports_progress_on_stderr(stub_foundry_http):
     assert "Copied dataset schema (CSV reader)" in result.stderr
     assert "Copied 0 folder(s) and 1 dataset(s); 0 skipped, 0 failed" in result.stderr
     assert "Copying" not in result.stdout
+
+
+def test_cp_another_branch_creates_it_on_the_copy(stub_foundry_http):
+    """`--branch develop` could never succeed: the copy has only its default
+    branch, so the SNAPSHOT transaction on develop failed (#181 review)."""
+    stub = stub_foundry_http
+    stub.respond(json=SOURCE_DATASET)  # Resource.get
+    stub.respond(json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET))
+    stub.respond(json=COPY_BRANCHES)  # Branch.list of the copy: master only
+    stub.respond(json=dj.branch("develop", None))  # Branch.create
+    stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))  # File.list
+    stub.respond(json=fs.transaction())  # Transaction.create
+    stub.respond(content=b"data")  # File.content
+    stub.respond(json=fs.dataset_file("part-0.csv"))  # File.upload
+    stub.respond(json=fs.transaction(status="COMMITTED"))  # Transaction.commit
+
+    result = invoke(
+        "cp", fs.DATASET_RID, TARGET, "--branch", "develop", "--no-schema", "-f", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    calls = [(r.method, r.url.path, dict(r.url.params)) for r in stub.requests]
+    copy = f"/api/v2/datasets/{NEW_DATASET_RID}"
+    assert calls[2:6] == [
+        ("GET", f"{copy}/branches", {}),
+        ("POST", f"{copy}/branches", {}),
+        ("GET", f"/api/v2/datasets/{fs.DATASET_RID}/files", {"branchName": "develop"}),
+        ("POST", f"{copy}/transactions", {"branchName": "develop"}),
+    ]
+    assert json.loads(stub.requests[3].content) == {"name": "develop"}
 
 
 def test_cp_no_schema_copies_only_the_files(stub_foundry_http):
@@ -239,6 +272,7 @@ def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http):
     stub_foundry_http.respond(
         json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET)
     )
+    stub_foundry_http.respond(json=COPY_BRANCHES)
     stub_foundry_http.respond(json=fs.page([fs.dataset_file("part-0.csv")]))
     stub_foundry_http.respond(json=fs.transaction())
     stub_foundry_http.respond(content=b"data")

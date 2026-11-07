@@ -773,6 +773,12 @@ from `--help`. They will be removed in the next release.
   and compares its `Resource.path` with the source's (not verified against a
   live stack). As a second guard, a copy never copies a folder or dataset it
   created itself.
+- `pltr cp --branch BRANCH` with a branch other than the copy's default
+  branch could never succeed: a new dataset has only its default branch
+  (`master` on most enrollments), so opening the SNAPSHOT transaction on
+  `BRANCH` failed with `BranchNotFound` and the copy was trashed. cp now lists
+  the copy's branches and creates `BRANCH` on it (without transactions)
+  before committing the files there. Not verified against a live stack.
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No

@@ -60,6 +60,8 @@ COPY_COLUMNS: Columns = {
         "filesystem.Folder.create",
         "filesystem.Folder.children",
         "datasets.Dataset.create",
+        "datasets.Dataset.Branch.list",
+        "datasets.Dataset.Branch.create",
         "datasets.Dataset.get_schema",
         "datasets.Dataset.put_schema",
         "datasets.Dataset.File.list",
@@ -97,7 +99,10 @@ def cp_command(
     branch: Annotated[
         str,
         typer.Option(
-            "--branch", "-b", help="Branch whose files are copied, on both sides."
+            "--branch",
+            "-b",
+            help="Branch whose files are copied, to the same branch of the copy "
+            "(created there if it isn't the copy's default branch).",
         ),
     ] = "master",
     name_suffix: Annotated[
@@ -146,7 +151,9 @@ def cp_command(
     --name-suffix.
 
     A dataset copy gets the files of --branch, committed in one SNAPSHOT
-    transaction on the same branch of the copy. With --schema (the default)
+    transaction on the same branch of the copy; a new dataset has only its
+    default branch (master on most enrollments), so any other branch is
+    created on the copy first. With --schema (the default)
     the source's schema on that branch is then put on the committed copy; a
     source without a schema is copied without one. The API doesn't report the
     source's dataframe reader: the schema gets CSV when every file is a .csv

@@ -201,7 +201,8 @@ pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
 ```
 
 - A dataset copy gets the files of `--branch`, committed in one SNAPSHOT
-  transaction on the same branch. Then, with `--schema` (the default), the
+  transaction on the same branch of the copy, which cp creates first when it
+  isn't the copy's default branch. Then, with `--schema` (the default), the
   source's schema on that branch is put on the committed copy; a source
   without a schema is copied without one. The API doesn't report the
   source's dataframe reader, so the copy's schema gets `CSV` when every file

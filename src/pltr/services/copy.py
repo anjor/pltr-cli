@@ -196,6 +196,7 @@ class CopyService:
         )
 
         try:
+            self._create_branch_on_copy(new_dataset_rid)
             copied = self._copy_dataset_files(dataset_rid, new_dataset_rid)
             if self.copy_schema:
                 self._copy_dataset_schema(dataset_rid, new_dataset_rid, copied)
@@ -215,6 +216,28 @@ class CopyService:
         self.result.stats.datasets += 1
         self.result.items.append(new_dataset)
         success(f"Finished copying dataset to {new_dataset_rid}")
+
+    def _create_branch_on_copy(self, target_rid: str) -> None:
+        """Create ``self.branch`` on the new dataset unless it already has it.
+
+        ``Dataset.create`` creates only the default branch (master on most
+        enrollments), and the files are committed on ``self.branch``. The
+        branch is created without transactions.
+        """
+        try:
+            # Iterating the SDK iterator reads every page of the branches.
+            names = [b.name for b in self.dataset_service.list_branches(target_rid)]
+            if self.branch in names:
+                return
+            self.dataset_service.create_branch(target_rid, self.branch)
+        except Exception as exc:
+            if self.debug:
+                traceback.print_exc()
+            raise RuntimeError(
+                f"Failed to create branch '{self.branch}' on {target_rid}"
+            ) from exc
+        default = f" (its default branch is '{names[0]}')" if names else ""
+        info(f"  Created branch '{self.branch}' on the copy{default}")
 
     def _copy_dataset_files(
         self, source_rid: str, target_rid: str
