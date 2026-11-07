@@ -97,7 +97,7 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 | 4 | permission denied (403) | the account lacks access; tell the user |
 | 5 | not found (404) | check the RID and that the account can see it |
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
-| 7 | other API or network error (409, 429, 5xx, timeouts) | retry later, or report it |
+| 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
 
 ## 4. Safety rules
 

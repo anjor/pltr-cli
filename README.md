@@ -202,7 +202,7 @@ pltr is built to be scripted, by people and by agents.
 | 4 | Permission denied (HTTP 403) | `permission_denied` |
 | 5 | Not found (HTTP 404) | `not_found`, `api_not_found` |
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
-| 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` |
+| 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
 
 **Destructive commands ask first.** Commands that delete, remove, revoke,
 reset, cancel, abort or replace something ask for confirmation, and
