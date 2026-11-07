@@ -14,8 +14,6 @@ documented exit code; see ``pltr.contract``).
 
 from typing import Any, Optional
 
-import typer
-
 from ..auth.manager import AuthContext, AuthSource
 from ..contract import (
     Columns,
@@ -29,8 +27,6 @@ from ..contract import (
     success,
 )
 from ..services.verify import VerifyService
-
-app = typer.Typer()
 
 
 class VerificationFailed(Exception):
@@ -61,10 +57,9 @@ def _columns(source: AuthSource) -> Columns:
     }
 
 
-@app.callback(invoke_without_command=True)
+# Registered as the `pltr verify` command in pltr/cli.py.
 @pltr_command(sdk="admin.User.get_current")
 def verify(
-    ctx: typer.Context,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
@@ -77,9 +72,6 @@ def verify(
     FOUNDRY_TOKEN (or FOUNDRY_CLIENT_ID and FOUNDRY_CLIENT_SECRET) environment
     variables. Reports which one it used.
     """
-    if ctx.invoked_subcommand is not None:
-        return
-
     service = VerifyService(profile=profile)
     context = service.get_auth_context()
     info(f"Verifying {context.source.describe()} against {context.base_url}")

@@ -370,6 +370,40 @@ class TestVerifyFailure:
         assert f"Could not reach https://{ENV_HOST}" in error["message"]
 
 
+class TestVerifyIsACommand:
+    """verify is a plain command, not a group: its usage has no COMMAND, and an
+    extra argument is a usage error ("No such command" before)."""
+
+    def test_registered_as_a_command(self):
+        import click
+        import typer
+
+        command = typer.main.get_command(app).commands["verify"]
+
+        assert not isinstance(command, click.Group)
+        assert command.short_help == "Verify authentication"
+
+    def test_help_usage_has_no_subcommand(self):
+        result = invoke("--help")
+
+        assert result.exit_code == 0, result.output
+        assert "Usage: pltr verify [OPTIONS]" in result.stdout
+        assert "COMMAND" not in result.stdout
+        assert "Reports which one it used." in result.stdout
+
+    def test_an_extra_argument_is_a_json_usage_error(self, fake_http, monkeypatch):
+        env_token(monkeypatch)
+
+        result = invoke("foo", "--format", "json")
+
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        error = last_error(result)
+        assert error["type"] == "usage_error"
+        assert "unexpected extra argument (foo)" in error["message"]
+        assert fake_http.sdk_requests == []
+
+
 class TestVerifyFollowsTheCliContract:
     """The contract test's own checks (tests/test_contract/test_cli_contract.py).
 

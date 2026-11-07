@@ -53,7 +53,7 @@ app = typer.Typer(
 
 # Add subcommands
 app.add_typer(configure.app, name="configure", help="Manage authentication profiles")
-app.add_typer(verify.app, name="verify", short_help="Verify authentication")
+app.command("verify", short_help="Verify authentication")(verify.verify)
 app.add_typer(dataset.app, name="dataset", short_help="Manage datasets")
 app.add_typer(folder.app, name="folder", short_help="Manage folders")
 app.add_typer(project.app, name="project", short_help="Manage projects")

@@ -345,6 +345,10 @@ can search. See Added.
   `link-type-create` fallback, `language-models list`, `status` and `enroll`)
   always use `https://` with the profile's or environment's host, like the
   SDK client.
+- `pltr verify` is a plain command, not a command group: its help shows
+  `Usage: pltr verify [OPTIONS]` instead of `[OPTIONS] COMMAND [ARGS]...`, and
+  an extra argument is a usage error ("Got unexpected extra argument", a JSON
+  error with `--format json`) instead of "No such command".
 - Keyring calls have a time limit (`PLTR_KEYRING_TIMEOUT`), and any keyring
   failure gives an error that points to the environment variables.
 - Reading settings or profiles no longer creates `~/.config/pltr`; it is

@@ -43,7 +43,8 @@ def _module_help(group) -> str:
 
 
 def test_groups_with_their_own_help_are_found():
-    assert {"dataset", "space", "media-sets", "orchestration", "verify"} <= set(
+    # (`verify` is a command, so its docstring is its help: see test_verify.py.)
+    assert {"dataset", "space", "media-sets", "orchestration"} <= set(
         GROUPS_WITH_A_DOCSTRING
     )
 
