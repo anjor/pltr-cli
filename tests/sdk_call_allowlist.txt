@@ -120,18 +120,6 @@ services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.Ontolo
 services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
 services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
 
-# src/pltr/services/orchestration.py
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService._search_with_optional_preview::orchestration.Build.search::unchecked-kwargs[2]  # #185, not in #182: dict-built; can never succeed: Build.search requires where=, and the preview-less retry can't work (beta)
-services/orchestration.py::OrchestrationService.create_build::orchestration.Build.create::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.create_schedule::orchestration.Schedule.create::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.create is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_build_jobs::orchestration.Build.jobs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.get_job::orchestration.Job.get::beta-without-preview  # #182 orchestration jobs get: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_jobs_batch::orchestration.Job.get_batch::beta-without-preview  # #182 orchestration jobs get-batch: beta; pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule::orchestration.Schedule.get::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.get is beta: pass preview=True
-services/orchestration.py::OrchestrationService.get_schedule_runs::orchestration.Schedule.runs::unchecked-kwargs  # #185: arguments built in a dict (keys are valid); pass explicit keywords
-services/orchestration.py::OrchestrationService.replace_schedule::orchestration.Schedule.replace::unchecked-kwargs  # #185/#184: dict-built; keys valid, but preview comes from --preview; Schedule.replace is beta: pass preview=True
-
 # src/pltr/services/project.py
 services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
 services/project.py::ProjectService.add_organizations::filesystem.Project.add_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=

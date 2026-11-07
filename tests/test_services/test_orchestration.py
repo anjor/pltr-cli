@@ -1,652 +1,338 @@
-"""
-Tests for orchestration service.
+"""Tests for OrchestrationService against a real FoundryClient (only HTTP is faked).
+
+Build.search, Job.get, Job.get_batch, Schedule.get, Schedule.create and
+Schedule.replace are beta: their requests must carry preview=true. The other
+methods are GA: passing preview= would make the SDK emit a UserWarning, which
+the module-level filter turns into a failure.
 """
 
+import json
+
+import pydantic
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.orchestration.models import (
+    Build,
+    GetBuildsBatchResponse,
+    GetJobsBatchResponse,
+    Job,
+    Schedule,
+    ScheduleRun,
+    SearchBuildsResponse,
+)
 
 from pltr.services.orchestration import OrchestrationService
-from pltr.utils.pagination import PaginationConfig
+from tests import foundry_json_orchestration as fo
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+API = "/api/v2/orchestration"
 
 
-@pytest.fixture
-def mock_orchestration_service():
-    """Create a mocked OrchestrationService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_orchestration = Mock()
-
-        # Mock the Build, Job, and Schedule classes
-        mock_build_class = Mock()
-        mock_job_class = Mock()
-        mock_schedule_class = Mock()
-
-        mock_orchestration.Build = mock_build_class
-        mock_orchestration.Job = mock_job_class
-        mock_orchestration.Schedule = mock_schedule_class
-
-        mock_client.orchestration = mock_orchestration
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = OrchestrationService()
-        return service, mock_build_class, mock_job_class, mock_schedule_class
+def body(request):
+    return json.loads(request.content)
 
 
-@pytest.fixture
-def sample_build():
-    """Create sample build object."""
-    build = Mock()
-    build.rid = "ri.orchestration.main.build.test-build"
-    build.status = "COMPLETED"
-    build.created_time = "2024-01-01T00:00:00Z"
-    build.started_time = "2024-01-01T00:01:00Z"
-    build.finished_time = "2024-01-01T00:10:00Z"
-    build.created_by = "user@example.com"
-    build.branch_name = "main"
-    build.commit_hash = "abc123"
-    return build
+# ------------------------------------------------------------------ builds
 
 
-@pytest.fixture
-def sample_job():
-    """Create sample job object."""
-    job = Mock()
-    job.rid = "ri.orchestration.main.job.test-job"
-    job.status = "RUNNING"
-    job.created_time = "2024-01-01T00:00:00Z"
-    job.started_time = "2024-01-01T00:01:00Z"
-    job.finished_time = None
-    job.job_type = "TRANSFORM"
-    job.build_rid = "ri.orchestration.main.build.test-build"
-    return job
+def test_get_build_is_ga(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.build())
+
+    build = OrchestrationService().get_build(fo.BUILD_RID)
+
+    assert isinstance(build, Build)
+    assert (build.status, build.job_rids) == ("SUCCEEDED", [fo.JOB_RID])
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{API}/builds/{fo.BUILD_RID}")
+    assert "preview" not in request.url.params
 
 
-@pytest.fixture
-def sample_schedule():
-    """Create sample schedule object."""
-    schedule = Mock()
-    schedule.rid = "ri.orchestration.main.schedule.test-schedule"
-    schedule.display_name = "Test Schedule"
-    schedule.description = "Test schedule description"
-    schedule.paused = False
-    schedule.created_time = "2024-01-01T00:00:00Z"
-    schedule.created_by = "user@example.com"
-    schedule.modified_time = "2024-01-02T00:00:00Z"
-    schedule.modified_by = "user@example.com"
-    schedule.trigger = Mock()
-    schedule.action = Mock()
-    return schedule
+def test_create_build_sends_explicit_fields(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.build(status="RUNNING", finishedTime=None))
 
-
-def test_orchestration_service_initialization():
-    """Test OrchestrationService initialization."""
-    with patch("pltr.services.base.AuthManager"):
-        service = OrchestrationService()
-        assert service is not None
-
-
-def test_orchestration_service_get_service(mock_orchestration_service):
-    """Test getting the underlying orchestration service."""
-    service, mock_build, mock_job, mock_schedule = mock_orchestration_service
-    orchestration = service._get_service()
-    assert orchestration.Build == mock_build
-    assert orchestration.Job == mock_job
-    assert orchestration.Schedule == mock_schedule
-
-
-# Build tests
-def test_get_build_success(mock_orchestration_service, sample_build):
-    """Test successful build retrieval."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_build_class.get.return_value = sample_build
-
-    result = service.get_build("ri.orchestration.main.build.test-build")
-
-    assert result["rid"] == "ri.orchestration.main.build.test-build"
-    assert result["status"] == "COMPLETED"
-    assert result["created_by"] == "user@example.com"
-    assert result["branch_name"] == "main"
-    mock_build_class.get.assert_called_once_with(
-        "ri.orchestration.main.build.test-build"
+    build = OrchestrationService().create_build(
+        target=fo.MANUAL_TARGET,
+        fallback_branches=["develop"],
+        branch_name="master",
+        force_build=True,
+        abort_on_failure=False,
+        notifications_enabled=True,
+        retry_count=2,
     )
 
-
-def test_get_build_error(mock_orchestration_service):
-    """Test build retrieval with error."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_build_class.get.side_effect = Exception("API Error")
-
-    with pytest.raises(RuntimeError) as exc_info:
-        service.get_build("ri.orchestration.main.build.test-build")
-
-    assert "Failed to get build" in str(exc_info.value)
-
-
-def test_create_build_success(mock_orchestration_service, sample_build):
-    """Test successful build creation."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_build_class.create.return_value = sample_build
-
-    target = {"dataset_rid": "ri.foundry.main.dataset.test"}
-    result = service.create_build(
-        target=target, branch_name="feature-branch", force_build=True
-    )
-
-    assert result["rid"] == "ri.orchestration.main.build.test-build"
-    assert result["status"] == "COMPLETED"
-
-    # Check that create was called with correct arguments
-    call_args = mock_build_class.create.call_args[1]
-    assert call_args["target"] == target
-    assert call_args["branch_name"] == "feature-branch"
-    assert call_args["force_build"] is True
-
-
-def test_cancel_build_success(mock_orchestration_service):
-    """Test successful build cancellation."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    service.cancel_build("ri.orchestration.main.build.test-build")
-
-    mock_build_class.cancel.assert_called_once_with(
-        "ri.orchestration.main.build.test-build"
-    )
-
-
-def test_get_build_jobs_success(mock_orchestration_service, sample_job):
-    """Test successful retrieval of build jobs."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    # Mock response with jobs
-    mock_response = Mock()
-    mock_response.data = [sample_job]
-    mock_response.next_page_token = "next-token"
-    mock_build_class.jobs.return_value = mock_response
-
-    result = service.get_build_jobs(
-        "ri.orchestration.main.build.test-build", page_size=10
-    )
-
-    assert len(result["jobs"]) == 1
-    assert result["jobs"][0]["rid"] == "ri.orchestration.main.job.test-job"
-    assert result["next_page_token"] == "next-token"
-
-    mock_build_class.jobs.assert_called_once()
-
-
-def test_search_builds_success(mock_orchestration_service, sample_build):
-    """Test successful build search."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    # Mock response with builds
-    mock_response = Mock()
-    mock_response.data = [sample_build]
-    mock_response.next_page_token = "next-token"
-    mock_build_class.search.return_value = mock_response
-
-    result = service.search_builds(page_size=10)
-
-    assert len(result["builds"]) == 1
-    assert result["builds"][0]["rid"] == "ri.orchestration.main.build.test-build"
-    assert result["next_page_token"] == "next-token"
-    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
-
-
-def test_search_builds_paginated_uses_preview(mock_orchestration_service, sample_build):
-    """Test paginated build search enables preview mode."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_response = Mock()
-    mock_response.data = [sample_build]
-    mock_response.next_page_token = None
-    mock_build_class.search.return_value = mock_response
-
-    config = PaginationConfig(page_size=10, max_pages=1)
-    result = service.search_builds_paginated(config)
-
-    assert len(result.data) == 1
-    assert result.data[0]["rid"] == "ri.orchestration.main.build.test-build"
-    mock_build_class.search.assert_called_once_with(page_size=10, preview=True)
-
-
-def test_search_builds_paginated_collects_multiple_pages(
-    mock_orchestration_service, sample_build
-):
-    """Test paginated build search collects builds across multiple pages."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    page_one = Mock()
-    build_one = Mock()
-    build_one.rid = "ri.orchestration.main.build.page-1"
-    page_one.data = [build_one]
-    page_one.next_page_token = "token-2"
-
-    page_two = Mock()
-    build_two = Mock()
-    build_two.rid = "ri.orchestration.main.build.page-2"
-    page_two.data = [build_two]
-    page_two.next_page_token = None
-
-    mock_build_class.search.side_effect = [page_one, page_two]
-
-    config = PaginationConfig(page_size=10, max_pages=2)
-    result = service.search_builds_paginated(config)
-
-    assert len(result.data) == 2
-    assert result.data[0]["rid"] == "ri.orchestration.main.build.page-1"
-    assert result.data[1]["rid"] == "ri.orchestration.main.build.page-2"
-    assert mock_build_class.search.call_count == 2
-    assert mock_build_class.search.call_args_list[0].kwargs == {
-        "page_size": 10,
-        "preview": True,
-    }
-    assert mock_build_class.search.call_args_list[1].kwargs == {
-        "page_size": 10,
-        "preview": True,
-        "page_token": "token-2",
+    assert build.status == "RUNNING"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{API}/builds/create")
+    assert "preview" not in request.url.params
+    assert body(request) == {
+        "target": fo.MANUAL_TARGET,
+        "fallbackBranches": ["develop"],
+        "branchName": "master",
+        "forceBuild": True,
+        "abortOnFailure": False,
+        "notificationsEnabled": True,
+        "retryCount": 2,
     }
 
 
-def test_search_builds_falls_back_when_preview_kwarg_unsupported(
-    mock_orchestration_service, sample_build
-):
-    """Test build search retries without preview when call-level preview is unsupported."""
-    service, mock_build_class, _, _ = mock_orchestration_service
+def test_create_build_leaves_out_unset_options(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.build())
 
-    mock_response = Mock()
-    mock_response.data = [sample_build]
-    mock_response.next_page_token = None
-    mock_build_class.search.side_effect = [
-        TypeError("unexpected keyword argument 'preview'"),
-        mock_response,
-    ]
+    OrchestrationService().create_build(target=fo.MANUAL_TARGET, fallback_branches=[])
 
-    result = service.search_builds(page_size=10)
-
-    assert len(result["builds"]) == 1
-    assert mock_build_class.search.call_count == 2
-    assert mock_build_class.search.call_args_list[0].kwargs == {
-        "page_size": 10,
-        "preview": True,
+    assert body(stub_foundry_http.requests[0]) == {
+        "target": fo.MANUAL_TARGET,
+        "fallbackBranches": [],
     }
-    assert mock_build_class.search.call_args_list[1].kwargs == {"page_size": 10}
 
 
-def test_search_builds_reraises_unrelated_type_error(mock_orchestration_service):
-    """Test build search does not swallow unrelated TypeError failures."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_build_class.search.side_effect = TypeError("invalid request body")
-
-    with pytest.raises(
-        RuntimeError, match="Failed to search builds: invalid request body"
-    ):
-        service.search_builds(page_size=10)
-
-    assert mock_build_class.search.call_count == 1
+def test_create_build_rejects_an_invalid_target_before_sending(stub_foundry_http):
+    with pytest.raises(pydantic.ValidationError):
+        OrchestrationService().create_build(
+            target={"type": "manual"}, fallback_branches=[]
+        )
+    assert stub_foundry_http.requests == []
 
 
-def test_get_builds_batch_success(mock_orchestration_service, sample_build):
-    """Test successful batch build retrieval."""
-    service, mock_build_class, _, _ = mock_orchestration_service
+def test_cancel_build(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-    # Mock batch response
-    mock_response = Mock()
-    mock_item = Mock()
-    mock_item.data = sample_build
-    mock_response.data = [mock_item]
-    mock_build_class.get_batch.return_value = mock_response
+    assert OrchestrationService().cancel_build(fo.BUILD_RID) is None
 
-    build_rids = ["rid1", "rid2"]
-    result = service.get_builds_batch(build_rids)
-
-    assert len(result["builds"]) == 1
-    assert result["builds"][0]["rid"] == "ri.orchestration.main.build.test-build"
-
-    # Check that batch request was formatted correctly
-    call_args = mock_build_class.get_batch.call_args[0][0]
-    assert len(call_args) == 2
-    assert call_args[0]["rid"] == "rid1"
-    assert call_args[1]["rid"] == "rid2"
-
-
-def test_get_builds_batch_too_many(mock_orchestration_service):
-    """Test batch build retrieval with too many builds."""
-    service, _, _, _ = mock_orchestration_service
-
-    build_rids = ["rid" + str(i) for i in range(101)]  # 101 builds
-
-    with pytest.raises(ValueError) as exc_info:
-        service.get_builds_batch(build_rids)
-
-    assert "Maximum batch size is 100" in str(exc_info.value)
-
-
-def test_get_builds_batch_error(mock_orchestration_service):
-    """Test batch build retrieval with error."""
-    service, mock_build_class, _, _ = mock_orchestration_service
-
-    mock_build_class.get_batch.side_effect = Exception("API Error")
-
-    with pytest.raises(RuntimeError) as exc_info:
-        service.get_builds_batch(["rid1", "rid2"])
-
-    assert "Failed to get builds batch" in str(exc_info.value)
-
-
-# Job tests
-def test_get_job_success(mock_orchestration_service, sample_job):
-    """Test successful job retrieval."""
-    service, _, mock_job_class, _ = mock_orchestration_service
-
-    mock_job_class.get.return_value = sample_job
-
-    result = service.get_job("ri.orchestration.main.job.test-job")
-
-    assert result["rid"] == "ri.orchestration.main.job.test-job"
-    assert result["status"] == "RUNNING"
-    assert result["job_type"] == "TRANSFORM"
-    mock_job_class.get.assert_called_once_with("ri.orchestration.main.job.test-job")
-
-
-def test_get_job_error(mock_orchestration_service):
-    """Test job retrieval with error."""
-    service, _, mock_job_class, _ = mock_orchestration_service
-
-    mock_job_class.get.side_effect = Exception("API Error")
-
-    with pytest.raises(RuntimeError) as exc_info:
-        service.get_job("ri.orchestration.main.job.test-job")
-
-    assert "Failed to get job" in str(exc_info.value)
-
-
-def test_get_jobs_batch_success(mock_orchestration_service, sample_job):
-    """Test successful batch job retrieval."""
-    service, _, mock_job_class, _ = mock_orchestration_service
-
-    # Mock batch response
-    mock_response = Mock()
-    mock_item = Mock()
-    mock_item.data = sample_job
-    mock_response.data = [mock_item]
-    mock_job_class.get_batch.return_value = mock_response
-
-    job_rids = ["rid1", "rid2"]
-    result = service.get_jobs_batch(job_rids)
-
-    assert len(result["jobs"]) == 1
-    assert result["jobs"][0]["rid"] == "ri.orchestration.main.job.test-job"
-
-    # Check that batch request was formatted correctly
-    call_args = mock_job_class.get_batch.call_args[0][0]
-    assert len(call_args) == 2
-    assert call_args[0]["rid"] == "rid1"
-    assert call_args[1]["rid"] == "rid2"
-
-
-def test_get_jobs_batch_too_many(mock_orchestration_service):
-    """Test batch job retrieval with too many jobs."""
-    service, _, _, _ = mock_orchestration_service
-
-    job_rids = ["rid" + str(i) for i in range(501)]  # 501 jobs
-
-    with pytest.raises(RuntimeError) as exc_info:
-        service.get_jobs_batch(job_rids)
-
-    assert "Maximum batch size is 500" in str(exc_info.value)
-
-
-# Schedule tests
-def test_get_schedule_success(mock_orchestration_service, sample_schedule):
-    """Test successful schedule retrieval."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    mock_schedule_class.get.return_value = sample_schedule
-
-    result = service.get_schedule("ri.orchestration.main.schedule.test-schedule")
-
-    assert result["rid"] == "ri.orchestration.main.schedule.test-schedule"
-    assert result["display_name"] == "Test Schedule"
-    assert result["paused"] is False
-    mock_schedule_class.get.assert_called_once()
-
-
-def test_get_schedule_with_preview(mock_orchestration_service, sample_schedule):
-    """Test schedule retrieval with preview mode."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    mock_schedule_class.get.return_value = sample_schedule
-
-    result = service.get_schedule(
-        "ri.orchestration.main.schedule.test-schedule", preview=True
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{API}/builds/{fo.BUILD_RID}/cancel",
     )
 
-    assert result["rid"] == "ri.orchestration.main.schedule.test-schedule"
 
-    # Check preview parameter was passed
-    call_args = mock_schedule_class.get.call_args[1]
-    assert call_args["preview"] is True
+def test_get_build_jobs_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [fo.job()], "nextPageToken": "t2"})
+
+    page = OrchestrationService().get_build_jobs(
+        fo.BUILD_RID, page_size=5, page_token="t1"
+    )
+
+    assert [job.rid for job in page.data] == [fo.JOB_RID]
+    assert page.next_page_token == "t2"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/builds/{fo.BUILD_RID}/jobs",
+    )
+    assert dict(request.url.params) == {"pageSize": "5", "pageToken": "t1"}
 
 
-def test_create_schedule_success(mock_orchestration_service, sample_schedule):
-    """Test successful schedule creation."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
+def test_search_builds_is_beta_and_sends_the_filter(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [fo.build()], "nextPageToken": "next"})
+    where = {"type": "eq", "field": "STATUS", "value": "FAILED"}
+    order_by = {"fields": [{"field": "STARTED_TIME", "direction": "DESC"}]}
 
-    mock_schedule_class.create.return_value = sample_schedule
+    response = OrchestrationService().search_builds(
+        where=where, order_by=order_by, page_size=10, page_token="tok"
+    )
 
-    action = {"type": "BUILD", "target": "dataset-rid"}
-    trigger = {"type": "CRON", "expression": "0 0 * * *"}
+    assert isinstance(response, SearchBuildsResponse)
+    assert [build.rid for build in response.data] == [fo.BUILD_RID]
+    assert response.next_page_token == "next"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{API}/builds/search")
+    assert dict(request.url.params) == {"preview": "true"}
+    assert body(request) == {
+        "where": where,
+        "orderBy": order_by,
+        "pageSize": 10,
+        "pageToken": "tok",
+    }
 
-    result = service.create_schedule(
+
+def test_search_builds_rejects_an_invalid_filter_before_sending(stub_foundry_http):
+    with pytest.raises(pydantic.ValidationError):
+        OrchestrationService().search_builds(
+            where={"type": "eq", "field": "NOT_A_FIELD", "value": "x"}
+        )
+    assert stub_foundry_http.requests == []
+
+
+def test_get_builds_batch_sends_build_rid_elements(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
+            "data": {
+                fo.BUILD_RID: fo.build(),
+                fo.BUILD_RID_2: fo.build(fo.BUILD_RID_2, status="FAILED"),
+            }
+        }
+    )
+
+    response = OrchestrationService().get_builds_batch([fo.BUILD_RID, fo.BUILD_RID_2])
+
+    assert isinstance(response, GetBuildsBatchResponse)
+    assert response.data[fo.BUILD_RID_2].status == "FAILED"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{API}/builds/getBatch")
+    assert "preview" not in request.url.params
+    assert body(request) == [{"buildRid": fo.BUILD_RID}, {"buildRid": fo.BUILD_RID_2}]
+
+
+def test_get_builds_batch_limit(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 100 builds"):
+        OrchestrationService().get_builds_batch([fo.BUILD_RID] * 101)
+    assert stub_foundry_http.requests == []
+
+
+# -------------------------------------------------------------------- jobs
+
+
+def test_get_job_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.job())
+
+    job = OrchestrationService().get_job(fo.JOB_RID)
+
+    assert isinstance(job, Job)
+    assert job.job_status == "SUCCEEDED"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{API}/jobs/{fo.JOB_RID}")
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_jobs_batch_is_beta_and_sends_job_rid_elements(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": {fo.JOB_RID: fo.job()}})
+
+    response = OrchestrationService().get_jobs_batch([fo.JOB_RID])
+
+    assert isinstance(response, GetJobsBatchResponse)
+    assert list(response.data) == [fo.JOB_RID]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{API}/jobs/getBatch")
+    assert request.url.params["preview"] == "true"
+    assert body(request) == [{"jobRid": fo.JOB_RID}]
+
+
+def test_get_jobs_batch_limit(stub_foundry_http):
+    with pytest.raises(ValueError, match="Maximum batch size is 500 jobs"):
+        OrchestrationService().get_jobs_batch([fo.JOB_RID] * 501)
+    assert stub_foundry_http.requests == []
+
+
+# --------------------------------------------------------------- schedules
+
+
+def test_get_schedule_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.schedule())
+
+    schedule = OrchestrationService().get_schedule(fo.SCHEDULE_RID)
+
+    assert isinstance(schedule, Schedule)
+    assert schedule.action.branch_name == "master"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/schedules/{fo.SCHEDULE_RID}",
+    )
+    assert request.url.params["preview"] == "true"
+
+
+def test_create_schedule_is_beta_and_sends_explicit_fields(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.schedule())
+    action = {"target": fo.MANUAL_TARGET, "branchName": "master"}
+    trigger = {"type": "time", "cronExpression": "0 2 * * *", "timeZone": "UTC"}
+    scope = {"type": "project", "projectRids": [fo.PROJECT_RID]}
+
+    schedule = OrchestrationService().create_schedule(
         action=action,
-        display_name="Test Schedule",
-        description="Test description",
+        display_name="Nightly build",
+        description="Builds the dataset every night",
         trigger=trigger,
+        scope_mode=scope,
     )
 
-    assert result["rid"] == "ri.orchestration.main.schedule.test-schedule"
-    assert result["display_name"] == "Test Schedule"
+    assert schedule.rid == fo.SCHEDULE_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{API}/schedules")
+    assert request.url.params["preview"] == "true"
+    assert body(request) == {
+        "action": action,
+        "displayName": "Nightly build",
+        "description": "Builds the dataset every night",
+        "trigger": trigger,
+        "scopeMode": scope,
+    }
 
-    # Check create parameters
-    call_args = mock_schedule_class.create.call_args[1]
-    assert call_args["action"] == action
-    assert call_args["display_name"] == "Test Schedule"
-    assert call_args["trigger"] == trigger
+
+def test_create_schedule_with_only_an_action(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.schedule())
+
+    OrchestrationService().create_schedule(action={"target": fo.MANUAL_TARGET})
+
+    assert body(stub_foundry_http.requests[0]) == {
+        "action": {"target": fo.MANUAL_TARGET}
+    }
 
 
-def test_delete_schedule_success(mock_orchestration_service):
-    """Test successful schedule deletion."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
+def test_replace_schedule_is_beta_and_a_put(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.schedule(displayName="Renamed"))
+    action = {"target": fo.MANUAL_TARGET}
 
-    service.delete_schedule("ri.orchestration.main.schedule.test-schedule")
-
-    mock_schedule_class.delete.assert_called_once_with(
-        "ri.orchestration.main.schedule.test-schedule"
+    schedule = OrchestrationService().replace_schedule(
+        fo.SCHEDULE_RID, action=action, display_name="Renamed"
     )
 
-
-def test_pause_schedule_success(mock_orchestration_service):
-    """Test successful schedule pausing."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    service.pause_schedule("ri.orchestration.main.schedule.test-schedule")
-
-    mock_schedule_class.pause.assert_called_once_with(
-        "ri.orchestration.main.schedule.test-schedule"
+    assert schedule.display_name == "Renamed"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "PUT",
+        f"{API}/schedules/{fo.SCHEDULE_RID}",
     )
+    assert request.url.params["preview"] == "true"
+    assert body(request) == {"action": action, "displayName": "Renamed"}
 
 
-def test_unpause_schedule_success(mock_orchestration_service):
-    """Test successful schedule unpausing."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
+@pytest.mark.parametrize(
+    "method, http_method, suffix",
+    [
+        ("delete_schedule", "DELETE", ""),
+        ("pause_schedule", "POST", "/pause"),
+        ("unpause_schedule", "POST", "/unpause"),
+    ],
+)
+def test_ga_schedule_actions(stub_foundry_http, method, http_method, suffix):
+    stub_foundry_http.respond(204)
 
-    service.unpause_schedule("ri.orchestration.main.schedule.test-schedule")
+    assert getattr(OrchestrationService(), method)(fo.SCHEDULE_RID) is None
 
-    mock_schedule_class.unpause.assert_called_once_with(
-        "ri.orchestration.main.schedule.test-schedule"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        http_method,
+        f"{API}/schedules/{fo.SCHEDULE_RID}{suffix}",
     )
+    assert "preview" not in request.url.params
 
 
-def test_run_schedule_success(mock_orchestration_service):
-    """Test successful schedule execution."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
+def test_run_schedule_returns_the_run(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.schedule_run())
 
-    service.run_schedule("ri.orchestration.main.schedule.test-schedule")
+    run = OrchestrationService().run_schedule(fo.SCHEDULE_RID)
 
-    mock_schedule_class.run.assert_called_once_with(
-        "ri.orchestration.main.schedule.test-schedule"
+    assert isinstance(run, ScheduleRun)
+    assert run.result is not None and run.result.type == "submitted"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{API}/schedules/{fo.SCHEDULE_RID}/run",
     )
+    assert "preview" not in request.url.params
 
 
-def test_replace_schedule_success(mock_orchestration_service, sample_schedule):
-    """Test successful schedule replacement."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
+def test_get_schedule_runs_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [fo.schedule_run()]})
 
-    mock_schedule_class.replace.return_value = sample_schedule
+    page = OrchestrationService().get_schedule_runs(fo.SCHEDULE_RID, page_size=20)
 
-    action = {"type": "BUILD", "target": "new-dataset-rid"}
-
-    result = service.replace_schedule(
-        schedule_rid="ri.orchestration.main.schedule.test-schedule",
-        action=action,
-        display_name="Updated Schedule",
+    assert [run.rid for run in page.data] == [fo.SCHEDULE_RUN_RID]
+    assert page.next_page_token is None
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/schedules/{fo.SCHEDULE_RID}/runs",
     )
-
-    assert result["rid"] == "ri.orchestration.main.schedule.test-schedule"
-
-    # Check replace parameters
-    call_args = mock_schedule_class.replace.call_args[1]
-    assert call_args["schedule_rid"] == "ri.orchestration.main.schedule.test-schedule"
-    assert call_args["action"] == action
-    assert call_args["display_name"] == "Updated Schedule"
-
-
-@pytest.fixture
-def sample_run():
-    """Create sample schedule run object."""
-    run = Mock()
-    run.rid = "ri.orchestration.main.run.test-run"
-    run.schedule_rid = "ri.orchestration.main.schedule.test-schedule"
-    run.status = "COMPLETED"
-    run.created_time = "2024-01-01T00:00:00Z"
-    run.started_time = "2024-01-01T00:01:00Z"
-    run.finished_time = "2024-01-01T00:10:00Z"
-    run.build_rid = "ri.orchestration.main.build.test-build"
-    run.result = "SUCCESS"
-    return run
-
-
-def test_get_schedule_runs_success(mock_orchestration_service, sample_run):
-    """Test successful schedule runs retrieval."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    # Mock response with runs
-    mock_response = Mock()
-    mock_response.data = [sample_run]
-    mock_response.next_page_token = "next-token"
-    mock_schedule_class.runs.return_value = mock_response
-
-    result = service.get_schedule_runs(
-        "ri.orchestration.main.schedule.test-schedule", page_size=10
-    )
-
-    assert len(result["runs"]) == 1
-    assert result["runs"][0]["rid"] == "ri.orchestration.main.run.test-run"
-    assert result["runs"][0]["status"] == "COMPLETED"
-    assert result["next_page_token"] == "next-token"
-
-    mock_schedule_class.runs.assert_called_once()
-
-
-def test_get_schedule_runs_with_pagination(mock_orchestration_service, sample_run):
-    """Test schedule runs retrieval with pagination parameters."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    mock_response = Mock()
-    mock_response.data = [sample_run]
-    mock_response.next_page_token = None
-    mock_schedule_class.runs.return_value = mock_response
-
-    result = service.get_schedule_runs(
-        "ri.orchestration.main.schedule.test-schedule",
-        page_size=20,
-        page_token="prev-token",
-    )
-
-    assert len(result["runs"]) == 1
-
-    # Check pagination parameters were passed
-    call_args = mock_schedule_class.runs.call_args[1]
-    assert call_args["page_size"] == 20
-    assert call_args["page_token"] == "prev-token"
-
-
-def test_get_schedule_runs_error(mock_orchestration_service):
-    """Test schedule runs retrieval with error."""
-    service, _, _, mock_schedule_class = mock_orchestration_service
-
-    mock_schedule_class.runs.side_effect = Exception("API Error")
-
-    with pytest.raises(RuntimeError) as exc_info:
-        service.get_schedule_runs("ri.orchestration.main.schedule.test-schedule")
-
-    assert "Failed to get runs for schedule" in str(exc_info.value)
-
-
-def test_format_run_info(mock_orchestration_service, sample_run):
-    """Test run info formatting."""
-    service, _, _, _ = mock_orchestration_service
-
-    result = service._format_run_info(sample_run)
-
-    assert result["rid"] == "ri.orchestration.main.run.test-run"
-    assert result["schedule_rid"] == "ri.orchestration.main.schedule.test-schedule"
-    assert result["status"] == "COMPLETED"
-    assert result["build_rid"] == "ri.orchestration.main.build.test-build"
-    assert result["result"] == "SUCCESS"
-
-
-# Formatting method tests
-def test_format_build_info(mock_orchestration_service, sample_build):
-    """Test build info formatting."""
-    service, _, _, _ = mock_orchestration_service
-
-    result = service._format_build_info(sample_build)
-
-    assert result["rid"] == "ri.orchestration.main.build.test-build"
-    assert result["status"] == "COMPLETED"
-    assert result["created_by"] == "user@example.com"
-    assert result["branch_name"] == "main"
-    assert result["commit_hash"] == "abc123"
-
-
-def test_format_job_info(mock_orchestration_service, sample_job):
-    """Test job info formatting."""
-    service, _, _, _ = mock_orchestration_service
-
-    result = service._format_job_info(sample_job)
-
-    assert result["rid"] == "ri.orchestration.main.job.test-job"
-    assert result["status"] == "RUNNING"
-    assert result["job_type"] == "TRANSFORM"
-    assert result["build_rid"] == "ri.orchestration.main.build.test-build"
-
-
-def test_format_schedule_info(mock_orchestration_service, sample_schedule):
-    """Test schedule info formatting."""
-    service, _, _, _ = mock_orchestration_service
-
-    result = service._format_schedule_info(sample_schedule)
-
-    assert result["rid"] == "ri.orchestration.main.schedule.test-schedule"
-    assert result["display_name"] == "Test Schedule"
-    assert result["description"] == "Test schedule description"
-    assert result["paused"] is False
-    assert "trigger" in result
-    assert "action" in result
+    assert dict(request.url.params) == {"pageSize": "20"}
