@@ -117,6 +117,27 @@ can search. See Added.
     `streaming_execute_events` (server-sent events), and `MediaSet.tile` and
     `ModelStudio.ConfigVersion.get`, which foundry-platform-sdk 1.111.0 can't
     call (it fails to URL-quote their integer path parameters).
+- **`pltr commands`**: a machine-readable manifest of every command, curated
+  and generated, so agents can find the right command without reading every
+  `--help` page (#188). These commands make no Foundry call.
+  - `pltr commands list [PATH...]` lists every command, or those under a path
+    such as `api datasets`. With `--format json` it prints the whole manifest,
+    `{"pltrVersion", "sdkVersion", "groups", "commands"}`, deterministically:
+    sorted, no timestamps, the same on every OS, terminal and Python version.
+    `sdkVersion` is the SDK version `pltr api` was generated from.
+  - `pltr commands search <text...>` ranks commands by path, SDK method,
+    description and help; curated commands rank above generated ones that
+    match as well. `--limit/-n` (default 10). JSON:
+    `{"data": [...], "totalCount": N}`.
+  - `pltr commands show <command path...>` prints one command's entry. It
+    accepts `dataset get`, `"dataset get"` or `"pltr dataset get"`; an unknown
+    path is a usage error with suggestions.
+  - Each entry has `path`, `usage`, `description`, `beta`, `destructive`,
+    `paged`, `generated`, `local`, `hidden`, `outputFormats`, `sdkMethods`,
+    `httpEndpoints` (direct-HTTP commands only), `arguments`, `options`
+    (hidden deprecated aliases left out) and `help`.
+- The README has a section on using pltr from agents (headless auth, finding
+  commands with `pltr commands`, JSON output, exit codes, `--yes`).
 - Environment-variable authentication, as described under Breaking changes.
   `FOUNDRY_HOSTNAME`, the SDK's name for the host, is accepted when
   `FOUNDRY_HOST` isn't set. Hosts work with or without `https://`. If both a
@@ -221,6 +242,13 @@ can search. See Added.
   - `scripts/generate_api_commands.py` regenerates `pltr api` (a test fails
     when it is stale); `scripts/coverage.py` reports which commands reach each
     SDK method. CI runs both and the SDK call check.
+  - `pltr.manifest` (`build_manifest`, `search`, `find_command`, ...) and
+    `scripts/check_command_metadata.py`, which checks each curated command's
+    `sdk=` metadata against the SDK methods its service calls reach.
+  - `scripts/generate_skill_reference.py` generates the agent skill's command
+    reference from the manifest. A test fails when the committed reference is
+    stale, or when a hand-written skill file mentions a command or option that
+    doesn't exist; `--check` runs the same checks.
   - `tests/test_docs_examples.py` checks every `pltr` example in the README,
     `docs/` and `claude_skill/` against the real command tree.
 
@@ -236,6 +264,14 @@ can search. See Added.
 - An unexpected error prints one `Error: ...` line instead of a traceback; set
   `PLTR_DEBUG=1` for the traceback.
 - pltr depends on prompt-toolkit instead of click-repl.
+- **The Claude Code skill in `claude_skill/` was rewritten** (#188).
+  `SKILL.md` is a short guide: headless authentication, the JSON, stdout and
+  stderr rules and exit codes, safety rules for destructive commands, beta
+  labels, RIDs, finding commands with `pltr commands`, curated commands versus
+  `pltr api`, and common workflows. The command reference is generated from
+  the manifest: `reference/index.md`, `reference/curated/<group>.md` and
+  `reference/api/<namespace>.md`. If you copied the skill to
+  `~/.claude/skills/`, copy the directory again.
 
 #### Authentication, `verify` and `configure`
 
@@ -605,6 +641,11 @@ from `--help`. They will be removed in the next release.
   - The token-usage line on stderr of `language-models anthropic messages`,
     `messages-advanced` and `openai embeddings`; it always printed 0. The
     output has the token counts.
+- The hand-written skill reference (`claude_skill/reference/quick-start.md`
+  and `claude_skill/reference/*-commands.md`) and workflows
+  (`data-analysis.md`, `data-pipeline.md`, `permission-management.md`). They
+  documented commands and flags that don't exist. The new workflows are
+  `explore-data.md`, `builds-and-schedules.md` and `permissions.md`.
 - For library users: `DatasetService.list_files_paginated`, `get_branches`,
   `get_transactions`, `get_views`, `get_schedules`, `get_jobs`,
   `get_branch_transactions`, `get_transaction_status` and `preview_data`;

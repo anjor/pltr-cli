@@ -51,27 +51,6 @@ IGNORED: Dict[Tuple[str, str], str] = {
     ("docs/user-guide/aliases.md", "pltr b"): "the circular-alias error example",
 }
 
-#: claude_skill/ files with failing examples. The skill is being regenerated
-#: from the command manifest (#188) in parallel, which replaces these files.
-#: TEMPORARY: remove these entries when that work is merged (the test fails
-#: on entries that no longer match). An empty start matches every example.
-TEMPORARY_SKILL_ALLOWLIST: Dict[Tuple[str, str], str] = {
-    (f"claude_skill/{name}.md", ""): "hand-written skill file, replaced by #188"
-    for name in (
-        "reference/admin-commands",
-        "reference/connectivity-commands",
-        "reference/dataset-commands",
-        "reference/filesystem-commands",
-        "reference/mediasets-commands",
-        "reference/ontology-commands",
-        "reference/orchestration-commands",
-        "reference/quick-start",
-        "reference/streams-commands",
-        "workflows/data-pipeline",
-        "workflows/permission-management",
-    )
-}
-
 #: Code block languages that hold shell commands ("" is an unlabeled block).
 SHELL_LANGUAGES = {"", "bash", "sh", "shell", "console", "zsh", "fish", "text"}
 
@@ -478,10 +457,9 @@ def find_problems(tree: CommandTree) -> List[Tuple[Example, str]]:
     return problems
 
 
-def _matches(
-    entries: Dict[Tuple[str, str], str], example: Example
-) -> Optional[Tuple[str, str]]:
-    for file, start in entries:
+def _ignored(example: Example) -> Optional[Tuple[str, str]]:
+    """The IGNORED entry that covers this example, if any."""
+    for file, start in IGNORED:
         if example.file == file and example.text.startswith(start):
             return (file, start)
     return None
@@ -496,17 +474,14 @@ def test_doc_examples_use_real_commands_and_options(tree: CommandTree) -> None:
     used: Set[Tuple[str, str]] = set()
     failures = []
     for example, problem in find_problems(tree):
-        for entries in (IGNORED, TEMPORARY_SKILL_ALLOWLIST):
-            key = _matches(entries, example)
-            if key is not None:
-                used.add(key)
-                break
+        key = _ignored(example)
+        if key is not None:
+            used.add(key)
         else:
             failures.append(
                 f"{example.file}:{example.line}: {problem}\n    {example.text}"
             )
-    entries = set(IGNORED) | set(TEMPORARY_SKILL_ALLOWLIST)
-    stale = sorted(entries - used)
+    stale = sorted(set(IGNORED) - used)
     message = []
     if failures:
         message.append(
@@ -516,16 +491,10 @@ def test_doc_examples_use_real_commands_and_options(tree: CommandTree) -> None:
         )
     if stale:
         message.append(
-            "Entries in IGNORED/TEMPORARY_SKILL_ALLOWLIST that match no failing "
-            "example (remove them):\n" + "\n".join(f"    {key}" for key in stale)
+            "Entries in IGNORED that match no failing example (remove them):\n"
+            + "\n".join(f"    {key}" for key in stale)
         )
     assert not message, "\n\n".join(message)
-
-
-def test_skill_allowlist_only_covers_claude_skill() -> None:
-    assert all(
-        file.startswith("claude_skill/") for file, _ in TEMPORARY_SKILL_ALLOWLIST
-    )
 
 
 # ------------------------------------------------------- checker self-tests

@@ -73,6 +73,10 @@ Import everything from `pltr.contract` and nothing from its submodules.
    [The contract test](#the-contract-test)).
 6. **Changelog:** add your entries under `## [Unreleased]` in
    `CHANGELOG.md` (see [Changelog](#changelog)).
+7. **Agent skill:** when you add or change a command (its help, options or
+   metadata), run `uv run python scripts/generate_skill_reference.py` and
+   commit `claude_skill/reference/`. A test fails while the reference is
+   stale.
 
 ## Before and after: `pltr folder get`
 
@@ -450,7 +454,7 @@ parallel conversions don't conflict:
   RID-like parameters (named `*rid`/`*rids`, or with "RID" in their help)
   get `CONTRACT_RID`; others get `"contract-test"`, `1`, the first choice,
   or a temporary file.
-- `LOCAL` (only in `local.py`): commands that make no API call, each with a
+- `LOCAL`: commands that make no API call, each with a
   reason.
 - `SUCCESS_EXEMPT`: `{prefix: reason}`, command-path prefixes whose commands
   don't need a `SUCCESS` case. The error checks still run. It's meant for
