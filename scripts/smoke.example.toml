@@ -1,0 +1,117 @@
+# Inputs for the live smoke test, scripts/smoke.py
+# (see docs/development/live-verification.md).
+#
+# Copy this file to smoke.toml in the repository root (git ignores it, since it
+# names real RIDs), uncomment what you have and run:
+#
+#     uv run python scripts/smoke.py --markdown > smoke.md
+#
+# Leave out what you don't have: the checks that need it are reported as
+# "skip (no input: ...)". Inputs marked "found" are taken from earlier checks
+# when you leave them out. Every input can also be given as a flag
+# (--dataset-rid RID) or with --set dataset.rid=RID; flags win.
+# A JSON file with the same structure works too (--config smoke.json).
+
+# The pltr profile to run as. Without it pltr picks as usual: PLTR_PROFILE,
+# the default profile, then the FOUNDRY_* environment variables.
+# --profile wins.
+# profile = "dev"
+
+# How to run pltr (default: `python -m pltr` with the Python running the
+# script, i.e. this checkout). For an installed pltr: pltr = "pltr"
+# pltr = "pltr"
+
+[dataset]
+# A dataset you can read that has files and a schema (a tabular dataset).
+# rid = "ri.foundry.main.dataset.<uuid>"
+# branch = "master"                  # found: the first branch
+# file_path = "spark/part-0.parquet" # found: the smallest file on the first page
+#                                    # (dataset.files-get downloads it: keep it small)
+
+[sql]
+# A dataset to query, by RID or path; the checks run
+# SELECT * FROM `<table>` LIMIT 10. Usually the dataset above.
+# table = "ri.foundry.main.dataset.<uuid>"
+# Or a complete query instead:
+# query = "SELECT count(*) AS n FROM `/Org/Project/my-dataset`"
+
+[ontology]
+# All found when left out (the first ontology, its first object type, the
+# first object, its first outgoing link type), but set them for a stable run.
+# name = "my-ontology"               # API name or RID
+# object_type = "Employee"
+# primary_key = "EMP001"
+# link_type = "manager"
+# The object-search filter (default: eq on the object's primary key):
+# where = '{"type": "eq", "field": "department", "value": "Engineering"}'
+
+[action]
+# An action type of the ontology above. It is only validated
+# (VALIDATE_ONLY), never applied.
+# name = "transferEmployee"
+# parameters = '{"employee": "EMP001", "newDepartment": "Sales"}'
+
+[orchestration]
+# build_rid = "ri.foundry.main.build.<uuid>"        # found: a recent build
+# schedule_rid = "ri.scheduler.main.schedule.<uuid>" # found: from the dataset or the build
+# job_rid = "ri.foundry.main.job.<uuid>"             # found: from the build
+
+[filesystem]
+# A folder or project to read (default: the scratch folder below).
+# folder_rid = "ri.compass.main.folder.<uuid>"
+
+[writes]
+# Used by the write checks, which run only with --allow-writes:
+# the folder or project they create their folder in. Everything they create
+# is moved to the trash at the end; nothing is permanently deleted.
+# --scratch-folder wins.
+# scratch_folder = "ri.compass.main.folder.<uuid>"
+# A space to create a project in (and move it to the trash): checks that
+# `pltr project delete` (Resource.delete on a project) works.
+# space_rid = "ri.compass.main.folder.<uuid>"
+
+# Optional areas: a few read-only checks each.
+[functions]
+# query = "myQuery"                  # API name of a read-only query
+# parameters = '{}'                  # to execute it (skipped without)
+
+[media_sets]
+# rid = "ri.mio.main.media-set.<uuid>"
+# item_path = "images/example.png"
+
+[aip_agents]
+# agent_rid = "ri.aip-agents..agent.<uuid>"
+
+[widgets]
+# widget_set_rid = "ri.widgetregistry..widget-set.<uuid>"
+
+[third_party_apps]
+# application_rid = "ri.third-party-applications.main.application.<uuid>"
+
+[connectivity]
+# connection_rid = "ri.magritte..source.<uuid>"
+
+[data_health]
+# check_rid = "ri.data-health.main.check.<uuid>"
+
+[models]
+# model_rid = "ri.foundry.main.model.<uuid>"
+
+[streams]
+# dataset_rid = "ri.foundry.main.dataset.<uuid>"   # a streaming dataset
+# branch = "master"
+
+[language_models]
+# Each sends one short request (it uses tokens).
+# anthropic_model = "Claude_4_Sonnet"
+# embedding_model = "text-embedding-3-small"
+
+[admin]
+# Admin checks run only with --include-admin.
+# organization_rid = "ri.multipass..organization.<uuid>"   # default: yours
+# With --include-admin --allow-writes: objects replaced with their current
+# values (the check reads them, replaces them, and checks nothing changed).
+# Use test objects you can restore by hand; the report shows the old values.
+# replace_space_rid = "ri.compass.main.folder.<uuid>"
+# replace_organization_rid = "ri.multipass..organization.<uuid>"
+# replace_marking_id = "<uuid>"
