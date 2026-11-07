@@ -135,7 +135,7 @@ def version_callback(value: bool):
 
 
 @app.callback()
-def main(
+def root(
     version: Annotated[
         bool, typer.Option("--version", callback=version_callback, help="Show version")
     ] = False,
@@ -157,5 +157,13 @@ def hello():
     typer.echo("CLI is working correctly.")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point (``pltr``): resolve aliases, then run the CLI."""
+    from pltr.utils.alias_resolver import inject_alias_resolution
+
+    inject_alias_resolution()
     app()
+
+
+if __name__ == "__main__":
+    main()

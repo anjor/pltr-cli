@@ -108,15 +108,11 @@ def test_shell_completion_reaches_generated_commands():
 
 
 def test_interactive_shell_completer_reaches_generated_commands():
-    from click_repl._completer import ClickCompleter
     from prompt_toolkit.document import Document
 
-    command = typer.main.get_command(app)
-    # `pltr shell` builds this context with make_context("pltr", []), which click
-    # 8.2 rejects for a no_args_is_help root (a pre-existing shell bug, unrelated
-    # to `pltr api`); resilient parsing builds the same context without that check.
-    ctx = command.make_context("pltr", [], resilient_parsing=True)
-    completer = ClickCompleter(command, ctx)
+    from pltr.commands.shell import build_completer
+
+    completer = build_completer(typer.main.get_command(app))
 
     def complete(text):
         return [c.text for c in completer.get_completions(Document(text), None)]
