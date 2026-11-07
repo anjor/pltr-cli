@@ -35,20 +35,6 @@ services/aip_agents.py::AipAgentsService.list_versions::aip_agents.Agent.AgentVe
 # src/pltr/services/audit.py
 services/audit.py::AuditService.list_log_files::audit.Organization.LogFile.list::unchecked-kwargs  # #185: dict-built (end_date, page_size; valid keys); pass explicit keywords
 
-# src/pltr/services/connectivity.py
-services/connectivity.py::ConnectivityService._list_connections_from_filesystem::filesystem.Folder.children::preview-on-ga  # not in #184: Folder.children is GA; drop preview=
-services/connectivity.py::ConnectivityService.create_file_import::file_imports.FileImport.create::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.create(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.create_table_import::table_imports.TableImport.create::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.create(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.execute_file_import::file_imports.FileImport.execute::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.execute(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.execute_table_import::table_imports.TableImport.execute::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.execute(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.get_file_import::file_imports.FileImport.get::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.get(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.get_table_import::table_imports.TableImport.get::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.get(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_connections::connectivity.Connection.list::missing-method  # not in #182: no Connection.list, so connections list always falls back to the filesystem scan
-services/connectivity.py::ConnectivityService.list_file_imports::file_imports.FileImport.list::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_file_imports::file_imports.FileImport.list::missing-method[2]  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method[2]  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
-
 # src/pltr/services/copy.py
 services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
 

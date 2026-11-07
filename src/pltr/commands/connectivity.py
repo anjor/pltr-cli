@@ -1,740 +1,827 @@
 """
-Connectivity management commands for Foundry connections and imports.
+Connectivity commands (Foundry connectivity API): connections, file imports
+and table imports.
 """
 
-import typer
 import json
 from pathlib import Path
-from typing import List, Optional
-from rich.console import Console
+from typing import Any, Dict, List, Optional
 
-from ..services.connectivity import ConnectivityService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+import click
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    AllPagesOption,
+    Columns,
+    FormatOption,
+    MaxPagesOption,
+    OutputOption,
+    PageSizeOption,
+    PageTokenOption,
+    ProfileOption,
+    YesOption,
+    collect_pages,
+    confirm_destructive,
+    emit,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.connectivity import ConnectivityService
+from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
 connection_app = typer.Typer()
 import_app = typer.Typer()
-console = Console()
-formatter = OutputFormatter(console)
 
-# Add sub-apps
 app.add_typer(connection_app, name="connection", help="Manage connections")
-app.add_typer(import_app, name="import", help="Manage data imports")
+app.add_typer(import_app, name="import", help="Manage file and table imports")
 
 
-def _load_json_param(
-    json_str: Optional[str], file_path: Optional[str], param_name: str
-) -> dict:
-    """
-    Load JSON from either a string or a file.
+# ------------------------------------------------------------------ columns
 
-    Args:
-        json_str: JSON string (optional)
-        file_path: Path to JSON file (optional)
-        param_name: Name of parameter for error messages
 
-    Returns:
-        Parsed JSON dictionary
+def _egress_policies(connection: Any) -> Optional[str]:
+    worker = connection.worker
+    if worker.type != "foundryWorker":
+        return None
+    return ", ".join(worker.network_egress_policy_rids)
 
-    Raises:
-        typer.Exit: If neither or both are provided, or if parsing fails
-    """
-    if json_str and file_path:
-        console.print(
-            f"[red]Cannot specify both {param_name} and {param_name}-file[/red]"
+
+def _jdbc_drivers(connection: Any) -> Optional[str]:
+    configuration = connection.configuration
+    if configuration.type != "jdbc":
+        return None
+    return ", ".join(configuration.uploaded_jdbc_drivers)
+
+
+#: Table/CSV columns for a ``Connection`` model.
+CONNECTION_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Parent Folder": "parent_folder_rid",
+    "Configuration Type": "configuration.type",
+    "Worker": "worker.type",
+    "Network Egress Policies": _egress_policies,
+    "Exports Enabled": "export_settings.exports_enabled",
+    "Exports Without Markings Validation": (
+        "export_settings.export_enabled_without_markings_validation"
+    ),
+}
+
+#: ``connection upload-jdbc-drivers``: a ``Connection`` and its JDBC drivers.
+JDBC_CONNECTION_COLUMNS: Columns = {
+    **CONNECTION_COLUMNS,
+    "JDBC Drivers": _jdbc_drivers,
+}
+
+#: Table/CSV columns for a ``FileImport`` model.
+FILE_IMPORT_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Connection": "connection_rid",
+    "Dataset": "dataset_rid",
+    "Branch": "branch_name",
+    "Import Mode": "import_mode",
+    "Subfolder": "subfolder",
+    "Filters": "file_import_filters",
+}
+
+#: Table/CSV columns for ``import list-file`` (one row per ``FileImport``).
+FILE_IMPORT_LIST_COLUMNS: Columns = {
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Dataset": "dataset_rid",
+    "Import Mode": "import_mode",
+    "Subfolder": "subfolder",
+}
+
+#: Table/CSV columns for a ``TableImport`` model.
+TABLE_IMPORT_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Connection": "connection_rid",
+    "Dataset": "dataset_rid",
+    "Branch": "branch_name",
+    "Import Mode": "import_mode",
+    "Allow Schema Changes": "allow_schema_changes",
+    "Config Type": "config.type",
+    "Query": "config.query",
+}
+
+#: Table/CSV columns for ``import list-table`` (one row per ``TableImport``).
+TABLE_IMPORT_LIST_COLUMNS: Columns = {
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Dataset": "dataset_rid",
+    "Import Mode": "import_mode",
+    "Config Type": "config.type",
+}
+
+#: Table/CSV columns for the build RID that ``execute-file``/``execute-table`` return.
+BUILD_COLUMNS: Columns = {"Build RID": lambda build_rid: build_rid}
+
+
+# ---------------------------------------------------------------- arguments
+
+ConnectionRid = Annotated[
+    str,
+    typer.Argument(
+        help=(
+            "Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>)."
+        ),
+        autocompletion=complete_rid,
+        show_default=False,
+    ),
+]
+DatasetRid = Annotated[
+    str,
+    typer.Argument(
+        help=(
+            "RID of the dataset the import writes to "
+            "(ri.foundry.main.dataset.<id>); it can't be changed later."
+        ),
+        autocompletion=complete_rid,
+        show_default=False,
+    ),
+]
+FileImportRid = Annotated[
+    str,
+    typer.Argument(
+        help="File import RID (find it with 'pltr connectivity import list-file').",
+        autocompletion=complete_rid,
+        show_default=False,
+    ),
+]
+TableImportRid = Annotated[
+    str,
+    typer.Argument(
+        help="Table import RID (find it with 'pltr connectivity import list-table').",
+        autocompletion=complete_rid,
+        show_default=False,
+    ),
+]
+NameOption = Annotated[
+    str,
+    typer.Option(
+        "--name", "-n", help="Display name of the import.", show_default=False
+    ),
+]
+BranchOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--branch",
+        help="Dataset branch to write to (default: the API's, usually master).",
+        show_default=False,
+    ),
+]
+
+
+def _json_object(
+    value: Optional[str],
+    file: Optional[str],
+    *,
+    argument: str,
+    file_option: str,
+) -> Dict[str, Any]:
+    """A JSON object given inline or as @file.json, or in a file option."""
+    if value is not None and file is not None:
+        raise typer.BadParameter(
+            f"pass {argument} or {file_option}, not both", param_hint=file_option
         )
-        raise typer.Exit(1)
-
-    if not json_str and not file_path:
-        console.print(
-            f"[red]Must specify either {param_name} or --{param_name}-file[/red]"
+    if value is None and file is None:
+        raise typer.BadParameter(
+            f"pass {argument} as JSON (inline or @file.json), or {file_option} FILE",
+            param_hint=argument,
         )
-        raise typer.Exit(1)
-
-    if file_path:
-        path = Path(file_path)
-        if not path.exists():
-            console.print(f"[red]File not found: {file_path}[/red]")
-            raise typer.Exit(1)
-        try:
-            json_str = path.read_text()
-        except Exception as e:
-            console.print(f"[red]Error reading {file_path}: {e}[/red]")
-            raise typer.Exit(1)
-
-    try:
-        return json.loads(json_str)  # type: ignore[arg-type]
-    except json.JSONDecodeError as e:
-        console.print(f"[red]Invalid JSON for {param_name}: {e}[/red]")
-        raise typer.Exit(1)
+    hint = argument if value is not None else file_option
+    data = load_json_input(value if value is not None else f"@{file}", param_hint=hint)
+    if not isinstance(data, dict):
+        raise typer.BadParameter("expected a JSON object", param_hint=hint)
+    return data
 
 
-@connection_app.command("list")
-def list_connections(
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """List available connections."""
-    try:
-        with SpinnerProgressTracker().track_spinner("Fetching connections..."):
-            service = ConnectivityService(profile=profile)
-            connections = service.list_connections()
+def _report_build(build_rid: str, kind: str, import_rid: str) -> None:
+    cache_rid(build_rid)
+    success(
+        f"Started build {build_rid} for {kind} import {import_rid}; follow it "
+        f"with 'pltr orchestration builds get {build_rid}'"
+    )
 
-        if not connections:
-            console.print("[yellow]No connections found[/yellow]")
-            return
 
-        formatter.format_output(connections, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error listing connections: {e}[/red]")
-        raise typer.Exit(1)
+# ------------------------------------------------------------- connections
 
 
 @connection_app.command("get")
+@pltr_command(sdk="connectivity.Connection.get")
 def get_connection(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    connection_rid: ConnectionRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific connection."""
-    try:
-        cache_rid(connection_rid)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching connection {connection_rid}..."
-        ):
-            service = ConnectivityService(profile=profile)
-            connection = service.get_connection(connection_rid)
-
-        formatter.format_output([connection], format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error getting connection: {e}[/red]")
-        raise typer.Exit(1)
+    """Get a connection: its configuration type, worker and export settings."""
+    with spinner(f"Fetching connection {connection_rid}..."):
+        connection = ConnectivityService(profile=profile).get_connection(connection_rid)
+    cache_rid(connection_rid)
+    emit(
+        connection,
+        format=format,
+        output=output,
+        columns=CONNECTION_COLUMNS,
+        title="Connection",
+    )
 
 
 @connection_app.command("create")
+@pltr_command(sdk="connectivity.Connection.create")
 def create_connection(
-    display_name: str = typer.Argument(..., help="Display name for the connection"),
-    parent_folder_rid: str = typer.Argument(
-        ..., help="Parent folder Resource Identifier", autocompletion=complete_rid
-    ),
-    configuration: Optional[str] = typer.Argument(
-        None, help="Connection configuration in JSON format"
-    ),
-    worker: Optional[str] = typer.Argument(
-        None, help="Worker configuration in JSON format"
-    ),
-    config_file: Optional[str] = typer.Option(
-        None, "--config-file", help="Path to JSON file with connection configuration"
-    ),
-    worker_file: Optional[str] = typer.Option(
-        None, "--worker-file", help="Path to JSON file with worker configuration"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    display_name: Annotated[
+        str,
+        typer.Argument(help="Display name of the connection.", show_default=False),
+    ],
+    parent_folder_rid: Annotated[
+        str,
+        typer.Argument(
+            help="RID of the folder to create the connection in.",
+            autocompletion=complete_rid,
+            show_default=False,
+        ),
+    ],
+    configuration: Annotated[
+        Optional[str],
+        typer.Argument(
+            help=(
+                "Connection configuration as JSON (inline or @file.json), with "
+                'its "type": s3, rest, snowflake, databricks, smb or jdbc.'
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    worker: Annotated[
+        Optional[str],
+        typer.Argument(
+            help=(
+                'Worker as JSON (inline or @file.json), e.g. {"type": '
+                '"foundryWorker", "networkEgressPolicyRids": ["<RID>"]}.'
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    config_file: Annotated[
+        Optional[str],
+        typer.Option(
+            "--config-file",
+            help="JSON file with the configuration.",
+            show_default=False,
+        ),
+    ] = None,
+    worker_file: Annotated[
+        Optional[str],
+        typer.Option(
+            "--worker-file", help="JSON file with the worker.", show_default=False
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Create a new connection.
+    """Create a connection with a direct-connection (Foundry worker) runtime.
 
-    Configuration and worker can be provided as JSON strings or via file options.
+    CONFIGURATION and WORKER use the API's JSON field names. Secrets in the
+    configuration are sent to Foundry over TLS.
+
+    Example:
+
+        pltr connectivity connection create "My API" <FOLDER_RID> \\
+            '{"type": "rest", "domains": [{"host": "api.example.com"}]}' \\
+            '{"type": "foundryWorker", "networkEgressPolicyRids": ["<RID>"]}'
     """
-    try:
-        cache_rid(parent_folder_rid)
-
-        # Load configuration from string or file
-        config_dict = _load_json_param(configuration, config_file, "configuration")
-        worker_dict = _load_json_param(worker, worker_file, "worker")
-
-        service = ConnectivityService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Creating connection..."):
-            connection = service.create_connection(
-                display_name=display_name,
-                parent_folder_rid=parent_folder_rid,
-                configuration=config_dict,
-                worker=worker_dict,
-            )
-
-        cache_rid(connection.get("rid", ""))
-        console.print(f"[green]Connection created: {connection.get('rid')}[/green]")
-        formatter.format_output([connection], format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error creating connection: {e}[/red]")
-        raise typer.Exit(1)
+    configuration_json = _json_object(
+        configuration,
+        config_file,
+        argument="CONFIGURATION",
+        file_option="--config-file",
+    )
+    worker_json = _json_object(
+        worker, worker_file, argument="WORKER", file_option="--worker-file"
+    )
+    with spinner("Creating connection..."):
+        connection = ConnectivityService(profile=profile).create_connection(
+            display_name=display_name,
+            parent_folder_rid=parent_folder_rid,
+            configuration=configuration_json,
+            worker=worker_json,
+        )
+    cache_rid(connection.rid)
+    success(f"Created connection '{connection.display_name}' ({connection.rid})")
+    emit(
+        connection,
+        format=format,
+        output=output,
+        columns=CONNECTION_COLUMNS,
+        title="Connection",
+    )
 
 
 @connection_app.command("get-config")
+@pltr_command(sdk="connectivity.Connection.get_configuration")
 def get_connection_configuration(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "json",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    connection_rid: ConnectionRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get connection configuration."""
-    try:
-        cache_rid(connection_rid)
+    """Get a connection's configuration.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching configuration for {connection_rid}..."
-        ):
-            service = ConnectivityService(profile=profile)
-            config = service.get_connection_configuration(connection_rid)
-
-        formatter.format_output([config], format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error getting connection configuration: {e}[/red]")
-        raise typer.Exit(1)
+    The fields depend on the connection's type (s3, rest, snowflake,
+    databricks, smb or jdbc); the table shows every field the API returned.
+    Secrets appear only as secret names.
+    """
+    with spinner(f"Fetching configuration of {connection_rid}..."):
+        configuration = ConnectivityService(
+            profile=profile
+        ).get_connection_configuration(connection_rid)
+    cache_rid(connection_rid)
+    # Polymorphic model: the table shows every field the API returned.
+    emit(configuration, format=format, output=output, title="Configuration")
 
 
 @connection_app.command("update-secrets")
+@pltr_command(sdk="connectivity.Connection.update_secrets", destructive=True)
 def update_connection_secrets(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    secrets_file: str = typer.Option(
-        ...,
-        "--secrets-file",
-        "-s",
-        help="Path to JSON file containing secrets (mapping secret names to values)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
+    connection_rid: ConnectionRid,
+    secrets_file: Annotated[
+        Path,
+        typer.Option(
+            "--secrets-file",
+            "-s",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help=(
+                "JSON file mapping secret names to their new values. A file, so "
+                "the values stay out of shell history and process listings."
+            ),
+            show_default=False,
+        ),
+    ],
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Update connection secrets.
+    """Overwrite secret values on a connection.
 
-    Secrets must be provided via a file for security (to avoid exposure in shell
-    history or process listings).
+    The secret names must already be configured on the connection; secrets
+    not in the file keep their values. Asks for confirmation (--yes skips it).
     """
-    try:
-        cache_rid(connection_rid)
-
-        # Load secrets from file
-        path = Path(secrets_file)
-        if not path.exists():
-            console.print(f"[red]Secrets file not found: {secrets_file}[/red]")
-            raise typer.Exit(1)
-
-        try:
-            secrets_content = path.read_text()
-            secrets_dict = json.loads(secrets_content)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON in secrets file: {e}[/red]")
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(f"[red]Error reading secrets file: {e}[/red]")
-            raise typer.Exit(1)
-
-        service = ConnectivityService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Updating secrets..."):
-            service.update_secrets(connection_rid, secrets_dict)
-
-        console.print(
-            f"[green]Secrets updated for connection: {connection_rid}[/green]"
+    secrets = load_json_input(f"@{secrets_file}", param_hint="'--secrets-file'")
+    if (
+        not isinstance(secrets, dict)
+        or not secrets
+        or not all(isinstance(value, str) for value in secrets.values())
+    ):
+        raise typer.BadParameter(
+            "the file must hold a non-empty JSON object mapping secret names to "
+            "string values",
+            param_hint="'--secrets-file'",
         )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error updating secrets: {e}[/red]")
-        raise typer.Exit(1)
+    names = ", ".join(sorted(secrets))
+    confirm_destructive(
+        f"Overwrite {len(secrets)} secret(s) ({names}) on connection {connection_rid}?",
+        yes=yes,
+    )
+    with spinner("Updating secrets..."):
+        ConnectivityService(profile=profile).update_secrets(connection_rid, secrets)
+    cache_rid(connection_rid)
+    success(f"Updated {len(secrets)} secret(s) on connection {connection_rid}")
+    emit(None, format=format)
 
 
 @connection_app.command("update-export-settings")
+@pltr_command(sdk="connectivity.Connection.update_export_settings", destructive=True)
 def update_export_settings(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    settings: Optional[str] = typer.Argument(
-        None, help="Export settings in JSON format"
-    ),
-    settings_file: Optional[str] = typer.Option(
-        None, "--settings-file", help="Path to JSON file with export settings"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
+    connection_rid: ConnectionRid,
+    settings: Annotated[
+        Optional[str],
+        typer.Argument(
+            help=(
+                "Export settings as JSON (inline or @file.json): "
+                '{"exportsEnabled": true, '
+                '"exportEnabledWithoutMarkingsValidation": false}.'
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    settings_file: Annotated[
+        Optional[str],
+        typer.Option(
+            "--settings-file",
+            help="JSON file with the export settings.",
+            show_default=False,
+        ),
+    ] = None,
+    yes: YesOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Update connection export settings.
+    """Replace a connection's export settings.
 
-    Settings can be provided as a JSON string or via --settings-file.
+    Both fields are required. Only users with the Information Security
+    Officer role can change them. Asks for confirmation (--yes skips it).
     """
-    try:
-        cache_rid(connection_rid)
-
-        # Load settings from string or file
-        settings_dict = _load_json_param(settings, settings_file, "settings")
-
-        service = ConnectivityService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Updating export settings..."):
-            service.update_export_settings(connection_rid, settings_dict)
-
-        console.print(
-            f"[green]Export settings updated for connection: {connection_rid}[/green]"
+    export_settings = _json_object(
+        settings, settings_file, argument="SETTINGS", file_option="--settings-file"
+    )
+    confirm_destructive(
+        f"Replace the export settings of connection {connection_rid} with "
+        f"{json.dumps(export_settings)}?",
+        yes=yes,
+    )
+    with spinner("Updating export settings..."):
+        ConnectivityService(profile=profile).update_export_settings(
+            connection_rid, export_settings
         )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error updating export settings: {e}[/red]")
-        raise typer.Exit(1)
+    cache_rid(connection_rid)
+    success(f"Updated the export settings of connection {connection_rid}")
+    emit(None, format=format)
 
 
 @connection_app.command("upload-jdbc-drivers")
+@pltr_command(sdk="connectivity.Connection.upload_custom_jdbc_drivers")
 def upload_jdbc_drivers(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    driver_files: List[str] = typer.Argument(
-        ..., help="Path(s) to JAR file(s) to upload"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    connection_rid: ConnectionRid,
+    driver_files: Annotated[
+        List[Path],
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="JDBC driver JAR file(s) to upload.",
+            show_default=False,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Upload custom JDBC drivers to a connection.
+    """Upload custom JDBC driver JARs to a JDBC connection.
 
-    Only JAR files are supported.
+    Uploads the files one by one and prints the connection after the last
+    upload.
     """
-    try:
-        cache_rid(connection_rid)
+    for path in driver_files:
+        if path.suffix.lower() != ".jar":
+            raise typer.BadParameter(
+                f"{path} is not a .jar file", param_hint="'DRIVER_FILES...'"
+            )
+    service = ConnectivityService(profile=profile)
+    connection = None
+    for path in driver_files:
+        with spinner(f"Uploading {path.name}..."):
+            connection = service.upload_custom_jdbc_drivers(connection_rid, path)
+        success(f"Uploaded {path.name} to connection {connection_rid}")
+    cache_rid(connection_rid)
+    emit(
+        connection,
+        format=format,
+        output=output,
+        columns=JDBC_CONNECTION_COLUMNS,
+        title="Connection",
+    )
 
-        # Validate files exist and are JAR files before uploading
-        for driver_file in driver_files:
-            path = Path(driver_file)
-            if not path.exists():
-                console.print(f"[red]File not found: {driver_file}[/red]")
-                raise typer.Exit(1)
-            if path.suffix.lower() != ".jar":
-                console.print(f"[red]File must be a JAR file: {driver_file}[/red]")
-                raise typer.Exit(1)
 
-        service = ConnectivityService(profile=profile)
-        results = []
-
-        for driver_file in driver_files:
-            with SpinnerProgressTracker().track_spinner(f"Uploading {driver_file}..."):
-                result = service.upload_custom_jdbc_drivers(connection_rid, driver_file)
-                results.append(result)
-            console.print(f"[green]Uploaded: {driver_file}[/green]")
-
-        formatter.format_output(results, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error uploading JDBC drivers: {e}[/red]")
-        raise typer.Exit(1)
+# ------------------------------------------------------------ file imports
 
 
 @import_app.command("file")
-def import_file(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    source_path: str = typer.Argument(..., help="Source file path in the connection"),
-    target_dataset_rid: str = typer.Argument(
-        ..., help="Target dataset RID", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    config: Optional[str] = typer.Option(
-        None, "--config", "-c", help="Import configuration in JSON format"
-    ),
-    execute: bool = typer.Option(
-        False, "--execute", help="Execute the import immediately after creation"
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+@pltr_command(sdk="connectivity.Connection.FileImport.create")
+def create_file_import(
+    connection_rid: ConnectionRid,
+    dataset_rid: DatasetRid,
+    name: NameOption,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            click_type=click.Choice(
+                ["SNAPSHOT", "APPEND", "UPDATE"], case_sensitive=False
+            ),
+            help=(
+                "SNAPSHOT replaces the dataset's files on each run, APPEND adds "
+                "new files, UPDATE replaces files by name."
+            ),
+            show_default=False,
+        ),
+    ],
+    subfolder: Annotated[
+        Optional[str],
+        typer.Option(
+            "--subfolder",
+            help="Folder in the source system to import (default: its root).",
+            show_default=False,
+        ),
+    ] = None,
+    branch: BranchOption = None,
+    filters: Annotated[
+        str,
+        typer.Option(
+            "--filters",
+            help=(
+                "File filters as a JSON array (inline or @file.json), e.g. "
+                '\'[{"type": "pathMatchesFilter", "regex": ".*\\\\.csv"}]\'.'
+            ),
+        ),
+    ] = "[]",
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Create and optionally execute a file import via connection."""
-    try:
-        cache_rid(connection_rid)
-        cache_rid(target_dataset_rid)
+    """Create a file import (batch sync) from a connection into a dataset.
 
-        # Parse import configuration if provided
-        import_config = None
-        if config:
-            try:
-                import_config = json.loads(config)
-            except json.JSONDecodeError as e:
-                console.print(f"[red]Invalid JSON configuration: {e}[/red]")
-                raise typer.Exit(1)
-
-        service = ConnectivityService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Creating file import..."):
-            file_import = service.create_file_import(
-                connection_rid=connection_rid,
-                source_path=source_path,
-                target_dataset_rid=target_dataset_rid,
-                import_config=import_config,
-            )
-
-        result_data = [file_import]
-
-        # Execute import if requested
-        if execute:
-            import_rid = file_import.get("rid")
-            if import_rid:
-                with SpinnerProgressTracker().track_spinner("Executing file import..."):
-                    execution_result = service.execute_file_import(import_rid)
-                result_data.append({"execution": execution_result})
-                console.print(f"[green]File import executed: {import_rid}[/green]")
-            else:
-                console.print(
-                    "[yellow]Warning: Could not execute - missing import RID[/yellow]"
-                )
-
-        formatter.format_output(result_data, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error creating file import: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@import_app.command("table")
-def import_table(
-    connection_rid: str = typer.Argument(
-        ..., help="Connection Resource Identifier", autocompletion=complete_rid
-    ),
-    source_table: str = typer.Argument(..., help="Source table name in the connection"),
-    target_dataset_rid: str = typer.Argument(
-        ..., help="Target dataset RID", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    config: Optional[str] = typer.Option(
-        None, "--config", "-c", help="Import configuration in JSON format"
-    ),
-    execute: bool = typer.Option(
-        False, "--execute", help="Execute the import immediately after creation"
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """Create and optionally execute a table import via connection."""
-    try:
-        cache_rid(connection_rid)
-        cache_rid(target_dataset_rid)
-
-        # Parse import configuration if provided
-        import_config = None
-        if config:
-            try:
-                import_config = json.loads(config)
-            except json.JSONDecodeError as e:
-                console.print(f"[red]Invalid JSON configuration: {e}[/red]")
-                raise typer.Exit(1)
-
-        service = ConnectivityService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Creating table import..."):
-            table_import = service.create_table_import(
-                connection_rid=connection_rid,
-                source_table=source_table,
-                target_dataset_rid=target_dataset_rid,
-                import_config=import_config,
-            )
-
-        result_data = [table_import]
-
-        # Execute import if requested
-        if execute:
-            import_rid = table_import.get("rid")
-            if import_rid:
-                with SpinnerProgressTracker().track_spinner(
-                    "Executing table import..."
-                ):
-                    execution_result = service.execute_table_import(import_rid)
-                result_data.append({"execution": execution_result})
-                console.print(f"[green]Table import executed: {import_rid}[/green]")
-            else:
-                console.print(
-                    "[yellow]Warning: Could not execute - missing import RID[/yellow]"
-                )
-
-        formatter.format_output(result_data, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error creating table import: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@import_app.command("list-file")
-def list_file_imports(
-    connection_rid: Optional[str] = typer.Option(
-        None,
-        "--connection",
-        "-c",
-        help="Filter by connection RID",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """List file imports, optionally filtered by connection."""
-    try:
-        if connection_rid:
-            cache_rid(connection_rid)
-
-        with SpinnerProgressTracker().track_spinner("Fetching file imports..."):
-            service = ConnectivityService(profile=profile)
-            imports = service.list_file_imports(connection_rid=connection_rid)
-
-        if not imports:
-            console.print("[yellow]No file imports found[/yellow]")
-            return
-
-        formatter.format_output(imports, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error listing file imports: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@import_app.command("list-table")
-def list_table_imports(
-    connection_rid: Optional[str] = typer.Option(
-        None,
-        "--connection",
-        "-c",
-        help="Filter by connection RID",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-):
-    """List table imports, optionally filtered by connection."""
-    try:
-        if connection_rid:
-            cache_rid(connection_rid)
-
-        with SpinnerProgressTracker().track_spinner("Fetching table imports..."):
-            service = ConnectivityService(profile=profile)
-            imports = service.list_table_imports(connection_rid=connection_rid)
-
-        if not imports:
-            console.print("[yellow]No table imports found[/yellow]")
-            return
-
-        formatter.format_output(imports, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error listing table imports: {e}[/red]")
-        raise typer.Exit(1)
+    Run it with 'pltr connectivity import execute-file CONNECTION_RID
+    FILE_IMPORT_RID'.
+    """
+    filter_list = load_json_input(filters, param_hint="'--filters'")
+    if not isinstance(filter_list, list):
+        raise typer.BadParameter("expected a JSON array", param_hint="'--filters'")
+    with spinner("Creating file import..."):
+        file_import = ConnectivityService(profile=profile).create_file_import(
+            connection_rid,
+            dataset_rid=dataset_rid,
+            display_name=name,
+            import_mode=mode.upper(),
+            file_import_filters=filter_list,
+            branch_name=branch,
+            subfolder=subfolder,
+        )
+    cache_rid(file_import.rid)
+    success(f"Created file import '{file_import.display_name}' ({file_import.rid})")
+    emit(
+        file_import,
+        format=format,
+        output=output,
+        columns=FILE_IMPORT_COLUMNS,
+        title="File import",
+    )
 
 
 @import_app.command("get-file")
+@pltr_command(sdk="connectivity.Connection.FileImport.get")
 def get_file_import(
-    import_rid: str = typer.Argument(
-        ..., help="File import Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    connection_rid: ConnectionRid,
+    file_import_rid: FileImportRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific file import."""
-    try:
-        cache_rid(import_rid)
+    """Get a file import."""
+    with spinner(f"Fetching file import {file_import_rid}..."):
+        file_import = ConnectivityService(profile=profile).get_file_import(
+            connection_rid, file_import_rid
+        )
+    cache_rid(file_import_rid)
+    emit(
+        file_import,
+        format=format,
+        output=output,
+        columns=FILE_IMPORT_COLUMNS,
+        title="File import",
+    )
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching file import {import_rid}..."
-        ):
-            service = ConnectivityService(profile=profile)
-            file_import = service.get_file_import(import_rid)
 
-        formatter.format_output([file_import], format, output)
+@import_app.command("list-file")
+@pltr_command(sdk="connectivity.Connection.FileImport.list", paged=True)
+def list_file_imports(
+    connection_rid: ConnectionRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
+):
+    """List a connection's file imports (those you can see).
 
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error getting file import: {e}[/red]")
-        raise typer.Exit(1)
+    Fetches one page by default; use --all for every page, or --page-token
+    with the nextPageToken of an earlier response to continue.
+    """
+    service = ConnectivityService(profile=profile)
+    with spinner(f"Listing file imports of {connection_rid}..."):
+        page = collect_pages(
+            lambda token: service.list_file_imports(
+                connection_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(connection_rid)
+    emit(page, format=format, output=output, columns=FILE_IMPORT_LIST_COLUMNS)
+
+
+@import_app.command("execute-file")
+@pltr_command(sdk="connectivity.Connection.FileImport.execute")
+def execute_file_import(
+    connection_rid: ConnectionRid,
+    file_import_rid: FileImportRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Run a file import; prints the RID of the build that runs it.
+
+    The import runs asynchronously as a Foundry build; check it with
+    'pltr orchestration builds get BUILD_RID'.
+    """
+    with spinner(f"Starting file import {file_import_rid}..."):
+        build_rid = ConnectivityService(profile=profile).execute_file_import(
+            connection_rid, file_import_rid
+        )
+    _report_build(build_rid, "file", file_import_rid)
+    emit(build_rid, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
+
+
+# ----------------------------------------------------------- table imports
+
+
+@import_app.command("table")
+@pltr_command(sdk="connectivity.Connection.TableImport.create")
+def create_table_import(
+    connection_rid: ConnectionRid,
+    dataset_rid: DatasetRid,
+    name: NameOption,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            click_type=click.Choice(["SNAPSHOT", "APPEND"], case_sensitive=False),
+            help="SNAPSHOT replaces the dataset on each run, APPEND adds rows.",
+            show_default=False,
+        ),
+    ],
+    config: Annotated[
+        str,
+        typer.Option(
+            "--config",
+            "-c",
+            help=(
+                'Import config as JSON (inline or @file.json): its "type" '
+                "(jdbcImportConfig, postgreSqlImportConfig, snowflakeImportConfig, "
+                "databricksImportConfig, microsoftSqlServerImportConfig, "
+                "oracleImportConfig or microsoftAccessImportConfig), the SQL "
+                '"query" and an optional "initialIncrementalState".'
+            ),
+            show_default=False,
+        ),
+    ],
+    allow_schema_changes: Annotated[
+        bool,
+        typer.Option(
+            "--allow-schema-changes",
+            help="Let runs succeed when the imported schema doesn't match the dataset's.",
+        ),
+    ] = False,
+    branch: BranchOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Create a table import (batch sync) from a connection into a dataset.
+
+    Run it with 'pltr connectivity import execute-table CONNECTION_RID
+    TABLE_IMPORT_RID'.
+
+    Example:
+
+        pltr connectivity import table <CONNECTION_RID> <DATASET_RID> \\
+            --name "Orders" --mode SNAPSHOT \\
+            --config '{"type": "jdbcImportConfig", "query": "SELECT * FROM orders"}'
+    """
+    config_json = load_json_input(config, param_hint="'--config'")
+    if not isinstance(config_json, dict):
+        raise typer.BadParameter("expected a JSON object", param_hint="'--config'")
+    with spinner("Creating table import..."):
+        table_import = ConnectivityService(profile=profile).create_table_import(
+            connection_rid,
+            dataset_rid=dataset_rid,
+            display_name=name,
+            import_mode=mode.upper(),
+            config=config_json,
+            allow_schema_changes=True if allow_schema_changes else None,
+            branch_name=branch,
+        )
+    cache_rid(table_import.rid)
+    success(f"Created table import '{table_import.display_name}' ({table_import.rid})")
+    emit(
+        table_import,
+        format=format,
+        output=output,
+        columns=TABLE_IMPORT_COLUMNS,
+        title="Table import",
+    )
 
 
 @import_app.command("get-table")
+@pltr_command(sdk="connectivity.Connection.TableImport.get")
 def get_table_import(
-    import_rid: str = typer.Argument(
-        ..., help="Table import Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    connection_rid: ConnectionRid,
+    table_import_rid: TableImportRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific table import."""
-    try:
-        cache_rid(import_rid)
+    """Get a table import."""
+    with spinner(f"Fetching table import {table_import_rid}..."):
+        table_import = ConnectivityService(profile=profile).get_table_import(
+            connection_rid, table_import_rid
+        )
+    cache_rid(table_import_rid)
+    emit(
+        table_import,
+        format=format,
+        output=output,
+        columns=TABLE_IMPORT_COLUMNS,
+        title="Table import",
+    )
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching table import {import_rid}..."
-        ):
-            service = ConnectivityService(profile=profile)
-            table_import = service.get_table_import(import_rid)
 
-        formatter.format_output([table_import], format, output)
+@import_app.command("list-table")
+@pltr_command(sdk="connectivity.Connection.TableImport.list", paged=True)
+def list_table_imports(
+    connection_rid: ConnectionRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
+):
+    """List a connection's table imports (those you can see).
 
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error getting table import: {e}[/red]")
-        raise typer.Exit(1)
+    Fetches one page by default; use --all for every page, or --page-token
+    with the nextPageToken of an earlier response to continue.
+    """
+    service = ConnectivityService(profile=profile)
+    with spinner(f"Listing table imports of {connection_rid}..."):
+        page = collect_pages(
+            lambda token: service.list_table_imports(
+                connection_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(connection_rid)
+    emit(page, format=format, output=output, columns=TABLE_IMPORT_LIST_COLUMNS)
+
+
+@import_app.command("execute-table")
+@pltr_command(sdk="connectivity.Connection.TableImport.execute")
+def execute_table_import(
+    connection_rid: ConnectionRid,
+    table_import_rid: TableImportRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Run a table import; prints the RID of the build that runs it.
+
+    The import runs asynchronously as a Foundry build; check it with
+    'pltr orchestration builds get BUILD_RID'.
+    """
+    with spinner(f"Starting table import {table_import_rid}..."):
+        build_rid = ConnectivityService(profile=profile).execute_table_import(
+            connection_rid, table_import_rid
+        )
+    _report_build(build_rid, "table", table_import_rid)
+    emit(build_rid, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
+
+
+@app.callback()
+def main():
+    """
+    Data Connection operations using foundry-platform-sdk.
+
+    Connections (Data Connection sources) and their file and table imports
+    are addressed by RID. Imports belong to a connection, so import commands
+    take the connection RID first. The API can't list connections: find them
+    in a folder with 'pltr folder list FOLDER_RID'.
+
+    Examples:
+        # Inspect a connection and its configuration
+        pltr connectivity connection get <CONNECTION_RID>
+        pltr connectivity connection get-config <CONNECTION_RID>
+
+        # Create a file import and run it
+        pltr connectivity import file <CONNECTION_RID> <DATASET_RID> \\
+            --name "Daily drop" --mode APPEND
+        pltr connectivity import execute-file <CONNECTION_RID> <FILE_IMPORT_RID>
+
+        # List a connection's table imports as JSON
+        pltr connectivity import list-table <CONNECTION_RID> --format json
+    """
