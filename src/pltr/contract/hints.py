@@ -15,6 +15,8 @@ a vague hint.
 
 from __future__ import annotations
 
+import difflib
+import itertools
 import re
 import shlex
 from dataclasses import dataclass
@@ -41,13 +43,18 @@ Provider = Callable[[ErrorInfo, Any, Optional[click.Context]], Optional[Recovery
 # ------------------------------------------------------------------ helpers
 
 
-def _profile(ctx: Optional[click.Context]) -> Optional[str]:
+def _param(ctx: Optional[click.Context], name: str) -> Optional[str]:
+    """A string parameter of the running command (or a parent group)."""
     while ctx is not None:
-        if "profile" in ctx.params:
-            value = ctx.params["profile"]
-            return value if isinstance(value, str) else None
+        if name in ctx.params:
+            value = ctx.params[name]
+            return value if isinstance(value, str) and value else None
         ctx = ctx.parent
     return None
+
+
+def _profile(ctx: Optional[click.Context]) -> Optional[str]:
+    return _param(ctx, "profile")
 
 
 def _client(ctx: Optional[click.Context]) -> Any:
@@ -233,7 +240,95 @@ def rejected_token(
     )
 
 
+#: Most names read from a list endpoint to find the closest ones.
+NAME_LIMIT = 2000
+
+
+def closest_names(wanted: str, names: List[str], limit: int = 3) -> List[str]:
+    """The names closest to ``wanted``: same name in another case first."""
+    exact = [name for name in names if name.lower() == wanted.lower()]
+    lowered: Dict[str, str] = {}
+    for name in names:
+        lowered.setdefault(name.lower(), name)
+    close = difflib.get_close_matches(wanted.lower(), list(lowered), limit, 0.6)
+    result = exact + [lowered[c] for c in close if lowered[c] not in exact]
+    return result[:limit]
+
+
+def _api_names(items: Any) -> List[str]:
+    return [str(item.api_name) for item in itertools.islice(items, NAME_LIMIT)]
+
+
+_ONTOLOGY_ERRORS = (
+    "ObjectTypeNotFound",
+    "PropertiesNotFound",
+    "ActionTypeNotFound",
+    "LinkTypeNotFound",
+)
+
+
+def ontology_names(
+    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """An object type, property, action type or link type that doesn't exist:
+    list the closest API names (they are case-sensitive)."""
+    name = info.error_name
+    ontology = _param(ctx, "ontology")
+    if name not in _ONTOLOGY_ERRORS or ontology is None:
+        return None
+    parameters = _parameters(info)
+    object_type = parameters.get("objectType")
+    ontologies = _client(ctx).ontologies.Ontology
+    if name == "PropertiesNotFound":
+        properties = parameters.get("properties") or []
+        if not object_type or not properties:
+            return None
+        names = list(ontologies.ObjectType.get(ontology, object_type).properties)
+        pairs = [
+            f"{prop!r} -> {', '.join(closest_names(str(prop), names)) or 'none'}"
+            for prop in properties
+        ]
+        return Recovery(
+            "Property API names are case-sensitive. Closest: " + "; ".join(pairs) + ".",
+            f"pltr ontology object-type-get {_q(ontology)} {_q(object_type)}",
+        )
+    if name == "ObjectTypeNotFound":
+        wanted, label = parameters.get("objectType"), "object type"
+        listing = f"pltr ontology object-type-list {_q(ontology)}"
+        items: Callable[[], Any] = lambda: ontologies.ObjectType.list(  # noqa: E731
+            ontology, page_size=500
+        )
+    elif name == "ActionTypeNotFound":
+        wanted, label = parameters.get("actionType"), "action type"
+        listing = f"pltr api ontologies ontology action-type list {_q(ontology)}"
+        items = lambda: ontologies.ActionType.list(ontology, page_size=500)  # noqa: E731
+    else:
+        wanted, label = parameters.get("linkType"), "link type"
+        if not object_type:
+            return None
+        listing = (
+            "pltr api ontologies ontology object-type list-outgoing-link-types "
+            f"{_q(ontology)} {_q(object_type)}"
+        )
+        items = lambda: ontologies.ObjectType.list_outgoing_link_types(  # noqa: E731
+            ontology, object_type, page_size=500
+        )
+    if not wanted:
+        return None
+    close = closest_names(str(wanted), _api_names(items()))
+    if not close:
+        return Recovery(
+            f"No {label} in {ontology} has an API name close to {wanted!r}.", listing
+        )
+    return Recovery(
+        f"{label.capitalize()} API names are case-sensitive. Closest to "
+        f"{wanted!r}: {', '.join(close)}.",
+        listing,
+    )
+
+
 PROVIDERS: List[Provider] = [
+    ontology_names,
     open_transaction,
     missing_scope,
     permission_denied,

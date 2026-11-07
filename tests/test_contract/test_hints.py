@@ -10,6 +10,7 @@ from pltr.auth.manager import AuthSource
 from pltr.cli import app
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
+from tests import foundry_json_ontology as oj
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -251,3 +252,137 @@ def test_a_failing_provider_leaves_the_error_unchanged(
 
     assert error["type"] == "auth_error"
     assert "hint" not in error
+
+
+# ------------------------------------------------ ontology names not found
+
+
+ONT = oj.ONTOLOGY
+
+
+def action_type(api_name: str) -> Dict[str, Any]:
+    return {
+        "apiName": api_name,
+        "status": "ACTIVE",
+        "parameters": {},
+        "rid": f"ri.actions.main.action-type.{api_name.lower()}",
+        "operations": [],
+    }
+
+
+def link_type(api_name: str) -> Dict[str, Any]:
+    return {
+        "apiName": api_name,
+        "displayName": api_name.title(),
+        "status": "ACTIVE",
+        "objectTypeApiName": "Employee",
+        "cardinality": "ONE",
+        "linkTypeRid": f"ri.ontology.main.relation.{api_name.lower()}",
+    }
+
+
+def test_an_unknown_object_type_lists_the_closest_names(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        404, json=fj.error("ObjectTypeNotFound", parameters={"objectType": "employee"})
+    )
+    stub_foundry_http.respond(
+        json=oj.page(
+            [
+                oj.object_type("Employee"),
+                oj.object_type("EmployeeReview"),
+                oj.object_type("Department"),
+            ]
+        )
+    )
+
+    error = error_of("ontology", "object-type-get", ONT, "employee")
+
+    assert error["hint"] == (
+        "Object type API names are case-sensitive. Closest to 'employee': "
+        "Employee, EmployeeReview."
+    )
+    assert error["suggestedCommand"] == f"pltr ontology object-type-list {ONT}"
+    assert stub_foundry_http.requests[1].url.path == (
+        f"/api/v2/ontologies/{ONT}/objectTypes"
+    )
+
+
+def test_an_object_type_with_no_close_name(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        404, json=fj.error("ObjectTypeNotFound", parameters={"objectType": "Zebra"})
+    )
+    stub_foundry_http.respond(json=oj.page([oj.object_type("Employee")]))
+
+    error = error_of("ontology", "object-type-get", ONT, "Zebra")
+
+    assert error["hint"] == (
+        f"No object type in {ONT} has an API name close to 'Zebra'."
+    )
+    assert error["suggestedCommand"] == f"pltr ontology object-type-list {ONT}"
+
+
+def test_unknown_properties_list_the_closest_names(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        400,
+        json=fj.error(
+            "PropertiesNotFound",
+            "INVALID_ARGUMENT",
+            parameters={"objectType": "Employee", "properties": ["fullname", "xyz"]},
+        ),
+    )
+    stub_foundry_http.respond(json=oj.object_type("Employee"))
+
+    error = error_of("ontology", "object-get", ONT, "Employee", "e-1")
+
+    assert error["hint"] == (
+        "Property API names are case-sensitive. Closest: 'fullname' -> fullName; "
+        "'xyz' -> none."
+    )
+    assert error["suggestedCommand"] == (
+        f"pltr ontology object-type-get {ONT} Employee"
+    )
+
+
+def test_an_unknown_action_type_lists_the_closest_names(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "ActionTypeNotFound", parameters={"actionType": "promote-employe"}
+        ),
+    )
+    stub_foundry_http.respond(
+        json=oj.page([action_type("promote-employee"), action_type("fire-employee")])
+    )
+
+    error = error_of("ontology", "action-apply", ONT, "promote-employe", "{}")
+
+    assert error["hint"] == (
+        "Action type API names are case-sensitive. Closest to 'promote-employe': "
+        "promote-employee, fire-employee."
+    )
+    assert error["suggestedCommand"] == (
+        f"pltr api ontologies ontology action-type list {ONT}"
+    )
+
+
+def test_an_unknown_link_type_lists_the_closest_names(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "LinkTypeNotFound",
+            parameters={"objectType": "Employee", "linkType": "Manager"},
+        ),
+    )
+    stub_foundry_http.respond(
+        json=oj.page([link_type("manager"), link_type("reports")])
+    )
+
+    error = error_of("ontology", "object-linked", ONT, "Employee", "e-1", "Manager")
+
+    assert error["hint"] == (
+        "Link type API names are case-sensitive. Closest to 'Manager': manager."
+    )
+    assert error["suggestedCommand"] == (
+        "pltr api ontologies ontology object-type list-outgoing-link-types "
+        f"{ONT} Employee"
+    )
