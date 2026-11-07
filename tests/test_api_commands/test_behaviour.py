@@ -116,6 +116,63 @@ def test_max_pages_stops_and_returns_the_resume_token(stub_foundry_http, pltr_ap
     }
 
 
+ORG_RID = "ri.multipass..organization.0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_audit_log_files_all_stops_at_the_first_empty_page(stub_foundry_http, pltr_api):
+    """Without --end-date the API returns a nextPageToken on every page (to
+    poll for new log files), so --all used to page forever."""
+    stub_foundry_http.respond(
+        200, json={"data": [{"id": "log-1"}], "nextPageToken": "t1"}
+    )
+    stub_foundry_http.respond(200, json={"data": [], "nextPageToken": "t2"})
+    stub_foundry_http.respond_always(
+        200, json={"data": [{"id": "log-2"}], "nextPageToken": "t3"}
+    )
+    list_log_files = ("audit", "organization", "log-file", "list", ORG_RID)
+
+    result = pltr_api(
+        *list_log_files, "--start-date", "2026-01-01", "--all", "--format", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    first, second = stub_foundry_http.requests
+    assert dict(first.url.params) == {"startDate": "2026-01-01"}
+    assert second.url.params["pageToken"] == "t1"
+    # The empty page's token picks up new log files later.
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "log-1"}],
+        "nextPageToken": "t2",
+    }
+    assert result.stderr == ""
+    help_text = pltr_api(*list_log_files, "--help").stdout
+    assert "--all stop at the first empty page" in help_text
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_all_stops_when_the_api_repeats_a_page_token(stub_foundry_http, pltr_api):
+    """Any paged command: a token that comes back again would loop forever."""
+    stub_foundry_http.respond(
+        200, json={"data": [user(USER_ID, "a")], "nextPageToken": "p2"}
+    )
+    stub_foundry_http.respond_always(
+        200, json={"data": [user(OTHER_USER_ID, "b")], "nextPageToken": "p2"}
+    )
+
+    result = pltr_api("admin", "user", "list", "--all", "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert len(stub_foundry_http.requests) == 2
+    assert json.loads(result.stdout) == {
+        "data": [user(USER_ID, "a"), user(OTHER_USER_ID, "b")],
+        "nextPageToken": "p2",
+    }
+    warning = json.loads(result.stderr.strip().splitlines()[-1])
+    assert warning["type"] == "warning"
+    assert "returned the page token 'p2' again" in warning["message"]
+
+
 @pytest.mark.filterwarnings("error::UserWarning")
 def test_page_size_for_an_endpoint_without_one_is_a_usage_error(
     stub_foundry_http, pltr_api

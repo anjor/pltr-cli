@@ -146,6 +146,13 @@ when more pages remain (page-level fields such as `totalCount` appear in
 single-page output only). Tables and CSV show one row per item; the next page
 token is printed on stderr.
 
+Some endpoints return a `nextPageToken` on every page, even when there is
+nothing more to read yet, so that clients can poll for new items:
+`audit organization log-file list` without `--end-date`. For those (their help
+says so), `--max-pages` and `--all` stop at the first empty page, and its
+`nextPageToken` picks up new items later. Paging also stops, with a warning,
+whenever the API returns a page token that was already sent in the same listing.
+
 ### Binary responses
 
 Commands that return file content (`datasets dataset file content`,
@@ -262,6 +269,11 @@ uv tool install pltr-cli    # or: pipx install pltr-cli
      URL-quote it (try calling it first: if the new SDK handles it, relax the check
      and drop the two `INT_PATH_REASON` exclusions);
    - a configured method that no longer exists must be removed from the config.
+
+   A paged method whose API returns a next page token on every page (a polling
+   endpoint, like `audit.Organization.LogFile.list`) belongs in
+   `stop_at_empty_page`, with a reason; nothing detects it automatically, so read
+   the paging parameters' help of new list methods.
 3. Review the diff of `src/pltr/commands/api/_specs/`: new and removed commands,
    `beta` changes, new parameters. Read the names of new methods: if one destroys
    or overwrites data without saying so, add it to `V2_DESTRUCTIVE` and regenerate.
@@ -307,6 +319,7 @@ A method spec looks like this (keys left out when they don't apply):
     "http": "GET /v2/admin/users",
     "beta": True,                   # has a `preview` parameter
     "paged": "iterator",            # or "response"
+    "stop_at_empty_page": True,     # reviewed: --all stops at an empty page
     "binary": True,                 # bytes response
     "destructive": True,            # asks for confirmation
     "params": [

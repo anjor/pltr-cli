@@ -78,6 +78,11 @@ class ApiVersionConfig:
     not_destructive: frozenset
     # Methods that get no generated command, with the reason (shown by coverage).
     excluded: Mapping[str, str]
+    # Paged methods whose API returns a next page token on every page, even when
+    # there is nothing more to read yet (clients poll with it), with the reason.
+    # Their `--all`/`--max-pages` stop at the first empty page instead of paging
+    # forever (spec key `stop_at_empty_page`).
+    stop_at_empty_page: Mapping[str, str] = dataclasses.field(default_factory=dict)
 
 
 V2_DESTRUCTIVE = frozenset(
@@ -176,6 +181,12 @@ V2 = ApiVersionConfig(
         "functions.Query.streaming_execute_events": SSE_REASON,
         "media_sets.MediaSet.tile": INT_PATH_REASON,
         "models.ModelStudio.ConfigVersion.get": INT_PATH_REASON,
+    },
+    stop_at_empty_page={
+        "audit.Organization.LogFile.list": (
+            "Without an end date the API returns a nextPageToken on every page, to "
+            "poll for new log files (see its end_date parameter)."
+        ),
     },
 )
 
@@ -690,6 +701,13 @@ def method_spec(
         spec["beta"] = True
     if kind.get("paged"):
         spec["paged"] = kind["paged"]
+    if method.dotted in config.stop_at_empty_page:
+        if not kind.get("paged"):
+            raise GeneratorError(
+                f"{method.dotted} is listed in the {config.key} `stop_at_empty_page` "
+                "config but isn't a paged method. Remove it."
+            )
+        spec["stop_at_empty_page"] = True
     if kind.get("binary"):
         spec["binary"] = True
     if destructive:
@@ -777,6 +795,7 @@ def check_config(config: ApiVersionConfig, methods: List[str]) -> None:
         ("destructive", config.destructive),
         ("not_destructive", config.not_destructive),
         ("excluded", set(config.excluded)),
+        ("stop_at_empty_page", set(config.stop_at_empty_page)),
     ):
         stale = sorted(set(entries) - known)
         if stale:

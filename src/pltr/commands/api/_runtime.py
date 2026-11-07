@@ -381,6 +381,11 @@ def _epilog(spec: Dict[str, Any], context: Dict[str, Any]) -> str:
             "Paged: prints one page (the API's response) by default; --max-pages "
             "and --all fetch more."
         )
+    if spec.get("stop_at_empty_page"):
+        lines.append(
+            "The API returns a next page token on every page (to poll for new "
+            "items): --max-pages and --all stop at the first empty page."
+        )
     if spec.get("binary"):
         lines.append("Binary response: written to --output FILE or to stdout.")
     if spec.get("destructive"):
@@ -706,6 +711,7 @@ def run_paged(
             page_token=paging["page_token"],
             max_pages=max_pages,
             all_pages=bool(paging["all_pages"]),
+            stop_at_empty_page=bool(spec.get("stop_at_empty_page")),
         )
         emit(page, format=fmt, output=output)
     else:

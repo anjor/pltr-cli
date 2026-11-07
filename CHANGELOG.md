@@ -114,6 +114,9 @@ can search. See Added.
     curated ones and have the same shared options. A paged command prints one
     page exactly as the API returns it (with fields such as `totalCount`);
     `--max-pages` and `--all` print the merged items in the paged shape.
+    `audit organization log-file list`, whose API returns a next page token
+    on every page when there is no end date, stops paging at the first empty
+    page, like `pltr audit list`.
   - 203 beta commands are labeled `[beta]` and send `preview=true`, if the
     installed SDK method still takes it. 58 destructive commands, an explicit
     reviewed list, ask for confirmation. 20 commands with binary responses
@@ -281,6 +284,9 @@ can search. See Added.
 
 - Python warnings raised while a command runs (for example the SDK's
   `UserWarning`s) print as `Warning: ...` on stderr, or as JSON warning lines.
+- `--all` and `--max-pages` stop, with a warning, when the API returns a page
+  token that was already sent in the same listing, instead of requesting the
+  same page forever. The output's `nextPageToken` is that token.
 - Usage errors found while parsing arguments (a missing argument, an unknown
   option) are JSON errors when the command was asked for JSON (`--format json`
   or `PLTR_FORMAT=json`).

@@ -41,6 +41,7 @@ SPEC = {
                             "help": "Lists all LogFiles.\n\nThis is a paged endpoint. Each page may be smaller or larger than the requested page size. However, it is guaranteed that if there are more results available, the `nextPageToken` field will be populated. To get the next page, make the same request again, but set the value of the `pageToken` query parameter to be value of the `nextPageToken` value of the previous response. If there is no `nextPageToken` field in the response, you are on the last page.\n\nRequired scopes: [api:audit-read]",
                             "http": "GET /v2/audit/organizations/{organizationRid}/logFiles",
                             "paged": "iterator",
+                            "stop_at_empty_page": True,
                             "params": [
                                 {"name": "organization_rid", "in": "path", "api": "organizationRid", "type": "str", "schema": "OrganizationRid", "required": True},
                                 {"name": "end_date", "in": "query", "api": "endDate", "type": "date", "help": "List log files for audit events up until this date (inclusive). If absent, defaults to no end date. Use the returned `nextPageToken` to continually poll the  `listLogFiles` endpoint to list the latest available logs."},

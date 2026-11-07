@@ -264,6 +264,9 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
   paging then also stops at the first page without items, and that page's
   `nextPageToken` is returned for picking up new items later
   (`pltr audit list`).
+- As a backstop for every command, paging stops with a warning when the API
+  returns a page token that was already sent in the same listing (the next
+  request would read a page already read); that token is returned.
 
 **Binary output.** For file content, Arrow/Parquet results and images, call
 `check_binary_output(output)` before the request and
