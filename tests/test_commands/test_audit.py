@@ -1,340 +1,313 @@
-"""
-Tests for audit log file commands.
+"""Tests for `pltr audit` against a real FoundryClient (only HTTP is faked).
+
+These replace Mock-based tests that patched the service; the old service
+passed list arguments through a kwargs dict and read every page.
 """
 
-from datetime import date
-from unittest.mock import Mock, patch
+import csv
+import io
+import json
 
 import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_audit as aj
+
+# Both audit endpoints are GA: a stray preview= would raise a UserWarning.
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+
+LOG_FILES = f"/api/v2/audit/organizations/{aj.ORG_RID}/logFiles"
+CONTENT = f"{LOG_FILES}/{aj.LOG_FILE_ID}/content"
 
 
-class TestAuditCommands:
-    """Test audit CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, list(args), **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock AuditService."""
-        with patch("pltr.commands.audit.AuditService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_error(result) -> dict:
+    lines = [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
+    return lines[-1]
 
-    # ===== List Command Tests =====
 
-    def test_list_command_success(self, runner, mock_service) -> None:
-        """Test successful list audit log files command."""
-        # Setup
-        logs_result = [
-            {
-                "fileId": "2024-01-15",
-                "date": "2024-01-15",
-                "size": 1024,
-            },
-            {
-                "fileId": "2024-01-16",
-                "date": "2024-01-16",
-                "size": 2048,
-            },
-        ]
-        mock_service.list_log_files.return_value = logs_result
+@pytest.fixture
+def stdout_is_a_terminal(monkeypatch):
+    monkeypatch.setattr("pltr.contract.output._stdout_is_terminal", lambda: True)
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-                "--format",
-                "json",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_log_files.assert_called_once_with(
-            organization_rid="ri.multipass..organization.abc123",
-            start_date=date(2024, 1, 1),
-            end_date=None,
-            page_size=None,
-        )
+# --------------------------------------------------------------------- list
 
-    def test_list_command_with_end_date(self, runner, mock_service) -> None:
-        """Test list command with end date filter."""
-        # Setup
-        mock_service.list_log_files.return_value = [{"fileId": "2024-01-15"}]
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-                "--end-date",
-                "2024-01-31",
-                "--format",
-                "json",
-            ],
-        )
+def test_list_table(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", "b.json.gz"))
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_log_files.assert_called_once_with(
-            organization_rid="ri.multipass..organization.abc123",
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
-            page_size=None,
-        )
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01")
 
-    def test_list_command_empty_result(self, runner, mock_service) -> None:
-        """Test list command with no results."""
-        # Setup
-        mock_service.list_log_files.return_value = []
+    assert result.exit_code == 0, result.output
+    assert "Log File ID" in result.stdout
+    assert "a.json.gz" in result.stdout and "b.json.gz" in result.stdout
+    assert result.stderr == ""
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", LOG_FILES)
+    assert dict(request.url.params) == {"startDate": "2024-01-01"}
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        assert "No audit log files found" in result.stdout
+def test_list_json_is_the_paged_shape(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
 
-    def test_list_command_with_page_size(self, runner, mock_service) -> None:
-        """Test list command with page size."""
-        # Setup
-        mock_service.list_log_files.return_value = [{"fileId": "2024-01-15"}]
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "--format", "json")
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-                "--page-size",
-                "50",
-            ],
-        )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}],
+        "nextPageToken": "t2",
+    }
+    assert result.stderr == ""
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_log_files.assert_called_once_with(
-            organization_rid="ri.multipass..organization.abc123",
-            start_date=date(2024, 1, 1),
-            end_date=None,
-            page_size=50,
-        )
 
-    def test_list_command_invalid_date(self, runner, mock_service) -> None:
-        """Test list command with invalid date format."""
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "not-a-date",
-            ],
-        )
+def test_list_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", "b.json.gz"))
 
-        # Assert - typer.BadParameter causes non-zero exit
-        # Error message may be in stdout, output attribute, or cause exit code 2
-        assert result.exit_code != 0
-        # Check output (combined stdout/stderr in CliRunner)
-        assert "Invalid date format" in result.output or result.exit_code == 2
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "-f", "csv")
 
-    def test_list_command_error(self, runner, mock_service) -> None:
-        """Test list command with service error."""
-        # Setup
-        mock_service.list_log_files.side_effect = RuntimeError(
-            "Failed to fetch audit logs"
-        )
+    rows = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert rows == [{"Log File ID": "a.json.gz"}, {"Log File ID": "b.json.gz"}]
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "list",
-                "ri.multipass..organization.abc123",
-                "2024-01-01",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to list audit log files" in result.stdout
+def test_list_end_date_and_page_size(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz"))
 
-    # ===== Get Command Tests =====
+    result = invoke(
+        "audit",
+        "list",
+        aj.ORG_RID,
+        "2024-01-01",
+        "--end-date",
+        "2024-01-31",
+        "--page-size",
+        "100",
+    )
 
-    def test_get_command_success_text_output(self, runner, mock_service) -> None:
-        """Test successful get log file command with text content."""
-        # Setup - return UTF-8 text content
-        mock_service.get_log_file_content.return_value = b'{"event": "test"}\n'
+    assert result.exit_code == 0, result.output
+    [request] = stub_foundry_http.requests
+    assert dict(request.url.params) == {
+        "startDate": "2024-01-01",
+        "endDate": "2024-01-31",
+        "pageSize": "100",
+    }
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "get",
-                "ri.multipass..organization.abc123",
-                "2024-01-15",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_log_file_content.assert_called_once_with(
-            organization_rid="ri.multipass..organization.abc123",
-            log_file_id="2024-01-15",
-        )
-        assert '{"event": "test"}' in result.stdout
+def test_list_fetches_one_page_by_default_and_hints_at_the_next(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
 
-    def test_get_command_with_file_output(self, runner, mock_service, tmp_path) -> None:
-        """Test get command with file output."""
-        # Setup
-        mock_service.get_log_file_content.return_value = b"binary content here"
-        output_file = tmp_path / "audit.log"
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01")
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "get",
-                "ri.multipass..organization.abc123",
-                "2024-01-15",
-                "--output",
-                str(output_file),
-            ],
-        )
+    assert len(stub_foundry_http.requests) == 1
+    assert "--page-token t2" in result.stderr
 
-        # Assert
-        assert result.exit_code == 0
-        assert output_file.read_bytes() == b"binary content here"
-        assert "saved to" in result.stdout
 
-    def test_get_command_binary_content_no_output(self, runner, mock_service) -> None:
-        """Test get command with binary content but no output file."""
-        # Setup - return non-UTF-8 binary content
-        mock_service.get_log_file_content.return_value = b"\x80\x81\x82\xff"
+def test_list_all_pages(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
+    stub_foundry_http.respond(json=aj.log_files("b.json.gz"))
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "get",
-                "ri.multipass..organization.abc123",
-                "2024-01-15",
-            ],
-        )
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "--all", "-f", "json")
 
-        # Assert
-        assert result.exit_code == 1
-        assert "binary content" in result.stdout.lower()
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}, {"id": "b.json.gz"}]
+    }
+    first, second = stub_foundry_http.requests
+    assert dict(second.url.params) == {"startDate": "2024-01-01", "pageToken": "t2"}
 
-    def test_get_command_with_profile(self, runner, mock_service) -> None:
-        """Test get command with custom profile."""
-        # Setup
-        mock_service.get_log_file_content.return_value = b"log content"
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "get",
-                "ri.multipass..organization.abc123",
-                "2024-01-15",
-                "--profile",
-                "production",
-            ],
-        )
+def test_list_all_stops_at_an_empty_page_and_keeps_its_token(stub_foundry_http):
+    """Without an end date the API always returns a token, for polling."""
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
+    stub_foundry_http.respond(json=aj.log_files(token="t3"))
+    stub_foundry_http.respond_always(json=aj.log_files(token="t3"))
 
-        # Assert
-        assert result.exit_code == 0
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "--all", "-f", "json")
 
-    def test_get_command_error(self, runner, mock_service) -> None:
-        """Test get command with service error."""
-        # Setup
-        mock_service.get_log_file_content.side_effect = RuntimeError("Log not found")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}],
+        "nextPageToken": "t3",
+    }
+    assert len(stub_foundry_http.requests) == 2
 
-        result = runner.invoke(
-            app,
-            [
-                "audit",
-                "get",
-                "ri.multipass..organization.abc123",
-                "invalid-log-id",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get audit log file" in result.stdout
+def test_list_max_pages_stops_at_an_empty_page(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
+    stub_foundry_http.respond(json=aj.log_files(token="t2"))
+    stub_foundry_http.respond_always(json=aj.log_files("never.json.gz", token="t9"))
 
-    # ===== Help Command Tests =====
+    result = invoke(
+        "audit", "list", aj.ORG_RID, "2024-01-01", "--max-pages", "5", "-f", "json"
+    )
 
-    def test_help_command(self, runner) -> None:
-        """Test help output for commands."""
-        # Test main help
-        result = runner.invoke(app, ["audit", "--help"])
-        assert result.exit_code == 0
-        assert "audit" in result.stdout.lower()
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}],
+        "nextPageToken": "t2",
+    }
+    assert len(stub_foundry_http.requests) == 2
 
-        # Test list command help
-        result = runner.invoke(app, ["audit", "list", "--help"])
-        assert result.exit_code == 0
-        assert (
-            "ORGANIZATION_RID" in result.stdout
-            or "organization" in result.stdout.lower()
-        )
 
-        # Test get command help
-        result = runner.invoke(app, ["audit", "get", "--help"])
-        assert result.exit_code == 0
-        assert "LOG_FILE_ID" in result.stdout or "log" in result.stdout.lower()
+def test_list_resumes_from_a_page_token(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("b.json.gz"))
 
-    # ===== File Output Tests =====
+    result = invoke(
+        "audit", "list", aj.ORG_RID, "2024-01-01", "--page-token", "t2", "-f", "json"
+    )
 
-    def test_list_command_with_file_output(
-        self, runner, mock_service, tmp_path
-    ) -> None:
-        """Test list command with file output."""
-        # Setup
-        logs_result = [{"fileId": "2024-01-15", "size": 1024}]
-        mock_service.list_log_files.return_value = logs_result
-        output_file = tmp_path / "audit_logs.json"
+    assert result.exit_code == 0, result.output
+    [request] = stub_foundry_http.requests
+    assert request.url.params["pageToken"] == "t2"
 
-        with patch("pltr.commands.audit.formatter") as mock_formatter:
-            result = runner.invoke(
-                app,
-                [
-                    "audit",
-                    "list",
-                    "ri.multipass..organization.abc123",
-                    "2024-01-01",
-                    "--output",
-                    str(output_file),
-                    "--format",
-                    "json",
-                ],
-            )
 
-            # Assert
-            assert result.exit_code == 0
-            mock_formatter.save_to_file.assert_called_once_with(
-                logs_result, str(output_file), "json"
-            )
+def test_list_empty(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files())
+
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01")
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert "No results." in result.stderr
+
+
+@pytest.mark.parametrize("value", ["01/15/2024", "2024-13-01", "yesterday"])
+def test_list_rejects_bad_dates(stub_foundry_http, value):
+    result = invoke("audit", "list", aj.ORG_RID, value)
+
+    assert result.exit_code == 2
+    assert "does not match the format '%Y-%m-%d'" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_list_bad_end_date_json(stub_foundry_http):
+    result = invoke(
+        "audit", "list", aj.ORG_RID, "2024-01-01", "-e", "31-01-2024", "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert json_error(result)["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+def test_list_permission_denied(stub_foundry_http):
+    stub_foundry_http.respond(
+        403,
+        json=fj.error("ListLogFilesPermissionDenied", error_code="PERMISSION_DENIED"),
+    )
+
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "-f", "json")
+
+    assert result.exit_code == 4
+    assert result.stdout == ""
+    error = json_error(result)
+    assert (error["type"], error["errorName"]) == (
+        "permission_denied",
+        "ListLogFilesPermissionDenied",
+    )
+
+
+def test_list_invalid_organization_rid(stub_foundry_http):
+    result = invoke("audit", "list", "my-org", "2024-01-01", "-f", "json")
+
+    assert result.exit_code == 2
+    assert "not a valid RID" in json_error(result)["message"]
+    assert stub_foundry_http.requests == []
+
+
+# ---------------------------------------------------------------------- get
+
+
+def test_get_writes_the_content_unchanged_to_stdout(stub_foundry_http):
+    stub_foundry_http.respond(content=b'{"event": "login"}\n{"event": "logout"}\n')
+
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout_bytes == b'{"event": "login"}\n{"event": "logout"}\n'
+    assert result.stderr == ""
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", CONTENT)
+
+
+def test_get_binary_content_to_a_pipe(stub_foundry_http):
+    stub_foundry_http.respond(content=b"\x1f\x8b\x08\x00binary")
+
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID, "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout_bytes == b"\x1f\x8b\x08\x00binary"
+    assert result.stderr == ""
+
+
+def test_get_output_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=b"\x1f\x8b\x08\x00binary")
+    target = tmp_path / "audit.log.gz"
+
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID, "-o", str(target))
+
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == b"\x1f\x8b\x08\x00binary"
+    assert result.stdout == ""
+    assert f"Wrote 10 bytes to {target}" in result.stderr
+
+
+def test_get_refuses_a_terminal_before_downloading(
+    stub_foundry_http, stdout_is_a_terminal
+):
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID, "-f", "json")
+
+    assert result.exit_code == 2
+    error = json_error(result)
+    assert error["type"] == "usage_error"
+    assert "--output" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_get_output_dash_means_stdout_even_on_a_terminal(
+    stub_foundry_http, stdout_is_a_terminal
+):
+    stub_foundry_http.respond(content=b"text log\n")
+
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID, "--output", "-")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout_bytes == b"text log\n"
+
+
+def test_get_permission_denied_writes_no_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "GetLogFileContentPermissionDenied",
+            error_code="PERMISSION_DENIED",
+            parameters={"organizationRid": aj.ORG_RID, "logFileId": aj.LOG_FILE_ID},
+        ),
+    )
+    target = tmp_path / "audit.log"
+
+    result = invoke(
+        "audit", "get", aj.ORG_RID, aj.LOG_FILE_ID, "-o", str(target), "-f", "json"
+    )
+
+    assert result.exit_code == 4
+    assert json_error(result)["errorName"] == "GetLogFileContentPermissionDenied"
+    assert not target.exists()
+
+
+def test_get_not_found_text(stub_foundry_http):
+    stub_foundry_http.respond(404, json=fj.error("LogFileNotFound"))
+
+    result = invoke("audit", "get", aj.ORG_RID, aj.LOG_FILE_ID)
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    assert "Error: LogFileNotFound" in result.stderr

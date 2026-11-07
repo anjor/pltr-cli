@@ -1,6 +1,14 @@
 # Examples Gallery
 
-Real-world examples and use cases for pltr-cli. Copy, adapt, and use these examples for your own data analysis and automation needs.
+Examples and use cases for pltr-cli. Copy and adapt them for your own data
+analysis and automation.
+
+The SQL examples use short table names (`sales_data`) for readability. In
+Foundry, a query refers to a dataset by its path or RID in backticks, for
+example ``FROM `/My Space/Sales/sales_data` ``: replace the names with your
+datasets. With `--format json`, `pltr sql execute` prints
+`{"data": [...]}`, one object per row, so the first row's `count` is
+`.data[0].count` in `jq`.
 
 ## 📤 Data Import/Export Examples
 
@@ -20,7 +28,7 @@ Complete examples for uploading CSV files to Foundry datasets. See [CSV Upload E
 
 Use the built-in `pltr cp` command to clone datasets or folders by RID (with
 `--recursive` for folders) and place the copies into another Compass folder.
-See the command reference: [pltr cp](../user-guide/commands.md#pltr-cp-options-source_rid-target_folder_rid).
+See the command reference: [pltr cp](../user-guide/commands.md#copying-pltr-cp).
 
 ## 📊 Data Analysis Examples
 
@@ -271,7 +279,7 @@ ONTOLOGY_RID="ri.ontology.main.ontology.hr"
 
 # 1. Department overview
 pltr ontology object-aggregate $ONTOLOGY_RID Employee \
-  '{"count": "count", "avg_tenure": "avg"}' \
+  --aggregation '[{"type": "count", "name": "count"}, {"type": "avg", "field": "tenure", "name": "avgTenure"}]' \
   --group-by department \
   --format table
 
@@ -313,7 +321,7 @@ pltr ontology object-list $ONTOLOGY_RID Project \
 
 # 2. Resource allocation analysis
 pltr ontology object-aggregate $ONTOLOGY_RID ProjectAssignment \
-  '{"total_hours": "sum", "avg_allocation": "avg"}' \
+  --aggregation '[{"type": "sum", "field": "hours", "name": "totalHours"}, {"type": "avg", "field": "allocation", "name": "avgAllocation"}]' \
   --group-by "employeeId,projectId" \
   --format json --output resource_allocation.json
 
@@ -378,7 +386,7 @@ jobs:
           " --format json --output daily_metrics.json
 
           # Validate data quality
-          row_count=$(pltr sql execute "SELECT COUNT(*) as count FROM events_table WHERE DATE(timestamp) = CURRENT_DATE - 1" --format json | jq -r '.[0].count')
+          row_count=$(pltr sql execute "SELECT COUNT(*) as count FROM events_table WHERE DATE(timestamp) = CURRENT_DATE - 1" --format json | jq -r '.data[0].count')
           if [ "$row_count" -lt 100 ]; then
             echo "Error: Insufficient data for yesterday"
             exit 1
@@ -407,7 +415,7 @@ ANOMALY_COUNT=$(pltr sql execute "
   FROM data_quality_checks
   WHERE status = 'FAILED'
     AND check_date = CURRENT_DATE
-" --format json | jq -r '.[0].count')
+" --format json | jq -r '.data[0].count')
 
 if [ "$ANOMALY_COUNT" -gt 0 ]; then
   MESSAGE="🚨 Data Quality Alert: $ANOMALY_COUNT failed checks detected today"
@@ -422,7 +430,7 @@ SLOW_QUERIES=$(pltr sql execute "
   FROM query_performance_log
   WHERE execution_time_seconds > 300
     AND query_date >= CURRENT_DATE - 1
-" --format json | jq -r '.[0].count')
+" --format json | jq -r '.data[0].count')
 
 if [ "$SLOW_QUERIES" -gt 5 ]; then
   MESSAGE="⚠️ Performance Alert: $SLOW_QUERIES slow queries detected in last 24 hours"
@@ -441,9 +449,9 @@ SUMMARY=$(pltr sql execute "
   WHERE job_date = CURRENT_DATE
 " --format json)
 
-RECORDS=$(echo "$SUMMARY" | jq -r '.[0].total_records')
-AVG_TIME=$(echo "$SUMMARY" | jq -r '.[0].avg_processing_time')
-SUCCESS_JOBS=$(echo "$SUMMARY" | jq -r '.[0].successful_jobs')
+RECORDS=$(echo "$SUMMARY" | jq -r '.data[0].total_records')
+AVG_TIME=$(echo "$SUMMARY" | jq -r '.data[0].avg_processing_time')
+SUCCESS_JOBS=$(echo "$SUMMARY" | jq -r '.data[0].successful_jobs')
 
 MESSAGE="📊 Daily Summary: $RECORDS records processed, $SUCCESS_JOBS successful jobs, avg time: ${AVG_TIME}s"
 curl -X POST -H 'Content-type: application/json' \
@@ -546,7 +554,7 @@ pltr sql execute "
 
 # 2. Conversion funnel
 pltr ontology object-aggregate $ONTOLOGY_RID CustomerJourney \
-  '{"count": "count"}' \
+  --aggregation '[{"type": "count", "name": "count"}]' \
   --group-by "stage,conversionStatus" \
   --format json --output conversion_funnel.json
 
@@ -591,12 +599,12 @@ for table in "${CRITICAL_TABLES[@]}"; do
   LAST_UPDATE=$(pltr sql execute "
     SELECT MAX(updated_timestamp) as last_update
     FROM $table
-  " --format json | jq -r '.[0].last_update')
+  " --format json | jq -r '.data[0].last_update')
 
   HOURS_OLD=$(pltr sql execute "
     SELECT TIMESTAMPDIFF(HOUR, MAX(updated_timestamp), NOW()) as hours_old
     FROM $table
-  " --format json | jq -r '.[0].hours_old')
+  " --format json | jq -r '.data[0].hours_old')
 
   if [ "$HOURS_OLD" -gt 24 ]; then
     send_alert "Table $table is $HOURS_OLD hours old (last update: $LAST_UPDATE)"

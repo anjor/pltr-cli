@@ -1,0 +1,9 @@
+# SDK call guardrail: ratchet allowlist of known violations (issue #185).
+#
+# tests/test_sdk_call_guardrail.py fails on any violation that isn't listed here AND on
+# any entry that no longer occurs. When you fix a violation, delete its line.
+# Don't add lines to hide new violations; fix the call. See
+# docs/development/sdk-guardrail.md.
+#
+# Format: <file>::<Class.method>::<SDK path or HTTP call>::<rule>[<n>]  # <reason>
+# Rewrite (keeps existing reasons): uv run python scripts/check_sdk_calls.py --write-allowlist

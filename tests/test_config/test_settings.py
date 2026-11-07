@@ -18,7 +18,6 @@ class TestSettings:
         assert settings.get("default_profile") == "default"
         assert settings.get("output_format") == "table"
         assert settings.get("color_output") is True
-        assert settings.get("page_size") == 20
         assert settings.get("timeout") == 30
         assert settings.get("verify_ssl") is True
 
@@ -27,7 +26,7 @@ class TestSettings:
         settings = mock_settings
 
         assert settings.get("output_format") == "table"
-        assert settings.get("page_size") == 20
+        assert settings.get("timeout") == 30
 
     def test_get_nonexistent_setting_with_default(self, mock_settings):
         """Test getting a non-existent setting with default value."""
@@ -64,14 +63,14 @@ class TestSettings:
 
         new_settings = {
             "output_format": "csv",
-            "page_size": 50,
+            "timeout": 60,
             "new_setting": "new_value",
         }
 
         settings.update(new_settings)
 
         assert settings.get("output_format") == "csv"
-        assert settings.get("page_size") == 50
+        assert settings.get("timeout") == 60
         assert settings.get("new_setting") == "new_value"
         # Unchanged settings should remain the same
         assert settings.get("color_output") is True
@@ -86,7 +85,6 @@ class TestSettings:
         assert "default_profile" in all_settings
         assert "output_format" in all_settings
         assert "color_output" in all_settings
-        assert "page_size" in all_settings
         assert "timeout" in all_settings
         assert "verify_ssl" in all_settings
 
@@ -100,12 +98,12 @@ class TestSettings:
 
         # Modify some settings
         settings.set("output_format", "json")
-        settings.set("page_size", 100)
+        settings.set("timeout", 100)
         settings.set("custom_setting", "custom_value")
 
         # Verify changes
         assert settings.get("output_format") == "json"
-        assert settings.get("page_size") == 100
+        assert settings.get("timeout") == 100
         assert settings.get("custom_setting") == "custom_value"
 
         # Reset
@@ -113,28 +111,30 @@ class TestSettings:
 
         # Verify defaults are restored
         assert settings.get("output_format") == "table"
-        assert settings.get("page_size") == 20
+        assert settings.get("timeout") == 30
         assert settings.get("custom_setting") is None
 
     def test_config_dir_creation(self, temp_config_dir):
-        """Test that config directory is created."""
-        # Mock the config dir path
-        with pytest.raises(FileNotFoundError):
-            # Directory shouldn't exist initially
-            list((temp_config_dir / "nonexistent").iterdir())
+        """The config directory is created when settings are saved, not read.
 
-        # Create settings which should create the directory
+        Reading settings must work where the directory doesn't exist and can't
+        be created (CI, containers, agent sandboxes with a read-only HOME).
+        """
+        config_dir = temp_config_dir / "test_config"
+
         with pytest.MonkeyPatch.context() as m:
-            m.setattr(
-                Settings,
-                "_get_config_dir",
-                lambda self: temp_config_dir / "test_config",
-            )
-            Settings()
+            m.setattr(Settings, "_get_config_dir", lambda self: config_dir)
+            settings = Settings()
 
-            # Directory should now exist
-            assert (temp_config_dir / "test_config").exists()
-            assert (temp_config_dir / "test_config").is_dir()
+            # Reading uses the defaults and creates nothing
+            assert settings.get("timeout") == 30
+            assert not config_dir.exists()
+
+            settings.set("timeout", 50)
+
+            # Saving creates the directory and the settings file
+            assert config_dir.is_dir()
+            assert (config_dir / "settings.json").exists()
 
     def test_settings_persistence(self, temp_config_dir):
         """Test that settings are persisted to file."""
@@ -174,6 +174,28 @@ class TestSettings:
             # Should have default values
             assert settings.get("output_format") == "table"
             assert settings.get("color_output") is True
+
+    def test_page_size_is_no_longer_a_default(self, mock_settings):
+        """List commands use the API's page size unless --page-size is given."""
+        assert mock_settings.get("page_size") is None
+        assert "page_size" not in mock_settings.get_all()
+
+    def test_deprecated_page_size_in_an_existing_file_is_accepted(
+        self, temp_config_dir
+    ):
+        """Older releases wrote page_size to settings.json; it still loads."""
+        config_dir = temp_config_dir / "test_deprecated"
+        config_dir.mkdir(parents=True)
+        (config_dir / "settings.json").write_text(
+            '{"output_format": "json", "page_size": 20}'
+        )
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(Settings, "_get_config_dir", lambda self: config_dir)
+            settings = Settings()
+
+            assert settings.get("output_format") == "json"
+            assert settings.get("page_size") == 20  # kept as is, and unused
 
     def test_get_config_dir_xdg(self, temp_config_dir):
         """Test XDG config directory preference."""

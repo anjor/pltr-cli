@@ -1,0 +1,356 @@
+"""The `pltr api` generator: staleness, coverage, and how SDK shapes are mapped."""
+
+import datetime
+import importlib.util
+import sys
+import typing
+from pathlib import Path
+
+import pydantic
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+
+
+def load_script(name: str, filename: str):
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / filename)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def generator():
+    return load_script("pltr_generate_api_commands", "generate_api_commands.py")
+
+
+@pytest.fixture(scope="module")
+def coverage_script():
+    return load_script("pltr_api_coverage", "coverage.py")
+
+
+@pytest.fixture(scope="module")
+def rendered(generator):
+    return generator.render_files()
+
+
+def test_generated_specs_are_up_to_date(generator, rendered):
+    stale = generator.stale_files(rendered, generator.existing_files())
+    assert not stale, (
+        "The committed `pltr api` specs don't match foundry-platform-sdk "
+        f"{generator.sdk_version()}: {', '.join(stale)}.\n"
+        "Run: uv run python scripts/generate_api_commands.py"
+    )
+
+
+def test_generation_is_deterministic(generator, rendered):
+    assert generator.render_files() == rendered
+
+
+def test_generated_files_are_valid_python_outside_the_formatter(rendered):
+    for path, content in rendered.items():
+        assert content.endswith("\n")
+        assert "\r" not in content
+        assert "# fmt: off" in content, path
+        compile(content, path, "exec")
+
+
+def test_coverage_of_every_v2_method(coverage_script):
+    coverage = coverage_script.compute()
+    report = coverage.to_dict()
+
+    assert coverage.missing == []
+    assert coverage.unknown == []
+    assert coverage.excluded_but_generated == []
+    assert report["totalMethods"] == report["generated"] + report["excluded"]
+    for row in coverage.methods:
+        if row["excludedReason"]:
+            assert len(row["excludedReason"]) > 20, row
+    assert coverage.ok
+
+
+def test_coverage_script_exit_status(coverage_script, capsys):
+    assert coverage_script.main([]) == 0
+    assert "Generated coverage:" in capsys.readouterr().out
+
+
+def test_curated_coverage_comes_from_command_metadata(coverage_script):
+    """Curated commands converted to pltr.contract count (e.g. `pltr folder get`)."""
+    curated = coverage_script.curated_commands()
+    assert "pltr folder get" in curated["filesystem.Folder.get"]
+    for method, commands in curated.items():
+        assert commands and all(c.startswith("pltr ") for c in commands), method
+        assert not any(c.startswith("pltr api ") for c in commands), method
+    generated = coverage_script.generated_commands()
+    assert generated["admin.User.list"] == "pltr api admin user list"
+    report = coverage_script.compute().to_dict()
+    assert report["curated"] == sum(1 for m in report["methods"] if m["curated"])
+    assert report["curatedUnknown"] == []
+
+
+def test_destructive_list_matches_seed_names(generator):
+    """Every method whose name looks destructive was reviewed (and exists)."""
+    methods = generator.all_public_methods(generator.V2)
+    for method in methods:
+        name = method.rsplit(".", 1)[1]
+        if generator.looks_destructive(name):
+            assert (
+                method in generator.V2.destructive
+                or method in generator.V2.not_destructive
+            ), method
+    assert set(generator.V2.destructive) <= set(methods)
+    for reviewed in (
+        "streams.Dataset.Stream.reset",
+        "streams.Dataset.Stream.Subscriber.reset_offsets",
+        "media_sets.MediaSet.clear",
+        "third_party_applications.ThirdPartyApplication.Website.undeploy",
+        "datasets.Dataset.put_schema",
+    ):
+        assert reviewed in generator.V2.destructive
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "delete",
+        "permanently_delete",
+        "delete_batch",
+        "bulk_delete",
+        "remove_markings",
+        "revoke_all_tokens",
+        "replace_backing_datasets",
+        "abort",
+        "cancel",
+        "disable",
+        "reset",
+        "reset_offsets",
+        "clear",
+        "clear_cache",
+        "undeploy",
+        "unregister",
+        "purge",
+    ],
+)
+def test_destructive_words_anywhere_in_the_name(generator, name):
+    assert generator.looks_destructive(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "get",
+        "list",
+        "create",
+        "update",
+        "deleted_items",
+        "clearance",
+        "resetting",
+        "removes",
+    ],
+)
+def test_names_without_a_destructive_word(generator, name):
+    assert not generator.looks_destructive(name)
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "admin.User.delete",
+        # Destructive words that aren't the whole name (a fullmatch missed them).
+        "streams.Dataset.Stream.Subscriber.reset_offsets",
+        "media_sets.MediaSet.clear",
+        "third_party_applications.ThirdPartyApplication.Website.undeploy",
+    ],
+)
+def test_unreviewed_destructive_name_fails_generation(generator, monkeypatch, method):
+    config = generator.V2
+    trimmed = generator.dataclasses.replace(
+        config, destructive=config.destructive - {method}
+    )
+    monkeypatch.setattr(generator, "API_VERSIONS", (trimmed,))
+    with pytest.raises(generator.GeneratorError, match=method.replace(".", r"\.")):
+        generator.build_specs()
+
+
+def test_stale_config_entries_fail_generation(generator, monkeypatch):
+    config = generator.V2
+    broken = generator.dataclasses.replace(
+        config, destructive=config.destructive | {"admin.User.no_such_method"}
+    )
+    monkeypatch.setattr(generator, "API_VERSIONS", (broken,))
+    with pytest.raises(generator.GeneratorError, match="no_such_method"):
+        generator.build_specs()
+    stale = generator.dataclasses.replace(
+        config, stop_at_empty_page={"admin.User.no_such_method": "reason"}
+    )
+    monkeypatch.setattr(generator, "API_VERSIONS", (stale,))
+    with pytest.raises(generator.GeneratorError, match="no_such_method"):
+        generator.build_specs()
+
+
+def test_stop_at_empty_page_is_a_reviewed_per_method_flag(generator):
+    """Only the reviewed methods stop at an empty page (audit log files)."""
+    from pltr.commands.api import _specs
+    from pltr.commands.api._specs import audit
+
+    flagged = []
+    for entry in _specs.NAMESPACES.values():
+        spec = importlib.import_module(f"{_specs.__name__}.{entry['module']}").SPEC
+        stack = [(spec["sdk"], spec)]
+        while stack:
+            path, node = stack.pop()
+            for method in node.get("methods", []):
+                if method.get("stop_at_empty_page"):
+                    flagged.append(f"{path}.{method['sdk']}")
+            stack.extend(
+                (f"{path}.{child['sdk']}", child) for child in node.get("resources", [])
+            )
+    assert flagged == ["audit.Organization.LogFile.list"]
+    assert sorted(generator.V2.stop_at_empty_page) == flagged
+    (organization,) = audit.SPEC["resources"]
+    (log_file,) = organization["resources"]
+    methods = {m["name"]: m for m in log_file["methods"]}
+    assert methods["list"]["stop_at_empty_page"] is True
+    assert methods["list"]["paged"] == "iterator"
+
+
+def test_stop_at_empty_page_needs_a_paged_method(generator, monkeypatch):
+    config = generator.V2
+    broken = generator.dataclasses.replace(
+        config, stop_at_empty_page={"admin.User.get": "not paged"}
+    )
+    monkeypatch.setattr(generator, "API_VERSIONS", (broken,))
+    with pytest.raises(generator.GeneratorError, match="admin.User.get.*isn't a paged"):
+        generator.build_specs()
+
+
+def test_integer_path_parameters_need_a_decision(generator, monkeypatch):
+    """The SDK can't URL-quote int path parameters, so such methods are excluded."""
+    config = generator.V2
+    excluded = dict(config.excluded)
+    del excluded["media_sets.MediaSet.tile"]
+    unreviewed = generator.dataclasses.replace(config, excluded=excluded)
+    monkeypatch.setattr(generator, "API_VERSIONS", (unreviewed,))
+    with pytest.raises(generator.GeneratorError, match="non-string path parameter"):
+        generator.build_specs()
+
+
+def test_the_int_path_parameter_bug_is_real(stub_foundry_http):
+    """foundry-platform-sdk 1.111.0 fails before sending the request."""
+    from foundry_sdk import SDKInternalError
+
+    with pytest.raises(SDKInternalError, match="quote_from_bytes"):
+        stub_foundry_http.client.media_sets.MediaSet.tile(
+            "ri.mio.main.media-set.a", "ri.mio.main.media-item.b", 1, 2, 3, preview=True
+        )
+    assert stub_foundry_http.requests == []
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("CbacBanner", "cbac-banner"),
+        ("OpenAiModel", "open-ai-model"),
+        ("TimeSeriesPropertyV2", "time-series-property-v2"),
+        ("get_by_rid_batch", "get-by-rid-batch"),
+        ("third_party_applications", "third-party-applications"),
+        ("SQLQuery", "sql-query"),
+    ],
+)
+def test_kebab(generator, name, expected):
+    assert generator.kebab(name) == expected
+
+
+class _Model(pydantic.BaseModel):
+    value: int
+
+
+@pytest.mark.parametrize(
+    "annotation, expected",
+    [
+        (str, {"type": "str"}),
+        (typing.Optional[int], {"type": "int"}),
+        (typing.Annotated[str, "rid"], {"type": "str"}),
+        (bool, {"type": "bool"}),
+        (float, {"type": "float"}),
+        (datetime.date, {"type": "date"}),
+        (pydantic.AwareDatetime, {"type": "datetime"}),
+        (typing.Literal["A", "B"], {"type": "choice", "choices": ["A", "B"]}),
+        (typing.List[str], {"type": "str", "multiple": True}),
+        (
+            typing.Optional[typing.List[typing.Literal["X"]]],
+            {
+                "type": "choice",
+                "choices": ["X"],
+                "multiple": True,
+            },
+        ),
+        (bytes, {"type": "bytes"}),
+        (_Model, {"type": "json"}),
+        (typing.List[_Model], {"type": "json"}),
+        (typing.Dict[str, typing.Any], {"type": "json"}),
+        (typing.Union[_Model, typing.Dict[str, int]], {"type": "json"}),
+        (typing.Any, {"type": "json"}),
+    ],
+)
+def test_parameter_type_mapping(generator, annotation, expected):
+    assert generator.parameter_type(annotation) == expected
+
+
+def test_docstring_parsing(generator):
+    doc = generator.parse_docstring(
+        """
+        Lists all Users.
+
+        This is a paged endpoint.
+
+        Required scopes: [api:admin-read]
+
+        :param page_size: The page size
+            to use.
+        :type page_size: Optional[PageSize]
+        :return: Returns the result object.
+        :rtype: core.ResourceIterator[admin_models.User]
+        """
+    )
+    assert doc.description == (
+        "Lists all Users.\n\nThis is a paged endpoint.\n\n"
+        "Required scopes: [api:admin-read]"
+    )
+    assert doc.params == {"page_size": "The page size to use."}
+    assert doc.types == {"page_size": "Optional[PageSize]"}
+    assert generator.summarize(doc.description) == "Lists all Users."
+    assert generator.summarize("Required scopes: [api:admin-read]") == ""
+
+
+def test_specs_record_flags(generator, rendered):
+    from pltr.commands.api._specs import admin, datasets, streams
+
+    users = {r["name"]: r for r in admin.SPEC["resources"]}["user"]
+    methods = {m["name"]: m for m in users["methods"]}
+    assert methods["list"]["paged"] == "iterator"
+    assert methods["search"]["paged"] == "response"
+    assert methods["delete"]["destructive"] is True
+    assert methods["profile-picture"]["binary"] is True
+    assert "beta" not in methods["get"]
+    assert methods["get"]["params"][0] == {
+        "name": "user_id",
+        "in": "path",
+        "api": "userId",
+        "type": "str",
+        "schema": "UserId",
+        "required": True,
+    }
+
+    dataset = {r["name"]: r for r in datasets.SPEC["resources"]}["dataset"]
+    read_table = {m["name"]: m for m in dataset["methods"]}["read-table"]
+    assert read_table["binary"] is True
+    renamed = {p["name"]: p for p in read_table["params"]}["format"]
+    assert renamed["option"] == "--api-format"
+
+    stream = {r["name"]: r for r in streams.SPEC["resources"]}["dataset"]
+    stream = {r["name"]: r for r in stream["resources"]}["stream"]
+    assert {m["name"]: m for m in stream["methods"]}["reset"]["destructive"] is True

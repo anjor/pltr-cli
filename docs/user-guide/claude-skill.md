@@ -1,141 +1,135 @@
-# Claude Code Skill
+# The pltr agent skill (Claude Code)
 
-This repository includes a Claude Code skill that helps you work effectively with Palantir Foundry using the pltr-cli.
+The `claude_skill/` directory is a Claude Code skill that teaches an agent to
+work with Palantir Foundry through pltr: how to authenticate without a
+terminal, how to find the right command among more than 600, how to read
+pltr's JSON output and exit codes, and which rules to follow before changing
+anything. Other agents that read `SKILL.md` skills can use it too.
 
-## What is This?
+## Install
 
-The `claude_skill` directory contains a Claude Code skill that provides Claude with knowledge about the pltr-cli commands, workflows, and best practices. When you use Claude Code in this repository or install the skill, Claude will automatically recognize Foundry-related tasks and provide accurate guidance.
-
-## Installation
-
-### Option 1: Use Within This Repository
-
-The skill is automatically available when you clone this repository and use Claude Code within it.
-
-### Option 2: Install Globally
-
-To make the skill available across all your projects:
+Inside this repository Claude Code picks the skill up as is. To use it in
+every project, copy it to your personal skills directory:
 
 ```bash
-# Copy to your personal skills directory
 cp -r claude_skill ~/.claude/skills/pltr
 ```
 
-## Prerequisites
+You also need:
 
-Before using the skill, ensure you have:
+1. **pltr**, a release that has `pltr commands` (check with
+   `pltr commands --help`). An isolated install keeps the Foundry SDK at the
+   version pltr was tested with:
 
-1. **Claude Code installed** - Install via `npm install -g @anthropic-ai/claude-code` or see [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code)
-2. **pltr-cli installed**:
    ```bash
-   pip install pltr-cli
-   # or
-   pipx install pltr-cli
-   ```
-3. **Authentication configured**:
-   ```bash
-   pltr configure configure
-   pltr verify
+   uv tool install pltr-cli    # or: pipx install pltr-cli
    ```
 
-## Usage
+2. **Authentication.** Either a profile (`pltr configure configure`), or,
+   for headless agents and CI, environment variables:
 
-Simply ask Claude Code questions about Foundry tasks. The skill will automatically activate based on your request.
+   ```bash
+   export FOUNDRY_HOST="foundry.company.com"
+   export FOUNDRY_TOKEN="your-api-token"
+   pltr verify --format json
+   ```
 
-### Example Prompts
+   See the README's "Authentication" section for the precedence rules and
+   OAuth2 client credentials.
 
-**Getting Started:**
-- "How do I configure authentication for pltr?"
-- "Help me verify my Foundry connection"
+## How the agent uses it
 
-**Data Operations:**
-- "How do I query a dataset?"
-- "Download files from dataset ri.foundry.main.dataset.abc123"
-- "Execute SQL query to count rows in my table"
+The skill is built around the **command manifest**, a machine-readable
+description of every pltr command:
 
-**Orchestration:**
-- "Help me set up a daily build schedule"
-- "Show me how to monitor build jobs"
-- "Create a schedule that runs at 2 AM"
+```bash
+pltr commands search list dataset branches      # find commands, best match first
+pltr commands show dataset branches list --format json   # one command's entry
+pltr commands list --format json                # the whole manifest
+```
 
-**Permissions:**
-- "Grant viewer access to john.doe on my dataset"
-- "Set up team permissions for a new project"
-- "Audit who has access to this resource"
+A typical session:
 
-**Workflows:**
-- "Help me create an ETL pipeline script"
-- "How do I do cohort analysis with SQL?"
-- "Set up data quality monitoring"
+1. **Search** for the task: `pltr commands search download dataset file`.
+2. **Show** the best match: arguments, options, whether it's beta,
+   destructive or paged, and the SDK method it calls.
+3. **Run** it with `--format json`, read the single JSON document on stdout,
+   and use the exit code and the JSON error on stderr when it fails.
+4. For a destructive command (a delete, revoke, cancel, replace, ...), pass
+   `--yes` only when you asked for that change: without a terminal pltr
+   refuses to run it otherwise (exit code 2).
 
-## Skill Structure
+Example prompts:
+
+- "Which datasets are in the Flights project? Show their schemas."
+- "Count the rows of ri.foundry.main.dataset.… by origin with SQL."
+- "Start a build of this dataset on master and tell me when it finishes."
+- "Who has access to this project? Give Jane viewer access."
+- "Search the Aircraft objects that are ACTIVE and have more than 100 seats."
+
+## What's in it
 
 ```
 claude_skill/
-├── SKILL.md                    # Main skill file
-├── reference/                  # Command references
-│   ├── quick-start.md         # Setup and authentication
-│   ├── dataset-commands.md    # Dataset operations
-│   ├── sql-commands.md        # SQL queries
-│   ├── orchestration-commands.md  # Builds, jobs, schedules
-│   ├── ontology-commands.md   # Ontology operations
-│   ├── admin-commands.md      # User/group management
-│   ├── filesystem-commands.md # Folders, spaces, projects
-│   ├── connectivity-commands.md   # Connections, imports
-│   └── mediasets-commands.md  # Media operations
-└── workflows/                  # Common patterns
-    ├── data-analysis.md       # Analysis workflows
-    ├── data-pipeline.md       # ETL and pipelines
-    └── permission-management.md   # Access control
+├── SKILL.md            # hand-written guide, always loaded
+├── README.md
+├── workflows/          # hand-written, longer workflows
+└── reference/          # generated from the manifest
+    ├── index.md
+    ├── curated/<group>.md
+    └── api/<namespace>.md (large namespaces: api/<namespace>/<resource>.md)
 ```
 
-## How It Works
+- **`SKILL.md`** is short and hand-written: authentication (including the
+  headless environment variables and their precedence), the JSON, stdout and
+  stderr contract and the exit codes, the safety rules for destructive
+  commands and `--yes`, beta labels, RIDs, discovering commands with
+  `pltr commands`, when to use curated commands or `pltr api`, and a few
+  common workflows.
+- **`workflows/`** has longer hand-written workflows: exploring data,
+  builds and schedules, and permissions.
+- **`reference/`** is generated: one file per curated command group and per
+  `pltr api` namespace, each entry with the command's usage, description,
+  arguments, options, labels (beta, destructive, paged) and SDK method. The
+  agent loads a file only when it needs to browse a whole area; `index.md`
+  says which file covers what.
 
-Claude Code skills use on-demand loading. When you ask a question:
+## Keeping the skill current (maintainers)
 
-1. Claude reads the main `SKILL.md` file to understand the CLI
-2. Based on your task, Claude loads relevant reference files
-3. Claude provides accurate, contextual guidance
+The reference is generated from the manifest, which is read from the CLI
+itself, so it can't drift from the commands:
 
-This approach minimizes token usage while providing comprehensive knowledge.
+```bash
+uv run python scripts/generate_skill_reference.py           # regenerate
+uv run python scripts/generate_skill_reference.py --check   # verify only
+```
 
-## Customization
+Run the script after any change to commands: a converted or new command, a
+changed option or help text, or a regenerated `pltr api` tree after an SDK
+bump. It's the only step. The output is deterministic (the same on every
+OS, terminal and Python version), and `tests/test_manifest/` fails in CI
+when:
 
-You can extend the skill by:
+- the committed `reference/` differs from what the script generates, or
+- `SKILL.md`, `claude_skill/README.md`, a workflow, this page or the
+  README's "Using pltr from agents" section mentions a `pltr` command or
+  option that doesn't exist.
 
-1. **Adding reference files**: Create new `.md` files in `reference/` for additional topics
-2. **Adding workflows**: Create new `.md` files in `workflows/` for common patterns
-3. **Modifying SKILL.md**: Update the main skill file to reference new content
+Edit `SKILL.md` and the workflows by hand; never edit `reference/`.
 
 ## Troubleshooting
 
-### Skill Not Activating
+- **The skill doesn't activate.** Check that the skill directory is in
+  `~/.claude/skills/` (or that you're in this repository), and mention
+  Foundry, pltr or a RID in your request.
+- **`pltr commands` doesn't exist.** Your pltr is older than the skill:
+  upgrade it (`uv tool upgrade pltr-cli`).
+- **A command fails with exit code 3.** pltr found no usable credentials;
+  run `pltr verify` to see which source it tried.
 
-If Claude doesn't seem to use the skill:
+## Related documentation
 
-1. Verify the skill directory exists at the correct path
-2. Check that `SKILL.md` has valid YAML frontmatter
-3. Use trigger keywords like "Foundry", "pltr", "dataset", "SQL query"
-
-### Incorrect Commands
-
-If Claude suggests incorrect commands:
-
-1. The CLI may have been updated - check `pltr --help`
-2. Update the relevant reference file in `claude_skill/reference/`
-
-## Contributing
-
-To improve the skill:
-
-1. Test commands and verify they work
-2. Update reference files with correct syntax
-3. Add common patterns to workflow files
-4. Submit a PR with your improvements
-
-## Related Documentation
-
-- [Quick Start Guide](./quick-start.md) - Get started with pltr-cli
-- [Command Reference](./commands.md) - Complete command documentation
-- [Common Workflows](./workflows.md) - Real-world usage patterns
-- [Authentication Guide](./authentication.md) - Setup and security
+- [Quick Start Guide](./quick-start.md)
+- [Authentication Guide](./authentication.md)
+- [Command Reference](./commands.md)
+- [The `pltr api` commands](../api-commands.md)

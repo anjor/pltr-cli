@@ -1,388 +1,292 @@
-"""
-Tests for SQL service.
+"""Tests for SqlService against a real FoundryClient (only HTTP is faked).
+
+Every SqlQuery endpoint pltr uses is GA: passing preview= would make the SDK
+emit a UserWarning, which the module-level filter turns into a failure.
 """
 
+import io
+import json
+
+import pyarrow as pa
+import pyarrow.ipc as ipc
 import pytest
-from unittest.mock import Mock, patch
-from foundry_sdk.v2.sql_queries.models import (
-    RunningQueryStatus,
-    SucceededQueryStatus,
-    FailedQueryStatus,
-    CanceledQueryStatus,
+from foundry_sdk.v2.sql_queries.errors import QueryFailed, QueryRunning
+from foundry_sdk.v2.sql_queries.models import RunningQueryStatus, SucceededQueryStatus
+
+from pltr.contract import PltrError
+from pltr.services.sql import (
+    QueryNotSucceeded,
+    SqlService,
+    check_not_failed,
+    decode_results,
+    query_id_of,
 )
+from tests import foundry_json as fj
+from tests import foundry_json_sql as sj
 
-from pltr.services.sql import SqlService
-
-
-class TestSqlService:
-    """Test SQL service functionality."""
-
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.sql_queries = Mock()
-        client.sql_queries.SqlQuery = Mock()
-        return client
-
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create SqlService with mocked client."""
-        service = SqlService()
-        service._client = mock_client
-        return service
-
-    def test_execute_query_immediate_success(self, service, mock_client):
-        """Test executing query that succeeds immediately."""
-        # Setup
-        query_id = "test-query-123"
-        results_bytes = b'[{"name": "John", "age": 30}]'
-
-        mock_client.sql_queries.SqlQuery.execute.return_value = SucceededQueryStatus(
-            query_id=query_id, type="succeeded"
-        )
-        mock_client.sql_queries.SqlQuery.get_results.return_value = results_bytes
-
-        # Execute
-        result = service.execute_query("SELECT * FROM users", format="json")
-
-        # Assert
-        assert result["query_id"] == query_id
-        assert result["status"] == "succeeded"
-        assert result["results"] == [{"name": "John", "age": 30}]
-
-        mock_client.sql_queries.SqlQuery.execute.assert_called_once_with(
-            query="SELECT * FROM users", fallback_branch_ids=None, preview=True
-        )
-        mock_client.sql_queries.SqlQuery.get_results.assert_called_once_with(
-            query_id, preview=True
-        )
-
-    def test_execute_query_immediate_failure(self, service, mock_client):
-        """Test executing query that fails immediately."""
-        # Setup
-        error_message = "Syntax error in SQL query"
-        mock_client.sql_queries.SqlQuery.execute.return_value = FailedQueryStatus(
-            error_message=error_message, type="failed"
-        )
-
-        # Execute and assert
-        with pytest.raises(
-            RuntimeError, match="Query failed: Syntax error in SQL query"
-        ):
-            service.execute_query("SELECT * FROM nonexistent")
-
-    def test_execute_query_with_waiting(self, service, mock_client):
-        """Test executing query that requires waiting."""
-        # Setup
-        query_id = "test-query-456"
-        results_bytes = b'{"count": 42}'
-
-        # First call returns running status
-        mock_client.sql_queries.SqlQuery.execute.return_value = RunningQueryStatus(
-            query_id=query_id, type="running"
-        )
-
-        # Status checks return running then succeeded
-        mock_client.sql_queries.SqlQuery.get_status.side_effect = [
-            RunningQueryStatus(query_id=query_id, type="running"),
-            SucceededQueryStatus(query_id=query_id, type="succeeded"),
-        ]
-
-        mock_client.sql_queries.SqlQuery.get_results.return_value = results_bytes
-
-        # Execute with very short timeout to avoid long test runs
-        with patch("time.sleep"):  # Mock sleep to speed up test
-            result = service.execute_query(
-                "SELECT COUNT(*) FROM large_table", timeout=1
-            )
-
-        # Assert
-        assert result["query_id"] == query_id
-        assert result["status"] == "succeeded"
-        assert result["results"] == {"result": {"count": 42}}
-
-    def test_execute_query_timeout(self, service, mock_client):
-        """Test executing query that times out."""
-        # Setup
-        query_id = "test-query-timeout"
-        mock_client.sql_queries.SqlQuery.execute.return_value = RunningQueryStatus(
-            query_id=query_id, type="running"
-        )
-
-        # Always return running status
-        mock_client.sql_queries.SqlQuery.get_status.return_value = RunningQueryStatus(
-            query_id=query_id, type="running"
-        )
-
-        # Execute with very short timeout and mock time
-        with patch("time.time") as mock_time, patch("time.sleep"):
-            # Simulate timeout by making time progress beyond timeout
-            mock_time.side_effect = [0, 301]  # Start at 0, then jump to 301 seconds
-
-            with pytest.raises(RuntimeError, match="Query timed out after 300 seconds"):
-                service.execute_query("SELECT * FROM slow_table", timeout=300)
-
-    def test_submit_query(self, service, mock_client):
-        """Test submitting query without waiting."""
-        # Setup
-        query_id = "test-query-submit"
-        mock_client.sql_queries.SqlQuery.execute.return_value = RunningQueryStatus(
-            query_id=query_id, type="running"
-        )
-
-        # Execute
-        result = service.submit_query("SELECT * FROM users")
-
-        # Assert
-        assert result["query_id"] == query_id
-        assert result["status"] == "running"
-
-    def test_get_query_status(self, service, mock_client):
-        """Test getting query status."""
-        # Setup
-        query_id = "test-query-status"
-        mock_client.sql_queries.SqlQuery.get_status.return_value = SucceededQueryStatus(
-            query_id=query_id, type="succeeded"
-        )
-
-        # Execute
-        result = service.get_query_status(query_id)
-
-        # Assert
-        assert result["query_id"] == query_id
-        assert result["status"] == "succeeded"
-
-    def test_get_query_results_success(self, service, mock_client):
-        """Test getting results from completed query."""
-        # Setup
-        query_id = "test-query-results"
-        results_bytes = b'[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]'
-
-        mock_client.sql_queries.SqlQuery.get_status.return_value = SucceededQueryStatus(
-            query_id=query_id, type="succeeded"
-        )
-        mock_client.sql_queries.SqlQuery.get_results.return_value = results_bytes
-
-        # Execute
-        result = service.get_query_results(query_id, format="table")
-
-        # Assert
-        assert result == [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
-
-    def test_get_query_results_failed_query(self, service, mock_client):
-        """Test getting results from failed query."""
-        # Setup
-        query_id = "test-query-failed"
-        error_message = "Table not found"
-        mock_client.sql_queries.SqlQuery.get_status.return_value = FailedQueryStatus(
-            error_message=error_message, type="failed"
-        )
-
-        # Execute and assert
-        with pytest.raises(RuntimeError, match="Query failed: Table not found"):
-            service.get_query_results(query_id)
-
-    def test_get_query_results_running_query(self, service, mock_client):
-        """Test getting results from still-running query."""
-        # Setup
-        query_id = "test-query-running"
-        mock_client.sql_queries.SqlQuery.get_status.return_value = RunningQueryStatus(
-            query_id=query_id, type="running"
-        )
-
-        # Execute and assert
-        with pytest.raises(RuntimeError, match="Query is still running"):
-            service.get_query_results(query_id)
-
-    def test_cancel_query(self, service, mock_client):
-        """Test canceling a query."""
-        # Setup
-        query_id = "test-query-cancel"
-        mock_client.sql_queries.SqlQuery.get_status.return_value = CanceledQueryStatus(
-            type="canceled"
-        )
-
-        # Execute
-        result = service.cancel_query(query_id)
-
-        # Assert
-        assert result["status"] == "canceled"
-        mock_client.sql_queries.SqlQuery.cancel.assert_called_once_with(
-            query_id, preview=True
-        )
-
-    def test_wait_for_completion_success(self, service, mock_client):
-        """Test waiting for query completion."""
-        # Setup
-        query_id = "test-query-wait"
-
-        # Return running, then succeeded
-        mock_client.sql_queries.SqlQuery.get_status.side_effect = [
-            RunningQueryStatus(query_id=query_id, type="running"),
-            SucceededQueryStatus(query_id=query_id, type="succeeded"),
-        ]
-
-        # Execute with mocked sleep
-        with patch("time.sleep"):
-            result = service.wait_for_completion(query_id, timeout=60)
-
-        # Assert
-        assert result["query_id"] == query_id
-        assert result["status"] == "succeeded"
-
-    def test_wait_for_completion_failure(self, service, mock_client):
-        """Test waiting for query that fails."""
-        # Setup
-        query_id = "test-query-wait-fail"
-        error_message = "Query execution failed"
-
-        mock_client.sql_queries.SqlQuery.get_status.return_value = FailedQueryStatus(
-            error_message=error_message, type="failed"
-        )
-
-        # Execute and assert
-        with pytest.raises(RuntimeError, match="Query failed: Query execution failed"):
-            service.wait_for_completion(query_id, timeout=60)
-
-    def test_format_query_results_json(self, service):
-        """Test formatting query results as JSON."""
-        results_bytes = b'{"users": [{"name": "Alice"}, {"name": "Bob"}]}'
-
-        result = service._format_query_results(results_bytes, "json")
-
-        assert result == {"users": [{"name": "Alice"}, {"name": "Bob"}]}
-
-    def test_format_query_results_table(self, service):
-        """Test formatting query results as table data."""
-        results_bytes = b'[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]'
-
-        result = service._format_query_results(results_bytes, "table")
-
-        assert result == [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
-
-    def test_format_query_results_raw(self, service):
-        """Test formatting query results as raw bytes."""
-        results_bytes = b"raw binary data"
-
-        result = service._format_query_results(results_bytes, "raw")
-
-        assert result == results_bytes
-
-    def test_format_query_results_text(self, service):
-        """Test formatting text query results."""
-        results_bytes = b"Simple text result"
-
-        result = service._format_query_results(results_bytes, "table")
-
-        assert result == {"result": "Simple text result"}
-
-    def test_format_query_results_binary(self, service):
-        """Test formatting binary query results."""
-        # Use actual binary data that will cause UnicodeDecodeError
-        results_bytes = (
-            b"\xff\xfe\xfd\x00\x01\x02"  # Binary data that can't be decoded as UTF-8
-        )
-
-        result = service._format_query_results(results_bytes, "json")
-
-        assert result["type"] == "binary"
-        assert result["size_bytes"] == 6
-        assert "data" in result
-
-    def test_format_query_results_invalid_json(self, service):
-        """Test formatting invalid JSON as text."""
-        results_bytes = b"not valid json {"
-
-        result = service._format_query_results(results_bytes, "json")
-
-        assert result == {"text": "not valid json {"}
-
-    def test_format_query_results_arrow_ipc(self, service):
-        """Foundry SQL returns Arrow IPC stream bytes; decode into row dicts."""
-        import io
-
-        import pyarrow as pa
-        import pyarrow.ipc as ipc
-
-        table = pa.table({"n": [1, 2], "msg": ["hi", "there"]})
-        buf = io.BytesIO()
-        with ipc.new_stream(buf, table.schema) as writer:
-            writer.write_table(table)
-        arrow_bytes = buf.getvalue()
-        # Sanity: starts with Arrow IPC continuation marker.
-        assert arrow_bytes[:4] == b"\xff\xff\xff\xff"
-
-        result = service._format_query_results(arrow_bytes, "json")
-        assert result == [{"n": 1, "msg": "hi"}, {"n": 2, "msg": "there"}]
-
-        # Table format also yields list-of-dicts (formatter tabulates it).
-        result_table = service._format_query_results(arrow_bytes, "table")
-        assert result_table == [{"n": 1, "msg": "hi"}, {"n": 2, "msg": "there"}]
-
-    def test_format_query_results_arrow_decode_failure(self, service):
-        """If bytes start with the Arrow marker but are malformed, surface error."""
-        # Marker + trailing garbage -> pyarrow will raise during open_stream.
-        malformed = b"\xff\xff\xff\xff" + b"garbage"
-
-        result = service._format_query_results(malformed, "json")
-
-        assert result["type"] == "binary"
-        assert result["size_bytes"] == len(malformed)
-        assert "decode_error" in result
-
-    def test_execute_query_with_fallback_branches(self, service, mock_client):
-        """Test executing query with fallback branch IDs."""
-        # Setup
-        query_id = "test-query-branches"
-        fallback_branches = ["branch1", "branch2"]
-        results_bytes = b'{"result": "success"}'
-
-        mock_client.sql_queries.SqlQuery.execute.return_value = SucceededQueryStatus(
-            query_id=query_id, type="succeeded"
-        )
-        mock_client.sql_queries.SqlQuery.get_results.return_value = results_bytes
-
-        # Execute
-        result = service.execute_query(
-            "SELECT * FROM table", fallback_branch_ids=fallback_branches, format="json"
-        )
-
-        # Assert
-        mock_client.sql_queries.SqlQuery.execute.assert_called_once_with(
-            query="SELECT * FROM table",
-            fallback_branch_ids=fallback_branches,
-            preview=True,
-        )
-        assert result["results"] == {"result": "success"}
-
-    def test_service_error_handling(self, service, mock_client):
-        """Test service handles SDK errors properly."""
-        # Setup
-        mock_client.sql_queries.SqlQuery.execute.side_effect = Exception("SDK Error")
-
-        # Execute and assert
-        with pytest.raises(RuntimeError, match="Failed to execute query: SDK Error"):
-            service.execute_query("SELECT 1")
-
-    def test_format_query_status_types(self, service):
-        """Test formatting different query status types."""
-        # Test running status
-        running_status = RunningQueryStatus(query_id="123", type="running")
-        result = service._format_query_status(running_status)
-        assert result == {"status": "running", "query_id": "123"}
-
-        # Test succeeded status
-        succeeded_status = SucceededQueryStatus(query_id="456", type="succeeded")
-        result = service._format_query_status(succeeded_status)
-        assert result == {"status": "succeeded", "query_id": "456"}
-
-        # Test failed status
-        failed_status = FailedQueryStatus(error_message="Error", type="failed")
-        result = service._format_query_status(failed_status)
-        assert result == {"status": "failed", "error_message": "Error"}
-
-        # Test canceled status
-        canceled_status = CanceledQueryStatus(type="canceled")
-        result = service._format_query_status(canceled_status)
-        assert result == {"status": "canceled"}
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+BASE = "/api/v2/sqlQueries"
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Record the waits instead of sleeping."""
+    sleeps = []
+    monkeypatch.setattr("time.sleep", sleeps.append)
+    return sleeps
+
+
+def raw_path(request) -> str:
+    return request.url.raw_path.decode().split("?")[0]
+
+
+# ------------------------------------------------------------------ submit
+
+
+def test_submit_query_posts_query_and_fallback_branches(stub_foundry_http):
+    stub_foundry_http.respond(json=sj.running())
+
+    status = SqlService().submit_query(sj.QUERY, fallback_branch_ids=["dev", "master"])
+
+    assert isinstance(status, RunningQueryStatus)
+    assert status.query_id == sj.QUERY_ID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{BASE}/execute")
+    assert dict(request.url.params) == {}  # GA: no preview
+    assert json.loads(request.content) == {
+        "query": sj.QUERY,
+        "fallbackBranchIds": ["dev", "master"],
+    }
+
+
+def test_submit_query_leaves_out_unset_fields(stub_foundry_http):
+    stub_foundry_http.respond(json=sj.succeeded())
+
+    status = SqlService().submit_query(sj.QUERY)
+
+    assert isinstance(status, SucceededQueryStatus)
+    assert json.loads(stub_foundry_http.requests[0].content) == {"query": sj.QUERY}
+
+
+# ------------------------------------------------------------ status/cancel
+
+
+def test_get_query_status_encodes_the_query_id(stub_foundry_http):
+    stub_foundry_http.respond(json=sj.failed("boom"))
+
+    status = SqlService().get_query_status(sj.QUERY_ID)
+
+    assert (status.type, status.error_message) == ("failed", "boom")
+    [request] = stub_foundry_http.requests
+    assert request.method == "GET"
+    assert raw_path(request) == f"{BASE}/{sj.QUERY_ID_IN_PATH}/getStatus"
+    assert "preview" not in request.url.params
+
+
+def test_cancel_query(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    assert SqlService().cancel_query(sj.QUERY_ID) is None
+
+    [request] = stub_foundry_http.requests
+    assert request.method == "POST"
+    assert raw_path(request) == f"{BASE}/{sj.QUERY_ID_IN_PATH}/cancel"
+    assert "preview" not in request.url.params
+
+
+# ----------------------------------------------------------------- results
+
+
+def test_get_query_results_decodes_arrow(stub_foundry_http):
+    stub_foundry_http.respond(**sj.results())
+
+    table = SqlService().get_query_results(sj.QUERY_ID)
+
+    assert table.to_pylist() == [{"n": 1, "msg": "hi"}, {"n": 2, "msg": "there"}]
+    [request] = stub_foundry_http.requests
+    assert request.method == "GET"
+    assert raw_path(request) == f"{BASE}/{sj.QUERY_ID_IN_PATH}/getResults"
+    assert request.headers["Accept"] == "application/octet-stream"
+
+
+def test_get_query_results_empty_body_is_an_empty_table(stub_foundry_http):
+    stub_foundry_http.respond(content=b"")
+
+    table = SqlService().get_query_results(sj.QUERY_ID)
+
+    assert (table.num_rows, table.column_names) == (0, [])
+
+
+def test_get_query_results_of_a_failed_query_raises_the_sdk_error(stub_foundry_http):
+    stub_foundry_http.respond(
+        500,
+        json=fj.error(
+            "QueryFailed", "INTERNAL", parameters={"errorMessage": "Out of memory"}
+        ),
+    )
+
+    with pytest.raises(QueryFailed) as caught:
+        SqlService().get_query_results(sj.QUERY_ID)
+
+    assert caught.value.parameters["errorMessage"] == "Out of memory"
+
+
+def test_get_query_results_of_a_running_query_raises_query_running(
+    stub_foundry_http,
+):
+    stub_foundry_http.respond(
+        400, json=fj.error("QueryRunning", "INVALID_ARGUMENT", parameters={})
+    )
+
+    with pytest.raises(QueryRunning):
+        SqlService().get_query_results(sj.QUERY_ID)
+
+
+# ------------------------------------------------------------ decode_results
+
+
+def test_decode_results_arrow_stream_keeps_types_and_nulls():
+    source = pa.table({"n": pa.array([1, None], pa.int64()), "s": ["a", None]})
+
+    table = decode_results(sj.arrow_stream(source))
+
+    assert table.equals(source)
+
+
+def test_decode_results_arrow_file():
+    source = pa.table({"n": [1, 2]})
+    buffer = io.BytesIO()
+    with ipc.new_file(buffer, source.schema) as writer:
+        writer.write_table(source)
+
+    assert decode_results(buffer.getvalue()).to_pylist() == [{"n": 1}, {"n": 2}]
+
+
+def test_decode_results_csv_serialization():
+    table = decode_results(b"name,count\nAlice,10\nBob,20\n")
+
+    assert table.to_pylist() == [
+        {"name": "Alice", "count": 10},
+        {"name": "Bob", "count": 20},
+    ]
+
+
+@pytest.mark.parametrize("data", [None, b""])
+def test_decode_results_nothing(data):
+    assert decode_results(data).num_rows == 0
+
+
+def test_decode_results_malformed_arrow_raises():
+    with pytest.raises(PltrError, match="Could not decode the query results"):
+        decode_results(b"\xff\xff\xff\xffgarbage")
+
+
+# ---------------------------------------------------------------- statuses
+
+
+def test_query_id_of_and_check_not_failed():
+    running = RunningQueryStatus(queryId="q1", type="running")
+    assert query_id_of(running) == "q1"
+    assert check_not_failed(running) is running
+
+
+@pytest.mark.parametrize(
+    "body, message",
+    [
+        (sj.failed("syntax error"), "Query q1 failed: syntax error"),
+        (sj.canceled(), "Query q1 was canceled."),
+    ],
+)
+def test_wait_for_query_fails_for_failed_or_canceled(
+    stub_foundry_http, no_sleep, body, message
+):
+    stub_foundry_http.respond(json=body)
+
+    with pytest.raises(QueryNotSucceeded) as caught:
+        SqlService().wait_for_query("q1", timeout=60)
+
+    assert caught.value.message == message
+    assert caught.value.exit_code == 7
+
+
+def test_wait_for_query_polls_until_succeeded(stub_foundry_http, no_sleep):
+    stub_foundry_http.respond(json=sj.running())
+    stub_foundry_http.respond(json=sj.running())
+    stub_foundry_http.respond(json=sj.succeeded())
+
+    status = SqlService().wait_for_query(sj.QUERY_ID, timeout=60)
+
+    assert isinstance(status, SucceededQueryStatus)
+    assert len(stub_foundry_http.requests) == 3
+    assert no_sleep == [2.0, 2.0]
+
+
+def test_wait_for_query_uses_a_known_status_first(stub_foundry_http, no_sleep):
+    status = SqlService().wait_for_query(
+        "q1", timeout=60, status=SucceededQueryStatus(queryId="q1", type="succeeded")
+    )
+
+    assert status.query_id == "q1"
+    assert stub_foundry_http.requests == []
+
+
+def test_wait_for_query_times_out(stub_foundry_http, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr("time.monotonic", lambda: clock[0])
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    monkeypatch.setattr("time.sleep", sleep)
+    stub_foundry_http.respond_always(json=sj.running())
+
+    with pytest.raises(PltrError) as caught:
+        SqlService().wait_for_query(sj.QUERY_ID, timeout=5)
+
+    error = caught.value
+    assert (error.error_type, error.exit_code) == ("timeout", 7)
+    assert "still running after 5 seconds" in error.message
+    assert f"pltr sql cancel {sj.QUERY_ID}" in error.hint
+    # polled at t=0, 2, 4 and 5 (the last sleep is cut to the deadline)
+    assert len(stub_foundry_http.requests) == 4
+
+
+# ----------------------------------------------------------------- execute
+
+
+def test_execute_query_runs_waits_and_fetches_results(stub_foundry_http, no_sleep):
+    stub_foundry_http.respond(json=sj.running())
+    stub_foundry_http.respond(json=sj.succeeded())
+    stub_foundry_http.respond(**sj.results())
+
+    query_id, table = SqlService().execute_query(sj.QUERY, timeout=60)
+
+    assert query_id == sj.QUERY_ID
+    assert table.num_rows == 2
+    assert [
+        (r.method, r.url.path.rsplit("/", 1)[-1]) for r in stub_foundry_http.requests
+    ] == [
+        ("POST", "execute"),
+        ("GET", "getStatus"),
+        ("GET", "getResults"),
+    ]
+
+
+def test_execute_query_that_succeeds_at_once_skips_polling(stub_foundry_http):
+    stub_foundry_http.respond(json=sj.succeeded())
+    stub_foundry_http.respond(**sj.results())
+
+    query_id, table = SqlService().execute_query(sj.QUERY)
+
+    assert (query_id, table.num_rows) == (sj.QUERY_ID, 2)
+    assert len(stub_foundry_http.requests) == 2
+
+
+def test_execute_query_that_fails_at_once(stub_foundry_http):
+    stub_foundry_http.respond(json=sj.failed("Table not found"))
+
+    with pytest.raises(QueryNotSucceeded, match="The query failed: Table not found"):
+        SqlService().execute_query(sj.QUERY)
+
+    assert len(stub_foundry_http.requests) == 1

@@ -4,6 +4,7 @@ Tests for profile management.
 
 import pytest
 from pltr.config.profiles import ProfileManager
+from pltr.config.settings import Settings
 
 
 class TestProfileManager:
@@ -150,7 +151,12 @@ class TestProfileManager:
             assert manager.get_active_profile() == "env_profile"
 
     def test_get_active_profile_env_nonexistent(self, mock_profile_manager):
-        """Test environment profile that doesn't exist falls back to default."""
+        """PLTR_PROFILE naming a missing profile is not silently replaced.
+
+        Falling back to the default profile would run commands against a
+        different profile than the one requested; commands now fail with
+        "profile not found" instead (see tests/test_auth/test_headless_auth.py).
+        """
 
         manager = mock_profile_manager
         manager.add_profile("default_profile")
@@ -159,8 +165,35 @@ class TestProfileManager:
         with pytest.MonkeyPatch.context() as m:
             m.setenv("PLTR_PROFILE", "nonexistent_profile")
 
-            # Should fall back to default since env profile doesn't exist
+            assert manager.get_active_profile() == "nonexistent_profile"
+
+    def test_get_active_profile_ignores_empty_env(self, mock_profile_manager):
+        """An empty PLTR_PROFILE counts as unset."""
+        manager = mock_profile_manager
+        manager.add_profile("default_profile")
+        manager.set_default("default_profile")
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setenv("PLTR_PROFILE", "  ")
+
             assert manager.get_active_profile() == "default_profile"
+
+    def test_reading_profiles_does_not_create_the_config_dir(self, temp_config_dir):
+        """Reading never creates the config dir (read-only or missing HOME)."""
+        config_dir = temp_config_dir / "missing"
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(Settings, "_get_config_dir", lambda self: config_dir)
+            m.delenv("PLTR_PROFILE", raising=False)
+            manager = ProfileManager()
+
+            assert manager.get_active_profile() is None
+            assert manager.list_profiles() == []
+            assert not config_dir.exists()
+
+            manager.add_profile("first")
+
+            assert (config_dir / "profiles.json").exists()
 
     def test_get_active_profile_no_default_no_env(self, mock_profile_manager):
         """Test getting active profile when no default or env is set."""

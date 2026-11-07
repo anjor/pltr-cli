@@ -1,388 +1,197 @@
 """
-SQL service wrapper for Foundry SDK SQL queries.
-Provides a high-level interface for executing SQL queries against Foundry datasets.
+SQL service wrapper for Foundry SQL queries (``client.sql_queries.SqlQuery``).
+
+The endpoints pltr uses (``execute``, ``get_status``, ``get_results`` and
+``cancel``) are GA, so they are called without ``preview``. Methods return
+SDK models unchanged and let SDK exceptions propagate so the error layer can
+classify them. Query results are decoded into a ``pyarrow.Table``: the API
+serializes them as an Apache Arrow IPC stream unless the query was executed
+with ``serializationFormat`` CSV.
 """
 
 import time
-from typing import Any, Dict, List, Optional, Union
-import json
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-from foundry_sdk.v2.sql_queries.models import (
-    RunningQueryStatus,
-    SucceededQueryStatus,
-    FailedQueryStatus,
-    CanceledQueryStatus,
-)
-
+from ..contract import ExitCode, PltrError
 from .base import BaseService
+
+if TYPE_CHECKING:
+    import pyarrow
+
+#: Seconds between status checks while waiting for a query to finish.
+POLL_INTERVAL = 2.0
+
+#: First bytes of an Arrow IPC stream (the continuation marker) and file.
+_ARROW_STREAM_MARKER = b"\xff\xff\xff\xff"
+_ARROW_FILE_MAGIC = b"ARROW1"
+
+
+class QueryNotSucceeded(PltrError):
+    """A query finished without results: it failed or was canceled.
+
+    Exit code 7, like the API's own ``QueryFailed`` error for the same state.
+    """
+
+    error_type = "api_error"
+    exit_code = ExitCode.API
+
+
+def query_id_of(status: Any) -> Optional[str]:
+    """The query ID in a ``QueryStatus`` (failed/canceled statuses have none)."""
+    from foundry_sdk.v2.sql_queries.models import (
+        RunningQueryStatus,
+        SucceededQueryStatus,
+    )
+
+    if isinstance(status, (RunningQueryStatus, SucceededQueryStatus)):
+        return status.query_id
+    return None
+
+
+def check_not_failed(status: Any, query_id: Optional[str] = None) -> Any:
+    """Return ``status`` unless the query failed or was canceled.
+
+    Raises:
+        QueryNotSucceeded: for a ``FailedQueryStatus`` (with the API's error
+            message) or a ``CanceledQueryStatus``.
+    """
+    from foundry_sdk.v2.sql_queries.models import (
+        CanceledQueryStatus,
+        FailedQueryStatus,
+    )
+
+    label = f"Query {query_id}" if query_id else "The query"
+    if isinstance(status, FailedQueryStatus):
+        raise QueryNotSucceeded(f"{label} failed: {status.error_message}")
+    if isinstance(status, CanceledQueryStatus):
+        raise QueryNotSucceeded(f"{label} was canceled.")
+    return status
+
+
+def decode_results(data: Optional[bytes]) -> "pyarrow.Table":
+    """Decode the bytes of ``SqlQuery.get_results`` into a ``pyarrow.Table``.
+
+    Handles an Arrow IPC stream (the API's default), an Arrow IPC file and
+    CSV (``serializationFormat`` CSV). An empty response is an empty table.
+
+    Raises:
+        PltrError: if the bytes can't be decoded.
+    """
+    import pyarrow as pa
+    import pyarrow.csv as pa_csv
+    import pyarrow.ipc as pa_ipc
+
+    if not data:
+        return pa.table({})
+    buffer = pa.py_buffer(data)
+    head = bytes(data[:8])
+    try:
+        if head.startswith(_ARROW_STREAM_MARKER):
+            return pa_ipc.open_stream(buffer).read_all()
+        if head.startswith(_ARROW_FILE_MAGIC):
+            return pa_ipc.open_file(buffer).read_all()
+        return pa_csv.read_csv(pa.BufferReader(buffer))
+    except (pa.ArrowException, ValueError) as exc:
+        raise PltrError(
+            f"Could not decode the query results ({len(data)} bytes): {exc}"
+        ) from exc
 
 
 class SqlService(BaseService):
-    """Service wrapper for Foundry SQL query operations."""
+    """Service wrapper for Foundry SQL queries (``client.sql_queries``)."""
 
     def _get_service(self) -> Any:
-        """Get the Foundry SQL queries service."""
+        """Get the Foundry SQL query client."""
         return self.client.sql_queries.SqlQuery
+
+    def submit_query(
+        self, query: str, *, fallback_branch_ids: Optional[List[str]] = None
+    ) -> Any:
+        """Start a query (``SqlQuery.execute``, GA); returns its ``QueryStatus``.
+
+        The status is ``RunningQueryStatus`` or ``SucceededQueryStatus`` (both
+        carry the query ID), or ``FailedQueryStatus``/``CanceledQueryStatus``.
+        """
+        return self.service.execute(
+            query=query, fallback_branch_ids=fallback_branch_ids
+        )
+
+    def get_query_status(self, query_id: str) -> Any:
+        """Get a query's ``QueryStatus`` (``SqlQuery.get_status``, GA)."""
+        return self.service.get_status(query_id)
+
+    def cancel_query(self, query_id: str) -> None:
+        """Cancel a query (``SqlQuery.cancel``, GA); a no-op if it has finished."""
+        self.service.cancel(query_id)
+
+    def get_query_results(self, query_id: str) -> "pyarrow.Table":
+        """Get a finished query's results (``SqlQuery.get_results``, GA).
+
+        The API long-polls: while the query is still running the request waits
+        up to a minute, then fails with ``QueryRunning``. A failed or canceled
+        query fails with ``QueryFailed``/``QueryCanceled``.
+        """
+        return decode_results(self.service.get_results(query_id))
+
+    def wait_for_query(
+        self, query_id: str, *, timeout: float, status: Any = None
+    ) -> Any:
+        """Poll ``SqlQuery.get_status`` (GA) until the query has finished.
+
+        Args:
+            query_id: The query to wait for.
+            timeout: Seconds to wait while the query is running.
+            status: The query's current status, if already known (saves one
+                ``get_status`` call).
+
+        Returns:
+            The ``SucceededQueryStatus``.
+
+        Raises:
+            QueryNotSucceeded: the query failed or was canceled.
+            PltrError: (``timeout``, exit code 7) the query was still running
+                after ``timeout`` seconds; it keeps running.
+        """
+        from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
+
+        deadline = time.monotonic() + timeout
+        if status is None:
+            status = self.service.get_status(query_id)
+        while isinstance(status, RunningQueryStatus):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PltrError(
+                    f"Query {query_id} is still running after {timeout:g} seconds.",
+                    error_type="timeout",
+                    exit_code=ExitCode.API,
+                    hint=(
+                        f"It keeps running: wait again with 'pltr sql wait {query_id}', "
+                        f"or stop it with 'pltr sql cancel {query_id}'."
+                    ),
+                )
+            time.sleep(min(POLL_INTERVAL, remaining))
+            status = self.service.get_status(query_id)
+        return check_not_failed(status, query_id)
 
     def execute_query(
         self,
         query: str,
+        *,
         fallback_branch_ids: Optional[List[str]] = None,
-        timeout: int = 300,
-        format: str = "table",
-        preview: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Execute a SQL query and wait for completion.
+        timeout: float = 300,
+    ) -> Tuple[str, "pyarrow.Table"]:
+        """Run a query, wait for it and return ``(query ID, results table)``.
 
-        Args:
-            query: SQL query string
-            fallback_branch_ids: Optional list of branch IDs for fallback
-            timeout: Maximum time to wait for query completion (seconds)
-            format: Output format for results ('table', 'json', 'raw')
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing query results and metadata
+        Calls ``SqlQuery.execute``, then ``get_status`` while the query runs,
+        then ``get_results`` (all GA).
 
         Raises:
-            RuntimeError: If query execution fails or times out
+            QueryNotSucceeded: the query failed or was canceled.
+            PltrError: (``timeout``) the query didn't finish within ``timeout``.
         """
-        try:
-            # Submit the query
-            status = self.service.execute(
-                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
-            )
-
-            # If the query completed immediately
-            if isinstance(status, SucceededQueryStatus):
-                return self._format_completed_query(
-                    status.query_id, format, preview=preview
-                )
-            elif isinstance(status, FailedQueryStatus):
-                raise RuntimeError(f"Query failed: {status.error_message}")
-            elif isinstance(status, CanceledQueryStatus):
-                raise RuntimeError("Query was canceled")
-            elif isinstance(status, RunningQueryStatus):
-                # Wait for completion
-                return self._wait_for_query_completion(
-                    status.query_id, timeout, format, preview=preview
-                )
-            else:
-                raise RuntimeError(f"Unknown query status type: {type(status)}")
-
-        except Exception as e:
-            if isinstance(e, RuntimeError):
-                raise
-            raise RuntimeError(f"Failed to execute query: {e}")
-
-    def submit_query(
-        self,
-        query: str,
-        fallback_branch_ids: Optional[List[str]] = None,
-        preview: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Submit a SQL query without waiting for completion.
-
-        Args:
-            query: SQL query string
-            fallback_branch_ids: Optional list of branch IDs for fallback
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing query ID and initial status
-
-        Raises:
-            RuntimeError: If query submission fails
-        """
-        try:
-            status = self.service.execute(
-                query=query, fallback_branch_ids=fallback_branch_ids, preview=preview
-            )
-            return self._format_query_status(status)
-        except Exception as e:
-            raise RuntimeError(f"Failed to submit query: {e}")
-
-    def get_query_status(self, query_id: str, preview: bool = True) -> Dict[str, Any]:
-        """
-        Get the status of a submitted query.
-
-        Args:
-            query_id: Query identifier
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing query status information
-
-        Raises:
-            RuntimeError: If status check fails
-        """
-        try:
-            status = self.service.get_status(query_id, preview=preview)
-            return self._format_query_status(status)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get query status: {e}")
-
-    def get_query_results(
-        self, query_id: str, format: str = "table", preview: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Get the results of a completed query.
-
-        Args:
-            query_id: Query identifier
-            format: Output format ('table', 'json', 'raw')
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing query results
-
-        Raises:
-            RuntimeError: If results retrieval fails
-        """
-        try:
-            # First check if the query has completed successfully
-            status = self.service.get_status(query_id, preview=preview)
-            if not isinstance(status, SucceededQueryStatus):
-                status_info = self._format_query_status(status)
-                if isinstance(status, FailedQueryStatus):
-                    raise RuntimeError(f"Query failed: {status.error_message}")
-                elif isinstance(status, CanceledQueryStatus):
-                    raise RuntimeError("Query was canceled")
-                elif isinstance(status, RunningQueryStatus):
-                    raise RuntimeError("Query is still running")
-                else:
-                    raise RuntimeError(f"Query status: {status_info['status']}")
-
-            # Get the results
-            results_bytes = self.service.get_results(query_id, preview=preview)
-            return self._format_query_results(results_bytes, format)
-
-        except Exception as e:
-            if isinstance(e, RuntimeError):
-                raise
-            raise RuntimeError(f"Failed to get query results: {e}")
-
-    def cancel_query(self, query_id: str, preview: bool = True) -> Dict[str, Any]:
-        """
-        Cancel a running query.
-
-        Args:
-            query_id: Query identifier
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing cancellation status
-
-        Raises:
-            RuntimeError: If cancellation fails
-        """
-        try:
-            self.service.cancel(query_id, preview=preview)
-            # Get updated status after cancellation
-            status = self.service.get_status(query_id, preview=preview)
-            return self._format_query_status(status)
-        except Exception as e:
-            raise RuntimeError(f"Failed to cancel query: {e}")
-
-    def wait_for_completion(
-        self,
-        query_id: str,
-        timeout: int = 300,
-        poll_interval: int = 2,
-        preview: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Wait for a query to complete.
-
-        Args:
-            query_id: Query identifier
-            timeout: Maximum time to wait (seconds)
-            poll_interval: Time between status checks (seconds)
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary containing final query status
-
-        Raises:
-            RuntimeError: If query fails or times out
-        """
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            try:
-                status = self.service.get_status(query_id, preview=preview)
-
-                if isinstance(status, SucceededQueryStatus):
-                    return self._format_query_status(status)
-                elif isinstance(status, FailedQueryStatus):
-                    raise RuntimeError(f"Query failed: {status.error_message}")
-                elif isinstance(status, CanceledQueryStatus):
-                    raise RuntimeError("Query was canceled")
-                elif isinstance(status, RunningQueryStatus):
-                    # Still running, continue waiting
-                    time.sleep(poll_interval)
-                    continue
-                else:
-                    raise RuntimeError(f"Unknown status type: {type(status)}")
-
-            except Exception as e:
-                if isinstance(e, RuntimeError):
-                    raise
-                raise RuntimeError(f"Error checking query status: {e}")
-
-        # Timeout reached
-        raise RuntimeError(f"Query timed out after {timeout} seconds")
-
-    def _wait_for_query_completion(
-        self, query_id: str, timeout: int, format: str, preview: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Wait for query completion and return formatted results.
-
-        Args:
-            query_id: Query identifier
-            timeout: Maximum wait time
-            format: Result format
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Dictionary with query results
-        """
-        # Wait for completion
-        self.wait_for_completion(query_id, timeout, preview=preview)
-
-        # Get results
-        return self._format_completed_query(query_id, format, preview=preview)
-
-    def _format_completed_query(
-        self, query_id: str, format: str, preview: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Format a completed query's results.
-
-        Args:
-            query_id: Query identifier
-            format: Result format
-            preview: Enable preview mode (required for SQL API, defaults to True)
-
-        Returns:
-            Formatted query results
-        """
-        results_bytes = self.service.get_results(query_id, preview=preview)
-        results = self._format_query_results(results_bytes, format)
-
-        return {
-            "query_id": query_id,
-            "status": "succeeded",
-            "results": results,
-        }
-
-    def _format_query_status(
-        self,
-        status: Union[
-            RunningQueryStatus,
-            SucceededQueryStatus,
-            FailedQueryStatus,
-            CanceledQueryStatus,
-        ],
-    ) -> Dict[str, Any]:
-        """
-        Format query status for consistent output.
-
-        Args:
-            status: Query status object
-
-        Returns:
-            Formatted status dictionary
-        """
-        base_info: Dict[str, Any] = {"status": status.type}
-
-        if isinstance(status, (RunningQueryStatus, SucceededQueryStatus)):
-            base_info["query_id"] = status.query_id
-        elif isinstance(status, FailedQueryStatus):
-            base_info["error_message"] = status.error_message
-
-        return base_info
-
-    def _format_query_results(self, results_bytes: bytes, format: str) -> Any:
-        """
-        Format query results based on the requested format.
-
-        Args:
-            results_bytes: Raw results from the API
-            format: Desired output format
-
-        Returns:
-            Formatted results
-        """
-        if format == "raw":
-            return results_bytes
-
-        # Foundry's SQL endpoint returns Arrow IPC stream format
-        # (starts with the 0xffffffff continuation marker). Decode into rows
-        # before falling back to text handling — otherwise callers only get
-        # a truncated hex dump and the query results are effectively lost.
-        if len(results_bytes) >= 4 and results_bytes[:4] == b"\xff\xff\xff\xff":
-            try:
-                import io as _io
-
-                import pyarrow.ipc as _ipc
-
-                reader = _ipc.open_stream(_io.BytesIO(results_bytes))
-                table = reader.read_all()
-                # list-of-dicts is ideal for both JSON and table formatting
-                return table.to_pylist()
-            except Exception as e:
-                return {
-                    "type": "binary",
-                    "size_bytes": len(results_bytes),
-                    "decode_error": f"Failed to decode Arrow IPC: {e}",
-                    "data": results_bytes.hex()[:200] + "..."
-                    if len(results_bytes) > 100
-                    else results_bytes.hex(),
-                }
-
-        # Try to decode as text (non-Arrow responses, if any)
-        try:
-            results_text = results_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            # If it's binary data that isn't Arrow IPC, return hex summary
-            return {
-                "type": "binary",
-                "size_bytes": len(results_bytes),
-                "data": results_bytes.hex()[:200] + "..."
-                if len(results_bytes) > 100
-                else results_bytes.hex(),
-            }
-
-        if format == "json":
-            try:
-                # Try to parse as JSON
-                return json.loads(results_text)
-            except json.JSONDecodeError:
-                # Return as text if not valid JSON
-                return {"text": results_text}
-
-        elif format == "table":
-            # For table format, we'll return structured data
-            # that the formatter can convert to a table
-            try:
-                # Try parsing as JSON first for structured data
-                data = json.loads(results_text)
-                if isinstance(data, list) and data and isinstance(data[0], dict):
-                    # List of dictionaries - perfect for table format
-                    return data
-                else:
-                    return {"result": data}
-            except json.JSONDecodeError:
-                # Return as text data
-                lines = results_text.strip().split("\n")
-                if len(lines) == 1:
-                    return {"result": lines[0]}
-                else:
-                    return {"results": lines}
-
-        # Default: return as text
-        return {"text": results_text}
+        status = self.submit_query(query, fallback_branch_ids=fallback_branch_ids)
+        query_id = query_id_of(check_not_failed(status))
+        if query_id is None:  # not a status type this SDK version knows
+            raise PltrError(f"Unexpected query status: {status!r}")
+        self.wait_for_query(query_id, timeout=timeout, status=status)
+        return query_id, self.get_query_results(query_id)

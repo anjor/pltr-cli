@@ -1,315 +1,193 @@
 """
-Folder management commands for Foundry filesystem.
+Folder commands (Foundry filesystem API).
 """
 
-import typer
-from typing import Optional, List
-from rich.console import Console
-from rich.table import Table
+from typing import List, Optional
 
-from ..services.folder import FolderService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    AllPagesOption,
+    Columns,
+    FormatOption,
+    MaxPagesOption,
+    OutputOption,
+    PageSizeOption,
+    PageTokenOption,
+    ProfileOption,
+    collect_pages,
+    emit,
+    pltr_command,
+    profile_option,
+    spinner,
+    success,
 )
+from ..services.folder import MAX_BATCH_SIZE, FolderService
+from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
-console = Console()
-formatter = OutputFormatter(console)
+
+#: Table/CSV columns for a ``Folder`` model.
+FOLDER_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Path": "path",
+    "Description": "description",
+    "Parent Folder": "parent_folder_rid",
+    "Project": "project_rid",
+    "Space": "space_rid",
+    "Trash Status": "trash_status",
+    "Created": "created_time",
+    "Created By": "created_by",
+    "Updated": "updated_time",
+    "Updated By": "updated_by",
+}
+
+#: Table/CSV columns for the ``Resource`` models returned by ``folder list``.
+CHILD_COLUMNS: Columns = {
+    "Type": "type",
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Updated": "updated_time",
+}
+
+#: Table/CSV columns for ``folder batch-get`` (one row per ``Folder``).
+BATCH_COLUMNS: Columns = {
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Path": "path",
+    "Parent Folder": "parent_folder_rid",
+}
+
+FolderRid = Annotated[
+    str,
+    typer.Argument(
+        help="Folder RID (ri.compass.main.folder.<id>).", autocompletion=complete_rid
+    ),
+]
 
 
 @app.command("create")
+@pltr_command(sdk="filesystem.Folder.create")
 def create_folder(
-    name: str = typer.Argument(..., help="Folder display name"),
-    parent_folder: str = typer.Option(
-        ...,
-        "--parent-folder",
-        "-p",
-        help="Parent folder RID. Use 'pltr space list' to find your space RID.",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    name: Annotated[str, typer.Argument(help="Display name of the new folder.")],
+    parent_folder: Annotated[
+        str,
+        typer.Option(
+            "--parent-folder",
+            "-p",
+            help=(
+                "RID of the project or folder to create the folder in. Folders "
+                "can only be created inside a project; find one with "
+                "'pltr project list'."
+            ),
+            autocompletion=complete_rid,
+        ),
+    ],
+    # -p is --parent-folder here, so --profile has no short flag.
+    profile: Annotated[Optional[str], profile_option(short=False)] = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Create a new folder in Foundry."""
-    try:
-        service = FolderService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Creating folder '{name}'..."):
-            folder = service.create_folder(
-                display_name=name, parent_folder_rid=parent_folder
-            )
-
-        # Cache the RID for future completions
-        if folder.get("rid"):
-            cache_rid(folder["rid"])
-
-        formatter.print_success(f"Successfully created folder '{name}'")
-        formatter.print_info(f"Folder RID: {folder.get('rid', 'unknown')}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(folder, format=format)
-        elif format == "csv":
-            formatter.format_list([folder], format=format)
-        else:
-            _format_folder_table(folder)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create folder: {e}")
-        raise typer.Exit(1)
+    """Create a folder inside a project or another folder."""
+    with spinner(f"Creating folder '{name}'..."):
+        folder = FolderService(profile=profile).create_folder(
+            display_name=name, parent_folder_rid=parent_folder
+        )
+    cache_rid(folder.rid)
+    success(f"Created folder '{folder.display_name}' ({folder.rid})")
+    emit(folder, format=format, output=output, columns=FOLDER_COLUMNS, title="Folder")
 
 
 @app.command("get")
+@pltr_command(sdk="filesystem.Folder.get")
 def get_folder(
-    folder_rid: str = typer.Argument(
-        ..., help="Folder Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    folder_rid: FolderRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific folder."""
-    try:
-        # Cache the RID for future completions
-        cache_rid(folder_rid)
-
-        service = FolderService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Fetching folder {folder_rid}..."):
-            folder = service.get_folder(folder_rid)
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(folder, output, "json")
-            else:
-                formatter.format_dict(folder, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file([folder], output, "csv")
-            else:
-                formatter.format_list([folder], format=format)
-        else:
-            _format_folder_table(folder)
-
-        if output:
-            formatter.print_success(f"Folder information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get folder: {e}")
-        raise typer.Exit(1)
+    """Get a folder's metadata."""
+    with spinner(f"Fetching folder {folder_rid}..."):
+        folder = FolderService(profile=profile).get_folder(folder_rid)
+    cache_rid(folder_rid)
+    emit(folder, format=format, output=output, columns=FOLDER_COLUMNS, title="Folder")
 
 
 @app.command("list")
+@pltr_command(sdk="filesystem.Folder.children", paged=True)
 def list_children(
-    folder_rid: str = typer.Argument(
-        ...,
-        help="Folder Resource Identifier (use 'ri.compass.main.folder.0' for root)",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of items per page"
-    ),
+    folder_rid: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "RID of the folder, project or space to list "
+                "(ri.compass.main.folder.0 is the root folder)."
+            ),
+            autocompletion=complete_rid,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
 ):
-    """List all child resources of a folder."""
-    try:
-        # Cache the RID for future completions
-        cache_rid(folder_rid)
+    """List the resources directly inside a folder.
 
-        service = FolderService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Listing children of folder {folder_rid}..."
-        ):
-            children = service.list_children(folder_rid, page_size=page_size)
-
-        if not children:
-            formatter.print_info("No children found in this folder.")
-            return
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(children, output, "json")
-            else:
-                formatter.format_list(children, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(children, output, "csv")
-            else:
-                formatter.format_list(children, format=format)
-        else:
-            _format_children_table(children)
-
-        if output:
-            formatter.print_success(f"Folder children saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to list folder children: {e}")
-        raise typer.Exit(1)
+    Fetches one page by default; use --all for every page, or --page-token
+    with the nextPageToken of an earlier response to continue.
+    """
+    service = FolderService(profile=profile)
+    with spinner(f"Listing children of folder {folder_rid}..."):
+        page = collect_pages(
+            lambda token: service.list_children(
+                folder_rid, page_size=page_size, page_token=token
+            ),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    cache_rid(folder_rid)
+    emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 
 
 @app.command("batch-get")
+@pltr_command(sdk="filesystem.Folder.get_batch")
 def get_folders_batch(
-    folder_rids: List[str] = typer.Argument(
-        ..., help="Folder Resource Identifiers (space-separated)"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    folder_rids: Annotated[
+        List[str],
+        typer.Argument(
+            help=f"Folder RIDs, separated by spaces (at most {MAX_BATCH_SIZE})."
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get multiple folders in a single request (max 1000)."""
-    try:
-        service = FolderService(profile=profile)
+    """Get several folders in one request.
 
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching {len(folder_rids)} folders..."
-        ):
-            folders = service.get_folders_batch(folder_rids)
-
-        # Cache RIDs for future completions
-        for folder in folders:
-            if folder.get("rid"):
-                cache_rid(folder["rid"])
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(folders, output, "json")
-            else:
-                formatter.format_list(folders, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(folders, output, "csv")
-            else:
-                formatter.format_list(folders, format=format)
-        else:
-            _format_folders_batch_table(folders)
-
-        if output:
-            formatter.print_success(f"Folders information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get folders batch: {e}")
-        raise typer.Exit(1)
-
-
-def _format_folder_table(folder: dict):
-    """Format folder information as a table."""
-    table = Table(
-        title="Folder Information", show_header=True, header_style="bold cyan"
+    JSON output is the API's response: {"data": {"<folder RID>": {...}}}.
+    """
+    if len(folder_rids) > MAX_BATCH_SIZE:
+        raise typer.BadParameter(
+            f"at most {MAX_BATCH_SIZE} folder RIDs per request, got {len(folder_rids)}",
+            param_hint="FOLDER_RIDS",
+        )
+    with spinner(f"Fetching {len(folder_rids)} folders..."):
+        response = FolderService(profile=profile).get_folders_batch(folder_rids)
+    for rid in list(response.data)[:50]:
+        cache_rid(rid)
+    emit(
+        response,
+        format=format,
+        output=output,
+        columns=BATCH_COLUMNS,
+        rows=lambda batch: list(batch.data.values()),
     )
-    table.add_column("Property", style="cyan")
-    table.add_column("Value")
-
-    table.add_row("RID", folder.get("rid", "N/A"))
-    table.add_row("Display Name", folder.get("display_name", "N/A"))
-    table.add_row("Description", folder.get("description", "N/A"))
-    table.add_row("Parent Folder", folder.get("parent_folder_rid", "N/A"))
-    table.add_row("Created", folder.get("created", "N/A"))
-    table.add_row("Modified", folder.get("modified", "N/A"))
-
-    console.print(table)
-
-
-def _format_children_table(children: List[dict]):
-    """Format folder children as a table."""
-    table = Table(title="Folder Children", show_header=True, header_style="bold cyan")
-    table.add_column("Type", style="cyan")
-    table.add_column("Display Name")
-    table.add_column("RID", no_wrap=True)
-
-    for child in children:
-        table.add_row(
-            child.get("type", "unknown"),
-            child.get("display_name", child.get("name", "N/A")),
-            child.get("rid", "N/A"),
-        )
-
-    console.print(table)
-    console.print(f"\nTotal: {len(children)} items")
-
-
-def _format_folders_batch_table(folders: List[dict]):
-    """Format multiple folders as a table."""
-    table = Table(title="Folders", show_header=True, header_style="bold cyan")
-    table.add_column("Display Name")
-    table.add_column("RID", no_wrap=True)
-    table.add_column("Parent Folder", no_wrap=True)
-    table.add_column("Description")
-
-    for folder in folders:
-        table.add_row(
-            folder.get("display_name", "N/A"),
-            folder.get("rid", "N/A"),
-            folder.get("parent_folder_rid", "N/A"),
-            folder.get("description", "N/A") or "",
-        )
-
-    console.print(table)
-    console.print(f"\nTotal: {len(folders)} folders")
 
 
 @app.callback()
@@ -317,22 +195,19 @@ def main():
     """
     Folder operations using foundry-platform-sdk.
 
-    Manage folders in the Foundry filesystem. Create, retrieve, and list
-    folder contents using Resource Identifiers (RIDs).
-
-    The root folder RID is: ri.compass.main.folder.0
+    Folders are addressed by RID (ri.compass.main.folder.<id>). The root
+    folder is ri.compass.main.folder.0. Folders live inside projects; find a
+    project with 'pltr project list'.
 
     Examples:
-        # Create a folder in root
-        pltr folder create "My Folder"
 
-        # Create a folder in a specific parent
-        pltr folder create "Sub Folder" --parent-folder ri.compass.main.folder.xyz123
-
-        # List root folder contents
-        pltr folder list ri.compass.main.folder.0
-
-        # Get folder information
-        pltr folder get ri.compass.main.folder.xyz123
+    \b
+        # Create a folder inside a project
+        pltr folder create "My Folder" --parent-folder ri.compass.main.folder.xyz123
+    \b
+        # List a folder's contents (one page; --all for every page)
+        pltr folder list ri.compass.main.folder.xyz123
+    \b
+        # Get folder information as JSON
+        pltr folder get ri.compass.main.folder.xyz123 --format json
     """
-    pass

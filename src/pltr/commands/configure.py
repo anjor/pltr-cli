@@ -1,151 +1,338 @@
 """
-Configuration commands for pltr CLI.
+Profile commands: create, list, select and delete authentication profiles.
+
+These commands touch only local state (``profiles.json`` in the configuration
+directory and the system keyring, which holds each profile's credentials);
+they make no Foundry API call. They follow the shared contract: messages and
+prompts on stderr, ``--format json`` output on stdout, structured errors and
+the documented exit codes. Nothing is prompted when stdin is not a terminal.
 """
 
-import typer
-from typing import Optional
-from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from typing import Any, Dict, List, Optional
 
+import click
+import typer
+from typing_extensions import Annotated
+
+from ..auth.base import (
+    INVALID_CREDENTIAL_CHARACTERS,
+    ProfileNotFoundError,
+    has_invalid_characters,
+)
 from ..auth.storage import CredentialStorage
-from ..auth.base import ProfileNotFoundError
 from ..config.profiles import ProfileManager
+from ..contract import (
+    Columns,
+    ExitCode,
+    ForceAliasOption,
+    FormatOption,
+    OutputOption,
+    PltrError,
+    YesOption,
+    confirm_destructive,
+    emit,
+    info,
+    pltr_command,
+    stdin_is_interactive,
+    success,
+    warn,
+)
+from ..utils.completion import complete_profile
 
 app = typer.Typer()
-console = Console()
+
+AUTH_TYPES = ("token", "oauth")
+
+#: Table/CSV columns for ``list-profiles`` (one row per profile).
+PROFILE_COLUMNS: Columns = {"Profile": "name", "Default": "default"}
+
+ProfileName = Annotated[
+    str,
+    typer.Argument(
+        help="Profile name (see 'pltr configure list-profiles').",
+        autocompletion=complete_profile,
+    ),
+]
 
 
-@app.command()
-def configure(
-    profile: Optional[str] = typer.Option(
-        "default", "--profile", "-p", help="Profile name"
-    ),
-    auth_type: Optional[str] = typer.Option(
-        None, "--auth-type", help="Authentication type (token or oauth)"
-    ),
-    host: Optional[str] = typer.Option(None, "--host", help="Foundry host URL"),
-    token: Optional[str] = typer.Option(
-        None, "--token", help="Bearer token (for token auth)"
-    ),
-    client_id: Optional[str] = typer.Option(
-        None, "--client-id", help="OAuth client ID"
-    ),
-    client_secret: Optional[str] = typer.Option(
-        None, "--client-secret", help="OAuth client secret"
-    ),
-):
-    """Configure authentication for Palantir Foundry."""
-    storage = CredentialStorage()
-    profile_manager = ProfileManager()
+def _profile_not_found(profile: str, manager: ProfileManager) -> PltrError:
+    names = manager.list_profiles()
+    known = (
+        f" Configured profiles: {', '.join(names)}."
+        if names
+        else " None is configured."
+    )
+    return PltrError(
+        f"Profile '{profile}' not found.{known}",
+        error_type="not_found",
+        exit_code=ExitCode.NOT_FOUND,
+        hint="Create it with 'pltr configure configure --profile NAME'.",
+    )
 
-    # Ensure profile is not None
-    if not profile:
-        profile = "default"
 
-    # Check if profile already exists
-    if storage.profile_exists(profile):
-        if not Confirm.ask(f"Profile '{profile}' already exists. Overwrite?"):
-            console.print("[yellow]Configuration cancelled.[/yellow]")
-            raise typer.Exit()
+def _prompt(
+    label: str,
+    *,
+    password: bool = False,
+    choices: Any = None,
+    credential: bool = False,
+) -> str:
+    """Ask for a value on stderr (never stdout) until a usable one is given.
 
-    # Interactive mode if no auth type specified
-    if not auth_type:
-        auth_type = Prompt.ask(
-            "Authentication type", choices=["token", "oauth"], default="token"
+    A credential (token, client ID, client secret) is asked for again if it
+    contains whitespace or control characters.
+    """
+    from rich.console import Console
+    from rich.prompt import Prompt
+
+    console = Console(stderr=True)
+    while True:
+        value = Prompt.ask(
+            label,
+            console=console,
+            password=password,
+            choices=list(choices) if choices else None,
         )
-
-    # Get host URL
-    if not host:
-        host = Prompt.ask(
-            "Foundry host URL", default="https://your-stack.palantirfoundry.com"
-        )
-
-    credentials = {"auth_type": auth_type, "host": host}
-
-    if auth_type == "token":
-        # Token authentication
-        if not token:
-            token = Prompt.ask("Bearer token", password=True)
-        credentials["token"] = token
-
-    elif auth_type == "oauth":
-        # OAuth authentication
-        if not client_id:
-            client_id = Prompt.ask("OAuth client ID")
-        if not client_secret:
-            client_secret = Prompt.ask("OAuth client secret", password=True)
-
-        credentials["client_id"] = client_id
-        credentials["client_secret"] = client_secret
-
-    # Save credentials
-    storage.save_profile(profile, credentials)
-    profile_manager.add_profile(profile)
-
-    # Set as default if it's the first profile
-    if len(profile_manager.list_profiles()) == 1:
-        profile_manager.set_default(profile)
-
-    console.print(f"[green]✓[/green] Profile '{profile}' configured successfully")
-
-
-@app.command()
-def list_profiles():
-    """List all configured profiles."""
-    profile_manager = ProfileManager()
-    profiles = profile_manager.list_profiles()
-    default = profile_manager.get_default()
-
-    if not profiles:
-        console.print("[yellow]No profiles configured.[/yellow]")
-        console.print("Run 'pltr configure' to set up your first profile.")
-        return
-
-    console.print("[bold]Configured profiles:[/bold]")
-    for profile in profiles:
-        if profile == default:
-            console.print(f"  * {profile} [green](default)[/green]")
+        value = (value or "").strip()
+        if not value:
+            console.print("A value is required.", style="red")
+        elif credential and has_invalid_characters(value):
+            console.print(
+                f"The value can't contain {INVALID_CREDENTIAL_CHARACTERS}.",
+                style="red",
+            )
         else:
-            console.print(f"    {profile}")
+            return value
+
+
+def _credential_option(value: Optional[str], flag: str) -> Optional[str]:
+    """A credential option's value without surrounding whitespace, or None if blank.
+
+    Drops the trailing CR/LF of ``--token "$(cat token.txt)"`` on a file with
+    Windows line endings. Whitespace or control characters inside the value are
+    a usage error, whose message doesn't show the value.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    if has_invalid_characters(value):
+        raise typer.BadParameter(
+            f"contains {INVALID_CREDENTIAL_CHARACTERS}; pass the value alone.",
+            param_hint=f"'{flag}'",
+        )
+    return value
+
+
+def _infer_auth_type(
+    token: Optional[str], client_id: Optional[str], client_secret: Optional[str]
+) -> Optional[str]:
+    """The auth type the given credential options imply, if unambiguous."""
+    if token and not (client_id or client_secret):
+        return "token"
+    if (client_id or client_secret) and not token:
+        return "oauth"
+    return None
 
 
 @app.command()
-def set_default(
-    profile: str = typer.Argument(..., help="Profile name to set as default"),
+@pltr_command(destructive=True)
+def configure(
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Name of the profile to create or replace.",
+            autocompletion=complete_profile,
+        ),
+    ] = "default",
+    auth_type: Annotated[
+        Optional[str],
+        typer.Option(
+            "--auth-type",
+            click_type=click.Choice(AUTH_TYPES),
+            help=(
+                "Authentication type: token or oauth (default: implied by --token "
+                "or --client-id/--client-secret)."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    host: Annotated[
+        Optional[str],
+        typer.Option(
+            "--host",
+            help="Foundry host, e.g. https://your-stack.palantirfoundry.com.",
+            show_default=False,
+        ),
+    ] = None,
+    token: Annotated[
+        Optional[str],
+        typer.Option("--token", help="Bearer token (token auth).", show_default=False),
+    ] = None,
+    client_id: Annotated[
+        Optional[str],
+        typer.Option(
+            "--client-id", help="OAuth client ID (oauth auth).", show_default=False
+        ),
+    ] = None,
+    client_secret: Annotated[
+        Optional[str],
+        typer.Option(
+            "--client-secret",
+            help="OAuth client secret (oauth auth).",
+            show_default=False,
+        ),
+    ] = None,
+    yes: YesOption = False,
+    format: FormatOption = "table",
 ):
-    """Set a profile as the default."""
-    profile_manager = ProfileManager()
+    """Create a profile, or replace an existing one (asks first; --yes skips).
 
-    if profile not in profile_manager.list_profiles():
-        console.print(f"[red]Error:[/red] Profile '{profile}' not found")
-        raise typer.Exit(1)
+    The credentials are stored in the system keyring. Values you don't pass
+    as options are prompted for. When stdin is not a terminal nothing is
+    prompted: pass --host and the credentials (--token, or --client-id and
+    --client-secret) as options, and --yes to replace an existing profile.
+    Where no keyring is available (CI, containers, agents), skip profiles and
+    set FOUNDRY_HOST and FOUNDRY_TOKEN instead.
+    """
+    profile = profile or "default"
+    interactive = stdin_is_interactive()
+    host = (host or "").strip() or None
+    token = _credential_option(token, "--token")
+    client_id = _credential_option(client_id, "--client-id")
+    client_secret = _credential_option(client_secret, "--client-secret")
 
-    profile_manager.set_default(profile)
-    console.print(f"[green]✓[/green] Profile '{profile}' set as default")
+    auth_type = auth_type or _infer_auth_type(token, client_id, client_secret)
+    if auth_type == "token" and (client_id or client_secret):
+        raise typer.BadParameter(
+            "--client-id and --client-secret are for --auth-type oauth",
+            param_hint="'--auth-type'",
+        )
+    if auth_type == "oauth" and token:
+        raise typer.BadParameter(
+            "--token is for --auth-type token", param_hint="'--auth-type'"
+        )
+    if not interactive:
+        missing = ["--host"] if not host else []
+        if auth_type is None:
+            missing.append("--token (or --client-id and --client-secret)")
+        elif auth_type == "token" and not token:
+            missing.append("--token")
+        elif auth_type == "oauth":
+            missing += [
+                flag
+                for flag, value in (
+                    ("--client-id", client_id),
+                    ("--client-secret", client_secret),
+                )
+                if not value
+            ]
+        if missing:
+            raise typer.BadParameter(
+                f"missing {', '.join(missing)}. Values that aren't passed as "
+                "options are prompted for, but stdin is not a terminal."
+            )
 
-
-@app.command()
-def delete(
-    profile: str = typer.Argument(..., help="Profile name to delete"),
-    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
-):
-    """Delete a profile."""
     storage = CredentialStorage()
-    profile_manager = ProfileManager()
+    # Checked before any prompt: also fails fast when there is no usable keyring.
+    if storage.profile_exists(profile):
+        confirm_destructive(
+            f"Profile '{profile}' already exists. Replace its credentials?", yes=yes
+        )
 
-    if profile not in profile_manager.list_profiles():
-        console.print(f"[red]Error:[/red] Profile '{profile}' not found")
-        raise typer.Exit(1)
+    if auth_type is None:
+        auth_type = _prompt("Authentication type", choices=AUTH_TYPES)
+    if not host:
+        host = _prompt("Foundry host (e.g. https://your-stack.palantirfoundry.com)")
+    credentials: Dict[str, Any] = {"auth_type": auth_type, "host": host}
+    if auth_type == "token":
+        credentials["token"] = token or _prompt(
+            "Bearer token", password=True, credential=True
+        )
+    else:
+        credentials["client_id"] = client_id or _prompt(
+            "OAuth client ID", credential=True
+        )
+        credentials["client_secret"] = client_secret or _prompt(
+            "OAuth client secret", password=True, credential=True
+        )
 
-    if not force:
-        if not Confirm.ask(f"Delete profile '{profile}'?"):
-            console.print("[yellow]Deletion cancelled.[/yellow]")
-            raise typer.Exit()
+    storage.save_profile(profile, credentials)
+    manager = ProfileManager()
+    manager.add_profile(profile)
+    if manager.get_default() is None or len(manager.list_profiles()) == 1:
+        manager.set_default(profile)
+        success(f"Profile '{profile}' configured successfully and set as default")
+    else:
+        success(f"Profile '{profile}' configured successfully")
+    emit(None, format=format)
+
+
+@app.command("list-profiles")
+@pltr_command()
+def list_profiles(
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """List the configured profiles and which one is the default.
+
+    Reads only the local profile list; credentials stay in the keyring.
+    """
+    manager = ProfileManager()
+    default = manager.get_default()
+    profiles: List[Dict[str, Any]] = [
+        {"name": name, "default": name == default} for name in manager.list_profiles()
+    ]
+    emit(profiles, format=format, output=output, columns=PROFILE_COLUMNS)
+    if not profiles:
+        info(
+            "No profiles configured. Run 'pltr configure configure' to create one, "
+            "or set FOUNDRY_HOST and FOUNDRY_TOKEN to use pltr without a profile."
+        )
+
+
+@app.command("set-default")
+@pltr_command()
+def set_default(
+    profile: ProfileName,
+    format: FormatOption = "table",
+):
+    """Make a profile the default for commands run without --profile."""
+    manager = ProfileManager()
+    if profile not in manager.list_profiles():
+        raise _profile_not_found(profile, manager)
+    manager.set_default(profile)
+    success(f"Profile '{profile}' set as default")
+    emit(None, format=format)
+
+
+@app.command()
+@pltr_command(destructive=True)
+def delete(
+    profile: ProfileName,
+    yes: YesOption = False,
+    force: ForceAliasOption = False,
+    format: FormatOption = "table",
+):
+    """Delete a profile and its stored credentials (asks first; --yes skips)."""
+    manager = ProfileManager()
+    if profile not in manager.list_profiles():
+        raise _profile_not_found(profile, manager)
+    confirm_destructive(f"Delete profile '{profile}' and its credentials?", yes=yes)
 
     try:
-        storage.delete_profile(profile)
-        profile_manager.remove_profile(profile)
-        console.print(f"[green]✓[/green] Profile '{profile}' deleted")
+        CredentialStorage().delete_profile(profile)
     except ProfileNotFoundError:
-        console.print(f"[red]Error:[/red] Could not delete profile '{profile}'")
-        raise typer.Exit(1)
+        warn(f"The keyring held no credentials for profile '{profile}'.")
+    was_default = manager.get_default() == profile
+    manager.remove_profile(profile)
+    success(f"Deleted profile '{profile}'")
+    if was_default:
+        new_default = manager.get_default()
+        info(
+            f"The default profile is now '{new_default}'."
+            if new_default
+            else "No default profile is set now."
+        )
+    emit(None, format=format)

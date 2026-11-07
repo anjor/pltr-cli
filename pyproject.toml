@@ -8,15 +8,44 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "click-repl>=0.3.0",
     "foundry-platform-sdk>=1.111.0,<2.0.0",
+    # pltr imports httpx, pydantic, pydantic-core and typing-extensions itself, so
+    # they are declared even though foundry-platform-sdk (and pydantic) bring them:
+    # a package pltr imports must not depend on another package's dependencies
+    # (tests/test_dependencies.py checks this).
+    "httpx>=0.25.0",
     "keyring>=25.6.0",
-    "pandas>=2.0.0",
+    "prompt-toolkit>=3.0.36",
     "pyarrow>=15.0.0",
-    "python-dotenv>=1.1.1",
+    "pydantic>=2.6.0",
+    "pydantic-core>=2.16.1",
     "requests>=2.32.4",
     "rich>=14.1.0",
-    "typer>=0.16.0",
+    "typing-extensions>=4.7.1",
+    # Arrow results (sql, dataset preview) with time-zone-aware timestamps are
+    # decoded through zoneinfo, which needs the tzdata package where the system
+    # has no time zone database: Windows, and minimal Linux containers.
+    "tzdata>=2024.1",
+    # typer and click are capped at the pair the test suite runs against (uv.lock:
+    # typer 0.16.0, click 8.2.1; a fresh install resolves typer 0.16.1, which only
+    # adds an early return for click 8.2's NoArgsIsHelpError). pltr imports click
+    # directly, so click must be declared: typer >= 0.26 bundles its own click and
+    # no longer installs it, and pltr then fails at import. Before raising either
+    # cap, run the full test suite and the CI "fresh-install" job on the new pair,
+    # and check:
+    # - click Exit handling: pltr raises click.exceptions.Exit; typer >= 0.26 only
+    #   catches its bundled click's Exit, so every failure prints a traceback
+    #   ending in "Exit: 3" and exits 1 instead of the documented exit code.
+    # - the "[beta]" label: typer 0.21-0.25 render docstrings as Rich markup, which
+    #   swallows the "[beta]" prefix of beta commands' help.
+    # - optional --x/--no-x flags (default None): with click 8.2.2, typer 0.16/0.17
+    #   read an omitted flag as False, so a destructive command run without --yes
+    #   and without a terminal goes ahead (`pltr alias clear` deletes every alias).
+    # - usage errors must not show an "(env var: 'None')" hint.
+    # - click 8.3 marks "no default" with a sentinel instead of None; the command
+    #   manifest (pltr.manifest) must not report it as a default.
+    "typer>=0.16.0,<0.17",
+    "click>=8.2.0,<8.2.2",
 ]
 keywords = [
     "palantir",
@@ -54,7 +83,7 @@ Changelog = "https://github.com/anjor/pltr-cli/blob/main/CHANGELOG.md"
 Documentation = "https://github.com/anjor/pltr-cli/blob/main/README.md"
 
 [project.scripts]
-pltr = "pltr.cli:app"
+pltr = "pltr.cli:main"
 
 [build-system]
 requires = [
@@ -78,4 +107,15 @@ dev = [
     "ruff>=0.12.8",
     "tomli-w>=1.2.0",
     "types-requests>=2.32.4.20250611",
+]
+
+[tool.pytest.ini_options]
+# Tests import the dev tooling in scripts/ (e.g. scripts.sdk_calls).
+pythonpath = ["."]
+filterwarnings = [
+    # foundry-platform-sdk calls typing._eval_type without type_params, which
+    # Python 3.13 deprecates. pltr imports SDK models inside commands, so when
+    # a test is the first to import one, the command would report this
+    # third-party warning on stderr and the test would depend on test order.
+    "ignore:Failing to pass a value to the 'type_params' parameter:DeprecationWarning",
 ]

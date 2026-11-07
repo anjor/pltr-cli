@@ -1,728 +1,616 @@
+"""Tests for the ontology services against a real FoundryClient (only HTTP is faked).
+
+Every ontology endpoint pltr uses is GA except ``OntologyObject.count``: a
+stray ``preview=`` on a GA call would make the SDK emit a UserWarning, which
+the module-level filter turns into a failure.
 """
-Tests for ontology services.
-"""
+
+import json
 
 import pytest
-import requests
-from unittest.mock import Mock, patch
-
-from pltr.services.ontology import (
-    OntologyService,
-    ObjectTypeService,
-    OntologyObjectService,
-    ActionService,
-    QueryService,
+from foundry_sdk.v2.ontologies.models import (
+    AggregateObjectsResponseV2,
+    CountObjectsResponseV2,
+    ExecuteQueryResponse,
+    ListOntologiesV2Response,
+    ObjectTypeV2,
+    OntologyV2,
+    SearchObjectsResponseV2,
+    SyncApplyActionResponseV2,
 )
 
+from pltr.contract import PltrError
+from pltr.services.ontology import (
+    ActionService,
+    ObjectTypeService,
+    OntologyObjectService,
+    OntologyService,
+    QueryService,
+)
+from tests import foundry_json as fj
+from tests import foundry_json_ontology as fo
 
-def _http_error(status_code: int, message: str) -> requests.HTTPError:
-    """Create an HTTPError with an attached response status code."""
-    error = requests.HTTPError(message)
-    error.response = Mock(status_code=status_code)
-    return error
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
-
-@pytest.fixture
-def mock_ontology_service():
-    """Create a mocked OntologyService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_ontology_class = Mock()
-        mock_ontologies.Ontology = mock_ontology_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = OntologyService()
-        return service, mock_ontology_class
+API = "/api/v2/ontologies"
+OBJECTS = f"{API}/{fo.ONTOLOGY}/objects/Employee"
 
 
-@pytest.fixture
-def mock_object_type_service():
-    """Create a mocked ObjectTypeService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_ontology_class = Mock()
-        mock_object_type_class = Mock()
-        # ObjectType is nested under Ontology in the SDK
-        mock_ontology_class.ObjectType = mock_object_type_class
-        mock_ontologies.Ontology = mock_ontology_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = ObjectTypeService()
-        return service, mock_object_type_class
+def body(request) -> dict:
+    return json.loads(request.content)
 
 
-@pytest.fixture
-def mock_ontology_object_service():
-    """Create a mocked OntologyObjectService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_ontology_object_class = Mock()
-        mock_ontologies.OntologyObject = mock_ontology_object_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = OntologyObjectService()
-        return service, mock_ontology_object_class
+def params(request) -> list:
+    """Query parameters as (name, value) pairs (repeated names kept)."""
+    return list(request.url.params.multi_items())
 
 
-@pytest.fixture
-def mock_action_service():
-    """Create a mocked ActionService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_action_class = Mock()
-        mock_ontologies.Action = mock_action_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = ActionService()
-        return service, mock_action_class
+# --------------------------------------------------------------- ontologies
 
 
-@pytest.fixture
-def mock_query_service():
-    """Create a mocked QueryService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_query_class = Mock()
-        mock_ontologies.Query = mock_query_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
+def test_list_ontologies(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [fo.ontology()]})
 
-        # Create service
-        service = QueryService()
-        return service, mock_query_class
+    response = OntologyService().list_ontologies()
+
+    assert isinstance(response, ListOntologiesV2Response)
+    assert [o.api_name for o in response.data] == [fo.ONTOLOGY]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", API)
+    assert params(request) == []
 
 
-@pytest.fixture
-def sample_ontology():
-    """Create sample ontology object."""
-    ontology = Mock()
-    ontology.rid = "ri.ontology.main.ontology.test"
-    ontology.api_name = "test_ontology"
-    ontology.display_name = "Test Ontology"
-    ontology.description = "A test ontology"
-    return ontology
+def test_get_ontology_by_api_name(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.ontology())
+
+    ontology = OntologyService().get_ontology(fo.ONTOLOGY)
+
+    assert isinstance(ontology, OntologyV2)
+    assert ontology.rid == fo.ONTOLOGY_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{API}/{fo.ONTOLOGY}")
 
 
-@pytest.fixture
-def sample_object_type():
-    """Create sample object type."""
-    obj_type = Mock()
-    obj_type.api_name = "Employee"
-    obj_type.display_name = "Employee"
-    obj_type.description = "Employee object type"
-    obj_type.primary_key = "employee_id"
-    obj_type.properties = {
-        "employee_id": {"type": "string"},
-        "name": {"type": "string"},
-        "department": {"type": "string"},
+def test_get_ontology_not_found_propagates_the_sdk_error(stub_foundry_http):
+    from foundry_sdk import NotFoundError
+
+    stub_foundry_http.respond(
+        404, json=fj.error("OntologyNotFound", parameters={"ontologyRid": "x"})
+    )
+
+    with pytest.raises(NotFoundError):
+        OntologyService().get_ontology(fo.ONTOLOGY_RID)
+
+
+# ------------------------------------------------------------- object types
+
+
+def test_list_object_types_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.page([fo.object_type()], "page-2"))
+
+    page = ObjectTypeService().list_object_types(
+        fo.ONTOLOGY, include_datasources=True, page_size=5, page_token="page-1"
+    )
+
+    assert [ot.api_name for ot in page.data] == ["Employee"]
+    assert page.next_page_token == "page-2"
+    [request] = stub_foundry_http.requests  # constructing the iterator = one page
+    assert (request.method, request.url.path) == (
+        "GET",
+        f"{API}/{fo.ONTOLOGY}/objectTypes",
+    )
+    assert dict(request.url.params) == {
+        "includeDatasources": "true",
+        "pageSize": "5",
+        "pageToken": "page-1",
     }
-    return obj_type
 
 
-@pytest.fixture
-def sample_object():
-    """Create sample ontology object."""
-    obj = Mock(spec=[])  # Add spec to avoid Mock attribute issues
-    obj.employee_id = "EMP001"
-    obj.name = "John Doe"
-    obj.department = "Engineering"
-    obj.__dict__ = {
-        "employee_id": "EMP001",
-        "name": "John Doe",
-        "department": "Engineering",
-    }
-    return obj
+def test_get_object_type(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.object_type(datasources=True))
+
+    object_type = ObjectTypeService().get_object_type(
+        fo.ONTOLOGY, "Employee", include_datasources=True
+    )
+
+    assert isinstance(object_type, ObjectTypeV2)
+    assert object_type.primary_key == "employeeId"
+    assert object_type.datasources[0].definition.dataset_rid == fo.DATASET_RID
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fo.ONTOLOGY}/objectTypes/Employee"
+    assert dict(request.url.params) == {"includeDatasources": "true"}
 
 
-@pytest.fixture
-def sample_action_result():
-    """Create sample action result."""
-    result = Mock()
-    result.rid = "ri.action.result.123"
-    result.status = "SUCCESS"
-    result.created_objects = []
-    result.modified_objects = ["EMP001"]
-    result.deleted_objects = []
-    return result
+def test_get_object_type_sends_no_optional_parameters_by_default(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.object_type())
+
+    ObjectTypeService().get_object_type(fo.ONTOLOGY, "Employee")
+
+    assert params(stub_foundry_http.requests[0]) == []
 
 
-@pytest.fixture
-def sample_validation_result():
-    """Create sample validation result."""
-    result = Mock()
-    result.valid = True
-    result.errors = []
-    result.warnings = []
-    return result
+# ---------------------------------------- object/link type create (direct HTTP)
+
+ENCODED_RID = fo.ONTOLOGY_RID  # RIDs have no characters that need URL-encoding
 
 
-@pytest.fixture
-def sample_query_result():
-    """Create sample query result."""
-    result = Mock()
-    result.rows = [
-        {"employee_id": "EMP001", "name": "John Doe"},
-        {"employee_id": "EMP002", "name": "Jane Smith"},
-    ]
-    result.columns = ["employee_id", "name"]
-    return result
-
-
-# OntologyService Tests
-def test_ontology_service_initialization():
-    """Test OntologyService initialization."""
-    with patch("pltr.services.base.AuthManager"):
-        service = OntologyService()
-        assert service is not None
-        assert service.auth_manager is not None
-
-
-def test_list_ontologies(mock_ontology_service, sample_ontology):
-    """Test listing ontologies."""
-    service, mock_ontology_class = mock_ontology_service
-    # Mock the response with a 'data' field
-    mock_response = Mock()
-    mock_response.data = [sample_ontology]
-    mock_ontology_class.list.return_value = mock_response
-
-    result = service.list_ontologies()
-
-    assert len(result) == 1
-    assert result[0]["rid"] == "ri.ontology.main.ontology.test"
-    assert result[0]["api_name"] == "test_ontology"
-    mock_ontology_class.list.assert_called_once()
-
-
-def test_get_ontology(mock_ontology_service, sample_ontology):
-    """Test getting a specific ontology."""
-    service, mock_ontology_class = mock_ontology_service
-    mock_ontology_class.get.return_value = sample_ontology
-
-    result = service.get_ontology("ri.ontology.main.ontology.test")
-
-    assert result["rid"] == "ri.ontology.main.ontology.test"
-    assert result["api_name"] == "test_ontology"
-    mock_ontology_class.get.assert_called_once_with("ri.ontology.main.ontology.test")
-
-
-# ObjectTypeService Tests
-def test_list_object_types(mock_object_type_service, sample_object_type):
-    """Test listing object types."""
-    service, mock_object_type_class = mock_object_type_service
-    # Mock the response with a 'data' field
-    mock_response = Mock()
-    mock_response.data = [sample_object_type]
-    mock_object_type_class.list.return_value = mock_response
-
-    result = service.list_object_types("ri.ontology.main.ontology.test")
-
-    assert len(result) == 1
-    assert result[0]["api_name"] == "Employee"
-    assert result[0]["primary_key"] == "employee_id"
-    mock_object_type_class.list.assert_called_once_with(
-        "ri.ontology.main.ontology.test"
+def create_employee_type(**kwargs):
+    return ObjectTypeService().create_object_type(
+        ontology_rid=fo.ONTOLOGY_RID,
+        api_name="TMAircraft",
+        display_name="TM Aircraft",
+        primary_key="msn",
+        backing_dataset=fo.DATASET_RID,
+        **kwargs,
     )
 
 
-def test_get_object_type(mock_object_type_service, sample_object_type):
-    """Test getting a specific object type."""
-    service, mock_object_type_class = mock_object_type_service
-    mock_object_type_class.get.return_value = sample_object_type
+def test_create_object_type_posts_to_the_first_endpoint(stub_foundry_http):
+    created = {"apiName": "TMAircraft", "rid": fo.OBJECT_TYPE_RID}
+    stub_foundry_http.respond(json=created)
 
-    result = service.get_object_type("ri.ontology.main.ontology.test", "Employee")
+    result = create_employee_type()
 
-    assert result["api_name"] == "Employee"
-    assert result["primary_key"] == "employee_id"
-    mock_object_type_class.get.assert_called_once_with(
-        "ri.ontology.main.ontology.test", "Employee"
+    assert result == created  # the response body, nothing added
+    [request] = stub_foundry_http.requests
+    assert request.method == "POST"
+    assert str(request.url) == (
+        f"https://test.palantirfoundry.com/v2/ontologies/{ENCODED_RID}/objectTypes"
     )
-
-
-def test_create_object_type(mock_object_type_service):
-    """Test creating an object type via direct API endpoint."""
-    service, _ = mock_object_type_service
-
-    mock_response = Mock()
-    mock_response.text = "ok"
-    mock_response.json.return_value = {
+    assert request.headers["Authorization"] == "Bearer test-token"
+    assert body(request) == {
         "apiName": "TMAircraft",
-        "ontologyRid": "ri.ontology.main.ontology.test",
+        "displayName": "TM Aircraft",
+        "primaryKey": "msn",
+        "backingDatasetRid": fo.DATASET_RID,
     }
 
-    with patch.object(service, "_make_request", return_value=mock_response) as mock_req:
-        result = service.create_object_type(
-            ontology_rid="ri.ontology.main.ontology.test",
-            api_name="TMAircraft",
-            display_name="TM Aircraft",
-            primary_key="msn",
-            backing_dataset="ri.foundry.main.dataset.aircraft",
-        )
 
-    assert result["apiName"] == "TMAircraft"
-    assert result["ontologyRid"] == "ri.ontology.main.ontology.test"
-    mock_req.assert_called_once_with(
-        "POST",
-        "/v2/ontologies/ri.ontology.main.ontology.test/objectTypes",
-        json_data={
-            "apiName": "TMAircraft",
-            "displayName": "TM Aircraft",
-            "primaryKey": "msn",
-            "backingDatasetRid": "ri.foundry.main.dataset.aircraft",
-        },
+def test_create_object_type_sends_the_description(stub_foundry_http):
+    stub_foundry_http.respond(json={"apiName": "TMAircraft"})
+
+    create_employee_type(description="Aircraft entity")
+
+    assert body(stub_foundry_http.requests[0])["description"] == "Aircraft entity"
+
+
+@pytest.mark.parametrize("status", [404, 405])
+def test_create_object_type_falls_back_when_an_endpoint_is_missing(
+    stub_foundry_http, status
+):
+    stub_foundry_http.respond(status, json=fj.error("NotFound"))
+    stub_foundry_http.respond(204)  # created, empty body
+
+    assert create_employee_type() is None
+
+    first, second = stub_foundry_http.requests
+    assert first.url.path == f"/v2/ontologies/{ENCODED_RID}/objectTypes"
+    assert second.url.path == f"/v1/ontologies/{ENCODED_RID}/objectTypes"
+
+
+def test_create_object_type_other_errors_fail_at_once(stub_foundry_http):
+    import requests
+
+    stub_foundry_http.respond(
+        403, json=fj.error("PermissionDenied", error_code="PERMISSION_DENIED")
     )
 
+    with pytest.raises(
+        RuntimeError, match="Failed to create object type TMAircraft"
+    ) as e:
+        create_employee_type()
 
-def test_create_object_type_with_description(mock_object_type_service):
-    """Test creating an object type includes description when provided."""
-    service, _ = mock_object_type_service
-
-    mock_response = Mock()
-    mock_response.text = "ok"
-    mock_response.json.return_value = {"apiName": "TMAircraft"}
-
-    with patch.object(service, "_make_request", return_value=mock_response) as mock_req:
-        service.create_object_type(
-            ontology_rid="ri.ontology.main.ontology.test",
-            api_name="TMAircraft",
-            display_name="TM Aircraft",
-            primary_key="msn",
-            backing_dataset="ri.foundry.main.dataset.aircraft",
-            description="Aircraft entity",
-        )
-
-    assert mock_req.call_args.kwargs["json_data"]["description"] == "Aircraft entity"
+    assert isinstance(e.value.__cause__, requests.HTTPError)
+    assert e.value.__cause__.response.status_code == 403
+    assert len(stub_foundry_http.requests) == 1
 
 
-def test_create_link_type(mock_object_type_service):
-    """Test creating a link type via direct API endpoint."""
-    service, _ = mock_object_type_service
+def test_create_object_type_when_no_endpoint_exists(stub_foundry_http):
+    import requests
 
-    mock_response = Mock()
-    mock_response.text = "ok"
-    mock_response.json.return_value = {
+    stub_foundry_http.respond_always(404, json=fj.error("NotFound"))
+
+    with pytest.raises(RuntimeError, match="none of the schema endpoints") as e:
+        create_employee_type()
+
+    assert isinstance(e.value.__cause__, requests.HTTPError)
+    assert [r.url.path for r in stub_foundry_http.requests] == [
+        f"/v2/ontologies/{ENCODED_RID}/objectTypes",
+        f"/v1/ontologies/{ENCODED_RID}/objectTypes",
+        f"/ontology-manager/api/ontologies/{ENCODED_RID}/objectTypes",
+    ]
+    assert "/ontology-manager/api/ontologies" in str(e.value)
+
+
+def test_create_object_type_non_json_response_is_an_api_error(stub_foundry_http):
+    stub_foundry_http.respond(200, content=b"<html>not the API</html>")
+
+    with pytest.raises(PltrError, match="not JSON") as e:
+        create_employee_type()
+
+    assert e.value.error_type == "api_error"
+    assert e.value.exit_code == 7
+
+
+def test_create_link_type_modern_payload(stub_foundry_http):
+    stub_foundry_http.respond(json={"apiName": "aircraftLease"})
+
+    result = ObjectTypeService().create_link_type(
+        ontology_rid=fo.ONTOLOGY_RID,
+        api_name="aircraftLease",
+        from_object_type="TMAircraft",
+        to_object_type="TMLeaseAgreement",
+        reverse_api_name="leaseAircraft",
+    )
+
+    assert result == {"apiName": "aircraftLease"}
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"/v2/ontologies/{ENCODED_RID}/linkTypes"
+    assert body(request) == {
         "apiName": "aircraftLease",
-        "ontologyRid": "ri.ontology.main.ontology.test",
+        "fromObjectTypeApiName": "TMAircraft",
+        "toObjectTypeApiName": "TMLeaseAgreement",
+        "reverseApiName": "leaseAircraft",
     }
 
-    with patch.object(service, "_make_request", return_value=mock_response) as mock_req:
-        result = service.create_link_type(
-            ontology_rid="ri.ontology.main.ontology.test",
-            api_name="aircraftLease",
-            from_object_type="TMAircraft",
-            to_object_type="TMLeaseAgreement",
-            reverse_api_name="leaseAircraft",
-        )
 
-    assert result["apiName"] == "aircraftLease"
-    assert result["ontologyRid"] == "ri.ontology.main.ontology.test"
-    mock_req.assert_called_once_with(
-        "POST",
-        "/v2/ontologies/ri.ontology.main.ontology.test/linkTypes",
-        json_data={
-            "apiName": "aircraftLease",
-            "fromObjectTypeApiName": "TMAircraft",
-            "toObjectTypeApiName": "TMLeaseAgreement",
-            "reverseApiName": "leaseAircraft",
-        },
+def test_create_link_type_fallback_uses_the_legacy_payload(stub_foundry_http):
+    stub_foundry_http.respond(404, json=fj.error("NotFound"))
+    stub_foundry_http.respond(json={"apiName": "aircraftLease"})
+
+    ObjectTypeService().create_link_type(
+        ontology_rid=fo.ONTOLOGY_RID,
+        api_name="aircraftLease",
+        from_object_type="TMAircraft",
+        to_object_type="TMLeaseAgreement",
+        display_name="Aircraft lease",
+        description="Leases of an aircraft",
+        reverse_api_name="leaseAircraft",
+    )
+
+    legacy = stub_foundry_http.requests[1]
+    assert legacy.url.path == f"/v1/ontologies/{ENCODED_RID}/linkTypes"
+    assert body(legacy) == {
+        "apiName": "aircraftLease",
+        "linkTypeApiNameAtoB": "aircraftLease",
+        "aSideObjectTypeApiName": "TMAircraft",
+        "bSideObjectTypeApiName": "TMLeaseAgreement",
+        "displayName": "Aircraft lease",
+        "description": "Leases of an aircraft",
+        "linkTypeApiNameBtoA": "leaseAircraft",
+    }
+
+
+# ------------------------------------------------------------------ objects
+
+
+def test_list_objects_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.page([fo.employee()], "page-2", totalCount="3"))
+
+    page = OntologyObjectService().list_objects(
+        fo.ONTOLOGY,
+        "Employee",
+        select=["fullName", "salary"],
+        branch="feature",
+        load_ontology_defined_derived_properties=False,
+        page_size=20,
+        page_token="page-1",
+    )
+
+    assert page.data == [fo.employee()]  # objects are plain dicts
+    assert page.next_page_token == "page-2"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", OBJECTS)
+    assert params(request) == [
+        ("branch", "feature"),
+        ("loadOntologyDefinedDerivedProperties", "false"),
+        ("pageSize", "20"),
+        ("pageToken", "page-1"),
+        ("select", "fullName"),
+        ("select", "salary"),
+    ]
+
+
+def test_get_object(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.employee())
+
+    obj = OntologyObjectService().get_object(
+        fo.ONTOLOGY,
+        "Employee",
+        "EMP001",
+        select=["fullName"],
+        scenario_rid=fo.SCENARIO_RID,
+        transaction_id="txn-1",
+        load_ontology_defined_derived_properties=True,
+    )
+
+    assert obj == fo.employee()
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{OBJECTS}/EMP001")
+    assert params(request) == [
+        ("loadOntologyDefinedDerivedProperties", "true"),
+        ("scenarioRid", fo.SCENARIO_RID),
+        ("select", "fullName"),
+        ("transactionId", "txn-1"),
+    ]
+
+
+def test_get_object_url_encodes_the_primary_key(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.employee("a/b c"))
+
+    OntologyObjectService().get_object(fo.ONTOLOGY, "Employee", "a/b c")
+
+    assert (
+        stub_foundry_http.requests[0]
+        .url.raw_path.decode()
+        .endswith("/objects/Employee/a%2Fb%20c")
     )
 
 
-def test_create_object_type_fallback_endpoint(mock_object_type_service):
-    """Test object type creation fallback across endpoint variants."""
-    service, _ = mock_object_type_service
+def test_search_objects_always_sends_select(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.search_response([fo.employee()]))
 
-    mock_response = Mock()
-    mock_response.text = ""
+    response = OntologyObjectService().search_objects(fo.ONTOLOGY, "Employee")
 
-    with patch.object(
-        service,
-        "_make_request",
-        side_effect=[_http_error(404, "not found"), mock_response],
-    ) as mock_req:
-        result = service.create_object_type(
-            ontology_rid="ri.ontology.main.ontology.test",
-            api_name="TMAircraft",
-            display_name="TM Aircraft",
-            primary_key="msn",
-            backing_dataset="ri.foundry.main.dataset.aircraft",
-        )
-
-    assert result["apiName"] == "TMAircraft"
-    assert result["ontologyRid"] == "ri.ontology.main.ontology.test"
-    assert mock_req.call_count == 2
+    assert isinstance(response, SearchObjectsResponseV2)
+    assert response.data == [fo.employee()]
+    assert response.total_count == 1
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{OBJECTS}/search")
+    assert body(request) == {"select": []}  # no where: every object
+    assert params(request) == []
 
 
-def test_create_object_type_non_404_does_not_fallback(mock_object_type_service):
-    """Test non-404 errors fail immediately instead of trying all endpoints."""
-    service, _ = mock_object_type_service
-
-    with patch.object(
-        service, "_make_request", side_effect=_http_error(403, "forbidden")
-    ) as mock_req:
-        with pytest.raises(
-            RuntimeError, match="Failed to create object type TMAircraft"
-        ):
-            service.create_object_type(
-                ontology_rid="ri.ontology.main.ontology.test",
-                api_name="TMAircraft",
-                display_name="TM Aircraft",
-                primary_key="msn",
-                backing_dataset="ri.foundry.main.dataset.aircraft",
-            )
-
-    assert mock_req.call_count == 1
-
-
-def test_create_object_type_all_endpoints_fail(mock_object_type_service):
-    """Test object type creation failure after exhausting fallback endpoints."""
-    service, _ = mock_object_type_service
-
-    with patch.object(
-        service,
-        "_make_request",
-        side_effect=[
-            _http_error(404, "not found"),
-            _http_error(404, "not found"),
-            _http_error(404, "not found"),
+def test_search_objects_sends_the_typed_query(stub_foundry_http):
+    stub_foundry_http.respond(
+        json=fo.search_response([fo.employee()], token="next", total_count=9)
+    )
+    where = {
+        "type": "and",
+        "value": [
+            {"type": "eq", "field": "department", "value": "Engineering"},
+            {"type": "gte", "field": "salary", "value": 100000},
         ],
-    ):
-        with pytest.raises(
-            RuntimeError, match="Failed to create object type TMAircraft"
-        ):
-            service.create_object_type(
-                ontology_rid="ri.ontology.main.ontology.test",
-                api_name="TMAircraft",
-                display_name="TM Aircraft",
-                primary_key="msn",
-                backing_dataset="ri.foundry.main.dataset.aircraft",
-            )
+    }
 
-
-def test_create_link_type_fallback_uses_legacy_payload(mock_object_type_service):
-    """Test link type fallback uses legacy payload fields for legacy endpoints."""
-    service, _ = mock_object_type_service
-
-    mock_response = Mock()
-    mock_response.text = "ok"
-    mock_response.json.return_value = {"apiName": "aircraftLease"}
-
-    with patch.object(
-        service,
-        "_make_request",
-        side_effect=[_http_error(404, "not found"), mock_response],
-    ) as mock_req:
-        service.create_link_type(
-            ontology_rid="ri.ontology.main.ontology.test",
-            api_name="aircraftLease",
-            from_object_type="TMAircraft",
-            to_object_type="TMLeaseAgreement",
-            reverse_api_name="leaseAircraft",
-        )
-
-    fallback_payload = mock_req.call_args_list[-1].kwargs["json_data"]
-    assert "linkTypeApiNameAtoB" in fallback_payload
-    assert "aSideObjectTypeApiName" in fallback_payload
-    assert "fromObjectTypeApiName" not in fallback_payload
-
-
-# OntologyObjectService Tests
-def test_list_objects(mock_ontology_object_service, sample_object):
-    """Test listing objects."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.list.return_value = [sample_object]
-
-    result = service.list_objects("ri.ontology.main.ontology.test", "Employee")
-
-    assert len(result) == 1
-    assert result[0]["employee_id"] == "EMP001"
-    assert result[0]["name"] == "John Doe"
-    mock_ontology_object_class.list.assert_called_once()
-
-
-def test_get_object():
-    """Test getting a specific object."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_ontologies = Mock()
-        mock_ontology_object_class = Mock()
-
-        # Create a simple mock object with the required attributes
-        mock_obj = type(
-            "MockObject",
-            (),
-            {
-                "employee_id": "EMP001",
-                "name": "John Doe",
-                "department": "Engineering",
-                "__dict__": {
-                    "employee_id": "EMP001",
-                    "name": "John Doe",
-                    "department": "Engineering",
-                },
-            },
-        )()
-
-        mock_ontology_object_class.get.return_value = mock_obj
-        mock_ontologies.OntologyObject = mock_ontology_object_class
-        mock_client.ontologies = mock_ontologies
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service and test
-        service = OntologyObjectService()
-        result = service.get_object(
-            "ri.ontology.main.ontology.test", "Employee", "EMP001"
-        )
-
-        assert result["employee_id"] == "EMP001"
-        assert result["name"] == "John Doe"
-        mock_ontology_object_class.get.assert_called_once()
-
-
-def test_aggregate_objects(mock_ontology_object_service):
-    """Test aggregating objects."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_result = {"count": 10, "avg_salary": 75000}
-    mock_ontology_object_class.aggregate.return_value = mock_result
-
-    aggregations = [{"type": "count"}, {"type": "avg", "field": "salary"}]
-    result = service.aggregate_objects(
-        "ri.ontology.main.ontology.test", "Employee", aggregations
-    )
-
-    assert result["count"] == 10
-    assert result["avg_salary"] == 75000
-    mock_ontology_object_class.aggregate.assert_called_once()
-
-
-def test_count_objects(mock_ontology_object_service):
-    """Test counting objects."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.count.return_value = 42
-
-    result = service.count_objects("ri.ontology.main.ontology.test", "Employee")
-
-    assert result["count"] == 42
-    assert result["ontology_rid"] == "ri.ontology.main.ontology.test"
-    assert result["object_type"] == "Employee"
-    assert result["branch"] is None
-    mock_ontology_object_class.count.assert_called_once_with(
-        "ri.ontology.main.ontology.test", "Employee", branch=None
-    )
-
-
-def test_count_objects_with_branch(mock_ontology_object_service):
-    """Test counting objects with branch specified."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.count.return_value = 24
-
-    result = service.count_objects(
-        "ri.ontology.main.ontology.test", "Employee", branch="master"
-    )
-
-    assert result["count"] == 24
-    assert result["branch"] == "master"
-    mock_ontology_object_class.count.assert_called_once_with(
-        "ri.ontology.main.ontology.test", "Employee", branch="master"
-    )
-
-
-def test_search_objects(mock_ontology_object_service, sample_object):
-    """Test searching objects."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.search.return_value = [sample_object]
-
-    result = service.search_objects(
-        "ri.ontology.main.ontology.test", "Employee", "John"
-    )
-
-    assert len(result) == 1
-    assert result[0]["employee_id"] == "EMP001"
-    assert result[0]["name"] == "John Doe"
-    mock_ontology_object_class.search.assert_called_once_with(
-        "ri.ontology.main.ontology.test",
+    response = OntologyObjectService().search_objects(
+        fo.ONTOLOGY,
         "Employee",
-        query="John",
-        page_size=None,
-        select=None,
-        branch=None,
+        where=where,
+        select=["fullName"],
+        order_by={"fields": [{"field": "salary", "direction": "desc"}]},
+        branch="feature",
+        default_load_level="extractMainValue",
+        load_ontology_defined_derived_properties=False,
+        page_size=50,
+        page_token="tok",
     )
 
-
-def test_search_objects_with_options(mock_ontology_object_service, sample_object):
-    """Test searching objects with all options."""
-    service, mock_ontology_object_class = mock_ontology_object_service
-    mock_ontology_object_class.search.return_value = [sample_object]
-
-    result = service.search_objects(
-        "ri.ontology.main.ontology.test",
-        "Employee",
-        "Jane",
-        page_size=10,
-        properties=["name", "department"],
-        branch="master",
-    )
-
-    assert len(result) == 1
-    mock_ontology_object_class.search.assert_called_once_with(
-        "ri.ontology.main.ontology.test",
-        "Employee",
-        query="Jane",
-        page_size=10,
-        select=["name", "department"],
-        branch="master",
-    )
+    assert response.next_page_token == "next"
+    [request] = stub_foundry_http.requests
+    assert params(request) == [("branch", "feature")]
+    assert body(request) == {
+        "where": where,
+        "orderBy": {"fields": [{"field": "salary", "direction": "desc"}]},
+        "pageSize": 50,
+        "pageToken": "tok",
+        "select": ["fullName"],
+        "defaultLoadLevel": {"type": "extractMainValue"},
+        "loadOntologyDefinedDerivedProperties": False,
+    }
 
 
-# ActionService Tests
-def test_apply_action(mock_action_service, sample_action_result):
-    """Test applying an action."""
-    service, mock_action_class = mock_action_service
-    mock_action_class.apply.return_value = sample_action_result
-
-    params = {"employee_id": "EMP001", "new_department": "Sales"}
-    result = service.apply_action(
-        "ri.ontology.main.ontology.test", "transfer_employee", params
-    )
-
-    assert result["status"] == "SUCCESS"
-    assert "EMP001" in result["modified_objects"]
-    mock_action_class.apply.assert_called_once()
-
-
-def test_validate_action(mock_action_service, sample_validation_result):
-    """Test validating an action."""
-    service, mock_action_class = mock_action_service
-    mock_action_class.validate.return_value = sample_validation_result
-
-    params = {"employee_id": "EMP001", "new_department": "Sales"}
-    result = service.validate_action(
-        "ri.ontology.main.ontology.test", "transfer_employee", params
-    )
-
-    assert result["valid"] is True
-    assert len(result["errors"]) == 0
-    mock_action_class.validate.assert_called_once()
-
-
-def test_apply_batch_actions(mock_action_service, sample_action_result):
-    """Test applying batch actions."""
-    service, mock_action_class = mock_action_service
-    mock_action_class.apply_batch.return_value = [
-        sample_action_result,
-        sample_action_result,
+def test_aggregate_objects(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.aggregate_response())
+    aggregation = [
+        {"type": "count", "name": "employees"},
+        {"type": "avg", "field": "salary", "name": "avgSalary"},
     ]
 
-    requests = [
-        {"employee_id": "EMP001", "new_department": "Sales"},
-        {"employee_id": "EMP002", "new_department": "Marketing"},
-    ]
-    result = service.apply_batch_actions(
-        "ri.ontology.main.ontology.test", "transfer_employee", requests
+    response = OntologyObjectService().aggregate_objects(
+        fo.ONTOLOGY,
+        "Employee",
+        aggregation=aggregation,
+        group_by=[{"type": "exact", "field": "department"}],
+        where={"type": "isNull", "field": "terminationDate", "value": True},
+        accuracy="ALLOW_APPROXIMATE",
+        branch="feature",
     )
 
-    assert len(result) == 2
-    assert result[0]["status"] == "SUCCESS"
-    mock_action_class.apply_batch.assert_called_once()
+    assert isinstance(response, AggregateObjectsResponseV2)
+    assert response.data[0].group == {"department": "Engineering"}
+    assert response.data[0].metrics[1].value == 125000.5
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{OBJECTS}/aggregate")
+    assert params(request) == [("branch", "feature")]
+    assert body(request) == {
+        "aggregation": aggregation,
+        "where": {"type": "isNull", "field": "terminationDate", "value": True},
+        "groupBy": [{"type": "exact", "field": "department"}],
+        "accuracy": "ALLOW_APPROXIMATE",
+    }
 
 
-def test_apply_batch_actions_exceeds_limit(mock_action_service):
-    """Test that batch actions fail when exceeding limit."""
-    service, _ = mock_action_service
+def test_aggregate_objects_without_groups_sends_an_empty_group_by(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.aggregate_response([]))
 
-    # Create 21 requests (exceeds limit of 20)
-    requests = [{"employee_id": f"EMP{i}"} for i in range(21)]
-
-    with pytest.raises(RuntimeError) as excinfo:
-        service.apply_batch_actions(
-            "ri.ontology.main.ontology.test", "transfer_employee", requests
-        )
-
-    assert "Maximum 20 actions" in str(excinfo.value)
-
-
-# QueryService Tests
-def test_execute_query(mock_query_service, sample_query_result):
-    """Test executing a query."""
-    service, mock_query_class = mock_query_service
-    mock_query_class.execute.return_value = sample_query_result
-
-    params = {"department": "Engineering"}
-    result = service.execute_query(
-        "ri.ontology.main.ontology.test", "get_employees_by_dept", params
+    OntologyObjectService().aggregate_objects(
+        fo.ONTOLOGY, "Employee", aggregation=[{"type": "count"}]
     )
 
-    assert len(result["rows"]) == 2
-    assert result["columns"] == ["employee_id", "name"]
-    mock_query_class.execute.assert_called_once()
+    assert body(stub_foundry_http.requests[0]) == {
+        "aggregation": [{"type": "count"}],
+        "groupBy": [],
+    }
 
 
-def test_execute_query_with_objects_result(mock_query_service):
-    """Test executing a query that returns objects."""
-    service, mock_query_class = mock_query_service
-    # Create a mock with spec to control attributes
-    mock_result = Mock(spec=["objects"])
-    mock_result.objects = [{"id": "1", "name": "Test"}]
-    mock_query_class.execute.return_value = mock_result
+def test_count_objects_is_beta_and_returns_the_response(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.count_response(42))
 
-    result = service.execute_query("ri.ontology.main.ontology.test", "get_all_objects")
+    response = OntologyObjectService().count_objects(
+        fo.ONTOLOGY, "Employee", branch="feature"
+    )
 
-    assert "objects" in result
-    assert len(result["objects"]) == 1
-    mock_query_class.execute.assert_called_once()
-
-
-# Tests against the real foundry_sdk client (only HTTP is stubbed).
-
-ONTOLOGY_RID = "ri.ontology.main.ontology.c61d9ab5-2919-4127-a0a1-ac64c0ce6367"
+    assert isinstance(response, CountObjectsResponseV2)
+    assert response.count == 42
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{OBJECTS}/count")
+    assert request.url.params["preview"] == "true"
+    assert request.url.params["branch"] == "feature"
 
 
 def test_list_linked_objects_returns_linked_object_properties(stub_foundry_http):
-    stub_foundry_http.respond(
-        json={
-            "data": [
-                {
-                    "__apiName": "Employee",
-                    "__primaryKey": "EMP002",
-                    "employee_id": "EMP002",
-                    "name": "Jane Roe",
-                }
-            ]
-        }
+    linked = fo.employee("EMP002", "Jane Roe")
+    stub_foundry_http.respond(json=fo.page([linked], "page-2"))
+
+    page = OntologyObjectService().list_linked_objects(
+        fo.ONTOLOGY,
+        "Employee",
+        "EMP001",
+        "manages",
+        select=["fullName"],
+        page_size=10,
     )
 
-    result = OntologyObjectService().list_linked_objects(
-        ONTOLOGY_RID, "Employee", "EMP001", "manages"
-    )
-
-    assert result == [
-        {
-            "__apiName": "Employee",
-            "__primaryKey": "EMP002",
-            "employee_id": "EMP002",
-            "name": "Jane Roe",
-        }
-    ]
+    assert page.data == [linked]
+    assert page.next_page_token == "page-2"
     [request] = stub_foundry_http.requests
     assert (request.method, request.url.path) == (
         "GET",
-        f"/api/v2/ontologies/{ONTOLOGY_RID}/objects/Employee/EMP001/links/manages",
+        f"{OBJECTS}/EMP001/links/manages",
     )
+    assert params(request) == [("pageSize", "10"), ("select", "fullName")]
+
+
+# ------------------------------------------------------------------ actions
+
+ACTIONS = f"{API}/{fo.ONTOLOGY}/actions/transferEmployee"
+PARAMETERS = {"employee": "EMP001", "newDepartment": "Sales"}
+
+
+def test_apply_action_passes_parameters_by_keyword(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.apply_response())
+
+    response = ActionService().apply_action(fo.ONTOLOGY, "transferEmployee", PARAMETERS)
+
+    assert isinstance(response, SyncApplyActionResponseV2)
+    assert response.operation_id == fo.OPERATION_ID
+    assert response.validation.result == "VALID"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{ACTIONS}/apply")
+    assert body(request) == {"parameters": PARAMETERS}  # no options by default
+    assert params(request) == []
+    assert "attribution" not in request.headers
+
+
+def test_apply_action_options(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.apply_response(edits=fo.object_edits()))
+
+    response = ActionService().apply_action(
+        fo.ONTOLOGY,
+        "transferEmployee",
+        PARAMETERS,
+        return_edits="ALL",
+        attribution="pltr-tests",
+        scenario_rid=fo.SCENARIO_RID,
+    )
+
+    assert response.edits.modified_objects_count == 1
+    [request] = stub_foundry_http.requests
+    assert body(request) == {
+        "parameters": PARAMETERS,
+        "options": {"returnEdits": "ALL"},
+    }
+    assert params(request) == [("scenarioRid", fo.SCENARIO_RID)]
+    assert request.headers["attribution"] == "pltr-tests"
+
+
+def test_apply_action_keeps_null_parameter_values(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.apply_response())
+
+    ActionService().apply_action(
+        fo.ONTOLOGY, "transferEmployee", {"employee": "EMP001", "manager": None}
+    )
+
+    assert body(stub_foundry_http.requests[0])["parameters"] == {
+        "employee": "EMP001",
+        "manager": None,
+    }
+
+
+def test_validate_action_applies_in_validate_only_mode(stub_foundry_http):
+    stub_foundry_http.respond(
+        json=fo.validate_response("INVALID", invalid_parameter="employee")
+    )
+
+    response = ActionService().validate_action(
+        fo.ONTOLOGY, "transferEmployee", PARAMETERS
+    )
+
+    assert response.validation.result == "INVALID"
+    assert response.validation.parameters["employee"].result == "INVALID"
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{ACTIONS}/apply"
+    assert body(request) == {
+        "parameters": PARAMETERS,
+        "options": {"mode": "VALIDATE_ONLY"},
+    }
+
+
+def test_apply_batch_actions_passes_requests_by_keyword(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.batch_response(fo.object_edits(2)))
+    requests = [
+        {"parameters": {"employee": "EMP001"}},
+        {"parameters": {"employee": "EMP002"}},
+    ]
+
+    response = ActionService().apply_batch_actions(
+        fo.ONTOLOGY,
+        "transferEmployee",
+        requests,
+        return_edits="ALL",
+        scenario_rid=fo.SCENARIO_RID,
+    )
+
+    assert response.edits.modified_objects_count == 2
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{ACTIONS}/applyBatch")
+    assert body(request) == {"requests": requests, "options": {"returnEdits": "ALL"}}
+    assert params(request) == [("scenarioRid", fo.SCENARIO_RID)]
+
+
+def test_apply_batch_actions_leaves_the_size_limit_to_foundry(stub_foundry_http):
+    # Foundry allows more than 20 for some actions; pltr doesn't cap the batch.
+    stub_foundry_http.respond(json=fo.batch_response())
+    requests = [{"parameters": {"employee": f"EMP{i}"}} for i in range(25)]
+
+    ActionService().apply_batch_actions(fo.ONTOLOGY, "transferEmployee", requests)
+
+    assert len(body(stub_foundry_http.requests[0])["requests"]) == 25
+
+
+# ------------------------------------------------------------------ queries
+
+
+def test_execute_query(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.query_response([{"employeeId": "EMP001"}]))
+
+    response = QueryService().execute_query(
+        fo.ONTOLOGY, "employeesByDepartment", {"department": "Engineering"}
+    )
+
+    assert isinstance(response, ExecuteQueryResponse)
+    assert response.value == [{"employeeId": "EMP001"}]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{API}/{fo.ONTOLOGY}/queries/employeesByDepartment/execute",
+    )
+    assert body(request) == {"parameters": {"department": "Engineering"}}
+
+
+def test_execute_query_without_parameters_sends_an_empty_object(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.query_response(3))
+
+    assert QueryService().execute_query(fo.ONTOLOGY, "headCount").value == 3
+    assert body(stub_foundry_http.requests[0]) == {"parameters": {}}

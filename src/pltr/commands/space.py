@@ -1,354 +1,264 @@
 """
-Space management commands for Foundry filesystem.
+Space commands (Foundry filesystem API).
 """
 
-import typer
-from typing import Optional, List
-from rich.console import Console
-from rich.table import Table
+from typing import List, Optional
 
-from ..services.space import SpaceService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+import typer
+from typing_extensions import Annotated
+
+from ..contract import (
+    AllPagesOption,
+    Columns,
+    ConfirmAliasOption,
+    FormatOption,
+    MaxPagesOption,
+    OutputOption,
+    PageSizeOption,
+    PageTokenOption,
+    ProfileOption,
+    YesOption,
+    collect_pages,
+    confirm_destructive,
+    emit,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.space import SpaceService
+from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
-console = Console()
-formatter = OutputFormatter(console)
+
+#: Table/CSV columns for a ``Space`` model.
+SPACE_COLUMNS: Columns = {
+    "RID": "rid",
+    "Display Name": "display_name",
+    "Description": "description",
+    "Path": "path",
+    "Organizations": lambda space: ", ".join(space.organizations),
+    "Deletion Policy Organizations": lambda space: ", ".join(
+        space.deletion_policy_organizations
+    ),
+    "Default Role Set": "default_role_set_id",
+    "Usage Account": "usage_account_rid",
+    "File System": "file_system_id",
+}
+
+#: Table/CSV columns for ``space list`` (one row per ``Space``).
+SPACE_LIST_COLUMNS: Columns = {
+    "Display Name": "display_name",
+    "RID": "rid",
+    "Path": "path",
+    "Organizations": lambda space: ", ".join(space.organizations),
+}
+
+SpaceRid = Annotated[
+    str,
+    typer.Argument(
+        help="Space RID (find it with 'pltr space list').",
+        autocompletion=complete_rid,
+    ),
+]
+DefaultRoleSetOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--default-role-set-id",
+        help="Default role set for projects in the space (default: Foundry's).",
+    ),
+]
+UsageAccountOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--usage-account-rid",
+        help="Usage account RID that the space's resource usage accrues to.",
+    ),
+]
 
 
 @app.command("create")
+@pltr_command(sdk="filesystem.Space.create", beta=True)
 def create_space(
-    name: str = typer.Argument(..., help="Space display name"),
-    enrollment_rid: str = typer.Option(
-        ...,
-        "--enrollment-rid",
-        "-e",
-        help="Enrollment Resource Identifier",
-        autocompletion=complete_rid,
-    ),
-    organizations: List[str] = typer.Option(
-        ...,
-        "--organization",
-        "-org",
-        help="Organization RID(s) (can specify multiple)",
-    ),
-    deletion_policy_organizations: List[str] = typer.Option(
-        ...,
-        "--deletion-policy-org",
-        "-dpo",
-        help="Organization RID(s) for deletion policy (can specify multiple)",
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", "-d", help="Space description"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    name: Annotated[str, typer.Argument(help="Display name of the new space.")],
+    enrollment_rid: Annotated[
+        str,
+        typer.Option(
+            "--enrollment-rid",
+            "-e",
+            help="RID of the enrollment the space belongs to.",
+            autocompletion=complete_rid,
+        ),
+    ],
+    organizations: Annotated[
+        List[str],
+        typer.Option(
+            "--organization",
+            "-org",
+            help=(
+                "Organization RID whose members get access to the space "
+                "(repeat for several)."
+            ),
+        ),
+    ],
+    deletion_policy_organizations: Annotated[
+        List[str],
+        typer.Option(
+            "--deletion-policy-org",
+            "-dpo",
+            help=(
+                "Organization RID for the deletion policy: the space is deleted "
+                "when the last of these organizations is (repeat for several)."
+            ),
+        ),
+    ],
+    description: Annotated[
+        Optional[str],
+        typer.Option("--description", "-d", help="Description of the space."),
+    ] = None,
+    default_role_set_id: DefaultRoleSetOption = None,
+    file_system_id: Annotated[
+        Optional[str],
+        typer.Option(
+            "--file-system-id",
+            help="Filesystem that stores the space's contents (default: Foundry's).",
+        ),
+    ] = None,
+    usage_account_rid: UsageAccountOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Create a new space in Foundry."""
-    try:
-        service = SpaceService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Creating space '{name}'..."):
-            space = service.create_space(
-                display_name=name,
-                enrollment_rid=enrollment_rid,
-                organizations=organizations,
-                deletion_policy_organizations=deletion_policy_organizations,
-                description=description,
-            )
-
-        # Cache the RID for future completions
-        if space.get("rid"):
-            cache_rid(space["rid"])
-
-        formatter.print_success(f"Successfully created space '{name}'")
-        formatter.print_info(f"Space RID: {space.get('rid', 'unknown')}")
-        formatter.print_info(
-            f"Root Folder RID: {space.get('root_folder_rid', 'unknown')}"
+    """Create a space."""
+    with spinner(f"Creating space '{name}'..."):
+        space = SpaceService(profile=profile).create_space(
+            display_name=name,
+            enrollment_rid=enrollment_rid,
+            organizations=organizations,
+            deletion_policy_organizations=deletion_policy_organizations,
+            description=description,
+            default_role_set_id=default_role_set_id,
+            file_system_id=file_system_id,
+            usage_account_rid=usage_account_rid,
         )
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(space, format=format)
-        elif format == "csv":
-            formatter.format_list([space], format=format)
-        else:
-            _format_space_table(space)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to create space: {e}")
-        raise typer.Exit(1)
+    cache_rid(space.rid)
+    success(f"Created space '{space.display_name}' ({space.rid})")
+    emit(space, format=format, output=output, columns=SPACE_COLUMNS, title="Space")
 
 
 @app.command("get")
+@pltr_command(sdk="filesystem.Space.get", beta=True)
 def get_space(
-    space_rid: str = typer.Argument(
-        ..., help="Space Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    space_rid: SpaceRid,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Get detailed information about a specific space."""
-    try:
-        # Cache the RID for future completions
-        cache_rid(space_rid)
-
-        service = SpaceService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Fetching space {space_rid}..."):
-            space = service.get_space(space_rid)
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(space, output, "json")
-            else:
-                formatter.format_dict(space, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file([space], output, "csv")
-            else:
-                formatter.format_list([space], format=format)
-        else:
-            _format_space_table(space)
-
-        if output:
-            formatter.print_success(f"Space information saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get space: {e}")
-        raise typer.Exit(1)
+    """Get a space's metadata."""
+    with spinner(f"Fetching space {space_rid}..."):
+        space = SpaceService(profile=profile).get_space(space_rid)
+    cache_rid(space_rid)
+    emit(space, format=format, output=output, columns=SPACE_COLUMNS, title="Space")
 
 
 @app.command("list")
+@pltr_command(sdk="filesystem.Space.list", paged=True)
 def list_spaces(
-    organization_rid: Optional[str] = typer.Option(
-        None,
-        "--organization-rid",
-        "-org",
-        help="Organization Resource Identifier to filter by",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    page_size: Optional[int] = typer.Option(
-        None, "--page-size", help="Number of items per page"
-    ),
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    page_size: PageSizeOption = None,
+    page_token: PageTokenOption = None,
+    max_pages: MaxPagesOption = 1,
+    all_pages: AllPagesOption = False,
+    organization_rid: Annotated[
+        Optional[str],
+        typer.Option(
+            "--organization-rid",
+            "-org",
+            hidden=True,
+            help="Removed: the API can't filter spaces by organization.",
+        ),
+    ] = None,
 ):
-    """List spaces, optionally filtered by organization."""
-    try:
-        service = SpaceService(profile=profile)
+    """List the spaces you can see.
 
-        filter_desc = f" in organization {organization_rid}" if organization_rid else ""
-        with SpinnerProgressTracker().track_spinner(f"Listing spaces{filter_desc}..."):
-            spaces = service.list_spaces(
-                organization_rid=organization_rid, page_size=page_size
-            )
-
-        if not spaces:
-            formatter.print_info("No spaces found.")
-            return
-
-        # Format output
-        if format == "json":
-            if output:
-                formatter.save_to_file(spaces, output, "json")
-            else:
-                formatter.format_list(spaces, format=format)
-        elif format == "csv":
-            if output:
-                formatter.save_to_file(spaces, output, "csv")
-            else:
-                formatter.format_list(spaces, format=format)
-        else:
-            _format_spaces_table(spaces)
-
-        if output:
-            formatter.print_success(f"Spaces list saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to list spaces: {e}")
-        raise typer.Exit(1)
+    Fetches one page by default; use --all for every page, or --page-token
+    with the nextPageToken of an earlier response to continue.
+    """
+    if organization_rid is not None:
+        raise typer.BadParameter(
+            "the Foundry API can't filter spaces by organization, so this option "
+            "was removed. List spaces and filter on their 'organizations' field "
+            "instead, e.g. pltr space list --all --format json | jq "
+            "'.data[] | select(.organizations | index(\"<org RID>\"))'",
+            param_hint="'--organization-rid'",
+        )
+    service = SpaceService(profile=profile)
+    with spinner("Listing spaces..."):
+        page = collect_pages(
+            lambda token: service.list_spaces(page_size=page_size, page_token=token),
+            page_token=page_token,
+            max_pages=max_pages,
+            all_pages=all_pages,
+        )
+    emit(page, format=format, output=output, columns=SPACE_LIST_COLUMNS)
 
 
 @app.command("update")
+@pltr_command(sdk=("filesystem.Space.get", "filesystem.Space.replace"), beta=True)
 def update_space(
-    space_rid: str = typer.Argument(
-        ..., help="Space Resource Identifier", autocompletion=complete_rid
-    ),
-    name: Optional[str] = typer.Option(
-        None, "--name", "-n", help="New space display name"
-    ),
-    description: Optional[str] = typer.Option(
-        None, "--description", "-d", help="New space description"
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
+    space_rid: SpaceRid,
+    name: Annotated[
+        Optional[str], typer.Option("--name", "-n", help="New display name.")
+    ] = None,
+    description: Annotated[
+        Optional[str], typer.Option("--description", "-d", help="New description.")
+    ] = None,
+    default_role_set_id: DefaultRoleSetOption = None,
+    usage_account_rid: UsageAccountOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Update space information."""
-    try:
-        if not name and not description:
-            formatter.print_error(
-                "At least one field (--name or --description) must be provided"
-            )
-            raise typer.Exit(1)
+    """Change a space's name, description, default role set or usage account.
 
-        service = SpaceService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Updating space {space_rid}..."):
-            space = service.update_space(
-                space_rid=space_rid,
-                display_name=name,
-                description=description,
-            )
-
-        formatter.print_success(f"Successfully updated space {space_rid}")
-
-        # Format output
-        if format == "json":
-            formatter.format_dict(space, format=format)
-        elif format == "csv":
-            formatter.format_list([space], format=format)
-        else:
-            _format_space_table(space)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to update space: {e}")
-        raise typer.Exit(1)
+    Fields you don't pass keep their current values.
+    """
+    if all(
+        value is None
+        for value in (name, description, default_role_set_id, usage_account_rid)
+    ):
+        raise typer.BadParameter(
+            "pass at least one of --name, --description, --default-role-set-id "
+            "or --usage-account-rid"
+        )
+    with spinner(f"Updating space {space_rid}..."):
+        space = SpaceService(profile=profile).update_space(
+            space_rid,
+            display_name=name,
+            description=description,
+            default_role_set_id=default_role_set_id,
+            usage_account_rid=usage_account_rid,
+        )
+    success(f"Updated space {space_rid}")
+    emit(space, format=format, output=output, columns=SPACE_COLUMNS, title="Space")
 
 
 @app.command("delete")
+@pltr_command(sdk="filesystem.Space.delete", beta=True, destructive=True)
 def delete_space(
-    space_rid: str = typer.Argument(
-        ..., help="Space Resource Identifier", autocompletion=complete_rid
-    ),
-    profile: Optional[str] = typer.Option(
-        None, "--profile", help="Profile name", autocompletion=complete_profile
-    ),
-    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt"),
+    space_rid: SpaceRid,
+    yes: YesOption = False,
+    confirm: ConfirmAliasOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
 ):
-    """Delete a space."""
-    try:
-        if not confirm:
-            confirm_delete = typer.confirm(
-                f"Are you sure you want to delete space {space_rid}?"
-            )
-            if not confirm_delete:
-                formatter.print_info("Space deletion cancelled.")
-                return
-
-        service = SpaceService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Deleting space {space_rid}..."):
-            service.delete_space(space_rid)
-
-        formatter.print_success(f"Successfully deleted space {space_rid}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to delete space: {e}")
-        raise typer.Exit(1)
-
-
-def _format_space_table(space: dict):
-    """Format space information as a table."""
-    table = Table(title="Space Information", show_header=True, header_style="bold cyan")
-    table.add_column("Property", style="cyan")
-    table.add_column("Value")
-
-    table.add_row("RID", space.get("rid", "N/A"))
-    table.add_row("Display Name", space.get("display_name", "N/A"))
-    table.add_row("Description", space.get("description", "N/A"))
-    table.add_row("Organization RID", space.get("organization_rid", "N/A"))
-    table.add_row("Root Folder RID", space.get("root_folder_rid", "N/A"))
-    table.add_row("Created By", space.get("created_by", "N/A"))
-    table.add_row("Created Time", space.get("created_time", "N/A"))
-    table.add_row("Modified By", space.get("modified_by", "N/A"))
-    table.add_row("Modified Time", space.get("modified_time", "N/A"))
-    table.add_row("Trash Status", space.get("trash_status", "N/A"))
-
-    console.print(table)
-
-
-def _format_spaces_table(spaces: List[dict]):
-    """Format multiple spaces as a table."""
-    table = Table(title="Spaces", show_header=True, header_style="bold cyan")
-    table.add_column("Display Name")
-    table.add_column("RID")
-    table.add_column("Organization RID")
-    table.add_column("Created By")
-    table.add_column("Created Time")
-
-    for space in spaces:
-        table.add_row(
-            space.get("display_name", "N/A"),
-            space.get("rid", "N/A"),
-            space.get("organization_rid", "N/A"),
-            space.get("created_by", "N/A"),
-            space.get("created_time", "N/A"),
-        )
-
-    console.print(table)
-    console.print(f"\nTotal: {len(spaces)} spaces")
+    """Delete an empty space (delete its projects and resources first)."""
+    confirm_destructive(f"Delete space {space_rid}?", yes=yes)
+    with spinner(f"Deleting space {space_rid}..."):
+        SpaceService(profile=profile).delete_space(space_rid)
+    success(f"Deleted space {space_rid}")
+    emit(None, format=format)
 
 
 @app.callback()
@@ -356,29 +266,27 @@ def main():
     """
     Space operations using foundry-platform-sdk.
 
-    Manage spaces in the Foundry filesystem. Create, retrieve, update, and delete
-    spaces using Resource Identifiers (RIDs).
+    Spaces are addressed by RID. Creating, reading, updating and deleting a
+    space uses beta Foundry endpoints (labeled [beta]); listing is GA.
 
     Examples:
-        # Create a space with required parameters
+
+    \b
+        # Create a space
         pltr space create "My Space" \\
-            --enrollment-rid ri.enrollment.main.enrollment.xyz123 \\
-            --organization ri.compass.main.organization.abc456 \\
-            --deletion-policy-org ri.compass.main.organization.abc456
-
-        # List all spaces
+            --enrollment-rid <ENROLLMENT_RID> \\
+            --organization <ORGANIZATION_RID> \\
+            --deletion-policy-org <ORGANIZATION_RID>
+    \b
+        # List spaces (one page; --all for every page)
         pltr space list
-
-        # List spaces in a specific organization
-        pltr space list --organization-rid ri.compass.main.organization.xyz123
-
-        # Get space information
-        pltr space get ri.compass.main.space.abc456
-
-        # Update space
-        pltr space update ri.compass.main.space.abc456 --name "Updated Name"
-
-        # Delete space
-        pltr space delete ri.compass.main.space.abc456
+    \b
+        # Get space information as JSON
+        pltr space get <SPACE_RID> --format json
+    \b
+        # Update the description
+        pltr space update <SPACE_RID> --description "New text"
+    \b
+        # Delete an empty space (asks for confirmation; --yes skips it)
+        pltr space delete <SPACE_RID>
     """
-    pass

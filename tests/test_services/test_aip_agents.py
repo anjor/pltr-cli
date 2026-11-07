@@ -1,204 +1,102 @@
-"""Tests for AIP Agents service."""
+"""Tests for AipAgentsService against a real FoundryClient (only HTTP is faked).
+
+Every AIP Agents endpoint is beta: each request must carry preview=true. The
+module-level filter turns the SDK's UserWarning (sent when preview= is
+passed to a GA method) into a failure. (These tests replace Mock-based ones
+that only checked which SDK attributes were called.)
+"""
 
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.aip_agents.errors import AgentNotFound
+from foundry_sdk.v2.aip_agents.models import Agent, AgentVersion, Session
+
 from pltr.services.aip_agents import AipAgentsService
-from pltr.utils.pagination import PaginationConfig
+from tests import foundry_json as fj
+from tests import foundry_json_aip_agents as aj
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+AGENT_PATH = f"/api/v2/aipAgents/agents/{aj.AGENT_RID}"
 
 
-class TestAipAgentsService:
-    """Test AIP Agents service functionality."""
+def test_get_agent_latest_version(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.agent())
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.aip_agents = Mock()
-        client.aip_agents.Agent = Mock()
-        client.aip_agents.Agent.Session = Mock()
-        client.aip_agents.Agent.AgentVersion = Mock()
-        return client
+    agent = AipAgentsService().get_agent(aj.AGENT_RID)
 
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create AipAgentsService with mocked client."""
-        with patch("pltr.services.base.AuthManager") as mock_auth:
-            mock_auth.return_value.get_client.return_value = mock_client
-            service = AipAgentsService()
-            return service
+    assert isinstance(agent, Agent)
+    assert agent.metadata.display_name == "Support Assistant"
+    assert agent.parameters["region"].parameter_type.type == "string"
+    [request] = stub_foundry_http.requests
+    assert request.method == "GET"
+    assert request.url.path == AGENT_PATH
+    assert dict(request.url.params) == {"preview": "true"}
 
-    def test_get_agent(self, service, mock_client):
-        """Test getting an agent."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": agent_rid,
-            "version": "1.0",
-            "metadata": {
-                "displayName": "Test Agent",
-                "description": "A test agent",
-            },
-        }
-        mock_client.aip_agents.Agent.get.return_value = mock_response
 
-        # Execute
-        result = service.get_agent(agent_rid)
+def test_get_agent_specific_version(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.agent(version="1.0"))
 
-        # Assert
-        mock_client.aip_agents.Agent.get.assert_called_once_with(
-            agent_rid, version=None, preview=True
-        )
-        assert result["rid"] == agent_rid
-        assert result["metadata"]["displayName"] == "Test Agent"
+    AipAgentsService().get_agent(aj.AGENT_RID, version="1.0")
 
-    def test_get_agent_with_version(self, service, mock_client):
-        """Test getting a specific agent version."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        version = "1.5"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": agent_rid,
-            "version": version,
-        }
-        mock_client.aip_agents.Agent.get.return_value = mock_response
+    [request] = stub_foundry_http.requests
+    assert dict(request.url.params) == {"version": "1.0", "preview": "true"}
 
-        # Execute
-        result = service.get_agent(agent_rid, version=version)
 
-        # Assert
-        mock_client.aip_agents.Agent.get.assert_called_once_with(
-            agent_rid, version=version, preview=True
-        )
-        assert result["version"] == version
+def test_get_agent_not_found_propagates(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("AgentNotFound", parameters={"agentRid": aj.AGENT_RID})
+    )
 
-    def test_get_agent_error(self, service, mock_client):
-        """Test error handling in get_agent."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.invalid"
-        mock_client.aip_agents.Agent.get.side_effect = Exception("Agent not found")
+    with pytest.raises(AgentNotFound):
+        AipAgentsService().get_agent(aj.AGENT_RID)
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to get agent"):
-            service.get_agent(agent_rid)
 
-    def test_list_sessions(self, service, mock_client):
-        """Test listing sessions for an agent."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        config = PaginationConfig(page_size=10, max_pages=1)
+def test_list_sessions_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [aj.session(), aj.session(title="Other")], "nextPageToken": "t2"}
+    )
 
-        # Create a mock that returns a single session to avoid empty iterator issue
-        mock_session = Mock()
-        mock_session.dict.return_value = {
-            "rid": "session1",
-            "agent_rid": agent_rid,
-        }
+    page = AipAgentsService().list_sessions(aj.AGENT_RID, page_size=2)
 
-        # Create a mock iterator
-        mock_iterator = Mock()
-        mock_iterator.__iter__ = Mock(return_value=iter([mock_session]))
-        mock_iterator.next_page_token = None
-        mock_client.aip_agents.Agent.Session.list.return_value = mock_iterator
+    assert [s.metadata.title for s in page.data] == ["Ticket triage", "Other"]
+    assert all(isinstance(s, Session) for s in page.data)
+    assert page.next_page_token == "t2"
+    [request] = stub_foundry_http.requests  # one page, not every page
+    assert request.url.path == f"{AGENT_PATH}/sessions"
+    assert dict(request.url.params) == {"pageSize": "2", "preview": "true"}
 
-        # Execute
-        result = service.list_sessions(agent_rid, config)
 
-        # Assert - Just verify the SDK method was called correctly
-        mock_client.aip_agents.Agent.Session.list.assert_called_once_with(
-            agent_rid, page_size=10, preview=True
-        )
-        # Verify result was returned
-        assert result is not None
-        assert hasattr(result, "data")
+def test_list_sessions_from_a_page_token(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
 
-    def test_list_sessions_error(self, service, mock_client):
-        """Test error handling in list_sessions."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        mock_client.aip_agents.Agent.Session.list.side_effect = Exception(
-            "Failed to list"
-        )
-        config = PaginationConfig(page_size=10, max_pages=1)
+    AipAgentsService().list_sessions(aj.AGENT_RID, page_token="t2")
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to list sessions"):
-            service.list_sessions(agent_rid, config)
+    [request] = stub_foundry_http.requests
+    assert dict(request.url.params) == {"pageToken": "t2", "preview": "true"}
 
-    def test_get_session(self, service, mock_client):
-        """Test getting a specific session."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        session_rid = "ri.foundry.main.session.xyz789"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": session_rid,
-            "agent_rid": agent_rid,
-            "agent_version": "1.0",
-            "metadata": {"title": "Test Session"},
-        }
-        mock_client.aip_agents.Agent.Session.get.return_value = mock_response
 
-        # Execute
-        result = service.get_session(agent_rid, session_rid)
+def test_get_session(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.session())
 
-        # Assert
-        mock_client.aip_agents.Agent.Session.get.assert_called_once_with(
-            agent_rid, session_rid, preview=True
-        )
-        assert result["rid"] == session_rid
-        assert result["agent_rid"] == agent_rid
+    session = AipAgentsService().get_session(aj.AGENT_RID, aj.SESSION_RID)
 
-    def test_get_session_error(self, service, mock_client):
-        """Test error handling in get_session."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        session_rid = "ri.foundry.main.session.xyz789"
-        mock_client.aip_agents.Agent.Session.get.side_effect = Exception(
-            "Session not found"
-        )
+    assert isinstance(session, Session)
+    assert session.metadata.message_count == 4
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{AGENT_PATH}/sessions/{aj.SESSION_RID}"
+    assert request.url.params["preview"] == "true"
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to get session"):
-            service.get_session(agent_rid, session_rid)
 
-    def test_list_versions(self, service, mock_client):
-        """Test listing agent versions."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        config = PaginationConfig(page_size=10, fetch_all=True)
+def test_list_versions_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [aj.agent_version(1, 2), aj.agent_version(1, 1)]}
+    )
 
-        # Create a mock that returns a single version to avoid empty iterator issue
-        mock_version = Mock()
-        mock_version.dict.return_value = {"string": "1.0", "published": True}
+    page = AipAgentsService().list_versions(aj.AGENT_RID, page_size=10)
 
-        # Create a mock iterator
-        mock_iterator = Mock()
-        mock_iterator.__iter__ = Mock(return_value=iter([mock_version]))
-        mock_iterator.next_page_token = None
-        mock_client.aip_agents.Agent.AgentVersion.list.return_value = mock_iterator
-
-        # Execute
-        result = service.list_versions(agent_rid, config)
-
-        # Assert - Just verify the SDK method was called correctly
-        mock_client.aip_agents.Agent.AgentVersion.list.assert_called_once_with(
-            agent_rid, page_size=10, preview=True
-        )
-        # Verify result was returned
-        assert result is not None
-        assert hasattr(result, "data")
-
-    def test_list_versions_error(self, service, mock_client):
-        """Test error handling in list_versions."""
-        # Setup
-        agent_rid = "ri.foundry.main.agent.abc123"
-        mock_client.aip_agents.Agent.AgentVersion.list.side_effect = Exception(
-            "Failed to list versions"
-        )
-        config = PaginationConfig(page_size=10, max_pages=1)
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to list versions"):
-            service.list_versions(agent_rid, config)
+    assert [v.string for v in page.data] == ["1.2", "1.1"]
+    assert all(isinstance(v, AgentVersion) for v in page.data)
+    assert page.next_page_token is None
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{AGENT_PATH}/agentVersions"
+    assert dict(request.url.params) == {"pageSize": "10", "preview": "true"}

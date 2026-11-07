@@ -2,20 +2,11 @@
 Base service class for Foundry API wrappers.
 """
 
-from typing import Any, Optional, Dict, Callable, Iterator
+from typing import Any, Optional, Dict
 from abc import ABC, abstractmethod
-import json
 import requests
 
 from ..auth.manager import AuthManager
-from ..auth.storage import CredentialStorage
-from ..config.profiles import ProfileManager
-from ..utils.pagination import (
-    PaginationConfig,
-    PaginationResult,
-    IteratorPaginationHandler,
-    ResponsePaginationHandler,
-)
 
 
 class BaseService(ABC):
@@ -82,6 +73,11 @@ class BaseService(ABC):
         """
         Make a direct HTTP request to Foundry API.
 
+        Only for the labeled direct-HTTP exceptions (endpoints the SDK doesn't
+        cover). The host and bearer token come from the same auth object as
+        this service's SDK client, so token profiles, OAuth profiles and
+        environment-variable auth all work.
+
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
             endpoint: API endpoint path (e.g., '/foundry-schema-inference/api/...')
@@ -94,27 +90,15 @@ class BaseService(ABC):
 
         Raises:
             requests.HTTPError: If request fails
+            AuthError: If no usable credentials are configured (a subclass
+                from pltr.auth.base), or Foundry rejects OAuth client credentials
         """
-        # Get credentials for authentication
-        storage = CredentialStorage()
-        profile_manager = ProfileManager()
-        profile_name = self.profile or profile_manager.get_active_profile()
-        if not profile_name:
-            from ..auth.base import ProfileNotFoundError
-
-            raise ProfileNotFoundError(
-                "No profile specified and no default profile configured. "
-                "Run 'pltr configure configure' to set up authentication."
-            )
-        credentials = storage.get_profile(profile_name)
-
-        # Build full URL
-        host = credentials.get("host", "").rstrip("/")
-        url = f"{host}{endpoint}"
+        auth_context = self.auth_manager.get_auth_context(self.profile)
+        url = f"{auth_context.base_url}{endpoint}"
 
         # Set up headers with authentication
         request_headers = {
-            "Authorization": f"Bearer {credentials.get('token')}",
+            "Authorization": f"Bearer {auth_context.get_token()}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
@@ -134,99 +118,3 @@ class BaseService(ABC):
         response.raise_for_status()
 
         return response
-
-    def _paginate_iterator(
-        self,
-        iterator: Iterator[Any],
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> PaginationResult:
-        """
-        Handle pagination for iterator-based SDK methods.
-
-        Args:
-            iterator: Iterator returned from SDK (e.g., ResourceIterator)
-            config: Pagination configuration
-            progress_callback: Optional progress callback
-
-        Returns:
-            PaginationResult with collected items and metadata
-
-        Example:
-            >>> iterator = self.service.Dataset.File.list(dataset_rid, page_size=20)
-            >>> result = self._paginate_iterator(iterator, config)
-        """
-        handler = IteratorPaginationHandler()
-        return handler.collect_pages(iterator, config, progress_callback)
-
-    def _paginate_response(
-        self,
-        fetch_fn: Callable[[Optional[str]], Dict[str, Any]],
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> PaginationResult:
-        """
-        Handle pagination for response-based SDK methods.
-
-        Args:
-            fetch_fn: Function that accepts page_token and returns dict with
-                     'data' and 'next_page_token' keys
-            config: Pagination configuration
-            progress_callback: Optional progress callback
-
-        Returns:
-            PaginationResult with collected items and metadata
-
-        Example:
-            >>> def fetch(token):
-            ...     response = self.service.User.list(page_token=token)
-            ...     return self._serialize_response(response)
-            >>> result = self._paginate_response(fetch, config)
-        """
-        handler = ResponsePaginationHandler()
-        return handler.collect_pages(fetch_fn, config, progress_callback)
-
-    def _serialize_response(self, response: Any) -> Dict[str, Any]:
-        """
-        Convert response object to serializable dictionary.
-
-        This handles various SDK response types including Pydantic models,
-        regular objects, and primitives.
-
-        Args:
-            response: Response object from SDK
-
-        Returns:
-            Serializable dictionary representation
-
-        Note:
-            This method was moved from AdminService to provide consistent
-            serialization across all services.
-        """
-        if response is None:
-            return {}
-
-        # Handle different response types
-        if hasattr(response, "dict"):
-            # Pydantic models
-            return response.dict()
-        elif hasattr(response, "__dict__"):
-            # Regular objects
-            result = {}
-            for key, value in response.__dict__.items():
-                if not key.startswith("_"):
-                    try:
-                        # Try to serialize the value
-                        json.dumps(value)
-                        result[key] = value
-                    except (TypeError, ValueError):
-                        # Convert non-serializable values to string
-                        result[key] = str(value)
-            return result
-        else:
-            # Primitive types or already serializable
-            try:
-                json.dumps(response)
-                return response
-            except (TypeError, ValueError):
-                return {"data": str(response)}

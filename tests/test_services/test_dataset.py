@@ -1,525 +1,696 @@
+"""Tests for DatasetService against a real FoundryClient (only HTTP is faked).
+
+Beta endpoints (Dataset.transactions, Dataset.jobs, Branch.transactions,
+Transaction.build) must send preview=true. Every other call is GA: passing
+preview= would make the SDK emit a UserWarning, which the module-level
+filter turns into a failure. Transactions and uploads are covered in
+test_dataset_transactions.py.
 """
-Tests for dataset service.
-"""
+
+import json
 
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.core.models import DatasetSchema
+from foundry_sdk.v2.datasets.models import (
+    Branch,
+    Dataset,
+    File,
+    GetDatasetSchemaResponse,
+    JobDetails,
+    View,
+)
 
-from pltr.services.dataset import DatasetService
+from pltr.contract import PltrError
+from pltr.services.dataset import DatasetService, _infer_csv_type, arrow_table
+from tests import foundry_json as fj
+from tests import foundry_json_dataset as dj
 
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
-@pytest.fixture
-def mock_dataset_service():
-    """Create a mocked DatasetService."""
-    with patch("pltr.services.base.AuthManager") as mock_auth:
-        # Set up client mock
-        mock_client = Mock()
-        mock_datasets = Mock()
-        mock_dataset_class = Mock()  # The Dataset class
-        mock_datasets.Dataset = mock_dataset_class
-        mock_client.datasets = mock_datasets
-        mock_auth.return_value.get_client.return_value = mock_client
-
-        # Create service
-        service = DatasetService()
-        return service, mock_dataset_class
-
-
-@pytest.fixture
-def sample_dataset():
-    """Create sample dataset object."""
-    dataset = Mock()
-    dataset.rid = "ri.foundry.main.dataset.test-dataset"
-    dataset.name = "Test Dataset"
-    dataset.parent_folder_rid = "ri.foundry.main.folder.parent"
-    return dataset
+API = "/api/v2/datasets"
+DATASET = dj.DATASET_RID
 
 
-@pytest.fixture
-def sample_dataset_full():
-    """Create sample dataset object with all available attributes."""
-    dataset = Mock()
-    dataset.rid = "ri.foundry.main.dataset.test-dataset"
-    dataset.name = "Test Dataset"
-    dataset.parent_folder_rid = "ri.foundry.main.folder.parent"
-    # The v2 API only has these three attributes
-    return dataset
+def only_request(stub):
+    [request] = stub.requests
+    return request
 
 
-def test_dataset_service_initialization():
-    """Test DatasetService initialization."""
-    with patch("pltr.services.base.AuthManager"):
-        service = DatasetService()
-        assert service is not None
+# ------------------------------------------------------------ datasets
 
 
-def test_dataset_service_get_service(mock_dataset_service):
-    """Test getting the underlying datasets service."""
-    service, mock_dataset_class = mock_dataset_service
-    # The service returns self.client.datasets, not the Dataset class
-    assert service._get_service().Dataset == mock_dataset_class
+def test_get_dataset_returns_the_model(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.dataset())
+
+    dataset = DatasetService().get_dataset(DATASET)
+
+    assert isinstance(dataset, Dataset)
+    assert (dataset.rid, dataset.name, dataset.parent_folder_rid) == (
+        DATASET,
+        "sales",
+        dj.FOLDER_RID,
+    )
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", f"{API}/{DATASET}")
+    assert "preview" not in request.url.params
 
 
-def test_get_dataset_success(mock_dataset_service, sample_dataset):
-    """Test successful dataset retrieval."""
-    service, mock_dataset_class = mock_dataset_service
+def test_get_dataset_propagates_sdk_errors(stub_foundry_http):
+    from foundry_sdk.v2.datasets.errors import DatasetNotFound
 
-    # Mock the Dataset.get static method response
-    mock_dataset_class.get.return_value = sample_dataset
-
-    result = service.get_dataset("ri.foundry.main.dataset.test-dataset")
-
-    assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["name"] == "Test Dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    mock_dataset_class.get.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset"
+    stub_foundry_http.respond(
+        404, json=fj.error("DatasetNotFound", parameters={"datasetRid": DATASET})
     )
 
+    with pytest.raises(DatasetNotFound):
+        DatasetService().get_dataset(DATASET)
 
-def test_get_dataset_with_full_attributes(mock_dataset_service, sample_dataset_full):
-    """Test dataset retrieval with all attributes present."""
-    service, mock_dataset_class = mock_dataset_service
 
-    # Mock the Dataset.get static method response
-    mock_dataset_class.get.return_value = sample_dataset_full
+def test_create_sends_name_and_parent_folder(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.dataset())
 
-    result = service.get_dataset("ri.foundry.main.dataset.test-dataset")
+    dataset = DatasetService().create("sales", parent_folder_rid=dj.FOLDER_RID)
 
-    assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["name"] == "Test Dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    mock_dataset_class.get.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset"
+    assert isinstance(dataset, Dataset)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", API)
+    assert json.loads(request.content) == {
+        "name": "sales",
+        "parentFolderRid": dj.FOLDER_RID,
+    }
+
+
+def test_read_table_sends_every_option(stub_foundry_http):
+    body = dj.arrow_stream({"id": [1]})
+    stub_foundry_http.respond(content=body)
+
+    table = DatasetService().read_table(
+        DATASET,
+        format="CSV",
+        branch="dev",
+        columns=["id", "region"],
+        row_limit=5,
+        start_transaction_rid=dj.TRANSACTION_RID,
+        end_transaction_rid=dj.OTHER_TRANSACTION_RID,
     )
 
+    assert bytes(table) == body
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/readTable"
+    params = request.url.params
+    assert params["format"] == "CSV"
+    assert params["branchName"] == "dev"
+    assert params.get_list("columns") == ["id", "region"]
+    assert params["rowLimit"] == "5"
+    assert params["startTransactionRid"] == dj.TRANSACTION_RID
+    assert params["endTransactionRid"] == dj.OTHER_TRANSACTION_RID
 
-def test_get_dataset_error(mock_dataset_service):
-    """Test dataset retrieval with error."""
-    service, mock_dataset_class = mock_dataset_service
 
-    # Mock error response
-    mock_dataset_class.get.side_effect = Exception("Dataset not found")
-
-    with pytest.raises(RuntimeError, match="Failed to get dataset"):
-        service.get_dataset("ri.foundry.main.dataset.nonexistent")
-
-
-def test_create_dataset_success(mock_dataset_service, sample_dataset):
-    """Test successful dataset creation."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the Dataset.create static method response
-    mock_dataset_class.create.return_value = sample_dataset
-
-    result = service.create_dataset(name="New Dataset")
-
-    assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["name"] == "Test Dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-
-    # Verify the create method was called with correct parameters
-    mock_dataset_class.create.assert_called_once_with(
-        name="New Dataset", parent_folder_rid=None
+def test_preview_table_reads_arrow(stub_foundry_http):
+    stub_foundry_http.respond(
+        content=dj.arrow_stream({"id": [1, 2], "region": ["EMEA", None]})
     )
 
+    table = DatasetService().preview_table(DATASET, limit=2, columns=["id"])
 
-def test_create_dataset_with_parent_folder(mock_dataset_service, sample_dataset):
-    """Test dataset creation with parent folder."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the Dataset.create static method response
-    mock_dataset_class.create.return_value = sample_dataset
-
-    result = service.create_dataset(
-        name="New Dataset", parent_folder_rid="ri.foundry.main.folder.parent"
-    )
-
-    assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-
-    # Verify the create method was called with parent folder
-    mock_dataset_class.create.assert_called_once_with(
-        name="New Dataset", parent_folder_rid="ri.foundry.main.folder.parent"
-    )
-
-
-def test_create_dataset_error(mock_dataset_service):
-    """Test dataset creation with error."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock error response
-    mock_dataset_class.create.side_effect = Exception("Creation failed")
-
-    with pytest.raises(RuntimeError, match="Failed to create dataset"):
-        service.create_dataset(name="New Dataset")
-
-
-def test_read_table_arrow_format(mock_dataset_service):
-    """Test reading dataset as Arrow table."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the Dataset.read_table static method response
-    mock_table = Mock()
-    mock_dataset_class.read_table.return_value = mock_table
-
-    result = service.read_table("ri.foundry.main.dataset.test-dataset", format="arrow")
-
-    assert result == mock_table
-    mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset", format="arrow"
-    )
-
-
-def test_read_table_pandas_format(mock_dataset_service):
-    """Test reading dataset as Pandas DataFrame."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the Dataset.read_table static method response
-    mock_df = Mock()
-    mock_dataset_class.read_table.return_value = mock_df
-
-    result = service.read_table("ri.foundry.main.dataset.test-dataset", format="pandas")
-
-    assert result == mock_df
-    mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset", format="pandas"
-    )
-
-
-def test_read_table_error(mock_dataset_service):
-    """Test reading dataset with error."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock error response
-    mock_dataset_class.read_table.side_effect = Exception("Read failed")
-
-    with pytest.raises(RuntimeError, match="Failed to read dataset"):
-        service.read_table("ri.foundry.main.dataset.test-dataset")
-
-
-def test_preview_data_success(mock_dataset_service):
-    """Test successful dataset preview."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock pandas DataFrame
-    mock_df = Mock()
-    mock_df.head.return_value.to_dict.return_value = [
-        {"id": 1, "name": "test1"},
-        {"id": 2, "name": "test2"},
+    assert table.column_names == ["id", "region"]
+    assert table.to_pylist() == [
+        {"id": 1, "region": "EMEA"},
+        {"id": 2, "region": None},
     ]
-    mock_dataset_class.read_table.return_value = mock_df
+    params = only_request(stub_foundry_http).url.params
+    assert dict(params) == {"format": "ARROW", "columns": "id", "rowLimit": "2"}
 
-    result = service.preview_data("ri.foundry.main.dataset.test-dataset", limit=10)
 
-    assert len(result) == 2
-    assert result[0]["id"] == 1
-    assert result[0]["name"] == "test1"
-    assert result[1]["id"] == 2
-    mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset", format="pandas"
+def test_arrow_table_of_raw_ipc_bytes():
+    table = arrow_table(dj.arrow_stream({"blob": [b"\xff\x00"]}))
+
+    assert table.column_names == ["blob"]
+    assert table.to_pylist() == [{"blob": b"\xff\x00"}]
+
+
+def test_arrow_table_of_an_empty_response():
+    for empty in (None, b""):
+        table = arrow_table(empty)
+        assert (table.column_names, table.num_rows) == ([], 0)
+
+
+# -------------------------------------------------------------- schema
+
+
+def test_get_dataset_schema_decodes_the_response(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.schema_response())
+
+    response = DatasetService().get_dataset_schema(
+        DATASET, branch="dev", version_id=dj.VERSION_ID
     )
-    mock_df.head.assert_called_once_with(10)
 
-
-def test_preview_data_custom_limit(mock_dataset_service):
-    """Test dataset preview with custom limit."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock pandas DataFrame
-    mock_df = Mock()
-    mock_df.head.return_value.to_dict.return_value = [
-        {"id": 1, "name": "test1"},
+    assert isinstance(response, GetDatasetSchemaResponse)
+    assert [f.name for f in response.schema_.field_schema_list] == [
+        "id",
+        "region",
+        "amount",
+        "tags",
     ]
-    mock_dataset_class.read_table.return_value = mock_df
-
-    result = service.preview_data("ri.foundry.main.dataset.test-dataset", limit=5)
-
-    assert len(result) == 1
-    mock_df.head.assert_called_once_with(5)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", f"{API}/{DATASET}/getSchema")
+    assert dict(request.url.params) == {"branchName": "dev", "versionId": dj.VERSION_ID}
 
 
-def test_preview_data_empty_dataset(mock_dataset_service):
-    """Test preview of empty dataset."""
-    service, mock_dataset_class = mock_dataset_service
+def test_put_schema_accepts_the_api_json_form(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.schema_response())
+    schema = {"fieldSchemaList": [dj.field("id", "LONG", nullable=False)]}
 
-    # Mock empty DataFrame
-    mock_df = Mock()
-    mock_df.head.return_value.to_dict.return_value = []
-    mock_dataset_class.read_table.return_value = mock_df
+    response = DatasetService().put_schema(
+        DATASET,
+        schema,
+        branch="dev",
+        transaction_rid=dj.TRANSACTION_RID,
+        dataframe_reader="CSV",
+    )
 
-    result = service.preview_data("ri.foundry.main.dataset.test-dataset")
+    assert isinstance(response, GetDatasetSchemaResponse)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("PUT", f"{API}/{DATASET}/putSchema")
+    assert json.loads(request.content) == {
+        "schema": schema,
+        "branchName": "dev",
+        "endTransactionRid": dj.TRANSACTION_RID,
+        "dataframeReader": "CSV",
+    }
 
-    assert result == []
-    mock_dataset_class.read_table.assert_called_once_with(
-        "ri.foundry.main.dataset.test-dataset", format="pandas"
+
+def test_put_schema_accepts_a_model_and_omits_unset_options(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.schema_response())
+    schema = DatasetSchema.model_validate({"fieldSchemaList": [dj.field("id", "LONG")]})
+
+    DatasetService().put_schema(DATASET, schema)
+
+    assert json.loads(only_request(stub_foundry_http).content) == {
+        "schema": {"fieldSchemaList": [dj.field("id", "LONG")]}
+    }
+
+
+def test_infer_schema_from_csv(tmp_path):
+    path = tmp_path / "data.csv"
+    path.write_text(
+        "id,unit price,is-active,day,seen at,name,empty\n"
+        "1,2.5,true,2024-01-02,2024-01-02 03:04:05,a,\n"
+        "2,,false,2024-01-03,2024-01-03 03:04:05,b,\n"
+        "3,4\n",  # short row: missing values count as empty
+        encoding="utf-8",
+    )
+
+    schema = DatasetService.__new__(DatasetService).infer_schema_from_csv(path)
+
+    assert [(f.name, f.type, f.nullable) for f in schema.field_schema_list] == [
+        ("id", "INTEGER", False),
+        ("unit_price", "DOUBLE", True),
+        ("is_active", "BOOLEAN", True),
+        ("day", "DATE", True),
+        ("seen_at", "TIMESTAMP", True),
+        ("name", "STRING", True),
+        ("empty", "STRING", True),
+    ]
+
+
+def test_infer_schema_from_a_csv_excel_wrote(tmp_path):
+    """Excel's byte order mark ended up in the first field's name, integers
+    over 32 bits were INTEGER and 1/0 BOOLEAN (#181 review)."""
+    path = tmp_path / "excel.csv"
+    path.write_bytes("﻿id,big,flag\n1,3000000000,1\n2,4000000000,0\n".encode())
+
+    schema = DatasetService.__new__(DatasetService).infer_schema_from_csv(path)
+
+    assert [(f.name, f.type) for f in schema.field_schema_list] == [
+        ("id", "INTEGER"),
+        ("big", "LONG"),
+        ("flag", "INTEGER"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (["true", "False", "TRUE"], "BOOLEAN"),
+        (["1", "0"], "INTEGER"),  # not BOOLEAN
+        (["yes", "no"], "STRING"),  # not BOOLEAN
+        (["2147483647", "-2147483648"], "INTEGER"),
+        (["1", "2147483648"], "LONG"),
+        (["-2147483649"], "LONG"),
+        (["9223372036854775807", "-9223372036854775808"], "LONG"),
+        (["1", "9223372036854775808"], "STRING"),  # too large for LONG
+        (["1", "2.5"], "DOUBLE"),
+    ],
+)
+def test_infer_csv_column_types(values, expected):
+    assert _infer_csv_type(values) == (expected, False)
+
+
+def test_infer_schema_from_csv_without_header(tmp_path):
+    path = tmp_path / "empty.csv"
+    path.write_text("", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="no header row"):
+        DatasetService.__new__(DatasetService).infer_schema_from_csv(path)
+
+
+def test_apply_schema_infers_then_applies_over_direct_http(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.inference_response())
+    stub_foundry_http.respond(json=dj.metadata_response())
+
+    result = DatasetService().apply_schema(DATASET, "feature/x")
+
+    assert result == dj.metadata_response()
+    infer, apply = stub_foundry_http.requests
+    assert infer.method == apply.method == "POST"
+    # the branch is percent-encoded into the path
+    assert infer.url.raw_path.decode() == (
+        f"/foundry-schema-inference/api/datasets/{DATASET}/branches/feature%2Fx/schema"
+    )
+    assert json.loads(infer.content) == {}
+    assert apply.url.raw_path.decode() == (
+        f"/foundry-metadata/api/schemas/datasets/{DATASET}/branches/feature%2Fx"
+    )
+    assert json.loads(apply.content) == dj.inference_response()["data"]["foundrySchema"]
+    assert apply.headers["Authorization"] == "Bearer test-token"
+
+
+def test_apply_schema_without_an_inferred_schema_is_an_api_error(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": {}})
+
+    with pytest.raises(PltrError) as excinfo:
+        DatasetService().apply_schema(DATASET)
+
+    assert excinfo.value.error_type == "api_error"
+    assert excinfo.value.exit_code == 7
+    assert len(stub_foundry_http.requests) == 1  # nothing was applied
+
+
+def test_apply_schema_http_errors_propagate(stub_foundry_http):
+    import requests
+
+    stub_foundry_http.respond(404, json=fj.error("DatasetNotFound"))
+
+    with pytest.raises(requests.HTTPError):
+        DatasetService().apply_schema(DATASET)
+
+
+def test_apply_schema_with_an_empty_metadata_response(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.inference_response())
+    stub_foundry_http.respond(204)
+
+    assert DatasetService().apply_schema(DATASET) is None
+
+
+# ------------------------------------------------------------ branches
+
+
+def test_list_branches_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([dj.branch(), dj.branch("dev", None)], "t2"))
+
+    page = DatasetService().list_branches(DATASET, page_size=2, page_token="t1")
+
+    assert [b.name for b in page.data] == ["master", "dev"]
+    assert isinstance(page.data[0], Branch)
+    assert page.next_page_token == "t2"
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/branches"
+    assert dict(request.url.params) == {"pageSize": "2", "pageToken": "t1"}
+
+
+def test_get_branch(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("dev"))
+
+    branch = DatasetService().get_branch(DATASET, "dev")
+
+    assert (branch.name, branch.transaction_rid) == ("dev", dj.TRANSACTION_RID)
+    assert only_request(stub_foundry_http).url.path == f"{API}/{DATASET}/branches/dev"
+
+
+def test_create_branch_sends_name_and_transaction(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("dev"))
+
+    DatasetService().create_branch(DATASET, "dev", transaction_rid=dj.TRANSACTION_RID)
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", f"{API}/{DATASET}/branches")
+    assert json.loads(request.content) == {
+        "name": "dev",
+        "transactionRid": dj.TRANSACTION_RID,
+    }
+
+
+def test_create_branch_without_transaction(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("empty", None))
+
+    DatasetService().create_branch(DATASET, "empty")
+
+    assert json.loads(only_request(stub_foundry_http).content) == {"name": "empty"}
+
+
+def test_create_branch_from_parent_starts_at_its_transaction(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("dev", dj.OTHER_TRANSACTION_RID))
+    stub_foundry_http.respond(json=dj.branch("feature", dj.OTHER_TRANSACTION_RID))
+
+    branch = DatasetService().create_branch_from_parent(DATASET, "feature", "dev")
+
+    assert isinstance(branch, Branch)
+    get, create = stub_foundry_http.requests
+    assert get.url.path == f"{API}/{DATASET}/branches/dev"
+    assert json.loads(create.content) == {
+        "name": "feature",
+        "transactionRid": dj.OTHER_TRANSACTION_RID,
+    }
+
+
+def test_create_branch_from_a_parent_whose_transaction_is_open(stub_foundry_http):
+    from foundry_sdk.v2.datasets.errors import TransactionNotCommitted
+
+    stub_foundry_http.respond(json=dj.branch("master", dj.TRANSACTION_RID))
+    stub_foundry_http.respond(
+        400,
+        json=fj.error(
+            "TransactionNotCommitted",
+            "INVALID_ARGUMENT",
+            {
+                "datasetRid": DATASET,
+                "transactionRid": dj.TRANSACTION_RID,
+                "transactionStatus": "OPEN",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="is still open") as excinfo:
+        DatasetService().create_branch_from_parent(DATASET, "feature")
+
+    # The SDK error is the cause, so the error layer classifies it (exit 6).
+    assert isinstance(excinfo.value.__cause__, TransactionNotCommitted)
+    assert "--transaction-rid" in str(excinfo.value)
+
+
+def test_delete_branch(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    assert DatasetService().delete_branch(DATASET, "dev") is None
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "DELETE",
+        f"{API}/{DATASET}/branches/dev",
     )
 
 
-def test_preview_data_error(mock_dataset_service):
-    """Test dataset preview with error."""
-    service, mock_dataset_class = mock_dataset_service
+def test_list_branch_transactions_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([dj.transaction()]))
 
-    # Mock error response
-    mock_dataset_class.read_table.side_effect = Exception("Read failed")
+    page = DatasetService().list_branch_transactions(DATASET, "dev", page_size=5)
 
-    with pytest.raises(RuntimeError, match="Failed to preview dataset"):
-        service.preview_data("ri.foundry.main.dataset.test-dataset")
-
-
-def test_format_dataset_info(mock_dataset_service, sample_dataset):
-    """Test dataset info formatting."""
-    service, mock_dataset_class = mock_dataset_service
-
-    result = service._format_dataset_info(sample_dataset)
-
-    assert result["rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["name"] == "Test Dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.parent"
-    # Only these three fields are returned by _format_dataset_info
+    assert page.data[0].rid == dj.TRANSACTION_RID
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/branches/dev/transactions"
+    assert dict(request.url.params) == {"pageSize": "5", "preview": "true"}
 
 
-def test_format_dataset_info_minimal():
-    """Test dataset info formatting with minimal attributes."""
-    with patch("pltr.services.base.AuthManager"):
-        service = DatasetService()
-
-        # Create a minimal dataset object
-        minimal_dataset = Mock()
-        minimal_dataset.rid = "ri.foundry.main.dataset.minimal"
-        minimal_dataset.name = "Minimal Dataset"
-        minimal_dataset.parent_folder_rid = None
-
-        result = service._format_dataset_info(minimal_dataset)
-
-        assert result["rid"] == "ri.foundry.main.dataset.minimal"
-        assert result["name"] == "Minimal Dataset"
-        assert result["parent_folder_rid"] is None
-        # Only rid, name, and parent_folder_rid are returned
+# --------------------------------------------------------------- files
 
 
-def test_format_dataset_info_with_parent(mock_dataset_service):
-    """Test dataset info formatting with parent folder."""
-    service, mock_dataset_class = mock_dataset_service
+def test_list_dataset_files_sends_every_filter(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([dj.file()], "next"))
 
-    # Create dataset with parent folder
-    dataset = Mock()
-    dataset.rid = "ri.foundry.main.dataset.test"
-    dataset.name = "Test Dataset"
-    dataset.parent_folder_rid = "ri.foundry.main.folder.specific"
-
-    result = service._format_dataset_info(dataset)
-
-    assert result["rid"] == "ri.foundry.main.dataset.test"
-    assert result["name"] == "Test Dataset"
-    assert result["parent_folder_rid"] == "ri.foundry.main.folder.specific"
-    # The v2 API only returns these three fields
-
-
-def test_get_schedules_success(mock_dataset_service):
-    """Test successful dataset schedules retrieval."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock schedules response
-    mock_schedule = Mock()
-    mock_schedule.rid = "ri.foundry.main.schedule.test"
-    mock_schedule.name = "Test Schedule"
-    mock_schedule.description = "Test schedule description"
-    mock_schedule.enabled = True
-    mock_schedule.created_time = "2023-01-01T00:00:00Z"
-
-    mock_dataset_class.get_schedules.return_value = [mock_schedule]
-
-    result = service.get_schedules("ri.foundry.main.dataset.test-dataset")
-
-    assert len(result) == 1
-    assert result[0]["schedule_rid"] == "ri.foundry.main.schedule.test"
-    assert result[0]["name"] == "Test Schedule"
-    assert result[0]["enabled"] is True
-
-
-def test_get_jobs_success(mock_dataset_service):
-    """Test successful dataset jobs retrieval."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock jobs response
-    mock_job = Mock()
-    mock_job.rid = "ri.foundry.main.job.test"
-    mock_job.name = "Test Job"
-    mock_job.status = "SUCCEEDED"
-    mock_job.created_time = "2023-01-01T00:00:00Z"
-    mock_job.started_time = "2023-01-01T01:00:00Z"
-    mock_job.completed_time = "2023-01-01T02:00:00Z"
-
-    mock_dataset_class.jobs.return_value = [mock_job]
-
-    result = service.get_jobs("ri.foundry.main.dataset.test-dataset", "master")
-
-    assert len(result) == 1
-    assert result[0]["job_rid"] == "ri.foundry.main.job.test"
-    assert result[0]["name"] == "Test Job"
-    assert result[0]["status"] == "SUCCEEDED"
-
-
-def test_delete_branch_success(mock_dataset_service):
-    """Test successful branch deletion."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the Branch.delete method
-    mock_dataset_class.Branch = Mock()
-    mock_dataset_class.Branch.delete = Mock()
-
-    result = service.delete_branch(
-        "ri.foundry.main.dataset.test-dataset", "test-branch"
+    page = DatasetService().list_dataset_files(
+        DATASET,
+        branch="dev",
+        path_prefix="data/",
+        start_transaction_rid=dj.TRANSACTION_RID,
+        end_transaction_rid=dj.TRANSACTION_RID,
+        page_size=10,
     )
 
-    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["branch_name"] == "test-branch"
-    assert result["status"] == "deleted"
-    assert result["success"] is True
+    assert isinstance(page.data[0], File)
+    assert page.data[0].size_bytes == 1024
+    assert page.next_page_token == "next"
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/files"
+    assert dict(request.url.params) == {
+        "branchName": "dev",
+        "pathPrefix": "data/",
+        "startTransactionRid": dj.TRANSACTION_RID,
+        "endTransactionRid": dj.TRANSACTION_RID,
+        "pageSize": "10",
+    }
 
-    mock_dataset_class.Branch.delete.assert_called_once_with(
-        dataset_rid="ri.foundry.main.dataset.test-dataset", branch_name="test-branch"
+
+def test_get_file_encodes_the_file_path(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.file("data/sales 2024.csv"))
+
+    file = DatasetService().get_file(DATASET, "data/sales 2024.csv", branch="dev")
+
+    assert file.path == "data/sales 2024.csv"
+    request = only_request(stub_foundry_http)
+    assert request.url.raw_path.decode() == (
+        f"{API}/{DATASET}/files/data%2Fsales%202024.csv?branchName=dev"
     )
 
 
-def test_get_branch_success(mock_dataset_service):
-    """Test successful branch retrieval."""
-    service, mock_dataset_class = mock_dataset_service
+def test_download_file_streams_content_to_disk(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=b"id,region\n1,EMEA\n")
+    target = tmp_path / "nested" / "sales.csv"
 
-    # Mock the Branch.get method
-    mock_branch = Mock()
-    mock_branch.transaction_rid = "ri.foundry.main.transaction.test"
-    mock_branch.created_time = "2023-01-01T00:00:00Z"
-    mock_branch.created_by = "test-user"
-
-    mock_dataset_class.Branch = Mock()
-    mock_dataset_class.Branch.get = Mock(return_value=mock_branch)
-
-    result = service.get_branch("ri.foundry.main.dataset.test-dataset", "test-branch")
-
-    assert result["name"] == "test-branch"
-    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["transaction_rid"] == "ri.foundry.main.transaction.test"
-    assert result["created_by"] == "test-user"
-
-
-def test_delete_file_success(mock_dataset_service):
-    """Test successful file deletion."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the File.delete method
-    mock_dataset_class.File = Mock()
-    mock_dataset_class.File.delete = Mock()
-
-    result = service.delete_file(
-        "ri.foundry.main.dataset.test-dataset", "test-file.csv", "master"
+    written = DatasetService().download_file(
+        DATASET, "data/sales.csv", target, end_transaction_rid=dj.TRANSACTION_RID
     )
 
-    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["file_path"] == "test-file.csv"
-    assert result["branch"] == "master"
-    assert result["status"] == "deleted"
-    assert result["success"] is True
+    assert written == 17
+    assert target.read_bytes() == b"id,region\n1,EMEA\n"
+    assert [p.name for p in target.parent.iterdir()] == ["sales.csv"]  # no temp file
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/files/data/sales.csv/content"
+    assert dict(request.url.params) == {"endTransactionRid": dj.TRANSACTION_RID}
 
 
-def test_get_file_info_success(mock_dataset_service):
-    """Test successful file info retrieval."""
-    service, mock_dataset_class = mock_dataset_service
+def test_failed_download_keeps_an_existing_file(stub_foundry_http, tmp_path):
+    from foundry_sdk.v2.datasets.errors import FileNotFoundOnBranch
 
-    # Mock the File.get method
-    mock_file = Mock()
-    mock_file.size_bytes = 1024
-    mock_file.last_modified = "2023-01-01T00:00:00Z"
-    mock_file.transaction_rid = "ri.foundry.main.transaction.test"
-    mock_file.created_time = "2023-01-01T00:00:00Z"
-    mock_file.content_type = "text/csv"
-
-    mock_dataset_class.File = Mock()
-    mock_dataset_class.File.get = Mock(return_value=mock_file)
-
-    result = service.get_file_info(
-        "ri.foundry.main.dataset.test-dataset", "test-file.csv", "master"
+    target = tmp_path / "sales.csv"
+    target.write_text("previous")
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "FileNotFoundOnBranch",
+            parameters={
+                "datasetRid": DATASET,
+                "branchName": "master",
+                "path": "data/sales.csv",
+            },
+        ),
     )
 
-    assert result["path"] == "test-file.csv"
-    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["branch"] == "master"
-    assert result["size_bytes"] == 1024
-    assert result["content_type"] == "text/csv"
+    with pytest.raises(FileNotFoundOnBranch):
+        DatasetService().download_file(DATASET, "data/sales.csv", target)
+
+    assert target.read_text() == "previous"
+    assert [p.name for p in tmp_path.iterdir()] == ["sales.csv"]
 
 
-def test_get_transaction_build_success(mock_dataset_service):
-    """Test successful transaction build retrieval."""
-    service, mock_dataset_class = mock_dataset_service
+def test_interrupted_download_leaves_no_partial_file(
+    stub_foundry_http, tmp_path, monkeypatch
+):
+    from foundry_sdk._core.api_client import StreamedApiResponse
 
-    # Mock the Transaction.build method
-    mock_build = Mock()
-    mock_build.rid = "ri.foundry.main.build.test"
-    mock_build.status = "SUCCEEDED"
-    mock_build.started_time = "2023-01-01T00:00:00Z"
-    mock_build.completed_time = "2023-01-01T01:00:00Z"
-    mock_build.duration_ms = 3600000
+    def broken_stream(self, chunk_size=None):
+        yield b"first chunk"
+        raise ConnectionError("connection reset")
 
-    mock_transaction = Mock()
-    mock_transaction.build = Mock(return_value=mock_build)
-    mock_dataset_class.Transaction = mock_transaction
+    monkeypatch.setattr(StreamedApiResponse, "iter_bytes", broken_stream)
+    stub_foundry_http.respond(content=b"irrelevant")
+    target = tmp_path / "sales.csv"
 
-    result = service.get_transaction_build(
-        "ri.foundry.main.dataset.test-dataset", "ri.foundry.main.transaction.test"
+    with pytest.raises(ConnectionError):
+        DatasetService().download_file(DATASET, "data/sales.csv", target)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_delete_file_on_a_branch(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    DatasetService().delete_file(DATASET, "data/sales.csv", branch="dev")
+
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "DELETE",
+        f"{API}/{DATASET}/files/data/sales.csv",
+    )
+    assert dict(request.url.params) == {"branchName": "dev"}
+
+
+def test_delete_file_in_a_transaction(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    DatasetService().delete_file(
+        DATASET, "data/sales.csv", transaction_rid=dj.TRANSACTION_RID
     )
 
-    assert result["transaction_rid"] == "ri.foundry.main.transaction.test"
-    assert result["dataset_rid"] == "ri.foundry.main.dataset.test-dataset"
-    assert result["build_rid"] == "ri.foundry.main.build.test"
-    assert result["status"] == "SUCCEEDED"
-    assert result["duration_ms"] == 3600000
+    params = only_request(stub_foundry_http).url.params
+    assert dict(params) == {"transactionRid": dj.TRANSACTION_RID}
 
 
-def test_get_view_success(mock_dataset_service):
-    """Test successful view retrieval."""
-    service, mock_dataset_class = mock_dataset_service
-
-    # Mock the View.get method
-    mock_view = Mock()
-    mock_view.name = "Test View"
-    mock_view.description = "Test view description"
-    mock_view.created_time = "2023-01-01T00:00:00Z"
-    mock_view.created_by = "test-user"
-    mock_view.backing_datasets = ["ri.foundry.main.dataset.backing"]
-    mock_view.primary_key = ["id", "name"]
-
-    mock_view_class = Mock()
-    mock_view_class.get = Mock(return_value=mock_view)
-    mock_dataset_class.View = mock_view_class
-
-    result = service.get_view("ri.foundry.main.view.test", "master")
-
-    assert result["view_rid"] == "ri.foundry.main.view.test"
-    assert result["name"] == "Test View"
-    assert result["description"] == "Test view description"
-    assert result["branch"] == "master"
-    assert result["backing_datasets"] == ["ri.foundry.main.dataset.backing"]
-    assert result["primary_key"] == ["id", "name"]
+def test_delete_file_rejects_branch_and_transaction(stub_foundry_http):
+    with pytest.raises(ValueError, match="not both"):
+        DatasetService().delete_file(
+            DATASET, "a.csv", branch="dev", transaction_rid=dj.TRANSACTION_RID
+        )
+    assert stub_foundry_http.requests == []
 
 
-def test_add_backing_datasets_success(mock_dataset_service):
-    """Test successful addition of backing datasets to view."""
-    service, mock_dataset_class = mock_dataset_service
+# --------------------------------------------------------------- views
 
-    # Mock the View.add_backing_datasets method
-    mock_result = Mock()
-    mock_view_class = Mock()
-    mock_view_class.add_backing_datasets = Mock(return_value=mock_result)
-    mock_dataset_class.View = mock_view_class
 
-    dataset_rids = ["ri.foundry.main.dataset.new1", "ri.foundry.main.dataset.new2"]
-    result = service.add_backing_datasets("ri.foundry.main.view.test", dataset_rids)
+def test_create_view_builds_backing_datasets(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.view())
 
-    assert result["view_rid"] == "ri.foundry.main.view.test"
-    assert result["added_datasets"] == dataset_rids
-    assert result["success"] is True
-
-    mock_view_class.add_backing_datasets.assert_called_once_with(
-        dataset_rid="ri.foundry.main.view.test", backing_datasets=dataset_rids
+    view = DatasetService().create_view(
+        "sales_view",
+        parent_folder_rid=dj.FOLDER_RID,
+        backing_datasets=[(DATASET, None), (dj.OTHER_DATASET_RID, "dev")],
+        branch="master",
     )
+
+    assert isinstance(view, View)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", f"{API}/views")
+    assert json.loads(request.content) == {
+        "backingDatasets": [
+            {"datasetRid": DATASET, "stopPropagatingMarkingIds": []},
+            {
+                "datasetRid": dj.OTHER_DATASET_RID,
+                "branch": "dev",
+                "stopPropagatingMarkingIds": [],
+            },
+        ],
+        "parentFolderRid": dj.FOLDER_RID,
+        "viewName": "sales_view",
+        "branch": "master",
+    }
+
+
+def test_get_view(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.view())
+
+    view = DatasetService().get_view(dj.VIEW_RID, branch="dev")
+
+    assert view.backing_datasets[0].dataset_rid == DATASET
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/views/{dj.VIEW_RID}"
+    assert dict(request.url.params) == {"branch": "dev"}
+
+
+@pytest.mark.parametrize(
+    "method, http_method, endpoint",
+    [
+        ("add_backing_datasets", "POST", "addBackingDatasets"),
+        ("remove_backing_datasets", "POST", "removeBackingDatasets"),
+        ("replace_backing_datasets", "PUT", "replaceBackingDatasets"),
+    ],
+)
+def test_backing_dataset_changes(stub_foundry_http, method, http_method, endpoint):
+    stub_foundry_http.respond(json=dj.view())
+
+    view = getattr(DatasetService(), method)(
+        dj.VIEW_RID, [(DATASET, None)], branch="dev"
+    )
+
+    assert isinstance(view, View)
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        http_method,
+        f"{API}/views/{dj.VIEW_RID}/{endpoint}",
+    )
+    assert json.loads(request.content) == {
+        "branch": "dev",
+        "backingDatasets": [{"datasetRid": DATASET, "stopPropagatingMarkingIds": []}],
+    }
+
+
+def test_add_unique_primary_key(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.view())
+
+    DatasetService().add_primary_key(dj.VIEW_RID, ["id"])
+
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/views/{dj.VIEW_RID}/addPrimaryKey"
+    assert json.loads(request.content) == {
+        "primaryKey": {"columns": ["id"], "resolution": {"type": "unique"}}
+    }
+
+
+def test_add_latest_wins_primary_key(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.view())
+
+    DatasetService().add_primary_key(
+        dj.VIEW_RID,
+        ["id", "region"],
+        latest_wins_columns=["updated_at"],
+        deletion_column="is_deleted",
+        branch="dev",
+    )
+
+    assert json.loads(only_request(stub_foundry_http).content) == {
+        "branch": "dev",
+        "primaryKey": {
+            "columns": ["id", "region"],
+            "resolution": {
+                "type": "duplicate",
+                "deletionColumn": "is_deleted",
+                "resolutionStrategy": {"type": "latestWins", "columns": ["updated_at"]},
+            },
+        },
+    }
+
+
+def test_unique_primary_key_takes_no_deletion_column(stub_foundry_http):
+    with pytest.raises(ValueError, match="deletion_column"):
+        DatasetService().add_primary_key(dj.VIEW_RID, ["id"], deletion_column="d")
+
+
+# ---------------------------------------------------- schedules and jobs
+
+
+def test_list_schedules_returns_schedule_rids(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([dj.SCHEDULE_RID], "t2"))
+
+    page = DatasetService().list_schedules(DATASET, branch="dev", page_size=1)
+
+    assert page.data == [dj.SCHEDULE_RID]
+    assert page.next_page_token == "t2"
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{API}/{DATASET}/getSchedules"
+    assert dict(request.url.params) == {"branchName": "dev", "pageSize": "1"}
+
+
+def test_list_jobs_is_beta_and_sends_the_sort(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([dj.job()]))
+
+    page = DatasetService().list_jobs(
+        DATASET, branch="dev", order_by="BY_FINISHED_TIME", descending=False
+    )
+
+    assert isinstance(page.data[0], JobDetails)
+    assert page.data[0].job_rid == dj.JOB_RID
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", f"{API}/{DATASET}/jobs")
+    assert dict(request.url.params) == {"branchName": "dev", "preview": "true"}
+    assert json.loads(request.content) == {
+        "orderBy": [{"sortType": "BY_FINISHED_TIME", "sortDirection": "ASCENDING"}]
+    }
+
+
+def test_list_jobs_defaults_to_newest_started_first(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.page([]))
+
+    DatasetService().list_jobs(DATASET)
+
+    assert json.loads(only_request(stub_foundry_http).content) == {
+        "orderBy": [{"sortType": "BY_STARTED_TIME", "sortDirection": "DESCENDING"}]
+    }

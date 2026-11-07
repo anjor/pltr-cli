@@ -3,10 +3,9 @@ Tests for OAuth authentication.
 """
 
 import pytest
-import os
-import sys
-from types import SimpleNamespace
 from unittest.mock import patch, Mock
+
+import foundry_sdk
 from pltr.auth.oauth import OAuthClientProvider
 from pltr.auth.base import MissingCredentialsError, InvalidCredentialsError
 
@@ -27,21 +26,24 @@ class TestOAuthClientProvider:
         assert provider.host == "https://test.palantirfoundry.com"
         assert provider.scopes == ["api:read", "api:write"]
 
-    def test_init_with_environment_variables(self):
-        """Test initialization with environment variables."""
-        with patch.dict(
-            os.environ,
-            {
-                "FOUNDRY_CLIENT_ID": "env_client_id",
-                "FOUNDRY_CLIENT_SECRET": "env_client_secret",
-                "FOUNDRY_HOST": "https://env.palantirfoundry.com",
-            },
-        ):
-            provider = OAuthClientProvider()
-            assert provider.client_id == "env_client_id"
-            assert provider.client_secret == "env_client_secret"
-            assert provider.host == "https://env.palantirfoundry.com"
-            assert provider.scopes == []  # Default empty
+    def test_init_ignores_environment_variables(self, monkeypatch):
+        """Providers use only the values they are given (AuthManager reads env vars).
+
+        Otherwise FOUNDRY_CLIENT_ID/SECRET/HOST could silently complete a stored
+        profile; environment-variable auth is tested in test_headless_auth.py.
+        """
+        monkeypatch.setenv("FOUNDRY_CLIENT_ID", "env_client_id")
+        monkeypatch.setenv("FOUNDRY_CLIENT_SECRET", "env_client_secret")
+        monkeypatch.setenv("FOUNDRY_HOST", "https://env.palantirfoundry.com")
+
+        with pytest.raises(MissingCredentialsError, match="Client ID is required"):
+            OAuthClientProvider()
+        with pytest.raises(MissingCredentialsError, match="Client secret is required"):
+            OAuthClientProvider(client_id="param_client_id")
+        with pytest.raises(MissingCredentialsError, match="Host URL is required"):
+            OAuthClientProvider(
+                client_id="param_client_id", client_secret="param_secret"
+            )
 
     def test_init_missing_client_id(self):
         """Test initialization fails when client_id is missing."""
@@ -71,142 +73,55 @@ class TestOAuthClientProvider:
         )
         assert provider.scopes == []
 
-    def test_init_parameters_override_env(self):
+    def test_init_parameters_override_env(self, monkeypatch):
         """Test that explicit parameters override environment variables."""
-        with patch.dict(
-            os.environ,
-            {
-                "FOUNDRY_CLIENT_ID": "env_client_id",
-                "FOUNDRY_CLIENT_SECRET": "env_client_secret",
-                "FOUNDRY_HOST": "https://env.palantirfoundry.com",
-            },
-        ):
-            provider = OAuthClientProvider(
-                client_id="param_client_id",
-                client_secret="param_secret",
-                host="https://param.palantirfoundry.com",
-            )
-            assert provider.client_id == "param_client_id"
-            assert provider.client_secret == "param_secret"
-            assert provider.host == "https://param.palantirfoundry.com"
+        monkeypatch.setenv("FOUNDRY_CLIENT_ID", "env_client_id")
+        monkeypatch.setenv("FOUNDRY_CLIENT_SECRET", "env_client_secret")
+        monkeypatch.setenv("FOUNDRY_HOST", "https://env.palantirfoundry.com")
 
-    @pytest.mark.skip(reason="Requires foundry SDK to be installed")
-    def test_get_client_integration(self):
-        """Integration test for getting an authenticated client (requires SDK)."""
-        # This would test the actual SDK integration
-        # Skip since it requires the foundry package to be installed
-        pass
-
-    def test_get_client_creates_provider(self):
-        """Test that get_client method exists and can be called."""
         provider = OAuthClientProvider(
-            client_id="test_client_id",
-            client_secret="test_client_secret",
-            host="https://test.palantirfoundry.com",
+            client_id="param_client_id",
+            client_secret="param_secret",
+            host="https://param.palantirfoundry.com",
         )
+        assert provider.client_id == "param_client_id"
+        assert provider.client_secret == "param_secret"
+        assert provider.host == "https://param.palantirfoundry.com"
 
-        # Verify the method exists and can be called
-        # (actual functionality tested in integration tests with real SDK)
-        assert hasattr(provider, "get_client")
-        assert callable(provider.get_client)
-
-    def test_get_client_prefers_preview_when_supported(self, monkeypatch):
-        """Test get_client passes preview=True when SDK supports it."""
+    def test_get_client_builds_a_real_client_without_preview(self, monkeypatch):
+        """The V2 FoundryClient takes auth and hostname only (no client-level preview)."""
         calls = []
+        real_client = foundry_sdk.FoundryClient
 
-        class ConfidentialClientAuthStub:
-            def __init__(self, client_id, client_secret, scopes):
-                self.client_id = client_id
-                self.client_secret = client_secret
-                self.scopes = scopes
+        def recording_client(**kwargs):
+            calls.append(kwargs)
+            return real_client(**kwargs)
 
-        class FoundryClientStub:
-            def __init__(self, **kwargs):
-                calls.append(kwargs)
-
-        monkeypatch.setitem(
-            sys.modules,
-            "foundry_sdk",
-            SimpleNamespace(
-                FoundryClient=FoundryClientStub,
-                ConfidentialClientAuth=ConfidentialClientAuthStub,
-            ),
-        )
-
+        monkeypatch.setattr(foundry_sdk, "FoundryClient", recording_client)
         provider = OAuthClientProvider(
             client_id="test_client_id",
             client_secret="test_client_secret",
-            host="https://test.palantirfoundry.com",
-        )
-        provider.get_client()
-
-        assert calls[0]["preview"] is True
-
-    def test_get_client_falls_back_when_preview_unsupported(self, monkeypatch):
-        """Test get_client retries without preview when SDK rejects the preview kwarg."""
-        calls = []
-
-        class ConfidentialClientAuthStub:
-            def __init__(self, client_id, client_secret, scopes):
-                self.client_id = client_id
-                self.client_secret = client_secret
-                self.scopes = scopes
-
-        class FoundryClientStub:
-            def __init__(self, **kwargs):
-                calls.append(kwargs)
-                if "preview" in kwargs:
-                    raise TypeError("unexpected keyword argument 'preview'")
-
-        monkeypatch.setitem(
-            sys.modules,
-            "foundry_sdk",
-            SimpleNamespace(
-                FoundryClient=FoundryClientStub,
-                ConfidentialClientAuth=ConfidentialClientAuthStub,
-            ),
+            host="https://test.palantirfoundry.com/",
+            scopes=["api:read"],
         )
 
+        client = provider.get_client()
+
+        assert isinstance(client, real_client)
+        auth = provider.get_auth()
+        assert calls == [{"auth": auth, "hostname": "test.palantirfoundry.com"}]
+        assert isinstance(auth, foundry_sdk.ConfidentialClientAuth)
+        assert auth.scopes == ["api:read"]
+
+    def test_get_auth_is_created_once(self):
+        """Clients and direct-HTTP calls share one auth object (and OAuth token)."""
         provider = OAuthClientProvider(
             client_id="test_client_id",
             client_secret="test_client_secret",
-            host="https://test.palantirfoundry.com",
-        )
-        provider.get_client()
-
-        assert len(calls) == 2
-        assert calls[0]["preview"] is True
-        assert "preview" not in calls[1]
-
-    def test_get_client_reraises_unrelated_type_error(self, monkeypatch):
-        """Test get_client does not swallow unrelated TypeError failures."""
-
-        class ConfidentialClientAuthStub:
-            def __init__(self, client_id, client_secret, scopes):
-                self.client_id = client_id
-                self.client_secret = client_secret
-                self.scopes = scopes
-
-        class FoundryClientStub:
-            def __init__(self, **kwargs):
-                raise TypeError("bad auth input")
-
-        monkeypatch.setitem(
-            sys.modules,
-            "foundry_sdk",
-            SimpleNamespace(
-                FoundryClient=FoundryClientStub,
-                ConfidentialClientAuth=ConfidentialClientAuthStub,
-            ),
+            host="test.palantirfoundry.com",
         )
 
-        provider = OAuthClientProvider(
-            client_id="test_client_id",
-            client_secret="test_client_secret",
-            host="https://test.palantirfoundry.com",
-        )
-        with pytest.raises(TypeError, match="bad auth input"):
-            provider.get_client()
+        assert provider.get_auth() is provider.get_auth()
 
     def test_validate_success(self):
         """Test successful validation."""

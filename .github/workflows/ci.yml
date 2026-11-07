@@ -52,6 +52,84 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
 
+  fresh-install:
+    # Install the built wheel the way users do: without uv.lock, so the resolver
+    # picks the newest versions pyproject.toml allows. The lock can hide a missing
+    # or incompatible dependency (typer >= 0.26 no longer installs click, which
+    # pltr imports; see the typer/click caps in pyproject.toml).
+    name: fresh-install (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.13"]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Build the wheel
+      run: |
+        uv build --wheel --out-dir dist
+
+    - name: Install the wheel into a clean venv, without the lock
+      run: |
+        uv venv --python "${{ matrix.python-version }}" "$RUNNER_TEMP/fresh"
+        uv pip install --python "$RUNNER_TEMP/fresh" dist/*.whl
+        uv pip list --python "$RUNNER_TEMP/fresh"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cygpath -w "$RUNNER_TEMP/fresh/Scripts" >> "$GITHUB_PATH"
+        else
+          echo "$RUNNER_TEMP/fresh/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Run the installed CLI
+      working-directory: ${{ runner.temp }}
+      run: |
+        command -v pltr
+        pltr --version
+        pltr --help
+        pltr api --help
+
+    - name: Check the error contract (JSON error on stderr, documented exit code)
+      working-directory: ${{ runner.temp }}
+      shell: python
+      run: |
+        import json
+        import os
+        import subprocess
+
+        # No profile and no FOUNDRY_* variables here, so an API command fails on auth.
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("FOUNDRY_", "PLTR_"))}
+        cases = [
+            (["folder", "get", "--format", "json"], 2, "usage_error"),
+            (["folder", "get", "not-a-rid", "--format", "json"], 3, "auth_error"),
+        ]
+        for args, code, kind in cases:
+            result = subprocess.run(
+                ["pltr", *args], capture_output=True, encoding="utf-8", env=env
+            )
+            print("pltr", *args, "-> exit", result.returncode)
+            print(result.stderr)
+            assert result.returncode == code, f"expected exit code {code}"
+            assert result.stdout == "", "stdout must stay empty on failure"
+            # In JSON mode stderr carries only JSON Lines; the last one is the error.
+            error = [json.loads(line) for line in result.stderr.splitlines()][-1]
+            assert (error["type"], error["exitCode"]) == (kind, code), error
+
   lint-and-format:
     runs-on: ubuntu-latest
     steps:
@@ -74,6 +152,26 @@ jobs:
     - name: Check code formatting with ruff
       run: |
         uv run ruff format --check .
+
+    - name: Check every SDK call against the installed SDK (#185)
+      run: |
+        uv run python scripts/check_sdk_calls.py
+
+    - name: Check generated API commands are up to date (#186)
+      run: |
+        uv run python scripts/generate_api_commands.py --check
+
+    - name: Report SDK method coverage (#186)
+      run: |
+        uv run python scripts/coverage.py
+
+    - name: Check curated commands' SDK metadata matches their calls (#188)
+      run: |
+        uv run python scripts/check_command_metadata.py
+
+    - name: Check the generated agent skill reference is up to date (#188)
+      run: |
+        uv run python scripts/generate_skill_reference.py --check
 
     - name: Run security checks (if configured)
       run: |

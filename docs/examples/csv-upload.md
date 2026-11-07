@@ -1,724 +1,322 @@
 # CSV Upload Examples
 
-Complete examples for uploading CSV files to Foundry datasets using pltr-cli.
+Examples for uploading CSV files to Foundry datasets with pltr-cli.
 
 ## Prerequisites
 
 - pltr-cli installed and configured
-- Authentication set up (see [Quick Start Guide](../user-guide/quick-start.md))
-- Write permissions to create/modify datasets in Foundry
+- Authentication set up (see [Quick Start Guide](../user-guide/quick-start.md)); in CI,
+  set `FOUNDRY_HOST` and `FOUNDRY_TOKEN` instead of configuring a profile
+- Write permissions on the dataset, or on the folder you create datasets in
 
-## 📤 Simple CSV Upload to New Dataset
+Datasets are addressed by RID (`ri.foundry.main.dataset.<id>`), folders and projects
+by folder RID (`ri.compass.main.folder.<id>`).
 
-### Step 1: Create a Dataset and Upload CSV
+With `--format json`, pltr prints only the API's JSON on stdout (status messages go to
+stderr), so `jq` can read the output directly. Commands that replace or delete data
+(`schema set`, `schema apply`, `transactions abort`, `files delete`) ask for
+confirmation; scripts must pass `--yes`, because pltr never prompts when stdin isn't a
+terminal.
+
+## Simple CSV Upload to a New Dataset
 
 ```bash
 #!/bin/bash
-# upload_csv_simple.sh - Simple CSV upload to new dataset
+# upload_csv_simple.sh - upload one CSV file to a new dataset
+set -euo pipefail
 
 CSV_FILE="data.csv"
 DATASET_NAME="sales_data_$(date +%Y%m%d)"
-PARENT_FOLDER="ri.foundry.main.folder.your-folder-rid"  # Replace with your folder RID
-
-echo "Creating new dataset: $DATASET_NAME"
+PARENT_FOLDER="ri.compass.main.folder.your-folder-rid"  # a project or folder
 
 # Create the dataset
 DATASET_RID=$(pltr dataset create "$DATASET_NAME" \
-  --parent-folder "$PARENT_FOLDER" \
-  --format json | jq -r '.rid')
-
+  --parent-folder "$PARENT_FOLDER" --format json | jq -r '.rid')
 echo "Created dataset: $DATASET_RID"
 
-# Start a transaction
-echo "Starting transaction..."
-TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-  --format json | jq -r '.rid')
+# Upload the file (the API opens and commits a transaction for it)
+pltr dataset files upload "$CSV_FILE" "$DATASET_RID"
 
-echo "Transaction started: $TRANSACTION_RID"
-
-# Upload the CSV file
-echo "Uploading CSV file..."
-pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
-  --transaction-rid "$TRANSACTION_RID"
-
-# Commit the transaction
-echo "Committing transaction..."
-pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
-
-echo "✅ CSV uploaded successfully to dataset: $DATASET_RID"
-
-# Apply/infer the schema automatically (NEW!)
-echo "Applying schema to dataset..."
-pltr dataset schema apply "$DATASET_RID"
-
-echo "✅ Schema applied successfully"
+# Infer the schema from the uploaded file and apply it
+pltr dataset schema apply "$DATASET_RID" --yes
 ```
 
-### Step 2: Verify Upload
+### Verify the Upload
 
 ```bash
-# Check dataset info
 pltr dataset get "$DATASET_RID"
-
-# List files in dataset
 pltr dataset files list "$DATASET_RID"
-
-# Check the applied schema (NEW!)
 pltr dataset schema get "$DATASET_RID"
 
-# Query the data (now with proper types!)
-pltr sql execute "SELECT COUNT(*) as row_count FROM \`$DATASET_RID\`"
+# Read the first rows, as a table, JSON or CSV
+pltr dataset preview "$DATASET_RID" --limit 20
+pltr dataset preview "$DATASET_RID" --limit 1000 --format csv --output sample.csv
+
+# Query it with SQL
+pltr sql execute "SELECT COUNT(*) AS row_count FROM \`$DATASET_RID\`"
 ```
 
-## 📊 Upload Multiple CSV Files
+## Upload Several CSV Files
 
-### Batch Upload Script
+Upload a whole directory: pltr opens one transaction, uploads every file (keeping
+their relative paths), and commits it. If any upload fails, pltr aborts the
+transaction, so the dataset never shows a partial upload.
+
+```bash
+DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
+
+pltr dataset files upload ./csv_files "$DATASET_RID" --path raw
+```
+
+If you need to run other steps inside the transaction, manage it yourself:
 
 ```bash
 #!/bin/bash
-# batch_csv_upload.sh - Upload multiple CSV files to a dataset
+# batch_csv_upload.sh - upload several files in one transaction you control
+set -uo pipefail
 
 DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
-CSV_DIR="./csv_files"
 
-# Start transaction
-echo "Starting transaction for batch upload..."
-TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-  --format json | jq -r '.rid')
+TRANSACTION_RID=$(pltr dataset transactions start "$DATASET_RID" --type APPEND \
+  --format json | jq -r '.rid') || exit 1
 
-# Upload all CSV files
-for csv_file in "$CSV_DIR"/*.csv; do
-  if [ -f "$csv_file" ]; then
-    filename=$(basename "$csv_file")
-    echo "Uploading $filename..."
-
-    pltr dataset files upload "$csv_file" "$DATASET_RID" \
-      --transaction-rid "$TRANSACTION_RID" \
-      --branch "master"
-
-    if [ $? -eq 0 ]; then
-      echo "✅ $filename uploaded"
-    else
-      echo "❌ Failed to upload $filename"
-      # Optionally abort transaction on failure
-      pltr dataset transaction abort "$DATASET_RID" "$TRANSACTION_RID"
-      exit 1
-    fi
+for csv_file in ./csv_files/*.csv; do
+  # --transaction-rid and --branch can't be combined (the API rejects it)
+  if ! pltr dataset files upload "$csv_file" "$DATASET_RID" \
+      --transaction-rid "$TRANSACTION_RID"; then
+    echo "Failed to upload $csv_file; aborting"
+    pltr dataset transactions abort "$DATASET_RID" "$TRANSACTION_RID" --yes
+    exit 1
   fi
 done
 
-# Commit all uploads
-echo "Committing transaction..."
-pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
-
-echo "✅ All CSV files uploaded successfully"
+pltr dataset transactions commit "$DATASET_RID" "$TRANSACTION_RID"
 ```
 
-## 🔄 Update Existing Dataset with New CSV
+## Replace a Dataset's Contents
 
-### Replace Dataset Contents
+A SNAPSHOT transaction replaces all of the dataset's files with the ones in the
+transaction (older versions stay in the dataset's history). pltr asks before a
+SNAPSHOT upload; `--yes` skips the question, and a script needs it:
 
 ```bash
-#!/bin/bash
-# update_dataset.sh - Replace dataset contents with new CSV
+pltr dataset files upload updated_data.csv "$DATASET_RID" --transaction-type SNAPSHOT --yes
 
-DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
-NEW_CSV="updated_data.csv"
-
-# Create a snapshot transaction (preserves history)
-echo "Creating snapshot transaction..."
-TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-  --transaction-type "SNAPSHOT" \
-  --format json | jq -r '.rid')
-
-# Clear existing files (optional - for full replacement)
-echo "Clearing existing files..."
-pltr dataset files delete-all "$DATASET_RID" \
-  --transaction-rid "$TRANSACTION_RID"
-
-# Upload new CSV
-echo "Uploading new CSV..."
-pltr dataset files upload "$NEW_CSV" "$DATASET_RID" \
-  --transaction-rid "$TRANSACTION_RID"
-
-# Commit changes
-echo "Committing changes..."
-pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID" \
-  --message "Updated dataset with new CSV data"
-
-echo "✅ Dataset updated successfully"
+# or a whole directory
+pltr dataset files upload ./export "$DATASET_RID" --transaction-type SNAPSHOT --yes
 ```
 
-## 🔧 Schema Management for CSV Datasets
+## Schema Management for CSV Datasets
 
-### Automatic Schema Inference
-
-When uploading CSV files, pltr-cli can automatically infer the schema from your CSV headers and data:
+### Infer the Schema from the Uploaded Files (recommended)
 
 ```bash
-#!/bin/bash
-# infer_schema.sh - Automatically set schema from CSV
+pltr dataset schema apply "$DATASET_RID" --yes            # branch master
+pltr dataset schema apply "$DATASET_RID" --branch dev --yes
+```
 
-CSV_FILE="sales_data.csv"
-DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
+`schema apply` asks Foundry to infer the schema, including how to parse the CSV
+files, from the files on the branch, and applies it. Foundry's public API has no
+schema inference, so this command calls Foundry's internal schema-inference and
+foundry-metadata endpoints directly (a documented exception to pltr's SDK-only rule).
 
-# Infer and set schema from CSV
-pltr dataset schema set "$DATASET_RID" --from-csv "$CSV_FILE"
+### Infer the Schema from a Local CSV File
 
-# View the inferred schema
+```bash
+pltr dataset schema set "$DATASET_RID" --from-csv sales_data.csv \
+  --dataframe-reader CSV --yes
 pltr dataset schema get "$DATASET_RID" --format json
 ```
 
-The schema inference will:
-- Detect column names from CSV headers
-- Analyze sample rows to determine data types
-- Support types: STRING, INTEGER, DOUBLE, DATE, BOOLEAN, TIMESTAMP
-- Mark columns as nullable if empty values are found
+pltr reads the header and the first 100 rows and picks a type for each column
+(INTEGER, DOUBLE, BOOLEAN, DATE, TIMESTAMP, else STRING); a column with empty values
+is nullable. Spaces and hyphens in column names become underscores. The API reads
+files as Parquet unless you pass `--dataframe-reader`, so pass `CSV` for CSV files.
 
-### Manual Schema Definition
+### Define the Schema Yourself
 
-For precise control, you can define the schema manually:
+Give the schema in the API's format, inline, from a file (`@schema.json` or
+`--json-file`), or as the JSON output of `pltr dataset schema get`:
 
 ```bash
-# Define schema using JSON
 SCHEMA_JSON='{
-  "fields": [
+  "fieldSchemaList": [
     {"name": "id", "type": "INTEGER", "nullable": false},
     {"name": "name", "type": "STRING", "nullable": false},
     {"name": "email", "type": "STRING", "nullable": true},
-    {"name": "amount", "type": "DOUBLE", "nullable": false},
+    {"name": "amount", "type": "DECIMAL", "precision": 12, "scale": 2, "nullable": false},
     {"name": "created_date", "type": "DATE", "nullable": false},
     {"name": "is_active", "type": "BOOLEAN", "nullable": false}
   ]
 }'
 
-pltr dataset schema set "$DATASET_RID" --json "$SCHEMA_JSON"
+pltr dataset schema set "$DATASET_RID" --json "$SCHEMA_JSON" --dataframe-reader CSV --yes
+
+# Copy the schema of one dataset to another
+pltr dataset schema get "$SOURCE_RID" --format json > schema.json
+pltr dataset schema set "$TARGET_RID" --json-file schema.json --yes
 ```
 
-Or load from a JSON file:
+Field types: ARRAY, BINARY, BOOLEAN, BYTE, DATE, DECIMAL, DOUBLE, FLOAT, INTEGER,
+LONG, MAP, SHORT, STRING, STRUCT, TIMESTAMP. The older shorthand
+`{"fields": [{"name": ..., "type": ..., "nullable": ...}]}` is still accepted
+(`nullable` defaults to true).
 
-```bash
-# schema.json
-cat > schema.json << 'EOF'
-{
-  "fields": [
-    {"name": "product_id", "type": "INTEGER", "nullable": false},
-    {"name": "product_name", "type": "STRING", "nullable": false},
-    {"name": "price", "type": "DOUBLE", "nullable": false},
-    {"name": "in_stock", "type": "BOOLEAN", "nullable": false},
-    {"name": "last_updated", "type": "TIMESTAMP", "nullable": true}
-  ]
-}
-EOF
-
-pltr dataset schema set "$DATASET_RID" --json-file schema.json
-```
-
-### Recommended Schema-Aware CSV Upload Workflow
-
-Here's the recommended workflow for uploading CSV with automatic schema application:
+## Validate a CSV Before Uploading
 
 ```bash
 #!/bin/bash
-# complete_csv_upload.sh - Upload CSV with automatic schema
-
-CSV_FILE="data.csv"
-DATASET_NAME="typed_dataset_$(date +%Y%m%d)"
-PARENT_FOLDER="ri.foundry.main.folder.your-folder-rid"
-
-# 1. Create dataset
-DATASET_RID=$(pltr dataset create "$DATASET_NAME" \
-  --parent-folder "$PARENT_FOLDER" \
-  --format json | jq -r '.rid')
-
-# 2. Upload CSV file
-TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-  --format json | jq -r '.rid')
-
-pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
-  --transaction-rid "$TRANSACTION_RID"
-
-pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
-
-# 3. Apply schema automatically
-pltr dataset schema apply "$DATASET_RID"
-
-# 4. Verify applied schema
-echo "Dataset schema:"
-pltr dataset schema get "$DATASET_RID"
-
-# 5. Query with proper types
-pltr sql execute "
-  SELECT
-    COUNT(*) as total_rows,
-    AVG(amount) as avg_amount,
-    MAX(created_date) as latest_date
-  FROM \`$DATASET_RID\`
-"
-```
-
-## 📝 CSV with Schema Validation
-
-### Upload with Schema Check
-
-```bash
-#!/bin/bash
-# csv_with_schema.sh - Upload CSV and validate schema
+# csv_with_schema.sh - check the header, then upload
+set -euo pipefail
 
 CSV_FILE="structured_data.csv"
 DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
 EXPECTED_COLUMNS="id,name,email,created_date,amount"
 
-# Function to validate CSV headers
-validate_csv_schema() {
-  local csv_file=$1
-  local expected=$2
-
-  # Get CSV headers
-  headers=$(head -n 1 "$csv_file" | tr '[:upper:]' '[:lower:]')
-
-  # Check if headers match expected
-  if [ "$headers" != "$expected" ]; then
-    echo "❌ Schema mismatch!"
-    echo "Expected: $expected"
-    echo "Found: $headers"
-    return 1
-  fi
-
-  echo "✅ Schema validation passed"
-  return 0
-}
-
-# Validate before upload
-if validate_csv_schema "$CSV_FILE" "$EXPECTED_COLUMNS"; then
-  # Start transaction
-  TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-    --format json | jq -r '.rid')
-
-  # Upload CSV
-  pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
-    --transaction-rid "$TRANSACTION_RID"
-
-  # Commit
-  pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
-
-  echo "✅ CSV uploaded with validated schema"
-else
-  echo "❌ Upload aborted due to schema mismatch"
+headers=$(head -n 1 "$CSV_FILE" | tr '[:upper:]' '[:lower:]' | tr -d '\r')
+if [ "$headers" != "$EXPECTED_COLUMNS" ]; then
+  echo "Header mismatch: expected $EXPECTED_COLUMNS, found $headers"
   exit 1
 fi
+
+pltr dataset files upload "$CSV_FILE" "$DATASET_RID"
 ```
 
-## 🚀 Advanced: Streaming Large CSV Upload
+## Large Files
 
-### Upload Large Files with Progress
+- The upload API takes each file in a single request, so pltr reads the file into
+  memory. For very large CSV files, split them and upload the directory in one
+  transaction:
+
+  ```bash
+  mkdir parts && split -l 1000000 large.csv parts/part_
+  pltr dataset files upload ./parts "$DATASET_RID" --path large --transaction-type SNAPSHOT --yes
+  ```
+
+  Each part needs its own header row if the schema expects one.
+- Downloads are streamed to disk, so they don't need to fit in memory:
+
+  ```bash
+  pltr dataset files get "$DATASET_RID" large/part_aa ./part_aa.csv
+  pltr dataset files get "$DATASET_RID" large ./large --recursive
+  ```
+
+## Incremental Updates
+
+Append each new file under a timestamped path, one transaction per file:
 
 ```bash
 #!/bin/bash
-# large_csv_upload.sh - Upload large CSV with progress tracking
+# incremental_update.sh - append new CSV files to a dataset
+set -uo pipefail
 
-CSV_FILE="large_dataset.csv"
-DATASET_NAME="large_dataset_$(date +%Y%m%d_%H%M%S)"
-PARENT_FOLDER="ri.foundry.main.folder.your-folder-rid"
+DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
+mkdir -p ./processed
 
-# Function to get file size in MB
-get_file_size_mb() {
-  local file=$1
-  local size_bytes=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
-  echo $((size_bytes / 1048576))
-}
+for csv_file in ./daily_updates/*.csv; do
+  [ -f "$csv_file" ] || continue
+  target="updates/$(date +%Y%m%d_%H%M%S)_$(basename "$csv_file")"
 
-# Function to monitor upload progress
-monitor_upload() {
-  local pid=$1
-  local file=$2
-  local size_mb=$(get_file_size_mb "$file")
-
-  echo "Uploading ${size_mb}MB file..."
-
-  while kill -0 $pid 2>/dev/null; do
-    echo -n "."
-    sleep 2
-  done
-
-  echo ""
-  wait $pid
-  return $?
-}
-
-# Create dataset
-echo "Creating dataset for large file..."
-DATASET_RID=$(pltr dataset create "$DATASET_NAME" \
-  --parent-folder "$PARENT_FOLDER" \
-  --format json | jq -r '.rid')
-
-# Start transaction
-TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-  --format json | jq -r '.rid')
-
-# Upload in background and monitor
-{
-  pltr dataset files upload "$CSV_FILE" "$DATASET_RID" \
-    --transaction-rid "$TRANSACTION_RID"
-} &
-
-UPLOAD_PID=$!
-monitor_upload $UPLOAD_PID "$CSV_FILE"
-
-if [ $? -eq 0 ]; then
-  # Commit transaction
-  echo "Committing transaction..."
-  pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID"
-  echo "✅ Large CSV uploaded successfully"
-else
-  # Abort on failure
-  echo "❌ Upload failed, aborting transaction..."
-  pltr dataset transaction abort "$DATASET_RID" "$TRANSACTION_RID"
-  exit 1
-fi
+  if pltr dataset files upload "$csv_file" "$DATASET_RID" \
+      --path "$target" --transaction-type APPEND; then
+    mv "$csv_file" ./processed/
+  else
+    echo "Failed to upload $csv_file"
+  fi
+done
 ```
 
-## 🔧 Python Script for CSV Upload
+## Error Handling and Retries
 
-### Using pltr-cli as a Library
+pltr exits with documented codes: 2 usage error, 3 authentication, 4 permission
+denied, 5 not found, 6 invalid request, 7 other API or network errors (conflicts,
+rate limits, server errors, timeouts). Only 7 is worth retrying:
+
+```bash
+#!/bin/bash
+# robust_csv_upload.sh - retry transient failures only
+CSV_FILE="important_data.csv"
+DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
+
+for attempt in 1 2 3; do
+  pltr dataset files upload "$CSV_FILE" "$DATASET_RID" --format json \
+    2> upload-errors.jsonl
+  status=$?
+  [ $status -eq 0 ] && { echo "Uploaded on attempt $attempt"; exit 0; }
+  [ $status -ne 7 ] && break    # not transient: don't retry
+  sleep 10
+done
+
+# The last stderr line is a JSON error with errorName, statusCode and parameters
+tail -n 1 upload-errors.jsonl | jq .
+exit 1
+```
+
+## Python
+
+pltr's services wrap `foundry-platform-sdk` and return its models. For programs, the
+SDK itself (`foundry_sdk.FoundryClient`) is the stable interface; pltr's services are
+convenient when you want pltr's profiles and environment-variable authentication:
 
 ```python
 #!/usr/bin/env python3
-"""
-csv_upload.py - Upload CSV to Foundry using pltr-cli as a library
-"""
+"""csv_upload.py - upload a CSV file to a new dataset in one transaction."""
 
 import sys
-import pandas as pd
 from pathlib import Path
-from pltr.auth.manager import AuthManager
+
 from pltr.services.dataset import DatasetService
 
-def upload_csv_to_foundry(csv_path, dataset_name, parent_folder_rid=None):
-    """
-    Upload a CSV file to Foundry as a new dataset.
 
-    Args:
-        csv_path: Path to CSV file
-        dataset_name: Name for the new dataset
-        parent_folder_rid: Parent folder RID (optional)
-
-    Returns:
-        Dataset RID if successful, None otherwise
-    """
+def upload_csv(csv_path: Path, dataset_name: str, parent_folder_rid: str) -> str:
+    service = DatasetService()  # the active profile, or FOUNDRY_* variables
+    dataset = service.create(dataset_name, parent_folder_rid=parent_folder_rid)
+    transaction = service.start_transaction(dataset.rid, transaction_type="SNAPSHOT")
     try:
-        # Initialize authentication
-        auth = AuthManager()
-
-        # Create dataset service
-        dataset_service = DatasetService(auth)
-
-        # Create new dataset
-        print(f"Creating dataset: {dataset_name}")
-        dataset = dataset_service.create_dataset(
-            name=dataset_name,
-            parent_folder_rid=parent_folder_rid
+        service.upload_file(
+            dataset.rid, csv_path, csv_path.name, transaction_rid=transaction.rid
         )
-        dataset_rid = dataset['rid']
-        print(f"Created dataset: {dataset_rid}")
+        service.commit_transaction(dataset.rid, transaction.rid)
+    except Exception:
+        service.abort_transaction(dataset.rid, transaction.rid)
+        raise
+    return dataset.rid
 
-        # Start transaction
-        print("Starting transaction...")
-        transaction = dataset_service.create_transaction(dataset_rid)
-        transaction_rid = transaction['rid']
-
-        # Upload CSV file
-        print(f"Uploading {csv_path}...")
-        dataset_service.upload_file(
-            dataset_rid=dataset_rid,
-            file_path=csv_path,
-            transaction_rid=transaction_rid
-        )
-
-        # Commit transaction
-        print("Committing transaction...")
-        dataset_service.commit_transaction(
-            dataset_rid=dataset_rid,
-            transaction_rid=transaction_rid
-        )
-
-        print(f"✅ Successfully uploaded CSV to dataset: {dataset_rid}")
-        return dataset_rid
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return None
-
-def validate_and_upload_csv(csv_path, dataset_name):
-    """
-    Validate CSV before uploading.
-    """
-    csv_path = Path(csv_path)
-
-    # Check file exists
-    if not csv_path.exists():
-        print(f"❌ File not found: {csv_path}")
-        return False
-
-    # Validate CSV structure
-    try:
-        df = pd.read_csv(csv_path)
-        print(f"CSV Info:")
-        print(f"  - Rows: {len(df)}")
-        print(f"  - Columns: {', '.join(df.columns)}")
-        print(f"  - Size: {csv_path.stat().st_size / 1048576:.2f} MB")
-
-        # Check for required columns (customize as needed)
-        required_columns = []  # Add your required columns
-        missing = set(required_columns) - set(df.columns)
-        if missing:
-            print(f"❌ Missing required columns: {missing}")
-            return False
-
-    except Exception as e:
-        print(f"❌ Invalid CSV: {e}")
-        return False
-
-    # Upload to Foundry
-    return upload_csv_to_foundry(csv_path, dataset_name)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python csv_upload.py <csv_file> <dataset_name>")
-        sys.exit(1)
-
-    csv_file = sys.argv[1]
-    dataset_name = sys.argv[2]
-
-    if validate_and_upload_csv(csv_file, dataset_name):
-        sys.exit(0)
-    else:
-        sys.exit(1)
+    if len(sys.argv) != 4:
+        sys.exit("Usage: csv_upload.py <csv_file> <dataset_name> <parent_folder_rid>")
+    print(upload_csv(Path(sys.argv[1]), sys.argv[2], sys.argv[3]))
 ```
 
-## 🔄 Incremental CSV Updates
+## Tips
 
-### Append New Data to Existing Dataset
+- Prefer `pltr dataset files upload <directory>`: one atomic change, aborted on failure.
+- Use `--path` to organize files in folders inside the dataset, and timestamps to
+  avoid name collisions.
+- Use `schema apply` after uploading CSV files; use `schema set` when you need exact
+  types.
+- Validate CSV headers before uploading, and test scripts on a small dataset first.
 
-```bash
-#!/bin/bash
-# incremental_update.sh - Append new CSV data to existing dataset
+## Troubleshooting
 
-DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
-NEW_DATA_DIR="./daily_updates"
-PROCESSED_DIR="./processed"
+1. **Authentication errors (exit code 3)**: run `pltr verify`; configure a profile with
+   `pltr configure configure`, or set `FOUNDRY_HOST` and `FOUNDRY_TOKEN`.
+2. **Permission denied (exit code 4)**: you need write access to the dataset or folder.
+3. **A transaction is already open (`OpenTransactionAlreadyExists`, exit code 7)**:
+   list transactions with `pltr dataset transactions list <dataset_rid>` (a beta
+   endpoint), then commit or abort the open one:
+   `pltr dataset transactions abort <dataset_rid> <transaction_rid> --yes`.
+4. **`InvalidParameterCombination`**: don't pass `--branch` together with
+   `--transaction-rid`; pltr rejects that combination before calling the API.
+5. **Schema issues**:
+   - Check the current schema: `pltr dataset schema get <dataset_rid>`.
+   - Re-infer it from the uploaded files: `pltr dataset schema apply <dataset_rid> --yes`.
+   - If reads fail after `schema set`, check `--dataframe-reader` (CSV for CSV files).
 
-# Create processed directory if it doesn't exist
-mkdir -p "$PROCESSED_DIR"
-
-# Process each new CSV file
-for csv_file in "$NEW_DATA_DIR"/*.csv; do
-  if [ -f "$csv_file" ]; then
-    filename=$(basename "$csv_file")
-    timestamp=$(date +%Y%m%d_%H%M%S)
-
-    echo "Processing $filename..."
-
-    # Start transaction for this file
-    TRANSACTION_RID=$(pltr dataset transaction create "$DATASET_RID" \
-      --transaction-type "APPEND" \
-      --format json | jq -r '.rid')
-
-    # Upload with timestamp in filename to avoid conflicts
-    target_name="${timestamp}_${filename}"
-
-    pltr dataset files upload "$csv_file" "$DATASET_RID" \
-      --transaction-rid "$TRANSACTION_RID" \
-      --target-path "$target_name"
-
-    if [ $? -eq 0 ]; then
-      # Commit transaction
-      pltr dataset transaction commit "$DATASET_RID" "$TRANSACTION_RID" \
-        --message "Added $filename"
-
-      # Move to processed
-      mv "$csv_file" "$PROCESSED_DIR/"
-      echo "✅ $filename processed and moved to $PROCESSED_DIR"
-    else
-      # Abort transaction on failure
-      pltr dataset transaction abort "$DATASET_RID" "$TRANSACTION_RID"
-      echo "❌ Failed to process $filename"
-    fi
-  fi
-done
-
-echo "✅ Incremental update complete"
-```
-
-## 🛡️ Error Handling and Retry
-
-### Robust Upload with Retry Logic
-
-```bash
-#!/bin/bash
-# robust_csv_upload.sh - Upload with error handling and retry
-
-CSV_FILE="important_data.csv"
-DATASET_RID="ri.foundry.main.dataset.your-dataset-rid"
-MAX_RETRIES=3
-RETRY_DELAY=10
-
-upload_with_retry() {
-  local file=$1
-  local dataset=$2
-  local attempt=1
-
-  while [ $attempt -le $MAX_RETRIES ]; do
-    echo "Upload attempt $attempt of $MAX_RETRIES..."
-
-    # Start transaction
-    TRANSACTION_RID=$(pltr dataset transaction create "$dataset" \
-      --format json 2>/dev/null | jq -r '.rid')
-
-    if [ -z "$TRANSACTION_RID" ]; then
-      echo "Failed to start transaction"
-      attempt=$((attempt + 1))
-      sleep $RETRY_DELAY
-      continue
-    fi
-
-    # Try upload
-    if pltr dataset files upload "$file" "$dataset" \
-      --transaction-rid "$TRANSACTION_RID" 2>/dev/null; then
-
-      # Try commit
-      if pltr dataset transaction commit "$dataset" "$TRANSACTION_RID" 2>/dev/null; then
-        echo "✅ Upload successful on attempt $attempt"
-        return 0
-      else
-        echo "Commit failed, aborting transaction"
-        pltr dataset transaction abort "$dataset" "$TRANSACTION_RID" 2>/dev/null
-      fi
-    else
-      echo "Upload failed, aborting transaction"
-      pltr dataset transaction abort "$dataset" "$TRANSACTION_RID" 2>/dev/null
-    fi
-
-    attempt=$((attempt + 1))
-    if [ $attempt -le $MAX_RETRIES ]; then
-      echo "Retrying in $RETRY_DELAY seconds..."
-      sleep $RETRY_DELAY
-    fi
-  done
-
-  echo "❌ Upload failed after $MAX_RETRIES attempts"
-  return 1
-}
-
-# Main execution
-if [ ! -f "$CSV_FILE" ]; then
-  echo "❌ CSV file not found: $CSV_FILE"
-  exit 1
-fi
-
-echo "Starting robust CSV upload..."
-if upload_with_retry "$CSV_FILE" "$DATASET_RID"; then
-  echo "✅ CSV upload completed successfully"
-
-  # Verify upload
-  echo "Verifying upload..."
-  pltr dataset files list "$DATASET_RID" --format table
-else
-  echo "❌ CSV upload failed"
-  exit 1
-fi
-```
-
-## 📊 Tips and Best Practices
-
-### 1. Transaction Management
-- Always use transactions for data integrity
-- Commit only after successful upload
-- Abort transactions on failure to avoid partial uploads
-
-### 2. File Naming
-- Use timestamps to avoid naming conflicts
-- Organize files in folders within datasets
-- Use descriptive names for easier management
-
-### 3. Performance
-- For large files (>100MB), consider splitting into chunks
-- Use batch uploads for multiple files
-- Monitor system resources during upload
-
-### 4. Error Handling
-- Implement retry logic for network issues
-- Validate data before upload
-- Keep logs of successful/failed uploads
-
-### 5. Schema Management
-- Validate CSV structure before upload
-- Document expected schema
-- Handle schema evolution carefully
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-1. **Authentication Error**
-   ```bash
-   # Verify authentication
-   pltr verify
-
-   # Re-configure if needed
-   pltr configure
-   ```
-
-2. **Permission Denied**
-   - Ensure you have write permissions to the dataset/folder
-   - Check with: `pltr dataset get <dataset_rid>`
-
-3. **Transaction Already Exists**
-   - List existing transactions: `pltr dataset transaction list <dataset_rid>`
-   - Abort stale transactions: `pltr dataset transaction abort <dataset_rid> <transaction_rid>`
-
-4. **File Too Large**
-   - Split large CSV files: `split -l 1000000 large.csv part_`
-   - Upload parts individually
-
-5. **Network Timeout**
-   - Increase timeout in configuration
-   - Use retry logic for uploads
-   - Consider uploading during off-peak hours
-
-6. **Schema Issues**
-   - **Schema not taking effect**: Ensure the dataset has been created and files uploaded before applying schema
-   - **Type inference errors**: Review the first 100 rows of your CSV for inconsistent data
-   - **Column name issues**: Schema field names must be valid identifiers (no spaces, special chars)
-   - **Query errors after schema**: The schema applies to new data; existing data may need reprocessing
-   - **Apply vs Set commands**: Use `schema apply` for uploaded data, `schema set --from-csv` for local files
-
-   ```bash
-   # Debug schema issues
-   # 1. Check current schema
-   pltr dataset schema get <dataset_rid>
-
-   # 2. Apply schema from uploaded data (recommended)
-   pltr dataset schema apply <dataset_rid>
-
-   # 3. Or set schema from local CSV file (requires preview API)
-   pltr dataset schema set <dataset_rid> --from-csv data.csv
-
-   # 4. Verify CSV headers match schema
-   head -1 data.csv
-   ```
-
-   **When to use which schema command:**
-   - **`pltr dataset schema apply`**: Use after uploading files to the dataset. Analyzes uploaded data directly and doesn't require preview API access. This is the **recommended approach**.
-   - **`pltr dataset schema set --from-csv`**: Use when you want to infer schema from a local CSV file before uploading. Requires preview API access and may not reflect the exact uploaded data.
-
-## 📚 Related Documentation
+## Related Documentation
 
 - [Dataset Commands Reference](../user-guide/commands.md#dataset-commands)
-- [Transaction Management](../user-guide/workflows.md#transaction-management)
+- [Dataset Transactions](../features/dataset-transactions.md)
 - [Authentication Setup](../user-guide/authentication.md)
 - [Examples Gallery](gallery.md)
-
----
-
-💡 **Remember**: Always test your upload scripts with small datasets first before processing large production data!

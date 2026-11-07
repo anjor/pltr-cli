@@ -1,186 +1,135 @@
 """
 Verification command to test authentication.
+
+``pltr verify`` fetches the current user with the SDK's
+``admin.User.get_current()``, through the same client and credentials every
+other command uses, and reports which auth source it used: a stored profile
+(and how it was selected) or environment variables.
+
+With ``--format json`` stdout is one JSON document,
+``{"authSource": {...}, "user": {...}}``. Status lines go to stderr, and
+failures follow the shared error contract (a structured error and the
+documented exit code; see ``pltr.contract``).
 """
 
-import typer
-import requests
-from typing import Optional
-from rich.console import Console
-from rich.table import Table
+from typing import Any, Optional
 
-from ..auth.manager import AuthManager
-from ..auth.base import (
-    ProfileNotFoundError,
-    MissingCredentialsError,
-    InvalidCredentialsError,
+from ..auth.manager import AuthContext, AuthSource
+from ..contract import (
+    Columns,
+    FormatOption,
+    OutputOption,
+    ProfileOption,
+    emit,
+    info,
+    pltr_command,
+    spinner,
+    success,
 )
-
-app = typer.Typer()
-console = Console()
+from ..services.verify import VerifyService
 
 
-@app.callback(invoke_without_command=True)
+class VerificationFailed(Exception):
+    """What verify was doing when the check failed, and what to check.
+
+    The SDK (or HTTP) error is kept as ``__cause__``, so the error layer
+    classifies that and uses this message as context.
+    """
+
+
+def _columns(source: AuthSource) -> Columns:
+    """Curated table/CSV columns for ``{"authSource": ..., "user": User}``."""
+    return {
+        "Auth source": lambda _: source.describe(),
+        "Auth type": "authSource.authType",
+        "Host": "authSource.host",
+        "Username": "user.username",
+        "Name": lambda result: " ".join(
+            part
+            for part in (result["user"].given_name, result["user"].family_name)
+            if part
+        ),
+        "Email": "user.email",
+        "User ID": "user.id",
+        "Organization": "user.organization",
+        "Realm": "user.realm",
+        "Status": "user.status",
+    }
+
+
+# Registered as the `pltr verify` command in pltr/cli.py.
+@pltr_command(sdk="admin.User.get_current")
 def verify(
-    ctx: typer.Context,
-    profile: Optional[str] = typer.Option(
-        None, "--profile", "-p", help="Profile to verify"
-    ),
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Verify authentication by connecting to Palantir Foundry."""
-    if ctx.invoked_subcommand is not None:
-        return
+    """
+    Verify authentication by fetching the current user from Foundry.
 
-    auth_manager = AuthManager()
-
-    # Show which profile we're using
-    active_profile = profile or auth_manager.get_current_profile()
-    if not active_profile:
-        console.print("[red]Error:[/red] No profile configured")
-        console.print("Run 'pltr configure configure' to set up authentication")
-        raise typer.Exit(1)
-
-    console.print(f"Verifying profile: [bold]{active_profile}[/bold]")
-
-    try:
-        # Get credentials directly without creating SDK client
-        from ..auth.storage import CredentialStorage
-
-        storage = CredentialStorage()
-
-        # Get credentials for the profile
+    Uses the same credentials as every other command: --profile, then
+    PLTR_PROFILE, then the default profile, then the FOUNDRY_HOST plus
+    FOUNDRY_TOKEN (or FOUNDRY_CLIENT_ID and FOUNDRY_CLIENT_SECRET) environment
+    variables. Reports which one it used.
+    """
+    service = VerifyService(profile=profile)
+    context = service.get_auth_context()
+    info(f"Verifying {context.source.describe()} against {context.base_url}")
+    with spinner("Fetching the current user..."):
         try:
-            credentials = storage.get_profile(active_profile)
-        except ProfileNotFoundError:
-            console.print(f"[red]Error:[/red] Profile '{active_profile}' not found")
-            raise typer.Exit(1)
+            user = service.get_current_user()
+        except Exception as error:
+            raise VerificationFailed(_failure_context(error, context)) from error
 
-        # Extract authentication details
-        host = credentials.get("host")
-        auth_type = credentials.get("auth_type")
+    result = {"authSource": context.source.to_dict(), "user": user}
+    emit(
+        result,
+        format=format,
+        output=output,
+        columns=_columns(context.source),
+        title="Authentication verified",
+    )
+    success("Authentication successful")
 
-        if not host:
-            console.print(
-                f"[red]Error:[/red] No host URL configured for profile '{active_profile}'"
-            )
-            raise typer.Exit(1)
 
-        # Prepare the request
-        url = f"{host}/multipass/api/me"
-        headers = {}
+def _failure_context(error: Exception, context: AuthContext) -> str:
+    """Say which credentials failed and what to check, for a failed User.get_current."""
+    import foundry_sdk
 
-        # Set up authentication headers based on type
-        if auth_type == "token":
-            token = credentials.get("token")
-            if not token:
-                console.print(
-                    f"[red]Error:[/red] No token configured for profile '{active_profile}'"
-                )
-                raise typer.Exit(1)
-            headers["Authorization"] = f"Bearer {token}"
-
-        elif auth_type == "oauth":
-            # OAuth - need to get access token first
-            client_id = credentials.get("client_id")
-            client_secret = credentials.get("client_secret")
-
-            if not client_id or not client_secret:
-                console.print(
-                    f"[red]Error:[/red] OAuth credentials incomplete for profile '{active_profile}'"
-                )
-                raise typer.Exit(1)
-
-            token_url = f"{host}/multipass/api/oauth2/token"
-            token_response = requests.post(
-                token_url,
-                data={
-                    "grant_type": "client_credentials",
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-                timeout=30,
-            )
-            if token_response.status_code == 200:
-                access_token = token_response.json().get("access_token")
-                headers["Authorization"] = f"Bearer {access_token}"
-            else:
-                console.print(
-                    f"[red]Error:[/red] Failed to get OAuth token: {token_response.text}"
-                )
-                raise typer.Exit(1)
-
-        # Make the request to /multipass/api/me
-        response = requests.get(url, headers=headers, timeout=30)
-
-        if response.status_code == 200:
-            user_info = response.json()
-
-            # Display success with user information
-            console.print("[green]✓[/green] Authentication successful!")
-            console.print()
-
-            # Create a table with user information
-            table = Table(title="User Information", show_header=False)
-            table.add_column("Field", style="cyan")
-            table.add_column("Value")
-
-            # Add user details
-            table.add_row("Username", user_info.get("username", "N/A"))
-            table.add_row("Email", user_info.get("email", "N/A"))
-            table.add_row("User ID", user_info.get("id", "N/A"))
-
-            # Add organization info if available
-            if "organization" in user_info:
-                table.add_row(
-                    "Organization", user_info["organization"].get("rid", "N/A")
-                )
-
-            # Add groups if available
-            if "groups" in user_info and user_info["groups"]:
-                groups_list = ", ".join(
-                    g.get("name", "N/A") for g in user_info["groups"][:3]
-                )
-                if len(user_info["groups"]) > 3:
-                    groups_list += f" (+{len(user_info['groups']) - 3} more)"
-                table.add_row("Groups", groups_list)
-
-            console.print(table)
-            console.print()
-            console.print(
-                f"[green]Profile '{active_profile}' is properly configured![/green]"
-            )
-
-        elif response.status_code == 401:
-            console.print("[red]✗[/red] Authentication failed: Invalid credentials")
-            console.print(
-                f"Please check your token/credentials for profile '{active_profile}'"
-            )
-            raise typer.Exit(1)
-        elif response.status_code == 403:
-            console.print("[red]✗[/red] Authentication failed: Access forbidden")
-            console.print(
-                "Your credentials are valid but you don't have access to this endpoint"
-            )
-            raise typer.Exit(1)
-        else:
-            console.print(f"[red]✗[/red] Request failed: {response.status_code}")
-            console.print(f"Response: {response.text}")
-            raise typer.Exit(1)
-
-    except ProfileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-    except MissingCredentialsError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-    except InvalidCredentialsError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-    except requests.exceptions.ConnectionError:
-        console.print(
-            "[red]✗[/red] Connection failed: Unable to reach the Foundry host"
+    source = context.source.describe()
+    token_response = _oauth_token_response(error)
+    if token_response is not None:
+        body = " ".join(token_response.text.split())[:200]
+        detail = f" (the token endpoint answered: {body})" if body else ""
+        return f"The OAuth token request for {source} failed{detail}"
+    if isinstance(error, foundry_sdk.UnauthorizedError):
+        return f"Foundry rejected the credentials from {source}"
+    if isinstance(error, foundry_sdk.PermissionDeniedError):
+        return (
+            f"Foundry accepted the credentials from {source} but refused to return "
+            "the current user (OAuth clients need the api:admin-read scope)"
         )
-        console.print("Please check your network connection and host URL")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error:[/red] Unexpected error: {e}")
-        raise typer.Exit(1)
+    if isinstance(error, (foundry_sdk.NotFoundError, foundry_sdk.ApiNotFoundError)):
+        return f"The current-user endpoint was not found on {context.base_url}"
+    if isinstance(error, (foundry_sdk.ConnectionError, foundry_sdk.TimeoutError)):
+        return (
+            f"Could not reach {context.base_url} (check the host and your "
+            "network connection)"
+        )
+    return f"Verifying {source} against {context.base_url} failed"
+
+
+def _oauth_token_response(error: BaseException) -> Optional[Any]:
+    """The response of a failed OAuth token request in ``error``'s cause chain."""
+    import httpx
+
+    current: Optional[BaseException] = error
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError) and str(
+            current.request.url.path
+        ).endswith("/oauth2/token"):
+            return current.response
+        current = current.__cause__ or current.__context__
+    return None

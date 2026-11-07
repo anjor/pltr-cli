@@ -1,451 +1,226 @@
 """
-Project service wrapper for Foundry SDK filesystem API.
+Project service wrapper for the Foundry SDK filesystem API.
+
+``Project.create``, ``Project.get``, ``Project.create_from_template`` and the
+organization endpoints are GA; ``Project.replace`` is beta and is always
+called with ``preview=True``. The SDK has no ``Project.delete``: a project is
+a filesystem resource, so it is moved to the trash with ``Resource.delete``.
+Projects are listed through their space's children (``Folder.children``).
+
+Methods return SDK models (or SDK iterators) unchanged and let SDK
+exceptions propagate so the error layer can classify them.
 """
 
-from typing import Any, Optional, Dict, List
-import inspect
+from typing import Any, Dict, List, Optional
 
+from typing_extensions import Literal
+
+from ..contract import Page
 from .base import BaseService
+
+#: Role granted to the new project's owner unless told otherwise: Owner
+#: (``compass:manage``) in Foundry's default project role set.
+OWNER_ROLE_ID = "compass:manage"
+
+#: ``PrincipalType`` of the SDK: whether a principal ID is a user or a group.
+PrincipalType = Literal["USER", "GROUP"]
+
+
+def is_project(resource: Any) -> bool:
+    """True for a ``Resource`` that is a project.
+
+    ``Resource.project_rid`` is the project a resource lives in; for a
+    project itself it is the project's own RID.
+    """
+    return resource.rid == resource.project_rid
 
 
 class ProjectService(BaseService):
-    """Service wrapper for Foundry project operations using filesystem API."""
+    """Service wrapper for Foundry project operations (``client.filesystem``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry filesystem service."""
         return self.client.filesystem
 
+    def get_current_user_id(self) -> str:
+        """The ID of the calling user (``admin.User.get_current``, GA)."""
+        return self.client.admin.User.get_current().id
+
     def create_project(
         self,
+        *,
         display_name: str,
         space_rid: str,
+        owner_id: Optional[str] = None,
+        owner_type: PrincipalType = "USER",
+        owner_role: str = OWNER_ROLE_ID,
         description: Optional[str] = None,
         organization_rids: Optional[List[str]] = None,
         default_roles: Optional[List[str]] = None,
-        role_grants: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+    ) -> Any:
+        """Create a project (``Project.create``, GA); returns a ``Project`` model.
+
+        The API requires an owner-like role grant: ``owner_role`` is granted
+        to ``owner_id`` (a user or group ID of type ``owner_type``), or to
+        the calling user when ``owner_id`` is ``None``.
         """
-        Create a new project.
+        from foundry_sdk.v2.filesystem.models import PrincipalWithId
 
-        Args:
-            display_name: Project display name (cannot contain '/')
-            space_rid: Space Resource Identifier where project will be created
-            description: Project description (optional)
-            organization_rids: List of organization RIDs (optional)
-            default_roles: List of default role names (optional)
-            role_grants: List of role grant specifications (optional)
+        if owner_id is None:
+            owner_id = self.get_current_user_id()
+            owner_type = "USER"
+        role_grants: Dict[str, List[Any]] = {
+            owner_role: [
+                PrincipalWithId(principal_id=owner_id, principal_type=owner_type)
+            ]
+        }
+        return self.service.Project.create(
+            display_name=display_name,
+            space_rid=space_rid,
+            role_grants=role_grants,
+            default_roles=list(default_roles or []),
+            organization_rids=list(organization_rids or []),
+            description=description,
+        )
 
-        Returns:
-            Created project information
-        """
-        try:
-            normalized_role_grants: Dict[str, List[Dict[str, Any]]] = {}
-            if role_grants is None:
-                from .admin import AdminService
-
-                current_user = AdminService(profile=self.profile).get_current_user()
-                user_id = (
-                    current_user.get("id")
-                    or current_user.get("user_id")
-                    or current_user.get("userId")
-                )
-                if not user_id:
-                    raise RuntimeError(
-                        "Unable to determine current user id for owner role grant"
-                    )
-                normalized_role_grants = {
-                    "compass:manage": [
-                        {
-                            "principal_id": user_id,
-                            "principal_type": "USER",
-                        }
-                    ]
-                }
-            elif role_grants:
-                if isinstance(role_grants, dict):
-                    normalized_role_grants = role_grants
-                elif isinstance(role_grants, list):
-                    for grant in role_grants:
-                        if not isinstance(grant, dict):
-                            raise ValueError(
-                                "role_grants list entries must be dictionaries"
-                            )
-                        role_name = grant.get("role_name")
-                        if not role_name:
-                            raise ValueError(
-                                "role_grants entries must include role_name"
-                            )
-                        principal = {
-                            key: value
-                            for key, value in grant.items()
-                            if key != "role_name"
-                        }
-                        normalized_role_grants.setdefault(role_name, []).append(
-                            principal
-                        )
-                else:
-                    raise ValueError("role_grants must be a dict or a list of dicts")
-
-            if normalized_role_grants:
-                for principals in normalized_role_grants.values():
-                    for principal in principals:
-                        principal_type = principal.get("principal_type")
-                        if isinstance(principal_type, str):
-                            principal["principal_type"] = principal_type.upper()
-
-            create_params: Dict[str, Any] = {
-                "display_name": display_name,
-                "space_rid": space_rid,
-                "description": description,
-                "organization_rids": organization_rids if organization_rids else [],
-                "default_roles": default_roles if default_roles else [],
-                "role_grants": normalized_role_grants,
-            }
-
-            create_fn = self.service.Project.create
-            try:
-                params = inspect.signature(create_fn).parameters
-                supports_kwargs = "display_name" in params or any(
-                    param.kind == inspect.Parameter.VAR_KEYWORD
-                    for param in params.values()
-                )
-                if supports_kwargs:
-                    project = create_fn(**create_params, preview=True)
-                elif "body" in params:
-                    project = create_fn(body=create_params, preview=True)
-                else:
-                    project = create_fn(**create_params, preview=True)
-            except (TypeError, ValueError):
-                project = create_fn(**create_params, preview=True)
-            return self._format_project_info(project)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create project '{display_name}': {e}")
-
-    def get_project(self, project_rid: str) -> Dict[str, Any]:
-        """
-        Get information about a specific project.
-
-        Args:
-            project_rid: Project Resource Identifier
-
-        Returns:
-            Project information dictionary
-        """
-        try:
-            project = self.service.Project.get(project_rid, preview=True)
-            return self._format_project_info(project)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get project {project_rid}: {e}")
+    def get_project(self, project_rid: str) -> Any:
+        """Get a project (``Project.get``, GA); returns a ``Project`` model."""
+        return self.service.Project.get(project_rid)
 
     def list_projects(
         self,
-        space_rid: Optional[str] = None,
+        space_rid: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        List projects, optionally filtered by space.
+    ) -> Page:
+        """List one page of the projects in a space.
 
-        Args:
-            space_rid: Space Resource Identifier to filter by (optional)
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
+        Reads one page of the space's children (``Folder.children``, GA) and
+        keeps the projects (see :func:`is_project`).
 
         Returns:
-            List of project information dictionaries
+            A ``Page`` of ``Resource`` models and the page's
+            ``next_page_token``.
         """
-        try:
-            if space_rid:
-                return self._list_projects_in_parent(
-                    parent_folder_rid=space_rid,
-                    page_size=page_size,
-                    page_token=page_token,
-                )
+        children = self.service.Folder.children(
+            space_rid, page_size=page_size, page_token=page_token
+        )
+        return Page(
+            data=[child for child in children.data if is_project(child)],
+            next_page_token=children.next_page_token,
+        )
 
-            # page_size/page_token are cursor semantics for a single folder listing.
-            # They are not meaningful when aggregating projects across all spaces.
-            projects_by_rid: Dict[str, Dict[str, Any]] = {}
-            for space in self.service.Space.list(preview=True):
-                parent_space_rid = getattr(space, "rid", None)
-                if not parent_space_rid:
-                    continue
+    def list_all_projects(self, page_size: Optional[int] = None) -> List[Any]:
+        """List the projects of every space the caller can see.
 
-                projects = self._list_projects_in_parent(
-                    parent_folder_rid=parent_space_rid
-                )
-                for project in projects:
-                    rid = project.get("rid")
-                    if rid:
-                        projects_by_rid[rid] = project
+        Reads every page of ``Space.list`` (GA) and of each space's children
+        (``Folder.children``, GA); ``page_size`` is the page size of each of
+        those requests.
 
-            return list(projects_by_rid.values())
-        except Exception as e:
-            raise RuntimeError(f"Failed to list projects: {e}")
-
-    def delete_project(self, project_rid: str) -> None:
+        Returns:
+            ``Resource`` models of the projects, without duplicates.
         """
-        Delete a project.
-
-        Args:
-            project_rid: Project Resource Identifier
-
-        Raises:
-            RuntimeError: If deletion fails
-        """
-        try:
-            self.service.Project.delete(project_rid, preview=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to delete project {project_rid}: {e}")
+        projects: Dict[str, Any] = {}
+        for space in self.service.Space.list(page_size=page_size):
+            for child in self.service.Folder.children(space.rid, page_size=page_size):
+                if is_project(child):
+                    projects.setdefault(child.rid, child)
+        return list(projects.values())
 
     def update_project(
         self,
         project_rid: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Update project information using replace().
+    ) -> Any:
+        """Change a project's display name and/or description.
 
-        Args:
-            project_rid: Project Resource Identifier
-            display_name: New display name (optional, fetches current if not provided)
-            description: New description (optional)
+        ``Project.replace`` (beta) clears the description when it isn't
+        given, so this reads the project first (``Project.get``, GA) and
+        sends back the current value of the field not being changed.
 
         Returns:
-            Updated project information
+            The updated ``Project`` model.
         """
-        if not display_name and not description:
+        if display_name is None and description is None:
             raise ValueError("At least one field must be provided for update")
+        current = self.service.Project.get(project_rid)
+        return self.service.Project.replace(
+            project_rid,
+            display_name=(
+                display_name if display_name is not None else current.display_name
+            ),
+            description=description if description is not None else current.description,
+            preview=True,
+        )
 
-        try:
-            # Fetch current project to get display_name if not provided (required for replace)
-            if not display_name:
-                current_project = self.service.Project.get(project_rid, preview=True)
-                display_name = current_project.display_name
+    def delete_project(self, project_rid: str) -> Any:
+        """Move a project to the trash.
 
-            project = self.service.Project.replace(
-                project_rid=project_rid,
-                display_name=display_name,
-                description=description,
-                preview=True,
-            )
-            return self._format_project_info(project)
-        except Exception as e:
-            raise RuntimeError(f"Failed to update project {project_rid}: {e}")
+        Reads the project first (``Project.get``, GA), so a RID that isn't a
+        project fails instead of trashing another kind of resource, then
+        calls ``Resource.delete`` (GA).
+
+        Returns:
+            The ``Project`` model read before it was trashed.
+        """
+        project = self.service.Project.get(project_rid)
+        self.service.Resource.delete(project_rid)
+        return project
 
     # ==================== Organization Operations ====================
 
     def add_organizations(self, project_rid: str, organization_rids: List[str]) -> None:
-        """
-        Add organizations to a project.
-
-        Args:
-            project_rid: Project Resource Identifier
-            organization_rids: List of organization RIDs to add
-
-        Raises:
-            RuntimeError: If adding organizations fails
-        """
-        try:
-            self.service.Project.add_organizations(
-                project_rid, organization_rids=organization_rids, preview=True
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to add organizations to project {project_rid}: {e}"
-            )
+        """Add organizations to a project (``Project.add_organizations``, GA)."""
+        self.service.Project.add_organizations(
+            project_rid, organization_rids=organization_rids
+        )
 
     def remove_organizations(
         self, project_rid: str, organization_rids: List[str]
     ) -> None:
-        """
-        Remove organizations from a project.
-
-        Args:
-            project_rid: Project Resource Identifier
-            organization_rids: List of organization RIDs to remove
-
-        Raises:
-            RuntimeError: If removing organizations fails
-        """
-        try:
-            self.service.Project.remove_organizations(
-                project_rid, organization_rids=organization_rids, preview=True
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to remove organizations from project {project_rid}: {e}"
-            )
+        """Remove organizations from a project (``Project.remove_organizations``, GA)."""
+        self.service.Project.remove_organizations(
+            project_rid, organization_rids=organization_rids
+        )
 
     def list_organizations(
         self,
         project_rid: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        List organizations directly applied to a project.
+    ) -> Any:
+        """List one page of the organizations applied directly to a project.
 
-        Args:
-            project_rid: Project Resource Identifier
-            page_size: Number of items per page (optional)
-            page_token: Pagination token (optional)
+        ``Project.organizations`` (GA) returns organization RIDs (strings).
 
         Returns:
-            List of organization information dictionaries
+            The SDK ``ResourceIterator[str]``; constructing it fetched one page.
         """
-        try:
-            organizations = []
-            list_params: Dict[str, Any] = {"preview": True}
-
-            if page_size:
-                list_params["page_size"] = page_size
-            if page_token:
-                list_params["page_token"] = page_token
-
-            for org in self.service.Project.organizations(project_rid, **list_params):
-                organizations.append(self._format_organization_info(org))
-            return organizations
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to list organizations for project {project_rid}: {e}"
-            )
+        return self.service.Project.organizations(
+            project_rid, page_size=page_size, page_token=page_token
+        )
 
     # ==================== Template Operations ====================
 
     def create_project_from_template(
         self,
+        *,
         template_rid: str,
         variable_values: Dict[str, str],
         default_roles: Optional[List[str]] = None,
         organization_rids: Optional[List[str]] = None,
         project_description: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Create a project from a template.
-
-        Args:
-            template_rid: Template Resource Identifier
-            variable_values: Dictionary mapping template variable names to values
-            default_roles: List of default role names (optional)
-            organization_rids: List of organization RIDs (optional)
-            project_description: Project description (optional)
+    ) -> Any:
+        """Create a project from a template (``Project.create_from_template``, GA).
 
         Returns:
-            Created project information
+            The created ``Project`` model.
         """
-        try:
-            create_params: Dict[str, Any] = {
-                "template_rid": template_rid,
-                "variable_values": variable_values,
-                "preview": True,
-            }
-
-            if default_roles:
-                create_params["default_roles"] = default_roles
-            if organization_rids:
-                create_params["organization_rids"] = organization_rids
-            if project_description:
-                create_params["project_description"] = project_description
-
-            project = self.service.Project.create_from_template(**create_params)
-            return self._format_project_info(project)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create project from template: {e}")
-
-    def _format_project_info(self, project: Any) -> Dict[str, Any]:
-        """
-        Format project information for consistent output.
-
-        Args:
-            project: Project object from Foundry SDK
-
-        Returns:
-            Formatted project information dictionary
-        """
-        modified_by = getattr(project, "modified_by", None)
-        if modified_by is None:
-            modified_by = getattr(project, "updated_by", None)
-
-        modified_time = getattr(project, "modified_time", None)
-        if modified_time is None:
-            modified_time = getattr(project, "updated_time", None)
-
-        return {
-            "rid": getattr(project, "rid", None),
-            "display_name": getattr(project, "display_name", None),
-            "description": getattr(project, "description", None),
-            "path": getattr(project, "path", None),
-            "space_rid": getattr(project, "space_rid", None),
-            "created_by": getattr(project, "created_by", None),
-            "created_time": self._format_timestamp(
-                getattr(project, "created_time", None)
-            ),
-            "modified_by": modified_by,
-            "modified_time": self._format_timestamp(modified_time),
-            "trash_status": getattr(project, "trash_status", None),
-            "type": "project",
-        }
-
-    def _list_projects_in_parent(
-        self,
-        parent_folder_rid: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """List project resources directly under a parent folder (space)."""
-        list_params: Dict[str, Any] = {"preview": True}
-        if page_size:
-            list_params["page_size"] = page_size
-        if page_token:
-            list_params["page_token"] = page_token
-
-        projects: List[Dict[str, Any]] = []
-        for resource in self.service.Folder.children(parent_folder_rid, **list_params):
-            if self._is_project_resource(resource):
-                projects.append(self._format_project_info(resource))
-        return projects
-
-    @staticmethod
-    def _is_project_resource(resource: Any) -> bool:
-        """Check whether a filesystem resource is a project."""
-        resource_type = str(getattr(resource, "type", "") or "").upper()
-        resource_rid = str(getattr(resource, "rid", "") or "")
-        # Fallback to canonical project RID prefix when type is missing.
-        return resource_type == "PROJECT" or resource_rid.startswith(
-            "ri.compass.main.project."
+        return self.service.Project.create_from_template(
+            template_rid=template_rid,
+            variable_values=variable_values,
+            default_roles=default_roles or None,
+            organization_rids=organization_rids or None,
+            project_description=project_description,
         )
-
-    def _format_organization_info(self, organization: Any) -> Dict[str, Any]:
-        """
-        Format organization information for consistent output.
-
-        Args:
-            organization: Organization object from Foundry SDK
-
-        Returns:
-            Formatted organization information dictionary
-        """
-        return {
-            "organization_rid": getattr(organization, "organization_rid", None),
-            "display_name": getattr(organization, "display_name", None),
-            "description": getattr(organization, "description", None),
-        }
-
-    def _format_timestamp(self, timestamp: Any) -> Optional[str]:
-        """
-        Format timestamp for display.
-
-        Args:
-            timestamp: Timestamp object from SDK
-
-        Returns:
-            Formatted timestamp string or None
-        """
-        if timestamp is None:
-            return None
-
-        # Handle different timestamp formats from the SDK
-        if hasattr(timestamp, "time"):
-            return str(timestamp.time)
-        return str(timestamp)

@@ -1,529 +1,212 @@
 # Troubleshooting Guide
 
-Common issues and solutions when using pltr-cli. This guide helps you diagnose and fix problems quickly.
+Common problems with pltr and how to fix them.
 
-## 🚨 Quick Diagnostics
-
-Before diving into specific issues, run these quick checks:
+## Quick Diagnostics
 
 ```bash
-# 1. Verify pltr-cli is installed and working
-pltr --version
-
-# 2. Check authentication
-pltr verify
-
-# 3. List configured profiles
-pltr configure list-profiles
-
-# 4. Test with a simple command
-pltr hello
+pltr --version                  # is pltr installed, and which version?
+pltr verify --format json       # which credentials, and do they work?
+pltr configure list-profiles    # which profiles exist, and which is the default?
 ```
 
-## 🔐 Authentication Issues
+## Reading an Error
 
-### Error: "Authentication failed"
+Every command reports failures the same way. The exit code says what kind of
+failure it was:
 
-**Symptoms:**
-- `pltr verify` returns authentication failure
-- Commands return 401 or 403 errors
-- "Invalid credentials" messages
+| Exit code | Meaning | What to check |
+|---|---|---|
+| 1 | Unexpected error, or "no" at a prompt | Re-run with `PLTR_DEBUG=1` for the traceback, and report it |
+| 2 | Usage error | The arguments: the message names the problem; see `pltr <command> --help` |
+| 3 | Authentication | The credentials (see below) |
+| 4 | Permission denied (HTTP 403) | Your access to the resource, or the OAuth client's scopes |
+| 5 | Not found (HTTP 404) | The RID, and that you can see the resource |
+| 6 | Validation error (HTTP 400, 422) | The values you sent; the message has Foundry's error name |
+| 7 | Other API or network errors, or a response pltr can't read | Connectivity, rate limits (429), server errors. For `invalid_response` (the API's response doesn't match the SDK's model or isn't JSON), upgrade pltr: a retry won't help |
 
-**Possible Causes & Solutions:**
+In text mode the error is printed as `Error: ...` on stderr, with Foundry's
+error name and parameters. With `--format json` (or `PLTR_FORMAT=json`), the
+last line of stderr is a JSON object:
 
-#### 1. Expired or Invalid Token
 ```bash
-# Check if token is expired (common cause)
+pltr dataset get <dataset-rid> --format json 2> error.json || tail -n 1 error.json
+# {"type": "not_found", "message": "DatasetNotFound: ...", "exitCode": 5,
+#  "statusCode": 404, "errorName": "DatasetNotFound", ...}
+```
+
+`PLTR_DEBUG=1` prints the Python traceback of an unexpected error.
+
+## Authentication
+
+### Which credentials does pltr use?
+
+`pltr verify --format json` shows it under `authSource`. pltr uses the first
+of: `--profile`, `PLTR_PROFILE`, the default profile, then the `FOUNDRY_*`
+environment variables. Environment variables are ignored when a profile is
+selected, including the default profile, so on a machine with a default
+profile `FOUNDRY_TOKEN` has no effect. See [Authentication](authentication.md).
+
+### "Authentication failed (HTTP 401)" (exit code 3)
+
+The token expired, was revoked or belongs to another stack. Create a new
+token and store it:
+
+```bash
+pltr configure configure --profile your-profile --host foundry.company.com --token "$NEW_TOKEN" --yes
 pltr verify --profile your-profile
-
-# Solution: Generate new token and reconfigure
-pltr configure configure --profile your-profile
-# Follow prompts to enter new token
 ```
 
-#### 2. Incorrect Hostname
+Hosts work with or without `https://`.
+
+### "Permission denied (HTTP 403)" from `pltr verify` (exit code 4)
+
+The credentials work, but they may not read the current user: an OAuth
+client needs the `api:admin-read` scope for `pltr verify`. Other commands
+need their own scopes.
+
+### "Profile 'x' not found"
+
+`--profile` or `PLTR_PROFILE` names a profile that doesn't exist; pltr
+doesn't fall back to the default profile. Check the name with
+`pltr configure list-profiles`, or unset `PLTR_PROFILE`.
+
+### "No profile specified and no default profile configured"
+
+Nothing is configured. Run `pltr configure configure`, or export
+`FOUNDRY_HOST` and `FOUNDRY_TOKEN` (or `FOUNDRY_CLIENT_ID` and
+`FOUNDRY_CLIENT_SECRET`).
+
+### Keyring errors, or pltr waits at start
+
+Profiles keep their credentials in the system keyring. In containers, CI
+and SSH sessions the keyring may be missing or unable to show its unlock
+prompt; pltr gives up after 30 seconds with an error that points to the
+environment variables.
+
+- Use environment variables instead, with no profile selected.
+- If the keyring only needs longer (for example while you type a keychain
+  password), set `PLTR_KEYRING_TIMEOUT=120` (`0` waits indefinitely).
+- On Linux without a desktop keyring, install a backend for the
+  [keyring](https://pypi.org/project/keyring/) package.
+
+## Scripts, CI and Agents
+
+### "Confirmation is required, but stdin is not a terminal. Re-run with --yes to proceed." (exit code 2)
+
+Destructive commands (delete, remove, revoke, reset, cancel, abort,
+replace, ...) ask before they change anything, and never prompt without a
+terminal. Pass `--yes` (`-y`) once you're sure:
+
 ```bash
-# Check your profile configuration
-pltr configure list-profiles
-
-# Common mistakes:
-# ❌ Wrong: https://foundry.company.com
-# ❌ Wrong: foundry.company.com/
-# ✅ Correct: foundry.company.com
-
-# Reconfigure with correct hostname
-pltr configure configure --profile your-profile --host foundry.company.com
+pltr dataset branches delete <dataset-rid> old-branch --yes
 ```
 
-#### 3. Network/VPN Issues
-```bash
-# Test network connectivity
-ping foundry.company.com
+### A deprecation warning about `--confirm`, `--force` or `--preview`
 
-# If on corporate network, ensure VPN is connected
-# Check if you can access Foundry web interface
+These flags still work in this release and will be removed in the next one.
+Use `--yes` instead of `--confirm`/`--force`; drop `--preview` (beta
+endpoints no longer need it). On `resource delete`,
+`resource permanently-delete`, `configure delete` and
+`data-health check delete`, `-f` now means `--format`.
+
+### Invalid JSON input (exit code 2)
+
+Options that take JSON accept it inline, as `@file.json` or as `@-` (stdin).
+Use single quotes in the shell. The error names the location of the
+problem, for example `at value[1].value (type 'gt'): required field
+missing`.
+
+```bash
+pltr ontology action-apply <ontology> myAction '{"param": "value"}'
+pltr ontology action-apply <ontology> myAction @params.json
 ```
 
-#### 4. Profile Not Found
-```bash
-# Error: Profile 'xyz' not found
-# List available profiles
-pltr configure list-profiles
+### Only part of a list comes back
 
-# Create missing profile
-pltr configure configure --profile xyz
+List commands fetch one page by default. Pass `--all` for every page, or
+`--page-token` with the `nextPageToken` from the previous JSON output. See
+[Pagination](../pagination.md).
+
+### JSON parsing fails on pltr's output
+
+stdout carries exactly one JSON document with `--format json`; messages go
+to stderr. Don't merge the streams (`2>&1`) when you parse stdout.
+
+## Data Access
+
+### "Invalid RID" (exit code 2) or "not found" (exit code 5)
+
+RIDs look like `ri.foundry.main.dataset.<uuid>`: copy them from Foundry's
+web interface, or find them with `pltr resource get-by-path "/Space/Project/name"`
+or `pltr folder list <folder-rid>`. A 404 can also mean you can't see the
+resource. User and group IDs are UUIDs, not usernames: find them with
+`pltr admin user search` and `pltr admin group search`.
+
+### SQL queries
+
+- Refer to datasets by path or RID in backticks, inside single quotes:
+  ``pltr sql execute 'SELECT * FROM `<dataset-rid>` LIMIT 10'``.
+- A query that fails exits with code 7, and the error has Foundry's message.
+- `--timeout` exits with code 7 and leaves the query running. For long
+  queries, submit and wait:
+
+  ```bash
+  QUERY_ID=$(pltr sql submit 'SELECT * FROM `<dataset-rid>`' --format json | jq -r .queryId)
+  pltr sql wait "$QUERY_ID" --timeout 3600
+  ```
+
+- `pltr sql results` exits with code 6 while the query is still running.
+
+## Installation
+
+### "command not found: pltr"
+
+The directory your installer puts scripts in isn't on `PATH`. The isolated
+installs manage that for you:
+
+```bash
+uv tool install pltr-cli      # or: pipx install pltr-cli
+uv tool update-shell          # adds uv's tool directory to PATH
 ```
 
-### Error: "SSL Certificate verification failed"
+### A `pltr api` command fails because of the installed SDK
 
-**Solutions:**
-```bash
-# This usually indicates network/proxy issues
-# Check corporate proxy settings
-# Ensure VPN is properly connected
+`pltr api` commands are generated from one foundry-platform-sdk version. If
+another package upgraded or downgraded the SDK in the same environment, a
+command whose SDK method changed fails with exit code 1 and names both
+versions. Install pltr in its own environment (`uv tool install pltr-cli` or
+`pipx install pltr-cli`).
 
-# For development only (NOT recommended for production):
-# Contact your IT team instead of disabling SSL verification
-```
+## Shell and Completion
 
-## 🔧 Installation Issues
-
-### Error: "Command not found: pltr"
-
-**Causes & Solutions:**
-
-#### 1. Not in PATH
-```bash
-# Check if Python scripts directory is in PATH
-echo $PATH
-
-# Find where pip installed pltr
-pip show pltr-cli
-
-# Add to PATH (example for bash/zsh)
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-#### 2. Wrong Python Environment
-```bash
-# Check which Python/pip you're using
-which python
-which pip
-
-# Ensure you're in the correct virtual environment
-# Or install globally if that's your setup
-pip install --user pltr-cli
-```
-
-#### 3. Installation Failed
-```bash
-# Reinstall with verbose output
-pip install --upgrade --force-reinstall pltr-cli -v
-
-# Check for dependency conflicts
-pip check
-```
-
-### Error: "Permission denied" during installation
+### Tab completion doesn't work
 
 ```bash
-# Solution 1: Use --user flag
-pip install --user pltr-cli
+pltr completion install       # detects your shell; or --shell bash|zsh|fish
+exec "$SHELL"                 # start a new shell
 
-# Solution 2: Use virtual environment (recommended)
-python -m venv pltr-env
-source pltr-env/bin/activate  # On Windows: pltr-env\Scripts\activate
-pip install pltr-cli
-
-# Solution 3: Use pipx (isolated installation)
-pipx install pltr-cli
-```
-
-## 💾 Data Access Issues
-
-### Error: "Dataset not found" or "Invalid RID"
-
-**Symptoms:**
-- `pltr dataset get` returns not found errors
-- RID appears correct but command fails
-
-**Solutions:**
-```bash
-# 1. Verify RID format
-# Correct format: ri.foundry.main.dataset.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# 2. Check permissions
-pltr admin user current
-# Ensure you have read access to the dataset
-
-# 3. Verify dataset exists and you have access via web interface
-
-# 4. Try listing available ontologies to find valid RIDs
-pltr ontology list
-```
-
-### Error: "SQL execution failed"
-
-**Common SQL Issues:**
-
-#### 0. ApiFeaturePreviewUsageOnly Error
-```bash
-# Error: ApiFeaturePreviewUsageOnly when executing SQL queries
-# This indicates preview mode is not enabled
-
-# Solution: SQL commands default to --preview mode (required)
-pltr sql execute "SELECT * FROM dataset" --preview
-
-# Preview mode is enabled by default, but you can explicitly disable it
-# (not recommended as it will cause errors):
-# pltr sql execute "SELECT * FROM dataset" --no-preview
-
-# Note: SQL query functionality is in preview and may change
-```
-
-#### 1. Syntax Errors
-```bash
-# Error: Invalid SQL syntax
-# Check your query carefully
-pltr sql execute "SELECT * FROM my_table LIMIT 10"
-
-# Use quotes properly for complex queries
-pltr sql execute "
-  SELECT column1, COUNT(*)
-  FROM my_table
-  WHERE date > '2025-01-01'
-  GROUP BY column1
-"
-```
-
-#### 2. Table/Column Not Found
-```bash
-# Check available datasets
-pltr ontology list
-
-# Verify table name and column names
-pltr sql execute "DESCRIBE my_table"
-
-# Use correct table references
-```
-
-#### 3. Query Timeout
-```bash
-# For long-running queries, increase timeout
-pltr sql execute "SELECT * FROM huge_table" --timeout 3600
-
-# Or use async pattern
-QUERY_ID=$(pltr sql submit "SELECT * FROM huge_table")
-pltr sql wait $QUERY_ID --timeout 3600
-```
-
-#### 4. Permission Denied
-```bash
-# Check if you have access to query the specific tables
-# Contact admin if you need additional permissions
-pltr admin user current
-```
-
-## 🏢 Admin Command Issues
-
-### Error: "Insufficient permissions"
-
-**Symptoms:**
-- Admin commands return permission errors
-- Can't list users or groups
-
-**Solutions:**
-```bash
-# 1. Verify you have admin permissions
-pltr admin user current
-
-# 2. Check if you're in admin groups
-# (Output should show admin roles/groups)
-
-# 3. Contact your Foundry administrator for access
-```
-
-### Error: "User/Group not found"
-
-```bash
-# 1. Search instead of direct access
-pltr admin user search "partial-name"
-pltr admin group search "partial-name"
-
-# 2. Use exact identifiers from search results
-pltr admin user get "exact-user-id-from-search"
-```
-
-## 🖥️ Command Line Issues
-
-### Error: "JSON decode error"
-
-**Symptoms:**
-- Commands with JSON parameters fail
-- Malformed JSON errors
-
-**Solutions:**
-```bash
-# 1. Validate JSON syntax
-# Use online JSON validator or jq
-echo '{"key": "value"}' | jq .
-
-# 2. Proper quoting for shell
-# Single quotes preserve literal strings
-pltr ontology action-apply ri.ontology.main.ontology.abc123 myAction '{"param": "value"}'
-
-# 3. For complex JSON, use files
-echo '{"complex": {"nested": "structure"}}' > params.json
-pltr ontology action-apply ri.ontology.main.ontology.abc123 myAction "$(cat params.json)"
-```
-
-### Error: "Output format not supported"
-
-```bash
-# Check supported formats
-pltr <command> --help
-
-# Supported formats are usually: table, json, csv
-pltr sql execute "SELECT 1" --format table
-pltr sql execute "SELECT 1" --format json
-pltr sql execute "SELECT 1" --format csv
-```
-
-### Error: "File not found" for output
-
-```bash
-# Ensure output directory exists
-mkdir -p /path/to/output/
-pltr sql execute "SELECT 1" --output /path/to/output/results.csv
-
-# Check permissions on output directory
-ls -la /path/to/output/
-```
-
-## 🌐 Network Issues
-
-### Error: "Connection timeout"
-
-**Solutions:**
-```bash
-# 1. Check network connectivity
-ping foundry.company.com
-
-# 2. Verify VPN connection if required
-
-# 3. Check for corporate firewall/proxy
-# Contact IT team for proxy configuration
-
-# 4. Increase timeout for slow networks
-pltr verify --profile your-profile
-# (Built-in timeouts usually handle this)
-```
-
-### Error: "Connection refused"
-
-**Solutions:**
-```bash
-# 1. Verify hostname is correct
-# Should not include protocol (https://)
-pltr configure configure --host foundry.company.com
-
-# 2. Check if Foundry instance is accessible
-# Try accessing web interface
-
-# 3. Verify port accessibility (usually 443 for HTTPS)
-telnet foundry.company.com 443
-```
-
-## 🔄 Interactive Shell Issues
-
-### Error: "Shell command not working"
-
-**Symptoms:**
-- `pltr shell` starts but commands fail
-- Tab completion not working
-- History not saving
-
-**Solutions:**
-```bash
-# 1. Ensure click-repl is installed
-pip install --upgrade pltr-cli
-
-# 2. Check shell configuration
-pltr shell --help
-
-# 3. Try with specific profile
-pltr shell --profile your-profile
-
-# 4. For tab completion issues
-pltr completion install
-```
-
-### History File Issues
-
-```bash
-# History file location: ~/.config/pltr/repl_history
-# If history not working:
-
-# 1. Check directory permissions
-ls -la ~/.config/pltr/
-
-# 2. Create directory if missing
-mkdir -p ~/.config/pltr/
-
-# 3. Check disk space
-df -h ~/.config/
-```
-
-## 🛠️ Shell Completion Issues
-
-### Tab Completion Not Working
-
-**Solutions:**
-```bash
-# 1. Install completions
-pltr completion install
-
-# 2. Restart your shell
-exec $SHELL
-
-# 3. For manual installation
+# Or load the script yourself
 pltr completion show --shell bash >> ~/.bashrc
-source ~/.bashrc
-
-# 4. Check shell type
-echo $SHELL
-pltr completion install --shell zsh  # if using zsh
 ```
 
-## 📊 Performance Issues
+### `pltr shell`
 
-### Slow Query Execution
+Type commands without the `pltr` prefix; `help [command]`, `exit` and
+`quit` work, and aliases are expanded. History is saved in `repl_history`
+in pltr's configuration directory (`~/.config/pltr`, or under
+`$XDG_CONFIG_HOME`); the file is private (0600) and lines that pass
+credentials are never saved. With stdin from a file or a pipe, the shell
+runs the commands line by line without a prompt.
 
-**Symptoms:**
-- Queries take longer than expected
-- Frequent timeouts
-
-**Solutions:**
-```bash
-# 1. Use async pattern for long queries
-QUERY_ID=$(pltr sql submit "SELECT * FROM huge_table")
-pltr sql status $QUERY_ID
-pltr sql wait $QUERY_ID --timeout 3600
-
-# 2. Optimize your SQL
-# Add WHERE clauses to reduce data
-# Use LIMIT for testing
-
-# 3. Check query execution plan
-pltr sql execute "EXPLAIN SELECT * FROM huge_table"
-
-# 4. Contact Foundry admin about resource limits
-```
-
-### High Memory Usage
+## Getting Help
 
 ```bash
-# 1. Use streaming for large results
-pltr sql execute "SELECT * FROM large_table" --output results.csv
-
-# 2. Limit result size
-pltr sql execute "SELECT * FROM large_table LIMIT 10000"
-
-# 3. Use pagination for ontology operations
-pltr ontology object-list ri.ontology.main.ontology.abc123 MyType --page-size 100
+pltr --help                     # command groups
+pltr dataset --help             # a group's commands
+pltr dataset files get --help   # a command's arguments and options
+pltr commands search "download a file"
 ```
 
-## 🔍 Debugging Tips
-
-### Enable Verbose Output
-
-```bash
-# Most commands show detailed error messages
-# For debugging, check the full error output
-
-# Use verify command to test connectivity
-pltr verify --profile your-profile
-```
-
-### Check Configuration Files
-
-```bash
-# Profile configuration location
-ls -la ~/.config/pltr/
-
-# View profile configuration (credentials are in keyring)
-cat ~/.config/pltr/profiles.json
-
-# Check for file permission issues
-ls -la ~/.config/pltr/profiles.json
-```
-
-### Environment Variable Debugging
-
-```bash
-# Check current environment
-env | grep FOUNDRY
-
-# Test with environment variables
-export FOUNDRY_TOKEN="your-token"
-export FOUNDRY_HOST="foundry.company.com"
-pltr verify
-```
-
-## 🆘 Getting Additional Help
-
-### Built-in Help
-
-```bash
-# General help
-pltr --help
-
-# Command-specific help
-pltr configure --help
-pltr sql --help
-pltr sql execute --help
-
-# List all available commands
-pltr --help | grep Commands -A 20
-```
-
-### Information Gathering
-
-When reporting issues, gather this information:
-
-```bash
-# 1. Version information
-pltr --version
-python --version
-pip show pltr-cli
-
-# 2. Configuration status
-pltr configure list-profiles
-pltr verify
-
-# 3. Environment
-echo $SHELL
-env | grep FOUNDRY
-```
-
-### Common Solutions Summary
-
-| Issue | Quick Fix |
-|-------|-----------|
-| Authentication failed | `pltr configure configure` |
-| Command not found | Check PATH, reinstall with `--user` |
-| Permission denied | Contact admin, check user permissions |
-| Query timeout | Use `--timeout` or async pattern |
-| JSON error | Check JSON syntax, use proper quotes |
-| Network issues | Check VPN, verify hostname |
-| Tab completion | `pltr completion install && exec $SHELL` |
-
----
-
-💡 **Pro Tips:**
-- Always run `pltr verify` first when troubleshooting
-- Use `pltr configure list-profiles` to check your setup
-- For complex issues, try the same operation via Foundry web interface
-- Keep your token up to date - they may expire
-- Use `pltr shell` for interactive debugging and exploration
+When reporting a problem, include `pltr --version`, the command you ran, and
+the error (with `--format json`, the last stderr line).

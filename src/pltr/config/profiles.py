@@ -18,18 +18,16 @@ class ProfileManager:
         self._profiles = self._load_profiles()
 
     def _load_profiles(self) -> dict:
-        """Load profiles from file."""
-        if not self.profiles_file.exists():
-            return {"profiles": [], "default": None}
-
+        """Load profiles from file (empty if it's missing or unreadable)."""
         try:
             with open(self.profiles_file, "r") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError):
             return {"profiles": [], "default": None}
 
     def _save_profiles(self) -> None:
-        """Save profiles to file."""
+        """Save profiles to file, creating the configuration directory if needed."""
+        self.profiles_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.profiles_file, "w") as f:
             json.dump(self._profiles, f, indent=2)
 
@@ -108,17 +106,19 @@ class ProfileManager:
 
     def get_active_profile(self) -> Optional[str]:
         """
-        Get the active profile (from environment or default).
+        Get the profile used when no --profile is given.
+
+        ``PLTR_PROFILE`` wins over the default profile whenever it is set, even
+        if it names a profile that doesn't exist: commands then fail with
+        "profile not found" rather than silently using a different profile.
 
         Returns:
-            Active profile name
+            Active profile name, or None when neither is set
         """
         import os
 
-        # Check environment variable first
-        env_profile = os.environ.get("PLTR_PROFILE")
-        if env_profile and self.profile_exists(env_profile):
+        env_profile = os.environ.get("PLTR_PROFILE", "").strip()
+        if env_profile:
             return env_profile
 
-        # Fall back to default
         return self.get_default()

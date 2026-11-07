@@ -1,625 +1,213 @@
-# API Wrapper Documentation
+# The Service Layer and pltr's Architecture
 
-Developer guide for understanding and extending pltr-cli. Learn about the architecture, service layer, and how to add new functionality.
+A guide for developers: how pltr is put together, how to write a service
+method, and where to look when you add a command. The rules every command
+follows (output, errors, exit codes, confirmation, beta endpoints) are in
+[the command contract](../development/command-contract.md); this page doesn't
+repeat them.
 
-## 🏗️ Architecture Overview
-
-pltr-cli is built with a layered architecture that separates concerns and enables extensibility:
+## Architecture
 
 ```
-CLI Layer (Typer)
-    ↓
-Command Layer (commands/)
-    ↓
-Service Layer (services/)
-    ↓
-foundry-platform-sdk
-    ↓
-Foundry APIs
+pltr (src/pltr/cli.py: the Typer app; main() resolves aliases, then runs it)
+  ├── curated commands   src/pltr/commands/<group>.py    on pltr.contract
+  │     └── services     src/pltr/services/<area>.py      thin SDK wrappers
+  ├── pltr api           src/pltr/commands/api/           generated from the SDK
+  └── pltr commands      src/pltr/commands/manifest.py    the command manifest
+                              ↓
+        foundry-platform-sdk FoundryClient (from pltr.auth.AuthManager)
+                              ↓
+                      Foundry Platform API
 ```
 
-### Key Components
+- **Commands** declare their arguments and options with Typer, record their
+  metadata with `@pltr_command` (SDK methods, beta, destructive, paged), and
+  print through `pltr.contract` (`emit`, `success`, `warn`, ...). They don't
+  catch exceptions: the contract turns them into structured errors and exit
+  codes.
+- **Services** call the SDK and return what it returns: models, iterators or
+  responses. They hold no formatting logic.
+- **`pltr.contract`** (`src/pltr/contract/`) is the shared layer: output
+  formats, error classification and exit codes, confirmation, paging,
+  options and command metadata.
+- **Generated commands** (`pltr api`) are built from specs that
+  `scripts/generate_api_commands.py` writes from the installed SDK; see
+  [`pltr api`](../api-commands.md#for-maintainers).
+- **Auth and config** (`src/pltr/auth/`, `src/pltr/config/`) resolve the
+  credentials (profile or environment variables) and build the SDK client.
 
-- **CLI Layer**: Typer-based command-line interface
-- **Command Layer**: Command implementations with argument parsing
-- **Service Layer**: Business logic and SDK integration
-- **Authentication**: Secure credential management with keyring
-- **Configuration**: Profile and settings management
-- **Utilities**: Formatting, progress, and helper functions
-
-## 📦 Project Structure
+## Project Structure
 
 ```
 src/pltr/
-├── cli.py                  # Main CLI entry point
-├── __init__.py            # Package initialization
-├── __main__.py            # Console script entry point
-├── auth/                  # Authentication system
-│   ├── base.py           # Auth base classes and interfaces
-│   ├── manager.py        # Authentication manager
-│   ├── oauth.py          # OAuth2 implementation
-│   ├── storage.py        # Credential storage with keyring
-│   └── token.py          # Token-based authentication
-├── commands/             # CLI command implementations
-│   ├── admin.py         # Admin commands (user, group, role, org)
-│   ├── completion.py    # Shell completion management
-│   ├── configure.py     # Profile configuration commands
-│   ├── dataset.py       # Dataset operations
-│   ├── ontology.py      # Ontology operations
-│   ├── shell.py         # Interactive shell mode
-│   ├── sql.py           # SQL query commands
-│   └── verify.py        # Authentication verification
-├── config/              # Configuration management
-│   ├── profiles.py      # Profile management
-│   └── settings.py      # Settings and preferences
-├── services/            # Service layer (business logic)
-│   ├── admin.py         # Admin service wrapper
-│   ├── base.py          # Base service class
-│   ├── dataset.py       # Dataset service wrapper
-│   ├── ontology.py      # Ontology service wrapper
-│   └── sql.py           # SQL service wrapper
-└── utils/               # Utility functions
-    ├── completion.py    # Tab completion helpers
-    ├── formatting.py    # Output formatting (table, JSON, CSV)
-    └── progress.py      # Progress indicators
+├── cli.py              # the root Typer app and the console-script entry point
+├── __main__.py         # python -m pltr
+├── manifest.py         # builds the command manifest (pltr commands)
+├── auth/               # AuthManager, token and OAuth providers, keyring storage, env-var auth
+├── config/             # profiles, settings, aliases
+├── contract/           # output, errors, exit codes, confirmation, options, metadata
+├── commands/           # one module per command group (dataset.py, ontology.py, ...)
+│   └── api/            # the generated `pltr api` tree (_runtime.py and _specs/)
+├── services/           # one service per area (dataset.py, ontology.py, ...)
+└── utils/              # helpers for completion and alias resolution
+scripts/
+├── generate_api_commands.py     # regenerate `pltr api` from the SDK
+├── generate_skill_reference.py  # regenerate claude_skill/reference from the manifest
+├── check_sdk_calls.py           # the SDK call check (docs/development/sdk-guardrail.md)
+├── check_command_metadata.py    # curated commands' sdk= metadata vs. their service calls
+├── coverage.py                  # which commands reach each SDK method
+└── release.py                   # see RELEASE.md
 ```
 
-## 🔧 Service Layer API
+## Services
 
-The service layer provides a clean, pythonic interface to Foundry APIs.
-
-### Base Service
-
-All services inherit from `BaseService`:
+Every service extends `BaseService` (`src/pltr/services/base.py`):
 
 ```python
+from typing import Any
+
 from pltr.services.base import BaseService
-from pltr.auth.manager import AuthManager
 
-class BaseService:
-    """Base class for all Foundry API services."""
 
-    def __init__(self, auth_manager: AuthManager):
-        self.auth_manager = auth_manager
-        self.client = auth_manager.get_client()
+class FolderService(BaseService):
+    """Folder operations (client.filesystem)."""
 
-    def _handle_api_error(self, error: Exception) -> None:
-        """Handle and format API errors consistently."""
-        # Error handling implementation
+    def _get_service(self) -> Any:
+        return self.client.filesystem   # the SDK namespace this service uses
+
+    def get_folder(self, folder_rid: str) -> Any:
+        """Get a folder (Folder.get, GA); returns a Folder model."""
+        return self.service.Folder.get(folder_rid)
 ```
 
-### Using Services Programmatically
+- `BaseService(profile=None)` resolves credentials lazily: `self.client` is
+  the SDK's `FoundryClient`, built by `AuthManager.get_client(profile)` the
+  first time it is used. `self.service` is what `_get_service()` returns.
+- **Return SDK objects unchanged**: a model, the SDK's `ResourceIterator`
+  (don't iterate it: constructing one fetches exactly one page), or a
+  response. The command decides how to print them.
+- **Don't catch SDK exceptions.** If you must add context, raise your own
+  exception `from e`, so the error layer still finds the SDK exception.
+- **GA methods get no `preview`; beta methods get a literal `preview=True`.**
+  A method is beta if its signature has a `preview` parameter. Check with
+  `inspect.signature` against the installed SDK.
+- **Pass arguments by keyword, explicitly**, never through `**kwargs` or a
+  dict, so the SDK call check can bind them to the real signature.
+- **Import SDK models inside the methods that use them**, not at module
+  level: `pltr --help` and shell completion import every command module, and
+  the SDK's model packages are slow to import. `tests/test_startup.py` fails
+  if startup imports `foundry_sdk`.
+- `self._make_request(method, endpoint, ...)` calls a Foundry endpoint
+  directly with the client's host and token. It is only for the labeled
+  direct-HTTP exceptions (`dataset schema apply`, the
+  `ontology object-type-create`/`link-type-create` fallback and
+  `language-models list`/`status`/`enroll`); new code goes through the SDK.
+
+### Using services from Python
+
+Services can be used as a library. They return SDK models and raise SDK
+exceptions:
 
 ```python
-from pltr.auth.manager import AuthManager
-from pltr.services.sql import SqlService
-from pltr.services.ontology import OntologyService
+from pltr.services.dataset import DatasetService
+from pltr.services.folder import FolderService
 
-# Initialize authentication
-auth_manager = AuthManager(profile="production")
+dataset = DatasetService(profile="production").get_dataset(
+    "ri.foundry.main.dataset.c26f11c8-cdb3-4f44-9f5d-9816ea1c82da"
+)
+print(dataset.name, dataset.parent_folder_rid)
 
-# Create service instances
-sql_service = SqlService(auth_manager)
-ontology_service = OntologyService(auth_manager)
-
-# Execute operations
-result = sql_service.execute_query("SELECT COUNT(*) FROM my_table")
-ontologies = ontology_service.list_ontologies()
+children = FolderService().list_children("ri.compass.main.folder.<id>")
+for resource in children.data:      # one page; children.next_page_token resumes
+    print(resource.display_name, resource.type)
 ```
 
-### SQL Service API
+`profile=None` uses the same precedence as the CLI: `PLTR_PROFILE`, the
+default profile, then the `FOUNDRY_*` environment variables.
 
-```python
-class SqlService(BaseService):
-    """Service for SQL query operations."""
+## Authentication
 
-    def execute_query(self, query: str, timeout: int = 300,
-                     fallback_branches: Optional[List[str]] = None) -> List[Dict]:
-        """Execute a SQL query and return results."""
-
-    def submit_query(self, query: str,
-                    fallback_branches: Optional[List[str]] = None) -> str:
-        """Submit a query asynchronously and return query ID."""
-
-    def get_query_status(self, query_id: str) -> Dict:
-        """Get the status of a submitted query."""
-
-    def get_query_results(self, query_id: str) -> List[Dict]:
-        """Get results of a completed query."""
-
-    def cancel_query(self, query_id: str) -> bool:
-        """Cancel a running query."""
-
-    def wait_for_query(self, query_id: str, timeout: int = 300) -> List[Dict]:
-        """Wait for query completion and return results."""
-```
-
-### Ontology Service API
-
-```python
-class OntologyService(BaseService):
-    """Service for ontology operations."""
-
-    def list_ontologies(self, page_size: Optional[int] = None) -> List[Dict]:
-        """List all available ontologies."""
-
-    def get_ontology(self, ontology_rid: str) -> Dict:
-        """Get details of a specific ontology."""
-
-class ObjectTypeService(BaseService):
-    """Service for object type operations."""
-
-    def list_object_types(self, ontology_rid: str,
-                         page_size: Optional[int] = None) -> List[Dict]:
-        """List object types in an ontology."""
-
-    def get_object_type(self, ontology_rid: str, object_type: str) -> Dict:
-        """Get details of a specific object type."""
-
-class OntologyObjectService(BaseService):
-    """Service for ontology object operations."""
-
-    def list_objects(self, ontology_rid: str, object_type: str,
-                    properties: Optional[List[str]] = None,
-                    page_size: Optional[int] = None) -> List[Dict]:
-        """List objects of a specific type."""
-
-    def get_object(self, ontology_rid: str, object_type: str,
-                  primary_key: str,
-                  properties: Optional[List[str]] = None) -> Dict:
-        """Get a specific object by primary key."""
-```
-
-### Dataset Service API
-
-```python
-class DatasetService(BaseService):
-    """Service for dataset operations."""
-
-    def get_dataset(self, dataset_rid: str) -> Dict:
-        """Get dataset information by RID."""
-
-    def create_dataset(self, name: str,
-                      parent_folder_rid: Optional[str] = None) -> Dict:
-        """Create a new dataset."""
-```
-
-### Admin Service API
-
-```python
-class AdminService(BaseService):
-    """Service for administrative operations."""
-
-    def list_users(self, page_size: Optional[int] = None) -> List[Dict]:
-        """List all users in the organization."""
-
-    def get_user(self, user_id: str) -> Dict:
-        """Get information about a specific user."""
-
-    def get_current_user(self) -> Dict:
-        """Get information about the current user."""
-
-    def search_users(self, query: str,
-                    page_size: Optional[int] = None) -> List[Dict]:
-        """Search for users by query string."""
-
-    def list_groups(self, page_size: Optional[int] = None) -> List[Dict]:
-        """List all groups in the organization."""
-
-    def create_group(self, name: str, description: Optional[str] = None,
-                    org_rid: Optional[str] = None) -> Dict:
-        """Create a new group."""
-```
-
-## 🔐 Authentication System
-
-### Authentication Manager
-
-The `AuthManager` handles authentication and client creation:
+`AuthManager` (`src/pltr/auth/manager.py`) picks the credentials:
 
 ```python
 from pltr.auth.manager import AuthManager
 
-# Initialize with profile
-auth_manager = AuthManager(profile="production")
-
-# Get authenticated client
-client = auth_manager.get_client()
-
-# Get current profile info
-profile_info = auth_manager.get_current_profile()
+manager = AuthManager()
+source = manager.resolve_auth_source("production")   # which credentials, without reading secrets
+context = manager.get_auth_context("production")     # source, SDK client, base_url, get_token()
+client = manager.get_client("production")            # a FoundryClient
 ```
 
-### Custom Authentication
+The precedence is `--profile`, `PLTR_PROFILE`, the default profile, then the
+environment variables; see [Authentication](../user-guide/authentication.md).
 
-For advanced use cases, you can create custom authentication:
+## Adding a Command
 
-```python
-from pltr.auth.base import BaseAuth
-from foundry_sdk import FoundryClient
+1. Add the service method, following the rules above.
+2. Add the command to `src/pltr/commands/<group>.py` with
+   `@pltr_command(...)`, the shared options and `emit(...)`. The
+   [command contract](../development/command-contract.md) has the checklist
+   and a before/after example.
+3. Add tests (below), and a contract-test case in
+   `tests/test_contract/cases/<group>.py`.
+4. Regenerate the agent skill's reference:
+   `uv run python scripts/generate_skill_reference.py`.
+5. Record the change under `## [Unreleased]` in `CHANGELOG.md`, and update
+   the docs (`tests/test_docs_examples.py` checks their examples).
 
-class CustomAuth(BaseAuth):
-    """Custom authentication implementation."""
+A new top-level group is registered in `src/pltr/cli.py` with
+`app.add_typer(...)`.
 
-    def get_client(self, hostname: str) -> FoundryClient:
-        """Create and return authenticated client."""
-        # Your custom authentication logic
-        return FoundryClient(auth=your_auth, hostname=hostname)
+## Testing
 
-# Use custom authentication
-auth_manager = AuthManager()
-auth_manager.set_auth(CustomAuth())
-```
-
-## 🎯 Adding New Commands
-
-### Step 1: Create Service Method
-
-Add business logic to the appropriate service:
-
-```python
-# services/ontology.py
-class OntologyService(BaseService):
-    def new_operation(self, ontology_rid: str, param: str) -> Dict:
-        """New ontology operation."""
-        try:
-            # Use foundry-platform-sdk
-            result = self.client.ontology.some_new_method(
-                ontology_rid=ontology_rid,
-                parameter=param
-            )
-            return result
-        except Exception as e:
-            self._handle_api_error(e)
-```
-
-### Step 2: Add CLI Command
-
-Create the command interface:
+Service and command tests run against a real `FoundryClient` with only HTTP
+faked, through the `stub_foundry_http` fixture (`tests/conftest.py`). Assert
+on the outgoing request and on real decoded models:
 
 ```python
-# commands/ontology.py
-@app.command()
-def new_command(
-    ontology_rid: str = typer.Argument(..., help="Ontology RID"),
-    param: str = typer.Option(..., help="Required parameter"),
-    profile: Optional[str] = typer.Option(None, help="Profile name"),
-    format: OutputFormat = typer.Option(OutputFormat.TABLE, help="Output format"),
-    output: Optional[Path] = typer.Option(None, help="Output file"),
-):
-    """New ontology command with description."""
-    try:
-        auth_manager = AuthManager(profile=profile)
-        service = OntologyService(auth_manager)
+import json
 
-        result = service.new_operation(ontology_rid, param)
+import pytest
 
-        formatter = OutputFormatter(format=format, output=output)
-        formatter.format_and_output(result)
+from pltr.services.folder import FolderService
+from tests.foundry_json import FOLDER_RID, PARENT_RID
+from tests.foundry_json import folder as folder_json
 
-    except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-```
+# A GA call that still passes preview= makes the SDK warn: fail on it.
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
-### Step 3: Add Tests
 
-Create comprehensive tests:
+def test_create_folder(stub_foundry_http):
+    stub_foundry_http.respond(json=folder_json())
 
-```python
-# tests/test_services/test_ontology.py
-def test_new_operation(mock_auth_manager, mock_client):
-    """Test new ontology operation."""
-    service = OntologyService(mock_auth_manager)
-
-    # Mock the SDK response
-    mock_client.ontology.some_new_method.return_value = {"result": "success"}
-
-    result = service.new_operation("test-rid", "test-param")
-
-    assert result == {"result": "success"}
-    mock_client.ontology.some_new_method.assert_called_once_with(
-        ontology_rid="test-rid",
-        parameter="test-param"
+    folder = FolderService().create_folder(
+        display_name="Test Folder", parent_folder_rid=PARENT_RID
     )
 
-# tests/test_commands/test_ontology.py
-def test_new_command(runner, mock_auth_manager):
-    """Test new ontology CLI command."""
-    result = runner.invoke(app, [
-        "new-command",
-        "test-rid",
-        "--param", "test-value"
-    ])
-
-    assert result.exit_code == 0
-    assert "expected output" in result.stdout
+    assert folder.rid == FOLDER_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", "/api/v2/filesystem/folders")
+    assert json.loads(request.content) == {
+        "displayName": "Test Folder",
+        "parentFolderRid": PARENT_RID,
+    }
 ```
 
-## 🎨 Output Formatting
+Build realistic response bodies with the helpers in `tests/foundry_json*.py`.
+For beta endpoints, assert `request.url.params["preview"] == "true"`.
+Command tests run the CLI with `typer.testing.CliRunner` and check stdout
+(data), stderr (messages and errors) and the exit code.
 
-### Using OutputFormatter
-
-```python
-from pltr.utils.formatting import OutputFormatter, OutputFormat
-
-# Create formatter
-formatter = OutputFormatter(
-    format=OutputFormat.TABLE,  # or JSON, CSV
-    output=Path("results.csv")  # optional file output
-)
-
-# Format single object
-formatter.format_single(data_dict)
-
-# Format list of objects
-formatter.format_list(data_list)
-
-# Format with custom columns
-formatter.format_table(data_list, ["col1", "col2", "col3"])
-```
-
-### Custom Formatting
-
-```python
-def custom_format_function(data: List[Dict]) -> str:
-    """Custom formatting function."""
-    # Your custom formatting logic
-    return formatted_string
-
-# Use in command
-formatted_output = custom_format_function(result)
-console.print(formatted_output)
-```
-
-## 🧪 Testing
-
-### Test Structure
-
-```python
-# conftest.py - Shared test fixtures
-@pytest.fixture
-def mock_auth_manager():
-    """Mock authentication manager."""
-    manager = Mock(spec=AuthManager)
-    manager.get_client.return_value = Mock()
-    return manager
-
-@pytest.fixture
-def mock_client():
-    """Mock Foundry client."""
-    return Mock(spec=FoundryClient)
-
-# Service tests
-def test_service_method(mock_auth_manager, mock_client):
-    """Test service layer."""
-    service = YourService(mock_auth_manager)
-    # Test implementation
-
-# Command tests
-def test_command(runner):
-    """Test CLI command."""
-    result = runner.invoke(app, ["command", "args"])
-    assert result.exit_code == 0
-```
-
-### Running Tests
+Run the checks CI runs:
 
 ```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_services/test_sql.py
-
-# Run with coverage
-pytest --cov=pltr --cov-report=html
-
-# Run only unit tests (exclude integration)
-pytest tests/ -k "not integration"
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/pltr
 ```
 
-## 🔌 Extension Points
-
-### Custom Services
-
-Create your own service for custom functionality:
-
-```python
-from pltr.services.base import BaseService
-
-class CustomService(BaseService):
-    """Custom service for specialized operations."""
-
-    def custom_operation(self, param: str) -> Dict:
-        """Custom operation implementation."""
-        # Use self.client to access foundry-platform-sdk
-        result = self.client.custom_api.method(param)
-        return result
-```
-
-### Custom Commands
-
-Add commands to existing apps or create new command groups:
-
-```python
-from pltr.cli import app
-
-# Add to existing command group
-from pltr.commands.ontology import app as ontology_app
-
-@ontology_app.command()
-def custom_ontology_command():
-    """Custom ontology command."""
-    pass
-
-# Or create new command group
-custom_app = typer.Typer()
-
-@custom_app.command()
-def custom_command():
-    """Custom command."""
-    pass
-
-# Add to main CLI
-app.add_typer(custom_app, name="custom", help="Custom commands")
-```
-
-### Configuration Extensions
-
-Extend configuration system:
-
-```python
-from pltr.config.settings import Settings
-
-class CustomSettings(Settings):
-    """Extended settings with custom options."""
-
-    custom_option: str = "default_value"
-
-    @classmethod
-    def load_custom(cls) -> "CustomSettings":
-        """Load settings with custom defaults."""
-        # Custom loading logic
-        return cls()
-```
-
-## 📚 Best Practices
-
-### Error Handling
-
-```python
-from pltr.utils.exceptions import PltrError
-
-class CustomServiceError(PltrError):
-    """Custom service error."""
-    pass
-
-def service_method(self):
-    try:
-        result = self.client.api_call()
-        return result
-    except SdkError as e:
-        raise CustomServiceError(f"Operation failed: {e}")
-    except Exception as e:
-        self._handle_api_error(e)
-```
-
-### Logging
-
-```python
-import logging
-
-logger = logging.getLogger(__name__)
-
-def service_method(self):
-    logger.debug("Starting operation")
-    try:
-        result = self.client.api_call()
-        logger.info("Operation completed successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Operation failed: {e}")
-        raise
-```
-
-### Type Hints
-
-```python
-from typing import List, Dict, Optional
-from pathlib import Path
-
-def service_method(
-    self,
-    param: str,
-    optional_param: Optional[int] = None
-) -> Dict[str, Any]:
-    """Service method with proper type hints."""
-    pass
-```
-
-### Documentation
-
-```python
-def service_method(self, param: str) -> Dict:
-    """
-    Service method description.
-
-    Args:
-        param: Description of parameter
-
-    Returns:
-        Dictionary containing operation results
-
-    Raises:
-        CustomServiceError: When operation fails
-
-    Example:
-        >>> service = CustomService(auth_manager)
-        >>> result = service.service_method("value")
-        >>> print(result["key"])
-    """
-    pass
-```
-
-## 🚀 Development Workflow
-
-### Setting Up Development Environment
-
-```bash
-# Clone repository
-git clone https://github.com/anjor/pltr-cli.git
-cd pltr-cli
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode
-pip install -e .
-
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Install pre-commit hooks
-pre-commit install
-```
-
-### Development Commands
-
-```bash
-# Run tests
-pytest
-
-# Run linting
-ruff check src/
-
-# Run type checking
-mypy src/
-
-# Format code
-ruff format src/
-
-# Run all pre-commit hooks
-pre-commit run --all-files
-```
-
-### Release Process
-
-```bash
-# Update version and create release
-python scripts/release.py --type minor
-
-# Push to trigger automated publishing
-git push origin main --tags
-```
-
----
-
-💡 **Pro Tips for Developers:**
-- Always inherit from `BaseService` for new services
-- Use `OutputFormatter` for consistent output formatting
-- Add comprehensive tests for both service and command layers
-- Follow existing patterns for error handling and type hints
-- Use the existing authentication system rather than creating custom auth
-- Check existing services for patterns before implementing new functionality
+`uv run pytest` includes the SDK call check
+([sdk-guardrail.md](../development/sdk-guardrail.md)), the CLI-wide contract
+test, the freshness of the generated `pltr api` specs and skill reference,
+and the docs example check.
