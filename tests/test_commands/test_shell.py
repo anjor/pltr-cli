@@ -363,7 +363,8 @@ class TestShellIntegration:
 
         assert result.exit_code == 0
         assert "shell" in result.stdout
-        assert "Interactive shell mode" in result.stdout
+        # The shell module's own description (pltr/commands/shell.py).
+        assert "Start an interactive shell session" in result.stdout
 
     def test_shell_subcommand_available(self):
         """Test that shell subcommands are available."""

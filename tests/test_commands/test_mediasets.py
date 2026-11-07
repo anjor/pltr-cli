@@ -62,7 +62,11 @@ def test_beta_commands_are_labeled_in_help():
     lines = invoke("--help").stdout.splitlines()
 
     def line_for(command):
-        return next(line for line in lines if f" {command} " in line)
+        # The command's row in the Commands panel, not an example line in
+        # the group's description.
+        return next(
+            line for line in lines if line.strip("│ ").startswith(f"{command} ")
+        )
 
     for command in (
         "get-by-path",

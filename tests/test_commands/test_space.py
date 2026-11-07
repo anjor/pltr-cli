@@ -36,15 +36,18 @@ def interactive(monkeypatch):
 
 
 def test_beta_commands_are_labeled_in_help():
-    result = invoke("space", "--help")
+    lines = invoke("space", "--help").stdout.splitlines()
+
+    def row(command):
+        # The command's row in the Commands panel, not an example line in
+        # the group's description.
+        return next(
+            line for line in lines if line.strip("│ ").startswith(f"{command} ")
+        )
 
     for command in ("create", "get", "update", "delete"):
-        line = next(
-            line for line in result.stdout.splitlines() if f" {command} " in line
-        )
-        assert "[beta]" in line, line
-    list_line = next(line for line in result.stdout.splitlines() if " list " in line)
-    assert "[beta]" not in list_line
+        assert "[beta]" in row(command), row(command)
+    assert "[beta]" not in row("list")
 
 
 # -------------------------------------------------------------------- get
