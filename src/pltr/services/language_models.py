@@ -174,6 +174,12 @@ def _raise_no_answer(message: str, attempts: _Attempts) -> NoReturn:
 class LanguageModelsService(BaseService):
     """Service wrapper for Foundry language models (``client.language_models``)."""
 
+    # The direct-HTTP endpoints, also as the class attributes they used to be
+    # (tests/test_auth/test_headless_auth.py reads _MODEL_LIST_ENDPOINTS).
+    _MODEL_LIST_ENDPOINTS = MODEL_LIST_ENDPOINTS
+    _MODEL_STATUS_ENDPOINTS = MODEL_STATUS_ENDPOINTS
+    _MODEL_ENROLL_ENDPOINTS = MODEL_ENROLL_ENDPOINTS
+
     def _get_service(self) -> Any:
         """Get the Foundry LanguageModels service."""
         return self.client.language_models
