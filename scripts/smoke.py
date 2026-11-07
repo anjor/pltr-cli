@@ -1270,6 +1270,12 @@ CHECKS: Tuple[Check, ...] = (
         expect=(has("rid"),),
     ),
     C(
+        "api.media-sets",
+        "api media-sets media-set get {media_sets.rid}",
+        "Generated command (media-sets, beta).",
+        expect=(equals("rid", "{media_sets.rid}"),),
+    ),
+    C(
         "api.audit",
         "api audit organization log-file list {admin.organization_rid} "
         "--start-date {run.week_ago} --end-date {run.today}",
@@ -2077,12 +2083,14 @@ def parse_stderr(stderr: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
 
 
 def describe_error(error: Mapping[str, Any]) -> str:
-    """type, errorName and HTTP status of a structured error, then its message."""
+    """type, errorName, HTTP status and errorCode of a structured error, then its message."""
     parts = [str(error.get("type", "error"))]
     if error.get("errorName"):
         parts.append(str(error["errorName"]))
     if error.get("statusCode"):
         parts.append(f"HTTP {error['statusCode']}")
+    if error.get("errorCode"):
+        parts.append(str(error["errorCode"]))
     message = error.get("message")
     return " ".join(parts) + (f": {_short(message)}" if message else "")
 
@@ -2561,6 +2569,7 @@ class Report:
     started: dt.datetime
     seconds: float
     interrupted: bool = False
+    found: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def count(self, status: str) -> int:
         return sum(1 for r in self.results if r.status == status)
@@ -2630,6 +2639,11 @@ def render_text(report: Report) -> str:
             out.append(f"  {r.check.id}: pltr {shlex.join(r.argv or [])}")
             if r.error:
                 out.append(f"    {json.dumps(r.error, sort_keys=True)}")
+    if report.found:
+        # What the checks found (compare the RIDs with the formats in --help;
+        # set any of them with --set KEY=VALUE to pin a run).
+        out += ["", "Found by the checks:"]
+        out += [f"  {key} = {_short(_text(v), 100)}" for key, v in report.found.items()]
     extra = _not_run_lines(report)
     if extra:
         out += [""] + extra
@@ -2792,6 +2806,11 @@ def main(
         started=started,
         seconds=time.monotonic() - clock,
         interrupted=interrupted,
+        found={
+            key: value
+            for key, value in ctx.captured.items()
+            if not key.startswith("before.") and key != "sql.query_finished"
+        },
     )
     print(render_markdown(report) if args.markdown else render_text(report), file=out)
     if interrupted:

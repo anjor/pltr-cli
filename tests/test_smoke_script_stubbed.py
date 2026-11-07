@@ -404,6 +404,17 @@ class FakeFoundry:
         r("POST", f"{api}/functions/queries/{{name}}/execute")(
             lambda q, name: js({"value": 42})
         )
+        r("GET", f"{api}/mediasets/{{rid}}")(
+            lambda q, rid: js(
+                {
+                    "rid": rid,
+                    "mediaSchema": "IMAGERY",
+                    "defaultBranchName": "master",
+                    "transactionPolicy": {"type": "noTransactions"},
+                    "pathsRequired": True,
+                }
+            )
+        )
         items = f"{api}/mediasets/{{rid}}/items"
         r("GET", f"{items}/getRidByPath")(
             lambda q, rid: js(
@@ -667,6 +678,7 @@ def test_every_check_passes_against_the_fake_foundry(
     expected = len(smoke.CHECKS) - sum(1 for c in smoke.CHECKS if c.group == "auth")
     assert report.startswith(f"pltr smoke test: {expected} passed, 0 failed, 0 skipped")
     assert "Left behind" not in report
+    assert "  ontology.object_type = Employee" in report  # found by the checks
 
     # What was found by earlier checks drove later requests.
     searches = [

@@ -425,6 +425,11 @@ def test_failure_detail_has_the_structured_error():
         "DatasetNotFound: something went wrong"
     )
     assert result.error and result.error["errorName"] == "DatasetNotFound"
+    # The errorCode pltr reports is shown too (it is derived for typed errors).
+    error = dict(json.loads(run.stderr), errorCode="NOT_FOUND")
+    assert smoke.describe_error(error).startswith(
+        "not_found DatasetNotFound HTTP 404 NOT_FOUND: "
+    )
 
 
 @pytest.mark.parametrize(
@@ -729,6 +734,10 @@ def sample_report() -> smoke.Report:
         include_admin=False,
         started=NOW,
         seconds=75.0,
+        found={
+            "ontology.name": "hr",
+            "orchestration.build_rid": "ri.foundry.main.build.1",
+        },
     )
 
 
@@ -745,6 +754,9 @@ def test_text_report():
     assert f"  dataset.get: pltr dataset get {DATASET} --format json" in text
     assert '"errorName": "DatasetNotFound"' in text
     assert "Not run: 3 write checks (--allow-writes --scratch-folder RID)." in text
+    # What the checks found, to compare RID formats or pin a run with --set.
+    assert "Found by the checks:\n  ontology.name = hr\n" in text
+    assert "  orchestration.build_rid = ri.foundry.main.build.1" in text
 
 
 def test_markdown_report_is_a_table_without_input_values():
@@ -762,7 +774,7 @@ def test_markdown_report_is_a_table_without_input_values():
         "| skip | `sql.execute` | `pltr sql execute <sql.query> --format json` |  |"
         in text
     )
-    assert DATASET not in text
+    assert DATASET not in text and "ri.foundry.main.build.1" not in text
     rows = [line for line in lines if line.startswith("|")]
     assert all(len(re.findall(r"(?<!\\)\|", line)) == 6 for line in rows), rows
 
