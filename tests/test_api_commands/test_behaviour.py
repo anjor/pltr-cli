@@ -116,6 +116,63 @@ def test_max_pages_stops_and_returns_the_resume_token(stub_foundry_http, pltr_ap
     }
 
 
+ORG_RID = "ri.multipass..organization.0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_audit_log_files_all_stops_at_the_first_empty_page(stub_foundry_http, pltr_api):
+    """Without --end-date the API returns a nextPageToken on every page (to
+    poll for new log files), so --all used to page forever."""
+    stub_foundry_http.respond(
+        200, json={"data": [{"id": "log-1"}], "nextPageToken": "t1"}
+    )
+    stub_foundry_http.respond(200, json={"data": [], "nextPageToken": "t2"})
+    stub_foundry_http.respond_always(
+        200, json={"data": [{"id": "log-2"}], "nextPageToken": "t3"}
+    )
+    list_log_files = ("audit", "organization", "log-file", "list", ORG_RID)
+
+    result = pltr_api(
+        *list_log_files, "--start-date", "2026-01-01", "--all", "--format", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    first, second = stub_foundry_http.requests
+    assert dict(first.url.params) == {"startDate": "2026-01-01"}
+    assert second.url.params["pageToken"] == "t1"
+    # The empty page's token picks up new log files later.
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "log-1"}],
+        "nextPageToken": "t2",
+    }
+    assert result.stderr == ""
+    help_text = pltr_api(*list_log_files, "--help").stdout
+    assert "--all stop at the first empty page" in help_text
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_all_stops_when_the_api_repeats_a_page_token(stub_foundry_http, pltr_api):
+    """Any paged command: a token that comes back again would loop forever."""
+    stub_foundry_http.respond(
+        200, json={"data": [user(USER_ID, "a")], "nextPageToken": "p2"}
+    )
+    stub_foundry_http.respond_always(
+        200, json={"data": [user(OTHER_USER_ID, "b")], "nextPageToken": "p2"}
+    )
+
+    result = pltr_api("admin", "user", "list", "--all", "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert len(stub_foundry_http.requests) == 2
+    assert json.loads(result.stdout) == {
+        "data": [user(USER_ID, "a"), user(OTHER_USER_ID, "b")],
+        "nextPageToken": "p2",
+    }
+    warning = json.loads(result.stderr.strip().splitlines()[-1])
+    assert warning["type"] == "warning"
+    assert "returned the page token 'p2' again" in warning["message"]
+
+
 @pytest.mark.filterwarnings("error::UserWarning")
 def test_page_size_for_an_endpoint_without_one_is_a_usage_error(
     stub_foundry_http, pltr_api
@@ -139,6 +196,80 @@ def test_page_size_for_an_endpoint_without_one_is_a_usage_error(
     error = json.loads(result.stderr.strip().splitlines()[-1])
     assert error["type"] == "usage_error"
     assert "page size" in error["message"]
+
+
+MODEL_RID = "ri.models.main.model.11111111-2222-4333-8444-555555555555"
+EXPERIMENT_RID = "ri.models.main.experiment.11111111-2222-4333-8444-555555555556"
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_page_size_of_a_method_that_isnt_paged_is_sent(stub_foundry_http, pltr_api):
+    """Series.json takes page_size but returns one series, not a page: its
+    --page-size is the SDK parameter, and was silently dropped."""
+    series = {
+        "type": "doubleV1",
+        "series": [{"value": 0.5, "timestamp": "1700000000000", "step": "1"}],
+    }
+    stub_foundry_http.respond(200, json=series)
+    experiment = ("models", "model", "experiment")
+
+    result = pltr_api(
+        *experiment,
+        "series",
+        "json",
+        MODEL_RID,
+        EXPERIMENT_RID,
+        "loss",
+        "--page-size",
+        "5",
+        "--offset",
+        "10",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    (request,) = stub_foundry_http.requests
+    assert dict(request.url.params) == {
+        "pageSize": "5",
+        "offset": "10",
+        "preview": "true",
+    }
+    assert json.loads(result.stdout)["series"][0]["value"] == 0.5
+    # It isn't paged, so it has no paging options.
+    help_text = pltr_api(*experiment, "series", "json", "--help").stdout
+    assert "--page-size" in help_text
+    assert "--page-token" not in help_text and "--all" not in help_text
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_page_size_of_a_binary_method_is_sent(stub_foundry_http, pltr_api, tmp_path):
+    stub_foundry_http.respond(
+        200,
+        content=b'[{"a": 1}]',
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    target = tmp_path / "rows.json"
+
+    result = pltr_api(
+        "models",
+        "model",
+        "experiment",
+        "artifact-table",
+        "json",
+        MODEL_RID,
+        EXPERIMENT_RID,
+        "metrics",
+        "--page-size",
+        "3",
+        "-o",
+        str(target),
+    )
+
+    assert result.exit_code == 0, result.output
+    (request,) = stub_foundry_http.requests
+    assert dict(request.url.params) == {"pageSize": "3", "preview": "true"}
+    assert target.read_bytes() == b'[{"a": 1}]'
 
 
 def test_one_page_keeps_page_level_fields(stub_foundry_http, pltr_api):
@@ -238,6 +369,17 @@ def test_output_option_writes_file(stub_foundry_http, pltr_api, tmp_path):
     assert result.exit_code == 0, result.output
     assert result.stdout == ""
     assert json.loads(target.read_text()) == user(USER_ID, "jdoe")
+
+
+def test_output_dash_is_stdout(stub_foundry_http, pltr_api, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    stub_foundry_http.respond(200, json={"data": [user(USER_ID, "jdoe")]})
+
+    result = pltr_api("admin", "user", "list", "--format", "json", "-o", "-")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"data": [user(USER_ID, "jdoe")]}
+    assert not (tmp_path / "-").exists()
 
 
 def test_profile_is_passed_to_auth_manager(stub_foundry_http, pltr_api):
@@ -697,6 +839,24 @@ def test_bytes_body_from_stdin_and_content_length_defaults_to_its_size(
 def test_json_option_accepts_a_file(stub_foundry_http, pltr_api, tmp_path):
     where = tmp_path / "where.json"
     where.write_text('{"type": "queryString", "value": "jd"}')
+    stub_foundry_http.respond(200, json={"data": []})
+
+    result = pltr_api(
+        "admin", "user", "search", "--where", f"@{where}", "--format", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body == {"where": {"type": "queryString", "value": "jd"}}
+
+
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16"])
+def test_json_file_written_by_windows_powershell(
+    stub_foundry_http, pltr_api, tmp_path, encoding
+):
+    """PowerShell 5 writes a byte order mark (utf8) or UTF-16 (`>`)."""
+    where = tmp_path / "where.json"
+    where.write_bytes('{"type": "queryString", "value": "jd"}'.encode(encoding))
     stub_foundry_http.respond(200, json={"data": []})
 
     result = pltr_api(

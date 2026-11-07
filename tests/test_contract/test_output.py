@@ -4,6 +4,9 @@ import csv
 import datetime
 import io
 import json
+import os
+import re
+import sys
 
 import click
 import pytest
@@ -25,6 +28,11 @@ from tests import foundry_json as fj
 
 FOLDER = Folder.model_validate(fj.folder())
 SPACE = Space.model_validate(fj.space(organizations=[fj.ORG_A, fj.ORG_B]))
+
+#: Windows has no POSIX permission bits (chmod only sets the read-only flag).
+POSIX_MODES = pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX permission bits"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -126,7 +134,8 @@ def test_emit_table_single_object_is_vertical(capsys):
 def test_emit_table_list_is_horizontal_and_hints_next_page(capsys):
     emit(Page([FOLDER], "tok"), format="table", columns=COLUMNS)
     out, err = capsys.readouterr()
-    header = [cell.strip() for cell in out.splitlines()[1].split("┃")[1:4]]
+    # Rich draws the header with ┃, or with │ on Windows without a VT console.
+    header = [cell.strip() for cell in re.split("[┃│]", out.splitlines()[1])[1:4]]
     assert header == ["RID", "Name", "Created"]
     assert "--page-token tok" in err
 
@@ -182,6 +191,17 @@ def test_emit_to_output_file(fmt, tmp_path, capsys):
     assert out == ""
     assert fj.FOLDER_RID in path.read_text(encoding="utf-8")
     assert str(path) in err  # text mode: tell the user where it went
+
+
+@pytest.mark.parametrize("fmt", ["json", "csv", "table"])
+def test_emit_output_dash_is_stdout(fmt, tmp_path, monkeypatch, capsys):
+    """As for binary output; it used to write a file named `-`."""
+    monkeypatch.chdir(tmp_path)
+    emit([FOLDER], format=fmt, output="-", columns=COLUMNS)
+    out, err = capsys.readouterr()
+    assert fj.FOLDER_RID in out
+    assert err == ""  # no "Wrote ... to -"
+    assert not (tmp_path / "-").exists()
 
 
 # ------------------------------------------------------- paged response models
@@ -342,21 +362,28 @@ def test_emit_bytes_keeps_an_existing_file_when_the_stream_fails(tmp_path):
     assert list(tmp_path.iterdir()) == [target]
 
 
-def test_emit_bytes_replaces_an_existing_file_keeping_its_mode(tmp_path):
+def test_emit_bytes_replaces_an_existing_file(tmp_path):
+    target = tmp_path / "out.bin"
+    target.write_bytes(b"old")
+
+    assert emit_bytes([b"new ", b"content"], output=str(target)) == 11
+    assert target.read_bytes() == b"new content"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+@POSIX_MODES
+def test_a_replaced_file_keeps_its_mode(tmp_path):
     target = tmp_path / "out.bin"
     target.write_bytes(b"old")
     target.chmod(0o640)
 
-    assert emit_bytes([b"new ", b"content"], output=str(target)) == 11
-    assert target.read_bytes() == b"new content"
+    write_bytes_atomically(target, b"new")
     assert target.stat().st_mode & 0o777 == 0o640
-    assert list(tmp_path.iterdir()) == [target]
 
 
+@POSIX_MODES
 def test_a_new_file_gets_the_umask_mode(tmp_path):
     """Like open(path, "wb"), not a temporary file's 0600."""
-    import os
-
     umask = os.umask(0o022)
     try:
         target = tmp_path / "out.bin"
@@ -366,11 +393,37 @@ def test_a_new_file_gets_the_umask_mode(tmp_path):
     assert target.stat().st_mode & 0o777 == 0o644
 
 
+def test_files_are_written_in_binary_mode(tmp_path, monkeypatch):
+    """os.open() opens in text mode on Windows unless O_BINARY is passed, and
+    every \\n written through it would become \\r\\n."""
+    simulated = not hasattr(os, "O_BINARY")
+    binary = getattr(os, "O_BINARY", 1 << 30)  # an unused flag bit on POSIX
+    if simulated:
+        monkeypatch.setattr(os, "O_BINARY", binary, raising=False)
+    real_open = os.open
+    flags_used = []
+
+    def spy(path, flags, *args, **kwargs):
+        flags_used.append(flags)
+        return real_open(path, flags & ~binary if simulated else flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", spy)
+    data = b"line 1\nline 2\r\n\x1a\x00end"
+    target = tmp_path / "out.bin"
+
+    assert write_bytes_atomically(target, [data[:9], data[9:]]) == len(data)
+    assert target.read_bytes() == data
+    assert flags_used and all(flags & binary for flags in flags_used)
+
+
 def test_write_through_a_symlink_replaces_its_target(tmp_path):
     real = tmp_path / "real.bin"
     real.write_bytes(b"old")
     link = tmp_path / "link.bin"
-    link.symlink_to(real)
+    try:
+        link.symlink_to(real)
+    except OSError:  # Windows without the privilege to create symlinks
+        pytest.skip("can't create symlinks here")
 
     assert write_bytes_atomically(str(link), b"new") == 3
     assert link.is_symlink()
@@ -379,8 +432,6 @@ def test_write_through_a_symlink_replaces_its_target(tmp_path):
 
 def test_a_special_file_is_written_directly(tmp_path):
     """/dev/null is never replaced by a regular file."""
-    import os
-
     if not os.path.exists(os.devnull) or os.path.isfile(os.devnull):
         pytest.skip("no character device to write to")
     assert write_bytes_atomically(os.devnull, [b"ab", b"c"]) == 3

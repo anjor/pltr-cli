@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
+
+from .runtime import warn
 
 
 @dataclass
@@ -130,12 +132,18 @@ def collect_pages(
     clients poll for new files). With ``stop_at_empty_page`` paging also
     stops at the first page without items, and the returned token is that
     page's ``nextPageToken``, from which a later call picks up new items.
+
+    Paging always stops, with a warning, when the API hands back a token
+    that was already sent in this listing (the next request would fetch a
+    page already read, forever); that token is returned.
     """
     items: List[Any] = []
     token = page_token
+    sent: Set[Optional[str]] = set()
     pages = 0
     limit = None if all_pages else max_pages
     while True:
+        sent.add(token)
         page = fetch_page(token)
         data = page.data or []
         items.extend(data)
@@ -144,5 +152,12 @@ def collect_pages(
         if not token or (limit is not None and pages >= limit):
             break
         if stop_at_empty_page and not data:
+            break
+        if token in sent:
+            warn(
+                f"Stopped paging after {pages} page(s): the API returned the page "
+                f"token {token!r} again, so the next request would read a page "
+                "already read."
+            )
             break
     return Page(data=items, next_page_token=token or None)

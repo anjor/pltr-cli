@@ -113,7 +113,7 @@ def list_log_files(
 
 
 @app.command("get")
-@pltr_command(sdk="audit.Organization.LogFile.content")
+@pltr_command(sdk="audit.Organization.LogFile.content", binary=True)
 def get_log_file_content(
     organization_rid: OrganizationRid,
     log_file_id: Annotated[

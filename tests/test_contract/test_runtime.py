@@ -1,6 +1,10 @@
 """Tests for the output mode, stderr messages and warning routing."""
 
+import io
 import json
+import os
+import subprocess
+import sys
 import warnings
 
 import click
@@ -21,6 +25,7 @@ from pltr.contract import (
 )
 from pltr.contract.runtime import (
     begin_invocation,
+    ensure_utf8_output,
     format_from_args,
     set_output_format,
 )
@@ -193,3 +198,78 @@ def test_click_context_without_format_option_uses_fallback():
     set_output_format("csv")
     with click.Context(click.Command("x")):
         assert output_format() == "csv"
+
+
+# ------------------------------------------------------- redirected output
+
+
+class Stream(io.TextIOWrapper):
+    """A text stream in some encoding, on a terminal or not."""
+
+    def __init__(self, encoding: str, tty: bool = False):
+        super().__init__(io.BytesIO(), encoding=encoding)
+        self.tty = tty
+
+    def isatty(self):
+        return self.tty
+
+
+def test_redirected_output_becomes_utf8(monkeypatch):
+    """Windows redirects stdout in cp1252, which can't encode most text."""
+    out, err = Stream("cp1252"), Stream("cp1252")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+
+    ensure_utf8_output()
+
+    for stream in (out, err):
+        assert stream.encoding == "utf-8"
+        stream.write("数据")
+        stream.flush()
+        assert stream.buffer.getvalue() == "数据".encode("utf-8")
+
+
+def test_terminals_and_utf8_streams_are_left_alone(monkeypatch):
+    terminal, utf8 = Stream("cp1252", tty=True), Stream("UTF8")
+    monkeypatch.setattr(sys, "stdout", terminal)
+    monkeypatch.setattr(sys, "stderr", utf8)
+
+    ensure_utf8_output()
+
+    assert terminal.encoding == "cp1252"
+    assert utf8.encoding == "UTF8"
+
+
+def test_streams_that_cant_be_reconfigured_are_left_alone(monkeypatch):
+    plain = io.StringIO()  # no reconfigure(), like some test runners' captures
+    monkeypatch.setattr(sys, "stdout", plain)
+    ensure_utf8_output()
+    assert sys.stdout is plain
+
+
+def test_csv_and_tables_of_any_text_to_a_cp1252_pipe(tmp_path):
+    """`PYTHONIOENCODING=cp1252 pltr alias list --format csv > out.csv` crashed
+    with UnicodeEncodeError (what a Windows redirect does)."""
+    config = tmp_path / "config" / "pltr"
+    config.mkdir(parents=True)
+    (config / "aliases.json").write_text(
+        json.dumps({"数据": "dataset get"}), encoding="utf-8"
+    )
+    env = dict(
+        os.environ,
+        HOME=str(tmp_path),
+        USERPROFILE=str(tmp_path),
+        XDG_CONFIG_HOME=str(tmp_path / "config"),
+        PYTHONIOENCODING="cp1252",
+        COLUMNS="120",
+    )
+    env.pop("PLTR_FORMAT", None)
+    for fmt in ("csv", "table"):
+        result = subprocess.run(
+            [sys.executable, "-m", "pltr", "alias", "list", "--format", fmt],
+            capture_output=True,
+            env=env,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+        assert "数据" in result.stdout.decode("utf-8"), fmt

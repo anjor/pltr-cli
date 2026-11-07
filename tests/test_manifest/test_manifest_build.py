@@ -233,6 +233,29 @@ def test_binary_generated_entry(entries):
     assert entry["outputFormats"] == ["binary"]
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "pltr audit get",
+        "pltr media-sets download",
+        "pltr media-sets thumbnail-retrieve",
+    ],
+)
+def test_binary_curated_entries(entries, path):
+    """They have --format (it only shapes errors) but print raw bytes."""
+    entry = entries[path]
+    assert entry["outputFormats"] == ["binary"], path
+    assert any(o["name"] == "format" for o in entry["options"])
+
+
+def test_binary_follows_the_metadata(manifest):
+    commands = {f"pltr {e.path}": e for e in iter_commands(app)}
+    for entry in manifest["commands"]:
+        meta = commands[entry["path"]].meta
+        binary = entry.get("outputFormats") == ["binary"]
+        assert binary == bool(meta and meta.binary), entry["path"]
+
+
 def test_local_entries(entries):
     entry = entries["pltr commands search"]
     assert entry["local"] is True and entry["sdkMethods"] == []
@@ -299,6 +322,11 @@ def synthetic_app() -> typer.Typer:
         More help.
         """
 
+    @test_app.command("bytes")
+    @pltr_command(sdk="datasets.Dataset.File.content", binary=True)
+    def bytes_command(format: FormatOption = "table"):
+        """Write a file's content (--format only shapes errors)."""
+
     @test_app.command("types")
     @pltr_command(sdk="filesystem.Folder.get", destructive=True)
     def types_command(
@@ -336,6 +364,11 @@ def test_direct_http_entry(synthetic):
     assert entry["local"] is False
     keys = ENTRY_KEYS[:11] + ["httpEndpoints"] + ENTRY_KEYS[11:]
     assert list(entry) == keys
+
+
+def test_binary_metadata_entry(synthetic):
+    assert synthetic["pltr bytes"]["outputFormats"] == ["binary"]
+    assert synthetic["pltr http"]["outputFormats"] == ["table", "json", "csv"]
 
 
 def test_entry_without_metadata(synthetic):

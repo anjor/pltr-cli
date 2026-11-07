@@ -4,7 +4,7 @@
 ``@click.command(...)`` (click). It
 
 * records :class:`CommandMeta` (SDK method paths, direct-HTTP endpoints,
-  beta / destructive / paged) on the callback, where it survives Typer's
+  beta / destructive / paged / binary) on the callback, where it survives Typer's
   callback wrapping and can be read back from the click command tree with
   :func:`get_command_meta` / :func:`iter_commands`;
 * prefixes the help (the docstring) of beta commands with ``[beta]``;
@@ -23,9 +23,11 @@ from typing import (
     Callable,
     Dict,
     Iterator,
+    List,
     NamedTuple,
     Optional,
     Sequence,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -40,6 +42,7 @@ from .runtime import (
     begin_invocation,
     capture_warnings,
     debug_enabled,
+    ensure_utf8_output,
     format_from_context,
     is_json,
     output_format,
@@ -72,6 +75,9 @@ class CommandMeta:
         destructive: the command deletes/overwrites; it asks for
             confirmation and has ``--yes``.
         paged: the command returns a paged list and has the paging options.
+        binary: the command writes raw bytes (file content, Arrow, Parquet,
+            images) to a file or stdout, not table/JSON/CSV; its
+            ``--format`` only changes how errors are reported.
     """
 
     sdk: Tuple[str, ...] = ()
@@ -79,6 +85,7 @@ class CommandMeta:
     beta: bool = False
     destructive: bool = False
     paged: bool = False
+    binary: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -87,6 +94,7 @@ class CommandMeta:
             "beta": self.beta,
             "destructive": self.destructive,
             "paged": self.paged,
+            "binary": self.binary,
         }
 
 
@@ -115,6 +123,7 @@ def pltr_command(
     beta: bool = False,
     destructive: bool = False,
     paged: bool = False,
+    binary: bool = False,
 ) -> Callable[[F], F]:
     """Declare a command's metadata and give it the error/output contract.
 
@@ -135,6 +144,7 @@ def pltr_command(
         beta=beta,
         destructive=destructive,
         paged=paged,
+        binary=binary,
     )
 
     def decorate(func: F) -> F:
@@ -237,15 +247,51 @@ def _usage_error_as_json(exc: click.ClickException) -> None:
     raise click.exceptions.Exit(exc.exit_code)
 
 
+def hide_missing_envvars(root: click.Command) -> None:
+    """Turn off ``show_envvar`` on options that have no environment variable.
+
+    click 8.2.0 and 8.2.1 append ``(env var: '<envvar>')`` to an option's
+    error hint whenever ``show_envvar`` is set, and ``typer.Option`` sets it
+    by default, so errors read ``Missing option '--parent-folder' / '-p'
+    (env var: 'None')``. Options with an environment variable (``--format``,
+    ``PLTR_FORMAT``) keep naming it.
+
+    Only the commands already built are walked (``Group.commands``, never
+    ``get_command``), so lazily loaded groups such as ``pltr api`` stay
+    unloaded; their options are plain click options, which don't show
+    environment variables.
+    """
+    stack: List[click.Command] = [root]
+    seen: Set[int] = set()
+    while stack:
+        command = stack.pop()
+        if id(command) in seen:
+            continue
+        seen.add(id(command))
+        for param in command.params:
+            if isinstance(param, click.Option) and param.envvar is None:
+                param.show_envvar = False
+        if isinstance(command, click.Group):
+            stack.extend(command.commands.values())
+
+
 class PltrRootGroup(TyperGroup):
     """Click class of the root ``pltr`` group (``typer.Typer(cls=...)``).
 
-    Per invocation it resets the output mode (from ``--format`` in the
-    arguments or ``$PLTR_FORMAT``), routes Python warnings to stderr
+    Per invocation it makes redirected stdout/stderr UTF-8
+    (:func:`ensure_utf8_output`), resets the output mode (from ``--format``
+    in the arguments or ``$PLTR_FORMAT``), routes Python warnings to stderr
     messages, renders click's parse-time usage errors as structured JSON in
     JSON mode (exit 2), and gives commands that don't use ``@pltr_command``
     the same error rendering for unexpected exceptions.
+
+    When built, it stops options without an environment variable from
+    claiming one in error messages (:func:`hide_missing_envvars`).
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        hide_missing_envvars(self)
 
     def main(  # type: ignore[override]
         self,
@@ -255,6 +301,7 @@ class PltrRootGroup(TyperGroup):
         standalone_mode: bool = True,
         **extra: Any,
     ) -> Any:
+        ensure_utf8_output()
         previous = begin_invocation(sys.argv[1:] if args is None else list(args))
         try:
             with capture_warnings():

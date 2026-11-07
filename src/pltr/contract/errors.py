@@ -252,13 +252,33 @@ def _oauth_token_failure(exc: BaseException) -> Optional[Any]:
     return None
 
 
+#: Statuses of a failed OAuth2 token request that mean the client's
+#: credentials or scopes were refused. Others (429, 5xx, ...) aren't about the
+#: credentials and are classified like any API status.
+_OAUTH_CREDENTIAL_STATUSES = (400, 401, 403)
+
+
 def _oauth_error(response: Any) -> ErrorInfo:
     status = int(response.status_code)
+    if status in _OAUTH_CREDENTIAL_STATUSES:
+        return ErrorInfo(
+            "auth_error",
+            f"OAuth2 token request failed (HTTP {status}): check the client ID, "
+            "client secret and scopes of your profile.",
+            ExitCode.AUTH,
+            status_code=status,
+        )
+    error_type, exit_code = _status_info(status)
+    if status == 429:
+        advice = "the token endpoint is rate limiting; retry after a short wait."
+    elif status >= 500:
+        advice = "the token endpoint failed; retry later."
+    else:
+        advice = "check the profile's host."
     return ErrorInfo(
-        "auth_error",
-        f"OAuth2 token request failed (HTTP {status}): check the client ID, "
-        "client secret and scopes of your profile.",
-        ExitCode.AUTH,
+        error_type,
+        f"OAuth2 token request failed (HTTP {status}): {advice}",
+        exit_code,
         status_code=status,
     )
 
@@ -599,8 +619,36 @@ def _with_context(outer: BaseException, info: ErrorInfo) -> str:
     return f"{first}: {detail}" if first else detail
 
 
+#: Credentials that error messages must never show: an Authorization header's
+#: value (`Authorization: Basic x`, `'Authorization': 'Bearer x'`) and a bearer
+#: token anywhere, also inside the repr of a rejected header value
+#: (`Illegal header value b'Bearer SECRET\r'`, from a stored token that ends
+#: with a newline).
+_SECRET_PATTERNS: Tuple[Tuple["re.Pattern[str]", str], ...] = (
+    (
+        re.compile(
+            r"(?i)(\bauthorization\b['\"]?\s*[:=]\s*(?:b?['\"])?)"
+            r"(?:(?:bearer|basic|token)\s+)?[^\s'\",}]+"
+        ),
+        r"\1<redacted>",
+    ),
+    (re.compile(r"(?i)\b(bearer)\s+[^\s'\",}]+"), r"\1 <redacted>"),
+)
+
+
+def redact_secrets(text: str) -> str:
+    """``text`` with bearer tokens and Authorization header values replaced."""
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def classify_error(exc: BaseException) -> ErrorInfo:
-    """Classify an exception (searching its cause chain) into an ErrorInfo."""
+    """Classify an exception (searching its cause chain) into an ErrorInfo.
+
+    Bearer tokens and Authorization header values in the message are
+    redacted (:func:`redact_secrets`).
+    """
     for candidate in _chain(exc):
         info = _classify_one(candidate)
         if info is not None:
@@ -615,6 +663,7 @@ def classify_error(exc: BaseException) -> ErrorInfo:
         info = ErrorInfo("unexpected_error", message, ExitCode.UNEXPECTED)
     if info.hint is None:
         info.hint = _HINTS.get(info.type)
+    info.message = redact_secrets(info.message)
     return info
 
 
@@ -624,8 +673,17 @@ def classify_error(exc: BaseException) -> ErrorInfo:
 def render_error(info: ErrorInfo, *, as_json: Optional[bool] = None) -> None:
     """Write a classified error to stderr (a JSON line in JSON mode).
 
-    ``as_json`` overrides the active output format.
+    ``as_json`` overrides the active output format. The message never shows
+    a bearer token or Authorization header value (:func:`redact_secrets`),
+    however the ErrorInfo was built.
     """
+    import dataclasses
+
+    info = dataclasses.replace(
+        info,
+        message=redact_secrets(info.message),
+        hint=redact_secrets(info.hint) if info.hint else info.hint,
+    )
     if is_json() if as_json is None else as_json:
         write_json_line(info.to_json())
         return

@@ -14,6 +14,7 @@ does.
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -61,16 +62,18 @@ class TestShellCommand:
         """Set up test environment."""
         self.runner = CliRunner()
 
-    def test_get_history_file(self):
-        """Test get_history_file function."""
+    def test_get_history_file(self, monkeypatch, tmp_path):
+        """In pltr's config directory: $XDG_CONFIG_HOME/pltr or ~/.config/pltr."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        assert get_history_file() == tmp_path / "xdg" / "pltr" / "repl_history"
+
+        monkeypatch.delenv("XDG_CONFIG_HOME")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
         history_file = get_history_file()
-
-        # Should return a Path object
         assert isinstance(history_file, Path)
-
-        # Should be in the correct location (cross-platform compatible)
-        expected_path = Path.home() / ".config" / "pltr" / "repl_history"
-        assert history_file == expected_path
+        assert history_file == tmp_path / "home" / ".config" / "pltr" / "repl_history"
+        assert history_file.exists()
 
     @patch("pltr.commands.shell.ProfileManager")
     def test_get_prompt_with_profile(self, mock_profile_manager_class):
@@ -331,7 +334,7 @@ def test_session_on_a_terminal(monkeypatch, capsys, isolated_home):
 
     monkeypatch.setattr("pltr.commands.shell.stdin_is_interactive", lambda: True)
     with create_pipe_input() as pipe:
-        pipe.send_text("hello\rexit\r")
+        pipe.send_text("hello\rhello --token SECRET-1\rexit\r")
         with create_app_session(input=pipe, output=DummyOutput()):
             start(profile=None)
 
@@ -341,6 +344,63 @@ def test_session_on_a_terminal(monkeypatch, capsys, isolated_home):
     assert "Goodbye!" in err
     history = isolated_home / ".config" / "pltr" / "repl_history"
     assert "+hello" in history.read_text()
+    assert "SECRET" not in history.read_text()  # lines with credentials aren't kept
+
+
+@pytest.mark.parametrize(
+    "line, secret",
+    [
+        ("configure configure --token abc", True),
+        ("configure configure --token=abc --host h", True),
+        ("configure configure --auth-type oauth --client-id i --client-secret s", True),
+        ("configure configure --client-secret=s", True),
+        ("!export FOUNDRY_TOKEN=abc", True),
+        ("!FOUNDRY_CLIENT_SECRET=s pltr verify", True),
+        ("admin user revoke-all-tokens 0d4b1b8e-5e43-4d1f-9a7f-6b8c2f3e1a90", False),
+        ("dataset get ri.foundry.main.dataset.x --format json", False),
+        ("api admin user get --token-hint x", False),
+    ],
+)
+def test_lines_holding_credentials(line, secret):
+    from pltr.commands.shell import holds_credentials
+
+    assert holds_credentials(line) is secret
+
+
+def test_history_doesnt_save_lines_with_credentials(tmp_path):
+    from pltr.commands.shell import make_history
+
+    path = tmp_path / "repl_history"
+    history = make_history(path)
+    history.append_string("configure configure --token SECRET-1")
+    history.append_string("folder get ri.compass.main.folder.0")
+
+    assert "SECRET" not in path.read_text()
+    assert "+folder get ri.compass.main.folder.0" in path.read_text()
+    # The line can still be recalled during the session.
+    assert "configure configure --token SECRET-1" in history.get_strings()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_history_file_and_directory_are_private(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    history = get_history_file()
+    assert history.parent.stat().st_mode & 0o777 == 0o700
+    assert history.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_an_existing_history_file_is_made_private(monkeypatch, tmp_path):
+    config = tmp_path / "xdg" / "pltr"
+    config.mkdir(parents=True)
+    old = config / "repl_history"
+    old.write_text("\n# earlier\n+folder list ri.compass.main.folder.0\n")
+    old.chmod(0o644)  # what FileHistory created
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    assert get_history_file() == old
+    assert old.stat().st_mode & 0o777 == 0o600
+    assert old.read_text().endswith("+folder list ri.compass.main.folder.0\n")
 
 
 def test_split_line_keeps_an_unclosed_quote():
@@ -351,6 +411,71 @@ def test_split_line_keeps_an_unclosed_quote():
         "dataset get",
     ]
     assert split_line("folder list  ri.x ") == ["folder", "list", "ri.x"]
+
+
+def test_split_line_keeps_windows_paths():
+    """On Windows a backslash separates path components; it isn't an escape."""
+    line = r"dataset files upload C:\data\flights.csv ri.foundry.main.dataset.x"
+    assert split_line(line, windows=True) == [
+        "dataset",
+        "files",
+        "upload",
+        r"C:\data\flights.csv",
+        "ri.foundry.main.dataset.x",
+    ]
+    assert split_line(r"x \\server\share\f.csv", windows=True) == [
+        "x",
+        r"\\server\share\f.csv",
+    ]
+    # Quotes still group words, and an unclosed one keeps its partial word.
+    assert split_line(r'alias import "C:\My Data\a.json"', windows=True) == [
+        "alias",
+        "import",
+        r"C:\My Data\a.json",
+    ]
+    assert split_line(r"alias import 'C:\My Data\a", windows=True) == [
+        "alias",
+        "import",
+        r"C:\My Data\a",
+    ]
+
+
+def test_split_line_escapes_with_a_backslash_elsewhere():
+    assert split_line(r"alias import my\ file.json", windows=False) == [
+        "alias",
+        "import",
+        "my file.json",
+    ]
+
+
+def test_split_line_follows_the_platform(monkeypatch):
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", True)
+    assert split_line(r"dataset get C:\x") == ["dataset", "get", r"C:\x"]
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", False)
+    assert split_line(r"dataset get C:\x") == ["dataset", "get", "C:x"]
+
+
+def test_a_windows_path_reaches_the_command_unchanged(monkeypatch, isolated_home):
+    """`pltr shell` on Windows mangled C:\\data\\x.json into C:datax.json."""
+    monkeypatch.setattr("pltr.commands.shell.WINDOWS", True)
+
+    result = run_shell(r"alias import C:\no\such\aliases.json --format json")
+
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "usage_error"
+    assert r"cannot read C:\no\such\aliases.json" in error["message"]
+
+
+def test_windows_paths_get_path_completion():
+    from pltr.commands.shell import _looks_like_path
+
+    for text in (r"C:\data\fl", "C:", r"data\fl", r"\\server\share"):
+        assert _looks_like_path(text, windows=True), text
+        assert not _looks_like_path(text, windows=False), text
+    for text in ("/tmp/x", "./x", "~/x", "data/x"):
+        assert _looks_like_path(text, windows=True), text
+        assert _looks_like_path(text, windows=False), text
+    assert not _looks_like_path("dataset", windows=True)
 
 
 class TestShellIntegration:

@@ -75,7 +75,9 @@ An SDK parameter whose name collides with one of pltr's shared options gets an
 `--api-` prefix: `pltr api datasets dataset read-table --api-format CSV` passes
 the API's `format` parameter (`--format` stays pltr's output format). The paging
 parameters `page_size` and `page_token` of paged endpoints are the shared
-`--page-size` and `--page-token` options.
+`--page-size` and `--page-token` options. A method that takes `page_size` but
+returns a single result (`models model experiment series json`) has its own
+`--page-size` and no other paging options.
 
 For uploads whose API needs the content length (`ontologies attachment upload`),
 pltr fills in `--content-length` from the size of `--body` when you leave it out.
@@ -91,7 +93,9 @@ pltr api ontologies ontology-object search my-ontology Aircraft --where @query.j
 cat filter.json | pltr api orchestration build search --where @-
 ```
 
-The value is inline JSON, `@path/to/file.json`, or `@-` for stdin. pltr parses the
+The value is inline JSON, `@path/to/file.json`, or `@-` for stdin (files and stdin
+in UTF-8, with or without a byte order mark, UTF-16 or UTF-32, so files written by
+Windows PowerShell work). pltr parses the
 JSON and the SDK validates it (unions are resolved by their `type` field). Invalid
 JSON, or values the SDK rejects before sending (for example a malformed user ID),
 fail with exit code 2 and nothing is sent.
@@ -106,7 +110,7 @@ Every generated command has the shared options of all pltr commands:
 | `--format json` | the SDK's own serialization (see below) |
 | `--format csv` | CSV with one column per field |
 | `PLTR_FORMAT=json` | sets the default format, for agents and CI |
-| `--output FILE`, `-o FILE` | write the output to a file instead of stdout |
+| `--output FILE`, `-o FILE` | write the output to a file instead of stdout (`-`: stdout) |
 | `--profile NAME`, `-p NAME` | authentication profile (default: the active profile or `FOUNDRY_*` variables) |
 
 stdout carries only data. Messages (such as "more results are available") and
@@ -146,6 +150,13 @@ when more pages remain (page-level fields such as `totalCount` appear in
 single-page output only). Tables and CSV show one row per item; the next page
 token is printed on stderr.
 
+Some endpoints return a `nextPageToken` on every page, even when there is
+nothing more to read yet, so that clients can poll for new items:
+`audit organization log-file list` without `--end-date`. For those (their help
+says so), `--max-pages` and `--all` stop at the first empty page, and its
+`nextPageToken` picks up new items later. Paging also stops, with a warning,
+whenever the API returns a page token that was already sent in the same listing.
+
 ### Binary responses
 
 Commands that return file content (`datasets dataset file content`,
@@ -178,9 +189,9 @@ nor fails.
 Commands that delete, remove, revoke, replace, reset, clear, cancel, abort,
 disable or undeploy something, or overwrite data, ask for confirmation on stderr
 before calling the API, showing the endpoint (`Run DELETE /v2/admin/users/... ?`).
-`--yes` (`-y`) skips the question. When stdin is not a terminal pltr never
-prompts: without `--yes` the command fails with exit code 2
-(`confirmation_required`) and sends nothing. Answering anything but `y` exits with
+`--yes` (`-y`) skips the question. When stdin is not a terminal, or with
+`--format json`, pltr never prompts: without `--yes` the command fails with
+exit code 2 (`confirmation_required`) and sends nothing. Answering anything but `y` exits with
 code 1 (`aborted`).
 
 ```bash
@@ -189,12 +200,12 @@ pltr api admin user delete "$USER_ID" --yes    # for scripts and agents
 ```
 
 The list is explicit and reviewed (`V2_DESTRUCTIVE` in
-`scripts/generate_api_commands.py`). It holds every method named `delete`,
-`permanently_delete`, `remove*`, `revoke*`, `replace*`, `abort`, `cancel` or
-`disable`, plus methods whose names don't say so: `connectivity connection
-update-secrets`, `datasets dataset put-schema`, `media-sets media-set clear`,
-`streams dataset stream reset`, `streams dataset stream subscriber reset-offsets`
-and `third-party-applications third-party-application website undeploy`.
+`scripts/generate_api_commands.py`). It holds every method whose name has one of
+the words `delete`, `remove`, `revoke`, `replace`, `abort`, `cancel`, `disable`,
+`reset`, `clear`, `undeploy`, `unregister` or `purge` (`permanently_delete`,
+`reset_offsets`, `media-sets media-set clear`, ...), plus methods whose names
+don't say so: `connectivity connection update-secrets` and
+`datasets dataset put-schema`.
 
 ## Errors and exit codes
 
@@ -255,13 +266,19 @@ uv tool install pltr-cli    # or: pipx install pltr-cli
    then `uv sync`).
 2. Run `uv run python scripts/generate_api_commands.py`. It stops with an
    explanation when a new method needs a decision:
-   - a method whose name looks destructive (`delete`, `remove*`, ...) must be added
-     to `V2_DESTRUCTIVE`, or to `not_destructive` if it isn't;
+   - a method whose name has a destructive word (`delete`, `delete_batch`,
+     `reset_offsets`, ...; see `DESTRUCTIVE_NAME_SEED`) must be added to
+     `V2_DESTRUCTIVE`, or to `not_destructive` if it isn't;
    - a server-sent-events method must be added to `excluded` with a reason;
    - a method with an integer path parameter must be excluded while the SDK can't
      URL-quote it (try calling it first: if the new SDK handles it, relax the check
      and drop the two `INT_PATH_REASON` exclusions);
    - a configured method that no longer exists must be removed from the config.
+
+   A paged method whose API returns a next page token on every page (a polling
+   endpoint, like `audit.Organization.LogFile.list`) belongs in
+   `stop_at_empty_page`, with a reason; nothing detects it automatically, so read
+   the paging parameters' help of new list methods.
 3. Review the diff of `src/pltr/commands/api/_specs/`: new and removed commands,
    `beta` changes, new parameters. Read the names of new methods: if one destroys
    or overwrites data without saying so, add it to `V2_DESTRUCTIVE` and regenerate.
@@ -291,7 +308,7 @@ output is byte-identical on Python 3.10 to 3.13 and on every OS.
 - Output, errors, exit codes, confirmation and the shared options come from
   `pltr.contract`, like for the curated commands
   (`docs/development/command-contract.md`). Each command records its
-  `CommandMeta` (SDK method, beta, destructive, paged) through `@pltr_command`, so
+  `CommandMeta` (SDK method, beta, destructive, paged, binary) through `@pltr_command`, so
   `pltr.contract.iter_commands` lists the generated tree with complete metadata.
 - Commands get their SDK client the way the services do, from
   `pltr.services.base.AuthManager`, so tests serve them with `stub_foundry_http`.
@@ -307,6 +324,7 @@ A method spec looks like this (keys left out when they don't apply):
     "http": "GET /v2/admin/users",
     "beta": True,                   # has a `preview` parameter
     "paged": "iterator",            # or "response"
+    "stop_at_empty_page": True,     # reviewed: --all stops at an empty page
     "binary": True,                 # bytes response
     "destructive": True,            # asks for confirmation
     "params": [

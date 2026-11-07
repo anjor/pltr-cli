@@ -72,7 +72,7 @@ Download a media item's content to a file, or to stdout with -.
 - `OUTPUT_PATH`: File to save the media item's content to, or - for stdout.
 - `--original`: Download the file as originally uploaded, not the processed version.
 - `--overwrite`: Replace OUTPUT_PATH if it exists.
-- SDK: `media_sets.MediaSet.read`, `media_sets.MediaSet.read_original`
+- output: binary (to `OUTPUT_PATH`, `-` for stdout) · SDK: `media_sets.MediaSet.read`, `media_sets.MediaSet.read_original`
 
 ### pltr media-sets get
 
@@ -125,7 +125,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - `OUTPUT_PATH`: File to save the thumbnail (webp) to, or - for stdout.
 - `--overwrite`: Replace OUTPUT_PATH if it exists.
-- beta · SDK: `media_sets.MediaSet.retrieve`
+- beta · output: binary (to `OUTPUT_PATH`, `-` for stdout) · SDK: `media_sets.MediaSet.retrieve`
 
 ### pltr media-sets upload
 

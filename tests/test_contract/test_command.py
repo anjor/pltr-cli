@@ -126,7 +126,20 @@ def test_to_dict():
         "beta": False,
         "destructive": False,
         "paged": True,
+        "binary": False,
     }
+
+
+def test_binary_metadata():
+    @click.command()
+    @pltr_command(sdk="datasets.Dataset.File.content", binary=True)
+    def cmd():
+        """Write the file's bytes."""
+
+    assert get_command_meta(cmd) == CommandMeta(
+        sdk=("datasets.Dataset.File.content",), binary=True
+    )
+    assert get_command_meta(cmd).to_dict()["binary"] is True
 
 
 @pytest.mark.parametrize(
@@ -289,3 +302,55 @@ def test_broken_pipe_exits_quietly_in_standalone_mode(capsys):
         typer.main.get_command(app).main(args=["pipe"], standalone_mode=True)
     assert excinfo.value.code == 1
     assert "BrokenPipeError" not in capsys.readouterr().err
+
+
+# ------------------------------------------------------------ envvar hints
+
+
+def last_error(result) -> dict:
+    return json.loads(result.stderr.strip().splitlines()[-1])
+
+
+def test_errors_dont_name_an_environment_variable_that_doesnt_exist():
+    """click 8.2.0/8.2.1 added "(env var: 'None')" for every typer.Option."""
+    from pltr.cli import app as pltr_app
+
+    missing = runner.invoke(pltr_app, ["folder", "create", "x", "--format", "json"])
+    assert missing.exit_code == 2
+    assert last_error(missing)["message"] == "Missing option '--parent-folder' / '-p'."
+
+    embed = ["language-models", "openai", "embeddings", "m", "-i", "x"]
+    bad_choice = runner.invoke(pltr_app, [*embed, "-e", "int8", "--format", "json"])
+    assert bad_choice.exit_code == 2
+    assert "'int8' is not" in last_error(bad_choice)["message"]
+    assert "env var" not in last_error(bad_choice)["message"]
+
+    # An option that has one still names it.
+    bad_format = runner.invoke(
+        pltr_app,
+        ["folder", "get", "x", "--format", "nope"],
+        env={"PLTR_FORMAT": "json"},
+    )
+    assert bad_format.exit_code == 2
+    assert "(env var: 'PLTR_FORMAT')" in last_error(bad_format)["message"]
+
+
+def test_hide_missing_envvars_doesnt_load_lazy_groups():
+    from pltr.contract.command import hide_missing_envvars
+
+    class Lazy(click.Group):
+        def list_commands(self, ctx):
+            raise AssertionError("loaded a lazy group")
+
+        def get_command(self, ctx, name):
+            raise AssertionError("loaded a lazy group")
+
+    plain = click.Option(["--name"], show_envvar=True)
+    with_env = click.Option(["--fmt"], envvar="FMT", show_envvar=True)
+    leaf = click.Command("leaf", params=[plain, with_env])
+    root = click.Group("root", commands={"leaf": leaf, "lazy": Lazy("lazy")})
+
+    hide_missing_envvars(root)
+
+    assert plain.show_envvar is False
+    assert with_env.show_envvar is True

@@ -14,6 +14,7 @@ from scripts.sdk_calls import (
     PLTR_SRC,
     SdkCall,
     analyze_sources,
+    collect_sdk_calls,
     compare_with_allowlist,
     find_violations,
     load_allowlist,
@@ -485,6 +486,69 @@ def test_sdk_method_passed_elsewhere_is_uncheckable_but_probes_are_fine():
     assert call.sdk_path == "filesystem.Folder.children"
     assert rules([call]) == ["uncheckable"]
     assert "is passed to self._paginate()" in call.violations[0].message
+
+
+CLIENT_COMMAND = textwrap.dedent(
+    """\
+    from ..services.base import AuthManager
+
+
+    def cmd(rid):
+        client = AuthManager().get_client(None)
+        return client.filesystem.Folder.gett(rid)
+
+
+    def cmd2(rid):
+        return AuthManager().get_client(None).filesystem.Folder.gett(rid)
+
+
+    class Thing:
+        def run(self, manager):
+            return manager.get_client("prod").filesystem.Folder.gett("x")
+    """
+)
+
+
+def test_a_client_built_outside_the_service_base_is_uncheckable():
+    """Calls through it were invisible: no record at all, so nothing failed."""
+    calls = [
+        c
+        for c in analyze("", extra={"commands/demo.py": CLIENT_COMMAND})
+        if c.file == "commands/demo.py"
+    ]
+
+    assert [(c.function, c.sdk_path) for c in calls] == [
+        ("cmd", "get_client"),
+        ("cmd2", "get_client"),
+        ("Thing.run", "get_client"),
+    ]
+    assert rules(calls) == ["uncheckable"] * 3
+    assert "outside src/pltr/services/base.py" in calls[0].violations[0].message
+    assert [f.key for f in find_violations(calls)][:2] == [
+        "commands/demo.py::cmd::get_client::uncheckable",
+        "commands/demo.py::cmd2::get_client::uncheckable",
+    ]
+
+
+def test_the_service_base_builds_the_client():
+    base = textwrap.dedent(
+        """\
+        class BaseService:
+            @property
+            def client(self):
+                if self._client is None:
+                    self._client = self.auth_manager.get_client(self.profile)
+                return self._client
+        """
+    )
+    calls = analyze("", extra={"services/base.py": base})
+    assert [c for c in calls if c.file == "services/base.py"] == []
+
+
+def test_pltr_calls_get_client_only_in_the_service_base():
+    """The real tree: the generated `pltr api` runtime isn't scanned."""
+    calls = [c for c in collect_sdk_calls() if c.sdk_path == "get_client"]
+    assert calls == []
 
 
 # ------------------------------------------------------------ real FoundryClient

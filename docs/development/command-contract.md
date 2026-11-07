@@ -12,7 +12,10 @@ Import everything from `pltr.contract` and nothing from its submodules.
 ## The contract (what users and agents rely on)
 
 1. **stdout is data only, in every format.** Spinners, progress, success,
-   info and warning messages, prompts and errors go to stderr.
+   info and warning messages, prompts and errors go to stderr. When stdout
+   or stderr is redirected to a file or a pipe, it is UTF-8 on every OS
+   (the root group reconfigures it; Windows would use cp1252); a terminal
+   keeps its encoding.
 2. **`--format json` prints the SDK's own serialization**, exactly one JSON
    document: `model.model_dump(mode="json", by_alias=True, exclude_none=True)`.
    That means Foundry API field names (camelCase), no null fields and no
@@ -28,8 +31,10 @@ Import everything from `pltr.contract` and nothing from its submodules.
    field that really exists on the SDK model. A missing field fails a test.
 5. **Exit codes are documented** (see the table below).
 6. **Destructive commands confirm**, and `--yes`/`-y` skips the prompt.
-   Nothing ever prompts when stdin is not a terminal: without `--yes` the
-   command fails with exit code 2.
+   Nothing ever prompts when stdin is not a terminal or in JSON mode
+   (`--format json`, `PLTR_FORMAT=json`; agent harnesses often give
+   commands a pseudo-terminal): without `--yes` the command fails with exit
+   code 2.
 7. **Beta endpoints** are always called with a literal `preview=True`, and
    the command's help starts with `[beta]`. GA endpoints never get `preview`.
 8. The default format is `table`. `PLTR_FORMAT=json|csv|table` changes it.
@@ -214,7 +219,8 @@ emit(result, *, format, output=None, columns=None, rows=None, title=None)
 - **CSV** has a header row from the column headers and one row per item. An
   empty list prints only the header.
 - **`output=`** writes the rendered text to a file instead of stdout. In
-  text mode, a "Wrote ... to FILE" message goes to stderr.
+  text mode, a "Wrote ... to FILE" message goes to stderr. `-` means
+  stdout, as for binary output.
 - **`rows=`** sets the table/CSV rows when they aren't `result` itself, for
   example a batch response whose `data` is a dict:
   `rows=lambda r: list(r.data.values())`. JSON still prints the whole
@@ -264,10 +270,14 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
   paging then also stops at the first page without items, and that page's
   `nextPageToken` is returned for picking up new items later
   (`pltr audit list`).
+- As a backstop for every command, paging stops with a warning when the API
+  returns a page token that was already sent in the same listing (the next
+  request would read a page already read); that token is returned.
 
-**Binary output.** For file content, Arrow/Parquet results and images, call
-`check_binary_output(output)` before the request and
-`emit_bytes(chunks, output=output)` after it. `chunks` is `bytes` or an
+**Binary output.** For file content, Arrow/Parquet results and images, mark
+the command `@pltr_command(..., binary=True)` (the manifest then reports
+`outputFormats: ["binary"]`), call `check_binary_output(output)` before the
+request and `emit_bytes(chunks, output=output)` after it. `chunks` is `bytes` or an
 iterable of `bytes` (an SDK streamed response's `iter_bytes()`, so large
 files aren't held in memory). The data goes to `--output FILE` (`-` means
 stdout), or to stdout, but never to a terminal (a usage error, exit code 2).
@@ -299,7 +309,7 @@ Commands contain no `try/except` for reporting.
 | 0 | | success |
 | 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
 | 2 | `usage_error`, `confirmation_required` | bad or missing arguments, invalid JSON input, an invalid RID, a destructive command without `--yes` when stdin is not a terminal |
-| 3 | `auth_error` | no usable profile or credentials, an OAuth token failure, HTTP 401 |
+| 3 | `auth_error` | no usable profile or credentials, an OAuth token request refused (400, 401, 403), HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
 | 5 | `not_found`, `api_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack) |
 | 6 | `validation_error` | HTTP 400, 422 |
@@ -321,8 +331,10 @@ Text mode prints `Error: <message>`, then the details and a hint.
     `errorCode` is derived from the HTTP status where that is unambiguous.
   - The SDK's `SDKInternalError`, which is never a usage error: an error
     response whose body isn't a Foundry error is classified by its HTTP
-    status, a failed OAuth token request is an `auth_error`, a success body
-    that isn't JSON is an `invalid_response` (exit 7), and anything else is
+    status, an OAuth token request refused with 400, 401 or 403 is an
+    `auth_error` (other statuses, such as 429 and 5xx, are classified by
+    status: they aren't about the credentials), a success body that isn't
+    JSON is an `invalid_response` (exit 7), and anything else is
     an `unexpected_error` (exit 1, "foundry-platform-sdk failed
     unexpectedly", with a hint to report it).
   - `requests.HTTPError`, including the Foundry error body, for the labeled
@@ -349,12 +361,17 @@ Text mode prints `Error: <message>`, then the details and a hint.
 - **Usage errors.** Raise `typer.BadParameter("...", param_hint="'--x'")`. In
   text mode click renders it as usual; in JSON mode it becomes a
   `usage_error`. For JSON inputs (inline, `@file.json` or `@-` for stdin) use
-  `load_json_input(value, param_hint="'--where'")`.
+  `load_json_input(value, param_hint="'--where'")`; it reads files and stdin
+  as UTF-8 (with or without a byte order mark), UTF-16 or UTF-32.
 - **pltr's own failures.** For a failure that isn't an API error, raise
   `PltrError(message, error_type=..., exit_code=..., hint=...)`.
 - **Passed through:** `typer.Exit` and `click.Abort`.
 - **Debugging:** `PLTR_DEBUG=1` re-raises the exception after rendering it,
   so you see the traceback.
+- **Secrets:** bearer tokens and Authorization header values are redacted
+  from every rendered message (`redact_secrets`), whatever raised it, for
+  example a stored token with a trailing newline that the HTTP library
+  rejects as `Illegal header value b'Bearer ...\r'`.
 - **Parse-time errors.** Click's own errors (a missing argument, an unknown
   option) are rendered as JSON when the invocation asked for JSON (`--format
   json`/`-f json` among the arguments, or `PLTR_FORMAT=json`). This works
@@ -382,8 +399,9 @@ def delete_space(
 
 - **Behaviour of `confirm_destructive`:**
   - `--yes` (or a deprecated alias) returns at once.
-  - When stdin is not a terminal it raises `ConfirmationRequired`
-    (`confirmation_required`, exit 2, "Re-run with --yes").
+  - When stdin is not a terminal, or in JSON mode, it raises
+    `ConfirmationRequired` (`confirmation_required`, exit 2, "Re-run with
+    --yes") without prompting.
   - Otherwise it prompts on stderr; anything but `y`/`yes` raises `Aborted`
     (exit 1).
 - **Which commands are destructive:** delete, remove, revoke, reset, cancel,
@@ -411,6 +429,7 @@ def delete_space(
     beta=True,          # calls a beta endpoint
     destructive=False,  # asks for confirmation, has --yes
     paged=False,        # returns a paged list, has the paging options
+    binary=False,       # writes raw bytes (emit_bytes), not table/JSON/CSV
 )
 ```
 
@@ -459,8 +478,9 @@ def delete_space(
     sets `COLUMNS=200` so tables don't wrap, and also keeps
     `~/.cache/pltr` out of your home.
 - **Prompts:** monkeypatch `pltr.contract.options.stdin_is_interactive` to
-  return `True` and pass `input="y\n"`. Without it, CliRunner's stdin is
-  not a terminal, so you get exit code 2.
+  return `True` and pass `input="y\n"`, in table or CSV mode. Without it,
+  CliRunner's stdin is not a terminal, so you get exit code 2; JSON mode
+  never prompts either.
 
 ## The contract test
 

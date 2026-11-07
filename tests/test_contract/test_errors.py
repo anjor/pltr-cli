@@ -217,6 +217,45 @@ def test_oauth_token_failure_is_an_auth_error(stub_foundry_http):
     assert stub_foundry_http.requests[0].url.path.endswith("/oauth2/token")
 
 
+@pytest.mark.parametrize(
+    "status, error_type, exit_code, says",
+    [
+        (400, "auth_error", 3, "client secret and scopes"),
+        (403, "auth_error", 3, "client secret and scopes"),
+        # Not about the credentials: agents must not be told to fix them.
+        (429, "rate_limited", 7, "retry after a short wait"),
+        (500, "server_error", 7, "retry later"),
+        (503, "server_error", 7, "retry later"),
+        (404, "not_found", 5, "check the profile's host"),
+    ],
+)
+def test_oauth_token_failure_by_status(
+    stub_foundry_http, status, error_type, exit_code, says
+):
+    client = FoundryClient(
+        auth=ConfidentialClientAuth(
+            client_id="id", client_secret="s", scopes=["api:read-data"]
+        ),
+        hostname="test.palantirfoundry.com",
+    )
+    stub_foundry_http.respond_always(status, json={"error": "nope"})
+    with pytest.raises(Exception) as excinfo:
+        client.filesystem.Folder.get(fj.FOLDER_RID)
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code, info.status_code) == (
+        error_type,
+        exit_code,
+        status,
+    )
+    assert info.message.startswith(f"OAuth2 token request failed (HTTP {status})")
+    assert says in info.message
+    if error_type != "auth_error":
+        assert "client secret" not in info.message
+        assert "pltr configure" not in (info.hint or "")
+
+
 def test_bare_http_status_errors():
     request = httpx.Request("GET", "https://host/api/v2/thing")
     response = httpx.Response(404, request=request)
@@ -512,6 +551,73 @@ def test_render_text_includes_error_name_details_and_hint(capsys):
     assert "status: 404" in err and "errorCode: NOT_FOUND" in err
     assert "errorInstanceId: i-1" in err
     assert err.splitlines()[-1].startswith("Hint: Check the RID")
+
+
+def _header_errors():
+    """A stored token with a trailing CR, rejected by h11 (SDK) and requests."""
+    import h11
+
+    token = "SECRET-token.abc_123\r"
+    try:
+        h11.Request(
+            method="GET",
+            target="/",
+            headers=[("Host", "x"), ("Authorization", f"Bearer {token}")],
+        )
+    except h11.LocalProtocolError as exc:
+        from_sdk = httpx.LocalProtocolError(str(exc))
+    try:
+        requests.Request(
+            "GET", "https://x.invalid", headers={"Authorization": f"Bearer {token}"}
+        ).prepare()
+    except requests.exceptions.InvalidHeader as exc:
+        from_requests = exc
+    return [from_sdk, from_requests]
+
+
+@pytest.mark.parametrize("error", _header_errors(), ids=["httpx", "requests"])
+@pytest.mark.parametrize("as_json", [True, False])
+def test_bearer_tokens_never_reach_stderr(error, as_json, capsys):
+    assert "SECRET" in str(error)  # the shapes R1 found: b'Bearer SECRET\r', ...
+
+    info = classify_error(raised(error))
+    render_error(info, as_json=as_json)
+
+    err = capsys.readouterr().err
+    assert "SECRET" not in info.message and "SECRET" not in err
+    assert "Bearer <redacted>" in err
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (
+            "Illegal header value b'Bearer abc.def\\r'",
+            "Illegal header value b'Bearer <redacted>'",
+        ),
+        (
+            "headers {'Authorization': 'Basic dXNlcjpwYXNz', 'X': 1}",
+            "headers {'Authorization': '<redacted>', 'X': 1}",
+        ),
+        ('"authorization": "Token t0ken"', '"authorization": "<redacted>"'),
+        ("Authorization: Bearer abc rest", "Authorization: <redacted> rest"),
+        ("bearer abc", "bearer <redacted>"),
+        ("Authorization failed for user", "Authorization failed for user"),
+        ("No credentials", "No credentials"),
+    ],
+)
+def test_redact_secrets(text, expected):
+    from pltr.contract.errors import redact_secrets
+
+    assert redact_secrets(text) == expected
+
+
+def test_render_redacts_an_error_built_by_hand(capsys):
+    info = ErrorInfo("api_error", "sent Authorization: Bearer abc", ExitCode.API)
+    render_error(info, as_json=True)
+    assert json.loads(capsys.readouterr().err)["message"] == (
+        "sent Authorization: <redacted>"
+    )
 
 
 def test_fail_exits_with_the_code(capsys):

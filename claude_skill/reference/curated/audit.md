@@ -13,7 +13,7 @@ Download an audit log file.
 
 - `ORGANIZATION_RID`: Organization RID (ri.multipass..organization.<id>); yours is the organization of 'pltr admin user current'.
 - `LOG_FILE_ID`: Log file ID (an id from 'pltr audit list').
-- SDK: `audit.Organization.LogFile.content`
+- output: binary (to `--output FILE` or a pipe) · SDK: `audit.Organization.LogFile.content`
 
 ### pltr audit list
 

@@ -16,7 +16,7 @@ which declare the same options with the same names and behaviour.
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar, Union
 
 import click
 import typer
@@ -24,7 +24,7 @@ from typing_extensions import Annotated
 
 from ..utils.completion import complete_output_format, complete_profile
 from .errors import Aborted, ConfirmationRequired
-from .runtime import FORMAT_ENVVAR, FORMATS, remember_format, warn
+from .runtime import FORMAT_ENVVAR, FORMATS, is_json, remember_format, warn
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -271,9 +271,11 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
 
     * ``yes`` (``--yes``, or a deprecated ``--confirm``/``--force`` alias)
       skips the prompt.
-    * When stdin is not a terminal nothing is ever prompted: raises
+    * In JSON mode (``--format json`` or ``PLTR_FORMAT=json``), or when
+      stdin is not a terminal, nothing is ever prompted: raises
       :class:`ConfirmationRequired` (exit code 2) telling the user to pass
-      ``--yes``.
+      ``--yes``. (Agent harnesses often run commands under a pseudo-terminal;
+      a JSON-mode command must never wait for an answer.)
     * Otherwise prompts on stderr; "no" raises :class:`Aborted` (exit 1).
 
     ``prompt`` is a question such as ``"Delete space ri.compass.main.space.x?"``.
@@ -285,6 +287,11 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
         raise ConfirmationRequired(
             f"{prompt} Confirmation is required, but stdin is not a terminal. "
             "Re-run with --yes to proceed."
+        )
+    if is_json():
+        raise ConfirmationRequired(
+            f"{prompt} Confirmation is required, and --format json never "
+            "prompts. Re-run with --yes to proceed."
         )
     # Not click.confirm(): it writes part of its prompt to stdout via input().
     click.echo(f"{prompt} [y/N]: ", nl=False, err=True)
@@ -298,27 +305,46 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
 # ----------------------------------------------------------------- JSON input
 
 
+#: A leading byte order mark (U+FEFF), as Windows tools write.
+BYTE_ORDER_MARK = "\ufeff"
+
+
 def load_json_input(value: str, *, param_hint: str) -> Any:
     """Parse a JSON option value given inline, as ``@path/to/file.json``, or
     as ``@-`` (read from stdin).
 
     Invalid JSON (or an unreadable file) is a usage error (exit code 2).
+    Files and stdin are decoded the way JSON specifies: UTF-8 with or
+    without a byte order mark (Windows PowerShell 5 writes one), or UTF-16
+    or UTF-32 (PowerShell 5's ``>`` writes UTF-16).
     """
-    text = value
+    data: Union[str, bytes] = value
+    source = "the value"
     if value == "@-":
-        text = click.get_text_stream("stdin").read()
+        data = click.get_binary_stream("stdin").read()
+        source = "stdin"
     elif value.startswith("@"):
-        path = value[1:]
+        file = value[1:]
+        source = file
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            data = Path(file).read_bytes()
         except OSError as exc:
             raise typer.BadParameter(
-                f"cannot read {path}: {exc.strerror or exc}", param_hint=param_hint
+                f"cannot read {file}: {exc.strerror or exc}", param_hint=param_hint
             ) from exc
+    if isinstance(data, str) and data.startswith(BYTE_ORDER_MARK):
+        data = data[1:]
     try:
-        return json.loads(text)
+        # From bytes, json.loads detects UTF-8 (BOM or not), UTF-16 and UTF-32.
+        return json.loads(data)
     except json.JSONDecodeError as exc:
         raise typer.BadParameter(
             f"invalid JSON ({exc.msg} at line {exc.lineno}, column {exc.colno})",
+            param_hint=param_hint,
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise typer.BadParameter(
+            f"invalid JSON: {source} isn't UTF-8, UTF-16 or UTF-32 text "
+            f"({exc.reason} at byte {exc.start})",
             param_hint=param_hint,
         ) from exc

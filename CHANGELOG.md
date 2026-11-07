@@ -46,8 +46,10 @@ pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
 - **Destructive commands ask first, and `--yes`/`-y` skips the question,
   everywhere.** Deletes, removes, revokes, resets, cancels, aborts, replaces,
   clears and schema changes ask on stderr; several asked nothing before (see
-  Changed). Nothing prompts when stdin is not a terminal: without `--yes`
-  such a command exits with code 2 and changes nothing. Answering "no" exits
+  Changed). Nothing prompts when stdin is not a terminal, or in JSON mode
+  (`--format json` or `PLTR_FORMAT=json`, even on a terminal: agent harnesses
+  often run commands under a pseudo-terminal): without `--yes` such a command
+  exits with code 2 and changes nothing. Answering "no" exits
   with 1; several commands exited with 0. `--confirm` and `--force`, where
   they meant "don't ask", are hidden aliases of `--yes` for one release.
 - **`-f` means `--format`.** It used to mean `--force` on `configure delete`,
@@ -114,6 +116,9 @@ can search. See Added.
     curated ones and have the same shared options. A paged command prints one
     page exactly as the API returns it (with fields such as `totalCount`);
     `--max-pages` and `--all` print the merged items in the paged shape.
+    `audit organization log-file list`, whose API returns a next page token
+    on every page when there is no end date, stops paging at the first empty
+    page, like `pltr audit list`.
   - 203 beta commands are labeled `[beta]` and send `preview=true`, if the
     installed SDK method still takes it. 58 destructive commands, an explicit
     reviewed list, ask for confirmation. 20 commands with binary responses
@@ -141,7 +146,10 @@ can search. See Added.
   - Each entry has `path`, `usage`, `description`, `beta`, `destructive`,
     `paged`, `generated`, `local`, `hidden`, `outputFormats`, `sdkMethods`,
     `httpEndpoints` (direct-HTTP commands only), `arguments`, `options`
-    (hidden deprecated aliases left out) and `help`.
+    (hidden deprecated aliases left out) and `help`. `outputFormats` is
+    `["binary"]` for commands that write raw bytes, such as `audit get`,
+    `media-sets download` and the `pltr api` file-content commands; their
+    `--format` only changes how errors are reported.
 - The README has a section on using pltr from agents (headless auth, finding
   commands with `pltr commands`, JSON output, exit codes, `--yes`).
 - Environment-variable authentication, as described under Breaking changes.
@@ -281,6 +289,17 @@ can search. See Added.
 
 - Python warnings raised while a command runs (for example the SDK's
   `UserWarning`s) print as `Warning: ...` on stderr, or as JSON warning lines.
+- `--all` and `--max-pages` stop, with a warning, when the API returns a page
+  token that was already sent in the same listing, instead of requesting the
+  same page forever. The output's `nextPageToken` is that token.
+- `--output -` writes to stdout in every format, as it does for binary
+  output; for tables, JSON and CSV it wrote a file named `-`. This includes
+  `sql export QUERY -`.
+- JSON inputs (`@file.json` and `@-`) are decoded as JSON specifies: UTF-8
+  with or without a byte order mark, UTF-16 or UTF-32. Files written by
+  Windows PowerShell 5 (a BOM with `-Encoding utf8`, UTF-16 with `>`) were
+  rejected as invalid JSON. Text in another encoding is a usage error that
+  says so.
 - Usage errors found while parsing arguments (a missing argument, an unknown
   option) are JSON errors when the command was asked for JSON (`--format json`
   or `PLTR_FORMAT=json`).
@@ -355,6 +374,11 @@ can search. See Added.
   failure gives an error that points to the environment variables.
 - Reading settings or profiles no longer creates `~/.config/pltr`; it is
   created when something is saved.
+- A failed OAuth2 token request is an authentication error (exit 3, "check
+  the client ID, client secret and scopes") only when the token endpoint
+  refuses the credentials (HTTP 400, 401 or 403). A 429 or 5xx answer is
+  `rate_limited` or `server_error` (exit 7), so retrying is the right move,
+  not changing the credentials.
 
 #### `alias`, `completion` and `shell`
 
@@ -371,6 +395,12 @@ can search. See Added.
   An unsupported or undetectable shell exits with 2.
 - `pltr shell` prints its banner and "Goodbye!" on stderr, and only when
   stdin is a terminal. It runs each line as its own `pltr` invocation.
+- `pltr shell` keeps its history (`repl_history`) in pltr's configuration
+  directory, `$XDG_CONFIG_HOME/pltr` when that is set (it ignored it), and on
+  macOS and Linux the file is private (0600, also an existing one) in a
+  directory created private (0700). Lines that pass `--token`, `--client-id`
+  or `--client-secret`, or set `FOUNDRY_TOKEN` or `FOUNDRY_CLIENT_SECRET`,
+  aren't saved to it; they can still be recalled during the session.
 
 #### `folder` and `space`
 
@@ -630,8 +660,10 @@ can search. See Added.
 - `language-models list`, `status` and `enroll` try `/api/v2/languageModels`
   first (they called `/v2/...` at the host root), skip answers that aren't
   JSON, and when every endpoint fails, report each endpoint's status.
-- `openai embeddings --encoding` accepts only `float` or `base64`, and
-  `audit list` dates must be `YYYY-MM-DD`.
+- `openai embeddings --encoding` accepts only `float`, and `audit list` dates
+  must be `YYYY-MM-DD`. `--encoding base64` is a usage error (exit 2) before
+  any call: the SDK reads embeddings only as lists of floats, so a base64
+  answer couldn't be decoded (exit 7). Not verified live.
 - `audit get` streams the log file; a failed download leaves no partial
   `--output` file and keeps an existing one.
 
@@ -852,6 +884,24 @@ from `--help`. They will be removed in the next release.
   `python -m pltr`.
 - `pltr shell` works on click 8.2: it printed an empty error box at start and
   crashed on the first command.
+- Usage errors ended with `(env var: 'None')`, for example `Missing option
+  '--parent-folder' / '-p' (env var: 'None').`: with click 8.2.0 and 8.2.1
+  every Typer option claimed an environment variable. Only options that have
+  one (`--format`: `PLTR_FORMAT`) name it now.
+- On Windows, output redirected to a file or a pipe crashed with
+  `UnicodeEncodeError` when a table or CSV held text outside the ANSI code
+  page (cp1252), such as Chinese names. Redirected stdout and stderr are now
+  always UTF-8, like `--output` files, on every OS; a terminal keeps its
+  encoding. Scripts that read pltr's redirected output as cp1252 must read
+  UTF-8.
+- Error messages could show your token: a token stored with a trailing
+  newline was rejected with `Illegal header value b'Bearer <token>\r'`, token
+  included. Bearer tokens and Authorization header values are now redacted
+  from every error message, in text and JSON.
+- `pltr shell` on Windows treated backslashes as escape characters, so
+  `C:\data\x.csv` reached the command as `C:datax.csv`. On Windows a
+  backslash is now part of the word (quotes still group words), and Tab
+  completes `C:\...` paths.
 - `pltr completion` scripts complete commands, options, option values and the
   `pltr api` tree in bash, zsh and fish; the scripts it installed never
   completed anything.

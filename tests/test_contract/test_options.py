@@ -228,21 +228,41 @@ def test_non_interactive_without_yes_is_exit_2():
 
 
 def test_prompt_goes_to_stderr_and_yes_proceeds(interactive):
-    result = runner.invoke(APP, ["drop", "-f", "json"], input="y\n")
+    result = runner.invoke(APP, ["drop", "-f", "csv"], input="y\n")
     assert result.exit_code == 0
     assert result.stderr == "Drop it? [y/N]: "
-    assert json.loads(result.stdout) == {"dropped": True}  # nothing else on stdout
+    assert result.stdout == "dropped\ntrue\n"  # nothing else on stdout
 
 
 def test_answering_no_is_exit_1(interactive):
-    result = runner.invoke(APP, ["drop", "-f", "json"], input="n\n")
+    result = runner.invoke(APP, ["drop"], input="n\n")
     assert result.exit_code == 1
     assert result.stdout == ""
     prompt, error = result.stderr.split("]: ")
     assert prompt == "Drop it? [y/N"
-    assert lines(error) == [
-        {"type": "aborted", "message": "Aborted; nothing was changed.", "exitCode": 1}
-    ]
+    assert error.startswith("Error: Aborted; nothing was changed.")
+
+
+@pytest.mark.parametrize(
+    "args, env",
+    [(["-f", "json"], {}), (["--format", "json"], {}), ([], {"PLTR_FORMAT": "json"})],
+)
+def test_json_mode_never_prompts_even_on_a_terminal(interactive, args, env):
+    """Agent harnesses run commands under a pseudo-terminal: a JSON-mode
+    command must fail at once (exit 2), not block on a plain-text prompt."""
+    result = runner.invoke(APP, ["drop", *args], input="y\n", env=env)
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "[y/N]" not in result.stderr
+    [error] = lines(result.stderr)
+    assert error == {
+        "type": "confirmation_required",
+        "message": "Drop it? Confirmation is required, and --format json never "
+        "prompts. Re-run with --yes to proceed.",
+        "exitCode": 2,
+    }
+    with_yes = runner.invoke(APP, ["drop", *args, "--yes"], env=env)
+    assert with_yes.exit_code == 0 and json.loads(with_yes.stdout) == {"dropped": True}
 
 
 @pytest.mark.parametrize("answer", ["", "\n", "maybe\n"])
@@ -308,6 +328,37 @@ def test_load_json_input_from_stdin():
     result = ClickRunner().invoke(show, ["--where", "@-"], input='{"a": [1]}')
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == {"a": [1]}
+    with_bom = ClickRunner().invoke(
+        show, ["--where", "@-"], input=b'\xef\xbb\xbf{"a": [2]}'
+    )
+    assert with_bom.exit_code == 0, with_bom.output
+    assert json.loads(with_bom.stdout) == {"a": [2]}
+
+
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        "utf-8-sig",  # PowerShell 5: Out-File -Encoding utf8, Set-Content -Encoding utf8
+        "utf-16",  # PowerShell 5: `>` and Out-File (UTF-16 LE with a BOM)
+        "utf-16-le",
+        "utf-32",
+    ],
+)
+def test_load_json_input_reads_what_windows_tools_write(tmp_path, encoding):
+    path = tmp_path / "where.json"
+    path.write_bytes('{"name": "Zoë"}\r\n'.encode(encoding))
+    assert load_json_input(f"@{path}", param_hint="--where") == {"name": "Zoë"}
+
+
+def test_load_json_input_inline_byte_order_mark():
+    assert load_json_input('\ufeff{"a": 1}', param_hint="--where") == {"a": 1}
+
+
+def test_load_json_input_text_in_another_encoding_is_a_usage_error(tmp_path):
+    path = tmp_path / "where.json"
+    path.write_bytes('{"name": "Zoë"}'.encode("cp1252"))
+    with pytest.raises(click.BadParameter, match="isn't UTF-8, UTF-16 or UTF-32"):
+        load_json_input(f"@{path}", param_hint="--where")
 
 
 def test_invalid_json_input_in_a_command():

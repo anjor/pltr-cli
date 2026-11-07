@@ -374,7 +374,10 @@ def upload_media(
 
 
 @app.command("download")
-@pltr_command(sdk=("media_sets.MediaSet.read", "media_sets.MediaSet.read_original"))
+@pltr_command(
+    sdk=("media_sets.MediaSet.read", "media_sets.MediaSet.read_original"),
+    binary=True,
+)
 def download_media(
     media_set_rid: MediaSetRid,
     media_item_rid: MediaItemRid,
@@ -471,7 +474,7 @@ def thumbnail_calculate(
 
 
 @app.command("thumbnail-retrieve")
-@pltr_command(sdk="media_sets.MediaSet.retrieve", beta=True)
+@pltr_command(sdk="media_sets.MediaSet.retrieve", beta=True, binary=True)
 def thumbnail_retrieve(
     media_set_rid: MediaSetRid,
     media_item_rid: MediaItemRid,

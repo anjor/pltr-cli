@@ -76,5 +76,5 @@ OpenAI models
 - `MODEL_ID`: The model's API name (LanguageModelApiName in the Foundry API).
 - `--input`, `-i` TEXT (required): Text to embed: a string, a JSON array of strings ('["a", "b"]') or @file.json.
 - `--dimensions`, `-d` INTEGER: Number of dimensions of the embeddings (not every model supports it).
-- `--encoding`, `-e` float|base64: Encoding of the embeddings: float or base64.
+- `--encoding`, `-e` float: Encoding of the embeddings: float (the default).
 - beta · SDK: `language_models.OpenAiModel.embeddings`

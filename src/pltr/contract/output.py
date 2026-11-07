@@ -316,7 +316,8 @@ def emit(
             paged response model (tables show its ``data``; JSON prints the
             whole response) or ``None`` (a call with no response body).
         format: ``table``, ``json`` or ``csv`` (the command's ``--format``).
-        output: file path from ``--output``; stdout when ``None``.
+        output: file path from ``--output``; stdout when ``None`` or ``-``
+            (as for binary output).
         columns: curated table/CSV columns (see module docstring). Defaults
             to :func:`auto_columns`. Ignored for JSON.
         rows: for table/CSV only, a callable returning the row items when
@@ -332,6 +333,8 @@ def emit(
     stderr (JSON carries it as ``nextPageToken``).
     """
     fmt = (format or "table").lower()
+    if output == "-":
+        output = None  # `--output -` is stdout, in every format
     if fmt == "json":
         document = json.dumps(to_document(result), indent=2, ensure_ascii=True)
         _write_text(document + "\n", output)
@@ -434,7 +437,10 @@ def write_bytes_atomically(path: Union[str, "os.PathLike[str]"], chunks: Any) ->
     directory, name = os.path.split(target)
     temporary = os.path.join(directory, f".{name}.{secrets.token_hex(4)}.part")
     # 0o666 & ~umask, like open(); O_EXCL never reuses an existing file.
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    # O_BINARY (Windows): os.open() defaults to text mode there, which would
+    # turn every \n written into \r\n.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    descriptor = os.open(temporary, flags, 0o666)
     written = 0
     try:
         with os.fdopen(descriptor, "wb") as handle:

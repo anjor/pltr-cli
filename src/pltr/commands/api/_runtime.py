@@ -381,6 +381,11 @@ def _epilog(spec: Dict[str, Any], context: Dict[str, Any]) -> str:
             "Paged: prints one page (the API's response) by default; --max-pages "
             "and --all fetch more."
         )
+    if spec.get("stop_at_empty_page"):
+        lines.append(
+            "The API returns a next page token on every page (to poll for new "
+            "items): --max-pages and --all stop at the first empty page."
+        )
     if spec.get("binary"):
         lines.append("Binary response: written to --output FILE or to stdout.")
     if spec.get("destructive"):
@@ -394,7 +399,7 @@ class ApiCommand(click.Command):
     `spec` is the generated method spec and `sdk_method` the dotted SDK path
     (e.g. "admin.User.list"). The command's `pltr.contract` CommandMeta (read
     with `get_command_meta`) carries the same SDK path and the beta,
-    destructive and paged flags.
+    destructive, paged and binary flags.
     """
 
     def __init__(
@@ -452,6 +457,7 @@ def build_method_command(
         beta=bool(spec.get("beta")),
         destructive=bool(spec.get("destructive")),
         paged=bool(spec.get("paged")),
+        binary=bool(spec.get("binary")),
     )(run)
     return ApiCommand(
         spec["name"],
@@ -609,9 +615,13 @@ def run_method(
     output = values.pop("output", None)
     profile = values.pop("profile", None)
     yes = bool(values.pop("yes", False))
+    # The shared paging options of paged commands. A command that isn't paged
+    # has none: its own page_size/page_token (if the SDK method takes them, e.g.
+    # `models model experiment series json`) are ordinary SDK parameters.
+    paging_options = ("page_size", "page_token", "max_pages", "all_pages")
     paging = {
-        key: values.pop(key, None)
-        for key in ("page_size", "page_token", "max_pages", "all_pages")
+        key: values.pop(key, None) if spec.get("paged") else None
+        for key in paging_options
     }
     kwargs = build_kwargs(spec, values)
     if spec.get("paged") and paging["page_size"] is not None:
@@ -706,6 +716,7 @@ def run_paged(
             page_token=paging["page_token"],
             max_pages=max_pages,
             all_pages=bool(paging["all_pages"]),
+            stop_at_empty_page=bool(spec.get("stop_at_empty_page")),
         )
         emit(page, format=fmt, output=output)
     else:

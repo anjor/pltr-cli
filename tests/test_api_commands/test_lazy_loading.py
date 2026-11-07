@@ -79,6 +79,7 @@ def test_every_generated_command_has_contract_metadata():
             beta=bool(spec.get("beta")),
             destructive=bool(spec.get("destructive")),
             paged=bool(spec.get("paged")),
+            binary=bool(spec.get("binary")),
         ), entry.path
 
 
