@@ -1,560 +1,393 @@
-"""
-Tests for widget management commands.
+"""Tests for `pltr widgets` against a real FoundryClient (only HTTP is faked).
+
+Every Widgets endpoint is beta, so every request carries preview=true and
+every command's help starts with [beta]. (These tests replace Mock-based ones
+that asserted calls to `DevModeSettings.get/disable/pause`, which don't exist
+in the SDK; the `widgets dev-mode` group was removed.)
 """
 
-from unittest.mock import Mock, patch
+import csv
+import io
+import json
 
 import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_widgets as wj
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+RELEASES = f"/api/v2/widgets/widgetSets/{wj.WIDGET_SET_RID}/releases"
 
 
-class TestWidgetsCommands:
-    """Test widgets CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, list(args), **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock WidgetsService."""
-        with patch("pltr.commands.widgets.WidgetsService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
-    # ===== Widget Set Get Command Tests =====
 
-    def test_get_widget_set_success(self, runner, mock_service) -> None:
-        """Test successful get widget set command."""
-        # Setup
-        widget_set_result = {
-            "rid": "ri.widgetregistry..widget-set.abc123",
-            "name": "my-widgets",
-            "widgets": [{"id": "widget1", "name": "Widget One"}],
-        }
-        mock_service.get_widget_set.return_value = widget_set_result
+@pytest.fixture
+def interactive(monkeypatch):
+    """Pretend stdin is a terminal so confirmation prompts are allowed."""
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
 
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "get",
-                "ri.widgetregistry..widget-set.abc123",
-                "--format",
-                "json",
-            ],
+
+# ------------------------------------------------------------------- help
+
+
+@pytest.mark.parametrize(
+    "group, commands",
+    [
+        (["widgets"], ["get"]),
+        (["widgets", "release"], ["list", "get", "delete"]),
+        (["widgets", "repository"], ["get"]),
+    ],
+)
+def test_every_command_is_labeled_beta(group, commands):
+    result = invoke(*group, "--help")
+
+    assert result.exit_code == 0
+    for command in commands:
+        line = next(
+            line for line in result.stdout.splitlines() if f" {command} " in line
         )
+        assert "[beta]" in line, line
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_widget_set.assert_called_once_with(
-            "ri.widgetregistry..widget-set.abc123"
-        )
-
-    def test_get_widget_set_error(self, runner, mock_service) -> None:
-        """Test get widget set command with error."""
-        # Setup
-        mock_service.get_widget_set.side_effect = RuntimeError("Widget set not found")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "get",
-                "ri.widgetregistry..widget-set.invalid",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get widget set" in result.stderr
-
-    # ===== Dev Mode Get Command Tests =====
-
-    def test_dev_mode_get_success(self, runner, mock_service) -> None:
-        """Test successful get dev mode settings command."""
-        # Setup
-        settings_result = {
-            "enabled": True,
-            "paused": False,
-            "widgetSetSettings": {},
-        }
-        mock_service.get_dev_mode_settings.return_value = settings_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "get",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_dev_mode_settings.assert_called_once()
-
-    def test_dev_mode_get_error(self, runner, mock_service) -> None:
-        """Test get dev mode settings command with error."""
-        # Setup
-        mock_service.get_dev_mode_settings.side_effect = RuntimeError("API error")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "get",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get dev mode settings" in result.stderr
-
-    # ===== Dev Mode Enable Command Tests =====
-
-    def test_dev_mode_enable_success(self, runner, mock_service) -> None:
-        """Test successful enable dev mode command."""
-        # Setup
-        settings_result = {
-            "enabled": True,
-            "paused": False,
-        }
-        mock_service.enable_dev_mode.return_value = settings_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "enable",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.enable_dev_mode.assert_called_once()
-        assert "enabled" in result.stdout.lower()
-
-    def test_dev_mode_enable_error(self, runner, mock_service) -> None:
-        """Test enable dev mode command with error."""
-        # Setup
-        mock_service.enable_dev_mode.side_effect = RuntimeError("Permission denied")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "enable",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to enable dev mode" in result.stderr
-
-    # ===== Dev Mode Disable Command Tests =====
-
-    def test_dev_mode_disable_success(self, runner, mock_service) -> None:
-        """Test successful disable dev mode command."""
-        # Setup
-        settings_result = {
-            "enabled": False,
-            "paused": False,
-        }
-        mock_service.disable_dev_mode.return_value = settings_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "disable",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.disable_dev_mode.assert_called_once()
-        assert "disabled" in result.stderr.lower()
-
-    # ===== Dev Mode Pause Command Tests =====
-
-    def test_dev_mode_pause_success(self, runner, mock_service) -> None:
-        """Test successful pause dev mode command."""
-        # Setup
-        settings_result = {
-            "enabled": True,
-            "paused": True,
-        }
-        mock_service.pause_dev_mode.return_value = settings_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "dev-mode",
-                "pause",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.pause_dev_mode.assert_called_once()
-        assert "paused" in result.stdout.lower()
-
-    # ===== Release List Command Tests =====
-
-    def test_release_list_success(self, runner, mock_service) -> None:
-        """Test successful list releases command."""
-        # Setup
-        releases_result = [
-            {"version": "1.0.0", "createdAt": "2024-01-01T00:00:00Z"},
-            {"version": "1.1.0", "createdAt": "2024-02-01T00:00:00Z"},
-        ]
-        mock_service.list_releases.return_value = releases_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "list",
-                "ri.widgetregistry..widget-set.abc123",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_releases.assert_called_once_with(
-            widget_set_rid="ri.widgetregistry..widget-set.abc123",
-            page_size=None,
-        )
-
-    def test_release_list_empty(self, runner, mock_service) -> None:
-        """Test list releases command with no results."""
-        # Setup
-        mock_service.list_releases.return_value = []
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "list",
-                "ri.widgetregistry..widget-set.abc123",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        assert "No releases found" in result.stderr
-
-    def test_release_list_with_page_size(self, runner, mock_service) -> None:
-        """Test list releases command with page size."""
-        # Setup
-        mock_service.list_releases.return_value = [{"version": "1.0.0"}]
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "list",
-                "ri.widgetregistry..widget-set.abc123",
-                "--page-size",
-                "10",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_releases.assert_called_once_with(
-            widget_set_rid="ri.widgetregistry..widget-set.abc123",
-            page_size=10,
-        )
-
-    def test_release_list_error(self, runner, mock_service) -> None:
-        """Test list releases command with error."""
-        # Setup
-        mock_service.list_releases.side_effect = RuntimeError("Widget set not found")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "list",
-                "ri.widgetregistry..widget-set.invalid",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to list releases" in result.stderr
-
-    # ===== Release Get Command Tests =====
-
-    def test_release_get_success(self, runner, mock_service) -> None:
-        """Test successful get release command."""
-        # Setup
-        release_result = {
-            "version": "1.0.0",
-            "createdAt": "2024-01-01T00:00:00Z",
-            "widgets": [{"id": "widget1"}],
-        }
-        mock_service.get_release.return_value = release_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "get",
-                "ri.widgetregistry..widget-set.abc123",
-                "1.0.0",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_release.assert_called_once_with(
-            widget_set_rid="ri.widgetregistry..widget-set.abc123",
-            release_version="1.0.0",
-        )
-
-    def test_release_get_error(self, runner, mock_service) -> None:
-        """Test get release command with error."""
-        # Setup
-        mock_service.get_release.side_effect = RuntimeError("Release not found")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "get",
-                "ri.widgetregistry..widget-set.abc123",
-                "99.99.99",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get release" in result.stderr
-
-    # ===== Release Delete Command Tests =====
-
-    def test_release_delete_success(self, runner, mock_service) -> None:
-        """Test successful delete release command."""
-        # Setup
-        mock_service.delete_release.return_value = None
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "delete",
-                "ri.widgetregistry..widget-set.abc123",
-                "1.0.0",
-                "--yes",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.delete_release.assert_called_once_with(
-            widget_set_rid="ri.widgetregistry..widget-set.abc123",
-            release_version="1.0.0",
-        )
-        assert "deleted" in result.stderr.lower()
-
-    def test_release_delete_cancelled(self, runner, mock_service) -> None:
-        """Test delete release command cancelled by user."""
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "delete",
-                "ri.widgetregistry..widget-set.abc123",
-                "1.0.0",
-            ],
-            input="n\n",
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.delete_release.assert_not_called()
-        assert "cancelled" in result.stderr.lower()
-
-    def test_release_delete_error(self, runner, mock_service) -> None:
-        """Test delete release command with error."""
-        # Setup
-        mock_service.delete_release.side_effect = RuntimeError("Cannot delete release")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "release",
-                "delete",
-                "ri.widgetregistry..widget-set.abc123",
-                "1.0.0",
-                "--yes",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to delete release" in result.stderr
-
-    # ===== Repository Get Command Tests =====
-
-    def test_repository_get_success(self, runner, mock_service) -> None:
-        """Test successful get repository command."""
-        # Setup
-        repository_result = {
-            "rid": "ri.stemma.main.repository.abc123",
-            "name": "my-widget-repo",
-            "widgetSetRid": "ri.widgetregistry..widget-set.def456",
-        }
-        mock_service.get_repository.return_value = repository_result
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "repository",
-                "get",
-                "ri.stemma.main.repository.abc123",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_repository.assert_called_once_with(
-            "ri.stemma.main.repository.abc123"
-        )
-
-    def test_repository_get_error(self, runner, mock_service) -> None:
-        """Test get repository command with error."""
-        # Setup
-        mock_service.get_repository.side_effect = RuntimeError("Repository not found")
-
-        result = runner.invoke(
-            app,
-            [
-                "widgets",
-                "repository",
-                "get",
-                "ri.stemma.main.repository.invalid",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get repository" in result.stderr
-
-    # ===== Help Command Tests =====
-
-    def test_help_command(self, runner) -> None:
-        """Test help output for commands."""
-        # Test main help
-        result = runner.invoke(app, ["widgets", "--help"])
-        assert result.exit_code == 0
-        assert "widgets" in result.stdout.lower()
-
-        # Test dev-mode help
-        result = runner.invoke(app, ["widgets", "dev-mode", "--help"])
-        assert result.exit_code == 0
-        assert "dev" in result.stdout.lower()
-
-        # Test release help
-        result = runner.invoke(app, ["widgets", "release", "--help"])
-        assert result.exit_code == 0
-        assert "release" in result.stdout.lower()
-
-        # Test repository help
-        result = runner.invoke(app, ["widgets", "repository", "--help"])
-        assert result.exit_code == 0
-        assert "repository" in result.stdout.lower()
-
-    # ===== File Output Tests =====
-
-    def test_get_widget_set_with_file_output(
-        self, runner, mock_service, tmp_path
-    ) -> None:
-        """Test get widget set command with file output."""
-        # Setup
-        widget_set_result = {
-            "rid": "ri.widgetregistry..widget-set.abc123",
-            "name": "my-widgets",
-        }
-        mock_service.get_widget_set.return_value = widget_set_result
-        output_file = tmp_path / "widget_set.json"
-
-        with patch("pltr.commands.widgets.formatter") as mock_formatter:
-            result = runner.invoke(
-                app,
-                [
-                    "widgets",
-                    "get",
-                    "ri.widgetregistry..widget-set.abc123",
-                    "--output",
-                    str(output_file),
-                    "--format",
-                    "json",
-                ],
-            )
-
-            # Assert
-            assert result.exit_code == 0
-            mock_formatter.save_to_file.assert_called_once_with(
-                [widget_set_result], str(output_file), "json"
-            )
-
-    def test_release_list_with_file_output(
-        self, runner, mock_service, tmp_path
-    ) -> None:
-        """Test list releases command with file output."""
-        # Setup
-        releases_result = [{"version": "1.0.0"}]
-        mock_service.list_releases.return_value = releases_result
-        output_file = tmp_path / "releases.json"
-
-        with patch("pltr.commands.widgets.formatter") as mock_formatter:
-            result = runner.invoke(
-                app,
-                [
-                    "widgets",
-                    "release",
-                    "list",
-                    "ri.widgetregistry..widget-set.abc123",
-                    "--output",
-                    str(output_file),
-                    "--format",
-                    "json",
-                ],
-            )
-
-            # Assert
-            assert result.exit_code == 0
-            mock_formatter.save_to_file.assert_called_once_with(
-                releases_result, str(output_file), "json"
-            )
+
+def test_dev_mode_group_was_removed():
+    result = invoke("widgets", "dev-mode", "get")
+
+    assert result.exit_code == 2
+    assert "No such command 'dev-mode'" in result.stderr
+
+
+# --------------------------------------------------------------------- get
+
+
+def test_get_widget_set_table(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.widget_set())
+
+    result = invoke("widgets", "get", wj.WIDGET_SET_RID)
+
+    assert result.exit_code == 0, result.output
+    assert wj.WIDGET_SET_RID in result.stdout
+    assert wj.REPOSITORY_RID in result.stdout
+    assert "Publish Repository" in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"/api/v2/widgets/widgetSets/{wj.WIDGET_SET_RID}"
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_widget_set_json_is_the_sdk_serialization(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.widget_set())
+
+    result = invoke("widgets", "get", wj.WIDGET_SET_RID, "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == wj.widget_set()
+    assert result.stderr == ""
+
+
+def test_get_widget_set_without_publish_repository_omits_it(stub_foundry_http):
+    body = {"rid": wj.WIDGET_SET_RID}
+    stub_foundry_http.respond(json=body)
+
+    result = invoke("widgets", "get", wj.WIDGET_SET_RID, "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert row == {"RID": wj.WIDGET_SET_RID, "Publish Repository": ""}
+
+
+def test_get_widget_set_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "WidgetSetNotFound", parameters={"widgetSetRid": wj.WIDGET_SET_RID}
+        ),
+    )
+
+    result = invoke("widgets", "get", wj.WIDGET_SET_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "WidgetSetNotFound")
+    assert error["parameters"] == {"widgetSetRid": wj.WIDGET_SET_RID}
+
+
+def test_get_widget_set_rejects_an_invalid_rid(stub_foundry_http):
+    result = invoke("widgets", "get", "not-a-rid", "-f", "json")
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+# ------------------------------------------------------------ release list
+
+
+def test_list_releases_json_keeps_the_paged_shape(stub_foundry_http):
+    body = {"data": [wj.release("1.2.0"), wj.release("1.1.0")], "nextPageToken": "t2"}
+    stub_foundry_http.respond(json=body)
+
+    result = invoke("widgets", "release", "list", wj.WIDGET_SET_RID, "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == body
+    [request] = stub_foundry_http.requests
+    assert request.url.path == RELEASES
+    assert dict(request.url.params) == {"preview": "true"}
+
+
+def test_list_releases_csv(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [wj.release("1.2.0")]})
+
+    result = invoke("widgets", "release", "list", wj.WIDGET_SET_RID, "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert row == {
+        "Version": "1.2.0",
+        "Description": "Release 1.2.0",
+        "Widget Set": wj.WIDGET_SET_RID,
+        "Repository": wj.REPOSITORY_RID,
+        "Repository Version": "1.2.0",
+    }
+
+
+def test_list_releases_table_hints_at_the_next_page(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [wj.release()], "nextPageToken": "t2"})
+
+    result = invoke("widgets", "release", "list", wj.WIDGET_SET_RID)
+
+    assert result.exit_code == 0, result.output
+    assert "1.2.0" in result.stdout
+    assert "--page-token t2" in result.stderr
+
+
+def test_list_releases_all_pages_with_branch(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [wj.release("1.2.0")], "nextPageToken": "t2"}
+    )
+    stub_foundry_http.respond(json={"data": [wj.release("1.1.0")]})
+
+    result = invoke(
+        "widgets",
+        "release",
+        "list",
+        wj.WIDGET_SET_RID,
+        "--branch",
+        "dev",
+        "--page-size",
+        "1",
+        "--all",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert [r["version"] for r in json.loads(result.stdout)["data"]] == [
+        "1.2.0",
+        "1.1.0",
+    ]
+    assert [dict(r.url.params) for r in stub_foundry_http.requests] == [
+        {"branch": "dev", "pageSize": "1", "preview": "true"},
+        {"branch": "dev", "pageSize": "1", "pageToken": "t2", "preview": "true"},
+    ]
+
+
+def test_list_releases_resumes_from_a_page_token(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
+
+    result = invoke(
+        "widgets", "release", "list", wj.WIDGET_SET_RID, "--page-token", "t2"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "No results." in result.stderr
+    [request] = stub_foundry_http.requests
+    assert request.url.params["pageToken"] == "t2"
+
+
+# ------------------------------------------------------------- release get
+
+
+def test_get_release_table(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.release("1.2.0"))
+
+    result = invoke("widgets", "release", "get", wj.WIDGET_SET_RID, "1.2.0")
+
+    assert result.exit_code == 0, result.output
+    for expected in ("1.2.0", "Release 1.2.0", wj.WIDGET_SET_RID, wj.REPOSITORY_RID):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{RELEASES}/1.2.0"
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_release_json(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.release("1.2.0"))
+
+    result = invoke(
+        "widgets", "release", "get", wj.WIDGET_SET_RID, "1.2.0", "-f", "json"
+    )
+
+    assert json.loads(result.stdout) == wj.release("1.2.0")
+
+
+def test_get_release_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "ReleaseNotFound",
+            parameters={"widgetSetRid": wj.WIDGET_SET_RID, "releaseVersion": "9.9.9"},
+        ),
+    )
+
+    result = invoke("widgets", "release", "get", wj.WIDGET_SET_RID, "9.9.9")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    assert "ReleaseNotFound" in result.stderr
+
+
+# ---------------------------------------------------------- release delete
+
+
+def test_delete_release_refuses_without_yes_when_not_interactive(stub_foundry_http):
+    result = invoke(
+        "widgets", "release", "delete", wj.WIDGET_SET_RID, "1.2.0", "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "confirmation_required"
+    assert "--yes" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_delete_release_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("widgets", "release", "delete", wj.WIDGET_SET_RID, "1.2.0", "-y")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""
+    assert f"Deleted release 1.2.0 of widget set {wj.WIDGET_SET_RID}" in result.stderr
+    [request] = stub_foundry_http.requests
+    assert request.method == "DELETE"
+    assert request.url.path == f"{RELEASES}/1.2.0"
+    assert request.url.params["preview"] == "true"
+
+
+def test_delete_release_json_prints_null(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "widgets",
+        "release",
+        "delete",
+        wj.WIDGET_SET_RID,
+        "1.2.0",
+        "--yes",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) is None
+    assert result.stderr == ""
+
+
+def test_delete_release_permission_denied(stub_foundry_http):
+    stub_foundry_http.respond(
+        403,
+        json=fj.error(
+            "DeleteReleasePermissionDenied",
+            "PERMISSION_DENIED",
+            parameters={"widgetSetRid": wj.WIDGET_SET_RID, "releaseVersion": "1.2.0"},
+        ),
+    )
+
+    result = invoke(
+        "widgets", "release", "delete", wj.WIDGET_SET_RID, "1.2.0", "-y", "-f", "json"
+    )
+
+    assert result.exit_code == 4
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "permission_denied"
+    assert error["errorName"] == "DeleteReleasePermissionDenied"
+    assert error["statusCode"] == 403
+
+
+def test_delete_release_prompts_on_stderr(stub_foundry_http, interactive):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "widgets", "release", "delete", wj.WIDGET_SET_RID, "1.2.0", input="y\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f"Delete release 1.2.0 of widget set {wj.WIDGET_SET_RID}?" in result.stderr
+    assert result.stdout == ""
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_delete_release_answering_no_aborts(stub_foundry_http, interactive):
+    result = invoke(
+        "widgets", "release", "delete", wj.WIDGET_SET_RID, "1.2.0", input="n\n"
+    )
+
+    assert result.exit_code == 1
+    assert "Aborted" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+# ---------------------------------------------------------- repository get
+
+
+def test_get_repository_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.repository())
+
+    result = invoke("widgets", "repository", "get", wj.REPOSITORY_RID, "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert row == {"RID": wj.REPOSITORY_RID, "Widget Set": wj.WIDGET_SET_RID}
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"/api/v2/widgets/repositories/{wj.REPOSITORY_RID}"
+    assert request.url.params["preview"] == "true"
+
+
+def test_get_repository_json(stub_foundry_http):
+    stub_foundry_http.respond(json=wj.repository())
+
+    result = invoke("widgets", "repository", "get", wj.REPOSITORY_RID, "-f", "json")
+
+    assert json.loads(result.stdout) == wj.repository()
+
+
+def test_get_repository_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "RepositoryNotFound", parameters={"repositoryRid": wj.REPOSITORY_RID}
+        ),
+    )
+
+    result = invoke("widgets", "repository", "get", wj.REPOSITORY_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "RepositoryNotFound")

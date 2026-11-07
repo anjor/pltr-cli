@@ -1,129 +1,234 @@
 """
-LanguageModels service wrapper for Foundry SDK.
-Provides access to Anthropic Claude models and OpenAI embeddings.
+LanguageModels service wrapper.
+
+Through foundry-platform-sdk: ``AnthropicModel.messages`` and
+``OpenAiModel.embeddings`` are beta endpoints, always called with a literal
+``preview=True``. Both take the model's API name (``LanguageModelApiName``),
+return the SDK response models unchanged and let SDK exceptions propagate.
+
+Labeled direct-HTTP exceptions (see docs/development/sdk-guardrail.md): the
+SDK has no endpoint to list language models, read a model's enrollment status
+or enroll a model. ``list_available_models``, ``get_model_enrollment_status``
+and ``enroll_model`` call Foundry with ``BaseService._make_request`` (the SDK
+client's host and auth), trying the endpoints below in order and returning
+the first answer as the endpoint sent it. None of these endpoints is in the
+SDK or verified against a live stack.
 """
 
-from typing import Any, Dict, List, Optional, Union
-import json
-import requests
+from dataclasses import dataclass
+from typing import Any, Dict, List, NoReturn, Optional, Tuple
 from urllib.parse import quote
+
+import requests
+
+from ..contract import ExitCode, PltrError
 from .base import BaseService
+
+#: ``language-models list``: GET endpoints tried in order.
+MODEL_LIST_ENDPOINTS: Tuple[str, ...] = (
+    "/api/v2/languageModels",
+    "/api/v2/llm/proxy/openai/v1/models",
+)
+
+#: ``language-models status``: GET endpoints tried in order. When neither
+#: answers, the model is looked up in the OpenAI-compatible proxy's model list.
+MODEL_STATUS_ENDPOINTS: Tuple[str, ...] = (
+    "/api/v2/languageModels/{model_id}",
+    "/api/v2/llm/models/{model_id}",
+)
+
+#: The OpenAI-compatible LLM proxy's model list (``status`` falls back to it).
+OPENAI_PROXY_MODELS_ENDPOINT = "/api/v2/llm/proxy/openai/v1/models"
+
+#: ``language-models enroll``: POST endpoints tried in order.
+MODEL_ENROLL_ENDPOINTS: Tuple[str, ...] = (
+    "/api/v2/languageModels/{model_id}/enroll",
+    "/api/v2/llm/models/{model_id}/enroll",
+)
+
+
+@dataclass
+class ModelListing:
+    """The answer of ``list_available_models``.
+
+    Attributes:
+        endpoint: the endpoint that answered, e.g. ``"GET /api/v2/languageModels"``
+        models: the model objects, as the endpoint returned them
+        next_page_token: the endpoint's ``nextPageToken``, if it sent one
+            (pltr doesn't follow it)
+    """
+
+    endpoint: str
+    models: List[Dict[str, Any]]
+    next_page_token: Optional[str] = None
+
+
+@dataclass
+class EndpointAnswer:
+    """The JSON body of the endpoint that answered (``None``: no body)."""
+
+    endpoint: str
+    body: Any
+    via_openai_proxy: bool = False
+
+
+class _NotJson:
+    """Marker for a 2xx response whose body isn't JSON."""
+
+
+_NOT_JSON = _NotJson()
+
+
+def _json_body(response: requests.Response) -> Any:
+    """The response's JSON body, ``None`` when empty, or ``_NOT_JSON``."""
+    if not response.content:
+        return None
+    try:
+        return response.json()
+    except ValueError:  # requests' JSONDecodeError is a ValueError
+        return _NOT_JSON
+
+
+def _model_items(payload: Any) -> List[Dict[str, Any]]:
+    """The model objects of a list response: its ``data`` (or ``models``) list."""
+    items: Any = []
+    if isinstance(payload, dict):
+        if "data" in payload:
+            items = payload["data"]
+        elif "models" in payload:
+            items = payload["models"]
+    elif isinstance(payload, list):
+        items = payload
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _next_page_token(payload: Any) -> Optional[str]:
+    token = payload.get("nextPageToken") if isinstance(payload, dict) else None
+    return token if isinstance(token, str) and token else None
+
+
+def _unwrap_data(body: Any) -> Any:
+    """A single model object, unwrapped from a ``{"data": {...}}`` envelope."""
+    if isinstance(body, dict) and isinstance(body.get("data"), dict):
+        return body["data"]
+    return body
+
+
+def _normalize_roles(messages: Any) -> Any:
+    """Upper-case each message's ``role`` ("user" -> "USER"), as the API expects."""
+    if not isinstance(messages, list):
+        return messages
+    normalized = []
+    for message in messages:
+        if isinstance(message, dict) and isinstance(message.get("role"), str):
+            message = {**message, "role": message["role"].upper()}
+        normalized.append(message)
+    return normalized
+
+
+class _Attempts:
+    """The endpoints a direct-HTTP lookup tried, and why each didn't answer."""
+
+    def __init__(self) -> None:
+        self.failures: List[str] = []
+        self.errors: List[requests.HTTPError] = []
+
+    def http_error(self, endpoint: str, error: requests.HTTPError) -> None:
+        status = error.response.status_code if error.response is not None else "?"
+        self.failures.append(f"{endpoint} -> HTTP {status}")
+        self.errors.append(error)
+
+    def not_json(self, endpoint: str) -> None:
+        self.failures.append(f"{endpoint} -> response is not JSON")
+
+    def summary(self) -> str:
+        return "; ".join(self.failures)
+
+    def most_telling_error(self) -> Optional[requests.HTTPError]:
+        """The last error that isn't a 404, else the last error.
+
+        A 404 only says that an endpoint doesn't exist on this stack; any
+        other status (401, 403, 400, 5xx) says why the request failed.
+        """
+        for error in reversed(self.errors):
+            if error.response is not None and error.response.status_code != 404:
+                return error
+        return self.errors[-1] if self.errors else None
+
+
+def _raise_no_answer(message: str, attempts: _Attempts) -> NoReturn:
+    """Fail after every endpoint was tried.
+
+    The most telling HTTP error is kept as ``__cause__``, so the error layer
+    reports its status, Foundry error name and exit code.
+    """
+    summary = f"{message} ({attempts.summary()})"
+    cause = attempts.most_telling_error()
+    if cause is None:
+        raise PltrError(summary, error_type="api_error", exit_code=ExitCode.API)
+    raise RuntimeError(summary) from cause
 
 
 class LanguageModelsService(BaseService):
-    """Service wrapper for Foundry LanguageModels operations."""
+    """Service wrapper for Foundry language models (``client.language_models``)."""
 
-    _MODEL_LIST_ENDPOINTS = [
-        "/v2/languageModels",
-        "/api/v2/llm/proxy/openai/v1/models",
-    ]
-    _MODEL_STATUS_ENDPOINTS = [
-        "/v2/languageModels/{model_id}",
-        "/api/v2/llm/models/{model_id}",
-    ]
-    _MODEL_ENROLL_ENDPOINTS = [
-        "/v2/languageModels/{model_id}/enroll",
-        "/api/v2/llm/models/{model_id}/enroll",
-    ]
+    # The direct-HTTP endpoints, also as the class attributes they used to be
+    # (tests/test_auth/test_headless_auth.py reads _MODEL_LIST_ENDPOINTS).
+    _MODEL_LIST_ENDPOINTS = MODEL_LIST_ENDPOINTS
+    _MODEL_STATUS_ENDPOINTS = MODEL_STATUS_ENDPOINTS
+    _MODEL_ENROLL_ENDPOINTS = MODEL_ENROLL_ENDPOINTS
 
     def _get_service(self) -> Any:
         """Get the Foundry LanguageModels service."""
         return self.client.language_models
 
-    # ===== Anthropic Model Operations =====
+    # ===== Anthropic models (SDK, beta) =====
 
     def send_message(
         self,
         model_id: str,
         message: str,
+        *,
         max_tokens: int = 1024,
         system: Optional[str] = None,
         temperature: Optional[float] = None,
         stop_sequences: Optional[List[str]] = None,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Send a single message to an Anthropic model (simplified interface).
+    ) -> Any:
+        """Send one user message (``AnthropicModel.messages``, beta).
 
         Args:
-            model_id: Model Resource Identifier
-                Format: ri.language-models.main.model.<id>
+            model_id: The model's API name (``LanguageModelApiName``)
             message: User message text
-            max_tokens: Maximum tokens to generate (default: 1024)
-            system: Optional system prompt to guide model behavior
+            max_tokens: Maximum number of tokens to generate
+            system: System prompt
             temperature: Sampling temperature (0.0-1.0)
-                Lower values are more deterministic
-            stop_sequences: Optional list of sequences that stop generation
-            top_k: Sample from top K tokens (Anthropic models only)
+            stop_sequences: Sequences that stop generation
+            top_k: Sample from the top K tokens
             top_p: Nucleus sampling threshold (0.0-1.0)
-            preview: Enable preview mode (default: False)
 
         Returns:
-            Response dictionary containing:
-            - content: List of content blocks (text, tool use, etc.)
-            - role: Message role (typically "assistant")
-            - model: Model identifier
-            - stopReason: Reason generation stopped
-            - usage: Token usage statistics
-                - inputTokens: Input tokens consumed
-                - outputTokens: Output tokens generated
-                - totalTokens: Total tokens (input + output)
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = LanguageModelsService()
-            >>> response = service.send_message(
-            ...     "ri.language-models.main.model.abc123",
-            ...     "Explain quantum computing",
-            ...     max_tokens=200
-            ... )
-            >>> print(response['content'][0]['text'])
+            The ``AnthropicMessagesResponse`` model
         """
-        try:
-            # Transform simple message to SDK message format
-            messages = [
-                {
-                    "role": "USER",
-                    "content": [{"type": "text", "text": message}],
-                }
-            ]
-
-            # Build SDK kwargs
-            request_kwargs: Dict[str, Any] = {
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "preview": preview,
-            }
-
-            # Add optional parameters if provided
-            if system is not None:
-                request_kwargs["system"] = [{"type": "text", "text": system}]
-            if temperature is not None:
-                request_kwargs["temperature"] = temperature
-            if stop_sequences is not None:
-                request_kwargs["stop_sequences"] = stop_sequences
-            if top_k is not None:
-                request_kwargs["top_k"] = top_k
-            if top_p is not None:
-                request_kwargs["top_p"] = top_p
-
-            # Call SDK method
-            response = self.service.AnthropicModel.messages(
-                model_id,
-                **request_kwargs,  # type: ignore[arg-type,call-overload]
-            )
-
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to send message to model {model_id}: {e}")
+        return self.service.AnthropicModel.messages(
+            model_id,
+            max_tokens=max_tokens,
+            messages=[{"role": "USER", "content": [{"type": "text", "text": message}]}],
+            stop_sequences=stop_sequences,
+            system=[{"type": "text", "text": system}] if system is not None else None,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            preview=True,
+        )
 
     def send_messages_advanced(
         self,
         model_id: str,
+        *,
         messages: List[Dict[str, Any]],
         max_tokens: int,
         system: Optional[List[Dict[str, Any]]] = None,
@@ -134,414 +239,181 @@ class LanguageModelsService(BaseService):
         stop_sequences: Optional[List[str]] = None,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Send messages to an Anthropic model with advanced features.
+        output_config: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Send a full messages request (``AnthropicModel.messages``, beta).
 
-        This method accepts the full SDK request structure, enabling:
-        - Multi-turn conversations
-        - Tool/function calling
-        - Extended thinking mode
-        - Document and image processing
-        - Citations
-
-        Args:
-            model_id: Model Resource Identifier
-                Format: ri.language-models.main.model.<id>
-            messages: List of message objects with role and content
-                Format: [{"role": "USER|ASSISTANT", "content": [...]}]
-            max_tokens: Maximum tokens to generate
-            system: Optional system prompt blocks
-                Format: [{"type": "text", "text": "..."}]
-            temperature: Sampling temperature (0.0-1.0)
-            thinking: Extended thinking configuration
-                Format: {"type": "enabled", "budget": 10000}
-            tools: Tool definitions for function calling
-            tool_choice: Tool selection strategy
-            stop_sequences: Sequences that stop generation
-            top_k: Sample from top K tokens
-            top_p: Nucleus sampling threshold (0.0-1.0)
-            preview: Enable preview mode (default: False)
+        Arguments are the fields of the API's ``AnthropicMessagesRequest``,
+        as JSON with the API's field names inside (``{"type": "text", ...}``).
+        Message roles are upper-cased (``user`` -> ``USER``).
 
         Returns:
-            Response dictionary containing:
-            - content: List of content blocks (text, tool use, thinking, etc.)
-            - role: Message role (typically "assistant")
-            - model: Model identifier
-            - stopReason: Reason generation stopped
-            - usage: Token usage statistics
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = LanguageModelsService()
-            >>> messages = [
-            ...     {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
-            ...     {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
-            ...     {"role": "USER", "content": [{"type": "text", "text": "Help me"}]}
-            ... ]
-            >>> response = service.send_messages_advanced(
-            ...     "ri.language-models.main.model.abc123",
-            ...     messages=messages,
-            ...     max_tokens=500
-            ... )
+            The ``AnthropicMessagesResponse`` model
         """
-        try:
-            normalized_messages: List[Dict[str, Any]] = []
-            for msg in messages:
-                normalized_msg = dict(msg)
-                role = normalized_msg.get("role")
-                if isinstance(role, str):
-                    normalized_msg["role"] = role.upper()
-                normalized_messages.append(normalized_msg)
+        return self.service.AnthropicModel.messages(
+            model_id,
+            max_tokens=max_tokens,
+            messages=_normalize_roles(messages),
+            output_config=output_config,
+            stop_sequences=stop_sequences,
+            system=system,
+            temperature=temperature,
+            thinking=thinking,
+            tool_choice=tool_choice,
+            tools=tools,
+            top_k=top_k,
+            top_p=top_p,
+            preview=True,
+        )
 
-            # Build SDK kwargs
-            request_kwargs: Dict[str, Any] = {
-                "messages": normalized_messages,
-                "max_tokens": max_tokens,
-                "preview": preview,
-            }
-
-            # Add optional parameters if provided
-            if system is not None:
-                request_kwargs["system"] = system
-            if temperature is not None:
-                request_kwargs["temperature"] = temperature
-            if thinking is not None:
-                request_kwargs["thinking"] = thinking
-            if tools is not None:
-                request_kwargs["tools"] = tools
-            if tool_choice is not None:
-                request_kwargs["tool_choice"] = tool_choice
-            if stop_sequences is not None:
-                request_kwargs["stop_sequences"] = stop_sequences
-            if top_k is not None:
-                request_kwargs["top_k"] = top_k
-            if top_p is not None:
-                request_kwargs["top_p"] = top_p
-
-            # Call SDK method
-            response = self.service.AnthropicModel.messages(
-                model_id,
-                **request_kwargs,  # type: ignore[arg-type,call-overload]
-            )
-
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to send messages to model {model_id}: {e}")
-
-    # ===== OpenAI Model Operations =====
+    # ===== OpenAI models (SDK, beta) =====
 
     def generate_embeddings(
         self,
         model_id: str,
         input_texts: List[str],
+        *,
         dimensions: Optional[int] = None,
         encoding_format: Optional[str] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Generate embeddings for text using an OpenAI model.
+    ) -> Any:
+        """Embed texts (``OpenAiModel.embeddings``, beta).
 
         Args:
-            model_id: Model Resource Identifier
-                Format: ri.language-models.main.model.<id>
-            input_texts: List of text strings to embed
-                Can be a single string or multiple strings
-            dimensions: Optional custom embedding dimensions
-                Not all models support this parameter
-            encoding_format: Output encoding format
-                Options: "float" (default) or "base64"
-            preview: Enable preview mode (default: False)
+            model_id: The model's API name (``LanguageModelApiName``)
+            input_texts: Texts to embed
+            dimensions: Number of dimensions of the embeddings
+            encoding_format: ``float`` or ``base64`` (any case)
 
         Returns:
-            Response dictionary containing:
-            - data: List of embedding objects
-                Each object has:
-                - embedding: Vector (list of floats or base64 string)
-                - index: Position in input array
-                - object: Type identifier ("embedding")
-            - model: Model identifier
-            - usage: Token usage statistics
-                - promptTokens: Input tokens consumed
-                - totalTokens: Total tokens
+            The ``OpenAiEmbeddingsResponse`` model: one vector per input in ``data``
+        """
+        return self.service.OpenAiModel.embeddings(
+            model_id,
+            input=input_texts,
+            dimensions=dimensions,
+            encoding_format=encoding_format.upper() if encoding_format else None,
+            preview=True,
+        )
+
+    # ===== Labeled direct-HTTP exceptions =====
+
+    def list_available_models(self) -> ModelListing:
+        """List the language models available to the user (direct HTTP).
+
+        Tries ``MODEL_LIST_ENDPOINTS`` in order. An endpoint that fails with
+        an HTTP error, or answers with something other than JSON, is skipped.
+        Reads one response; it doesn't follow a ``nextPageToken``.
 
         Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = LanguageModelsService()
-            >>> response = service.generate_embeddings(
-            ...     "ri.language-models.main.model.xyz789",
-            ...     input_texts=["Machine learning", "Deep learning"]
-            ... )
-            >>> embeddings = [item['embedding'] for item in response['data']]
+            RuntimeError: no endpoint answered; ``__cause__`` is the most
+                telling ``requests.HTTPError``
+            PltrError: no endpoint answered with JSON, and none failed with
+                an HTTP error status
         """
-        try:
-            # Build SDK kwargs
-            request_kwargs: Dict[str, Any] = {
-                "input": input_texts,
-                "preview": preview,
-            }
-
-            # Add optional parameters if provided
-            if dimensions is not None:
-                request_kwargs["dimensions"] = dimensions
-            if encoding_format is not None:
-                # CLI accepts "float"/"base64", while SDK expects uppercase literals.
-                request_kwargs["encoding_format"] = encoding_format.upper()
-
-            # Call SDK method
-            response = self.service.OpenAiModel.embeddings(
-                model_id,
-                **request_kwargs,  # type: ignore[arg-type,call-overload]
-            )
-
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to generate embeddings with model {model_id}: {e}"
-            )
-
-    def list_available_models(self) -> List[Dict[str, Any]]:
-        """
-        List language models available to the authenticated user.
-
-        Tries the platform language-model listing endpoint first, then falls back
-        to the provider-compatible OpenAI models endpoint.
-        Note: This currently reads a single response per endpoint and does not
-        follow pagination tokens.
-
-        Returns:
-            List of model dictionaries with normalized keys:
-            - model_rid
-            - status
-            - type
-            - display_name
-
-        Raises:
-            RuntimeError: If no listing endpoint succeeds
-        """
-        last_error: Optional[Exception] = None
-
-        for endpoint in self._MODEL_LIST_ENDPOINTS:
+        attempts = _Attempts()
+        for path in MODEL_LIST_ENDPOINTS:
+            endpoint = f"GET {path}"
             try:
-                response = self._make_request("GET", endpoint)
-            except (requests.RequestException, RuntimeError) as e:
-                last_error = e
+                response = self._make_request("GET", path)
+            except requests.HTTPError as error:
+                attempts.http_error(endpoint, error)
                 continue
-
-            payload = response.json() if response.text else {}
-            return self._normalize_model_list(
-                payload,
-                is_openai_source=("openai/v1/models" in endpoint),
-            )
-
-        raise RuntimeError(f"Failed to list available language models: {last_error}")
-
-    def _normalize_model_list(
-        self, payload: Union[Dict[str, Any], List[Any]], is_openai_source: bool = False
-    ) -> List[Dict[str, Any]]:
-        """Normalize varied model list payloads into a stable CLI schema."""
-        raw_models: List[Any] = []
-        if isinstance(payload, dict):
-            if "data" in payload:
-                data = payload.get("data")
-                if isinstance(data, list):
-                    raw_models = data
-            elif "models" in payload:
-                models = payload.get("models")
-                if isinstance(models, list):
-                    raw_models = models
-        elif isinstance(payload, list):
-            raw_models = payload
-
-        normalized: List[Dict[str, Any]] = []
-        for model in raw_models:
-            if not isinstance(model, dict):
+            payload = _json_body(response)
+            if payload is _NOT_JSON:
+                attempts.not_json(endpoint)
                 continue
-
-            model_id = (
-                model.get("rid")
-                or model.get("modelRid")
-                or model.get("id")
-                or model.get("apiName")
-                or model.get("name")
+            return ModelListing(
+                endpoint=endpoint,
+                models=_model_items(payload),
+                next_page_token=_next_page_token(payload),
             )
-            if not model_id:
-                continue
+        _raise_no_answer("No endpoint listed the language models", attempts)
 
-            status = (
-                model.get("status")
-                or model.get("enrollmentStatus")
-                or ("AVAILABLE" if is_openai_source else "UNKNOWN")
-            )
+    def get_model_enrollment_status(self, model_id: str) -> EndpointAnswer:
+        """Get a model's enrollment status (direct HTTP).
 
-            model_type = (
-                model.get("type")
-                or model.get("provider")
-                or model.get("modelType")
-                or model.get("family")
-                or ("OPENAI" if is_openai_source else "UNKNOWN")
-            )
-
-            normalized.append(
-                {
-                    "model_rid": str(model_id),
-                    "status": str(status),
-                    "type": str(model_type),
-                    "display_name": (
-                        model.get("displayName")
-                        or model.get("name")
-                        or model.get("id")
-                        or str(model_id)
-                    ),
-                }
-            )
-
-        normalized.sort(key=lambda item: item["model_rid"])
-        return normalized
-
-    def get_model_enrollment_status(self, model_id: str) -> Dict[str, Any]:
-        """
-        Get enrollment status for a language model.
+        Tries ``MODEL_STATUS_ENDPOINTS`` in order, then looks the model up by
+        ``id`` in the OpenAI-compatible proxy's model list
+        (``via_openai_proxy`` is then set; that list has no enrollment status).
 
         Args:
             model_id: Model RID or API name
 
-        Returns:
-            Dictionary with normalized keys:
-            - model_rid
-            - status
-            - type
-            - display_name
+        Raises:
+            RuntimeError: no endpoint answered (``__cause__``: the most telling
+                ``requests.HTTPError``)
+            PltrError: the proxy's model list doesn't have the model (not found)
         """
         encoded_model_id = quote(model_id, safe="")
-        last_error: Optional[Exception] = None
-
-        for endpoint_template in self._MODEL_STATUS_ENDPOINTS:
-            endpoint = endpoint_template.format(model_id=encoded_model_id)
+        attempts = _Attempts()
+        for template in MODEL_STATUS_ENDPOINTS:
+            path = template.format(model_id=encoded_model_id)
+            endpoint = f"GET {path}"
             try:
-                response = self._make_request("GET", endpoint)
-                payload = response.json() if response.text else {}
-                return self._normalize_single_model_status(model_id, payload)
-            except (
-                requests.RequestException,
-                RuntimeError,
-                json.JSONDecodeError,
-            ) as e:
-                last_error = e
+                response = self._make_request("GET", path)
+            except requests.HTTPError as error:
+                attempts.http_error(endpoint, error)
                 continue
+            body = _json_body(response)
+            if body is _NOT_JSON:
+                attempts.not_json(endpoint)
+                continue
+            return EndpointAnswer(endpoint=endpoint, body=_unwrap_data(body))
 
-        # Fallback: infer availability from provider-compatible OpenAI models list.
+        endpoint = f"GET {OPENAI_PROXY_MODELS_ENDPOINT}"
+        failed = f"Couldn't get the status of model {model_id}"
         try:
-            response = self._make_request("GET", "/api/v2/llm/proxy/openai/v1/models")
-            payload = response.json() if response.text else {}
-        except (
-            requests.RequestException,
-            RuntimeError,
-            json.JSONDecodeError,
-        ) as fallback_error:
-            raise RuntimeError(
-                f"Failed to get model enrollment status for {model_id}. "
-                f"Primary endpoint error: {last_error}. "
-                f"Fallback endpoint error: {fallback_error}"
-            )
-
-        for item in payload.get("data", []) if isinstance(payload, dict) else []:
-            if isinstance(item, dict) and item.get("id") == model_id:
-                return self._normalize_single_model_status(
-                    model_id,
-                    item,
-                    default_status="AVAILABLE_VIA_PROXY",
-                    default_type="OPENAI",
-                    default_display_name=model_id,
+            response = self._make_request("GET", OPENAI_PROXY_MODELS_ENDPOINT)
+        except requests.HTTPError as error:
+            attempts.http_error(endpoint, error)
+            _raise_no_answer(failed, attempts)
+        payload = _json_body(response)
+        if payload is _NOT_JSON:
+            attempts.not_json(endpoint)
+            _raise_no_answer(failed, attempts)
+        for item in _model_items(payload):
+            if item.get("id") == model_id:
+                return EndpointAnswer(
+                    endpoint=endpoint, body=item, via_openai_proxy=True
                 )
-
-        raise RuntimeError(
-            f"Model '{model_id}' not found via any known endpoint. "
-            f"Last primary endpoint error: {last_error}"
+        raise PltrError(
+            f"Model {model_id} not found: {endpoint} doesn't list it, and the "
+            f"language-model endpoints didn't answer ({attempts.summary()})",
+            error_type="not_found",
+            exit_code=ExitCode.NOT_FOUND,
+            hint="Run 'pltr language-models list' to see the models you can use.",
         )
 
-    def enroll_model(self, model_id: str) -> Dict[str, Any]:
-        """
-        Enroll or enable a language model for API usage.
+    def enroll_model(self, model_id: str) -> EndpointAnswer:
+        """Enroll (enable) a language model for API use (direct HTTP).
+
+        POSTs ``{}`` to ``MODEL_ENROLL_ENDPOINTS`` in order; the first one
+        that answers (2xx, with a JSON or empty body) wins.
 
         Args:
             model_id: Model RID or API name
 
-        Returns:
-            Enrollment result dictionary with normalized keys:
-            - model_rid
-            - status
-            - type
-            - display_name
+        Raises:
+            RuntimeError: no endpoint answered (``__cause__``: the most telling
+                ``requests.HTTPError``)
         """
         encoded_model_id = quote(model_id, safe="")
-        last_error: Optional[Exception] = None
-
-        for endpoint_template in self._MODEL_ENROLL_ENDPOINTS:
-            endpoint = endpoint_template.format(model_id=encoded_model_id)
+        attempts = _Attempts()
+        for template in MODEL_ENROLL_ENDPOINTS:
+            path = template.format(model_id=encoded_model_id)
+            endpoint = f"POST {path}"
             try:
-                response = self._make_request("POST", endpoint, json_data={})
-                payload = response.json() if response.text else {}
-                return self._normalize_single_model_status(
-                    model_id, payload, default_status="ENROLLED"
-                )
-            except (
-                requests.RequestException,
-                RuntimeError,
-                json.JSONDecodeError,
-            ) as e:
-                last_error = e
+                response = self._make_request("POST", path, json_data={})
+            except requests.HTTPError as error:
+                attempts.http_error(endpoint, error)
                 continue
-
-        raise RuntimeError(
-            f"Failed to enroll model {model_id}. "
-            f"Enrollment may require Model Catalog UI access for this model: {last_error}"
+            body = _json_body(response)
+            if body is _NOT_JSON:
+                attempts.not_json(endpoint)
+                continue
+            return EndpointAnswer(endpoint=endpoint, body=_unwrap_data(body))
+        _raise_no_answer(
+            f"Couldn't enroll model {model_id}; enrolling it may need the Model "
+            "Catalog in the Foundry UI",
+            attempts,
         )
-
-    def _normalize_single_model_status(
-        self,
-        model_id: str,
-        payload: Dict[str, Any],
-        default_status: str = "UNKNOWN",
-        default_type: str = "UNKNOWN",
-        default_display_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Normalize status payloads from varying endpoints."""
-        model_data = payload.get("data") if isinstance(payload, dict) else None
-        if isinstance(model_data, dict):
-            payload = model_data
-
-        if not isinstance(payload, dict):
-            payload = {}
-
-        return {
-            "model_rid": str(
-                payload.get("rid")
-                or payload.get("modelRid")
-                or payload.get("id")
-                or model_id
-            ),
-            "status": str(
-                payload.get("status")
-                or payload.get("enrollmentStatus")
-                or default_status
-            ),
-            "type": str(
-                payload.get("type")
-                or payload.get("provider")
-                or payload.get("modelType")
-                or default_type
-            ),
-            "display_name": str(
-                payload.get("displayName")
-                or payload.get("name")
-                or payload.get("id")
-                or default_display_name
-                or model_id
-            ),
-        }

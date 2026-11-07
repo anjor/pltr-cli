@@ -1,709 +1,456 @@
-"""Tests for LanguageModels service."""
+"""Tests for LanguageModelsService against a real FoundryClient (only HTTP is faked).
+
+``AnthropicModel.messages`` and ``OpenAiModel.embeddings`` are beta: every
+request must carry ``preview=true``. The old Mock-based tests passed
+``preview`` through from a CLI flag that defaulted to off, so the calls failed
+unless users remembered ``--preview``.
+
+``list_available_models``, ``get_model_enrollment_status`` and ``enroll_model``
+are labeled direct-HTTP exceptions; their requests go through ``requests``,
+which stub_foundry_http also records (with the bearer token of the SDK auth).
+"""
 
 import json
+
 import pytest
 import requests
-from unittest.mock import Mock, patch
-from pltr.services.language_models import LanguageModelsService
+from foundry_sdk import PermissionDeniedError
+from foundry_sdk.v2.language_models.models import (
+    AnthropicMessagesResponse,
+    OpenAiEmbeddingsResponse,
+)
+
+from pltr.contract import PltrError
+from pltr.services.language_models import (
+    LanguageModelsService,
+    ModelListing,
+)
+from tests import foundry_json as fj
+from tests import foundry_json_language_models as lm
+from tests.conftest import STUB_HOSTNAME, STUB_TOKEN
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+MESSAGES = f"/api/v2/languageModels/anthropic/{lm.MODEL_API_NAME}/messages"
+EMBEDDINGS = f"/api/v2/languageModels/openAi/{lm.EMBEDDING_MODEL}/embeddings"
+LIST = "/api/v2/languageModels"
+PROXY_MODELS = "/api/v2/llm/proxy/openai/v1/models"
 
 
-class TestLanguageModelsService:
-    """Test LanguageModels service functionality."""
+def not_found():
+    return {"status_code": 404, "json": fj.error("NotFound")}
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.language_models = Mock()
-        client.language_models.AnthropicModel = Mock()
-        client.language_models.OpenAiModel = Mock()
-        return client
 
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create LanguageModelsService with mocked client."""
-        with patch("pltr.services.base.AuthManager") as mock_auth:
-            mock_auth.return_value.get_client.return_value = mock_client
-            service = LanguageModelsService()
-            return service
+def respond(stub, *responses):
+    for response in responses:
+        stub.respond(**response)
 
-    # ===== Anthropic Messages Tests =====
 
-    def test_send_message(self, service, mock_client):
-        """Test sending a simple message."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        message = "Hello, Claude!"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "content": [{"type": "text", "text": "Hello!"}],
-            "role": "assistant",
-            "model": "claude-3-sonnet",
-            "stopReason": "end_turn",
-            "usage": {
-                "inputTokens": 10,
-                "outputTokens": 5,
-                "totalTokens": 15,
-            },
-        }
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
+def assert_direct_http(request, method, path):
+    assert request.method == method
+    assert request.url.host == STUB_HOSTNAME
+    assert request.url.path == path
+    assert request.headers["Authorization"] == f"Bearer {STUB_TOKEN}"
 
-        # Execute
-        result = service.send_message(model_id, message)
 
-        # Assert
-        mock_client.language_models.AnthropicModel.messages.assert_called_once()
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert call_args[0][0] == model_id
-        assert call_args[1]["preview"] is False
+# ===== AnthropicModel.messages (beta) =====
 
-        # Check SDK kwargs structure
-        assert "request" not in call_args[1]
-        assert call_args[1]["max_tokens"] == 1024
-        assert len(call_args[1]["messages"]) == 1
-        assert call_args[1]["messages"][0]["role"] == "USER"
-        assert call_args[1]["messages"][0]["content"][0]["text"] == message
 
-        # Check result
-        assert result["role"] == "assistant"
-        assert result["usage"]["totalTokens"] == 15
+def test_send_message_calls_the_beta_endpoint_with_preview(stub_foundry_http):
+    stub_foundry_http.respond(json=lm.anthropic_response())
 
-    def test_send_message_with_system_prompt(self, service, mock_client):
-        """Test sending message with system prompt."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        message = "Write a haiku"
-        system = "You are a poetic assistant"
-        mock_response = Mock()
-        mock_response.dict.return_value = {"content": [], "role": "assistant"}
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
+    response = LanguageModelsService().send_message(lm.MODEL_API_NAME, "Hello")
 
-        # Execute
-        service.send_message(model_id, message, system=system)
+    assert isinstance(response, AnthropicMessagesResponse)
+    assert response.content[0].text == "Hello there!"
+    assert response.usage.output_tokens == 6
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", MESSAGES)
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "messages": [{"role": "USER", "content": [{"type": "text", "text": "Hello"}]}],
+        "maxTokens": 1024,
+    }
 
-        # Assert
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert "system" in call_args[1]
-        assert call_args[1]["system"][0]["type"] == "text"
-        assert call_args[1]["system"][0]["text"] == system
 
-    def test_send_message_with_all_parameters(self, service, mock_client):
-        """Test sending message with all optional parameters."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        message = "Test message"
-        mock_response = Mock()
-        mock_response.dict.return_value = {"content": [], "role": "assistant"}
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
+def test_send_message_optional_fields(stub_foundry_http):
+    stub_foundry_http.respond(json=lm.anthropic_response())
 
-        # Execute
-        service.send_message(
-            model_id,
-            message,
-            max_tokens=500,
-            system="System prompt",
-            temperature=0.7,
-            stop_sequences=["STOP", "END"],
-            top_k=50,
-            top_p=0.9,
-            preview=True,
-        )
+    LanguageModelsService().send_message(
+        lm.MODEL_API_NAME,
+        "Write a haiku",
+        max_tokens=100,
+        system="You are a poet",
+        temperature=0.8,
+        stop_sequences=["END"],
+        top_k=40,
+        top_p=0.9,
+    )
 
-        # Assert
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert "request" not in call_args[1]
-        assert call_args[1]["max_tokens"] == 500
-        assert call_args[1]["temperature"] == 0.7
-        assert call_args[1]["stop_sequences"] == ["STOP", "END"]
-        assert call_args[1]["top_k"] == 50
-        assert call_args[1]["top_p"] == 0.9
-        assert call_args[1]["preview"] is True
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body == {
+        "messages": [
+            {"role": "USER", "content": [{"type": "text", "text": "Write a haiku"}]}
+        ],
+        "maxTokens": 100,
+        "system": [{"type": "text", "text": "You are a poet"}],
+        "temperature": 0.8,
+        "stopSequences": ["END"],
+        "topK": 40,
+        "topP": 0.9,
+    }
 
-    def test_send_message_error(self, service, mock_client):
-        """Test error handling in send_message."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        message = "Test"
-        mock_client.language_models.AnthropicModel.messages.side_effect = Exception(
-            "Model not found"
-        )
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError) as exc_info:
-            service.send_message(model_id, message)
-        assert "Failed to send message" in str(exc_info.value)
-        assert model_id in str(exc_info.value)
+def test_send_messages_advanced_sends_every_field_and_normalizes_roles(
+    stub_foundry_http,
+):
+    stub_foundry_http.respond(json=lm.tool_use_response())
+    tool = {
+        "type": "custom",
+        "name": "get_weather",
+        "inputSchema": {"type": "object", "properties": {"city": {"type": "string"}}},
+    }
 
-    def test_send_messages_advanced(self, service, mock_client):
-        """Test sending multi-turn messages."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        messages = [
-            {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
-            {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
-            {"role": "USER", "content": [{"type": "text", "text": "Help"}]},
-        ]
-        max_tokens = 500
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "content": [{"type": "text", "text": "I'm here to help!"}],
-            "role": "assistant",
-        }
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
-
-        # Execute
-        result = service.send_messages_advanced(model_id, messages, max_tokens)
-
-        # Assert
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert "request" not in call_args[1]
-        assert call_args[1]["messages"] == messages
-        assert call_args[1]["max_tokens"] == max_tokens
-        assert call_args[1]["preview"] is False
-        assert result["role"] == "assistant"
-
-    def test_send_messages_advanced_normalizes_roles(self, service, mock_client):
-        """Test advanced messages role normalization to SDK enum casing."""
-        model_id = "ri.language-models.main.model.abc123"
-        messages = [
+    response = LanguageModelsService().send_messages_advanced(
+        lm.MODEL_API_NAME,
+        messages=[
             {"role": "user", "content": [{"type": "text", "text": "Hi"}]},
             {"role": "assistant", "content": [{"type": "text", "text": "Hello!"}]},
-        ]
-        mock_response = Mock()
-        mock_response.dict.return_value = {"content": [], "role": "assistant"}
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
-
-        service.send_messages_advanced(model_id, messages, max_tokens=50)
-
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert call_args[1]["messages"][0]["role"] == "USER"
-        assert call_args[1]["messages"][1]["role"] == "ASSISTANT"
-
-    def test_send_messages_advanced_with_thinking(self, service, mock_client):
-        """Test sending messages with extended thinking."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        messages = [{"role": "USER", "content": [{"type": "text", "text": "Solve"}]}]
-        thinking = {"type": "enabled", "budget": 10000}
-        mock_response = Mock()
-        mock_response.dict.return_value = {"content": [], "role": "assistant"}
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
-
-        # Execute
-        service.send_messages_advanced(
-            model_id, messages, max_tokens=2000, thinking=thinking
-        )
-
-        # Assert
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert call_args[1]["thinking"] == thinking
-
-    def test_send_messages_advanced_with_tools(self, service, mock_client):
-        """Test sending messages with tool calling."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        messages = [
-            {"role": "USER", "content": [{"type": "text", "text": "Calculate"}]}
-        ]
-        tools = [
-            {
-                "name": "calculator",
-                "description": "Performs calculations",
-                "inputSchema": {"type": "object"},
-            }
-        ]
-        tool_choice = {"type": "auto"}
-        mock_response = Mock()
-        mock_response.dict.return_value = {"content": [], "role": "assistant"}
-        mock_client.language_models.AnthropicModel.messages.return_value = mock_response
-
-        # Execute
-        service.send_messages_advanced(
-            model_id,
-            messages,
-            max_tokens=1000,
-            tools=tools,
-            tool_choice=tool_choice,
-        )
-
-        # Assert
-        call_args = mock_client.language_models.AnthropicModel.messages.call_args
-        assert call_args[1]["tools"] == tools
-        assert call_args[1]["tool_choice"] == tool_choice
-
-    def test_send_messages_advanced_error(self, service, mock_client):
-        """Test error handling in send_messages_advanced."""
-        # Setup
-        model_id = "ri.language-models.main.model.abc123"
-        messages = [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}]
-        mock_client.language_models.AnthropicModel.messages.side_effect = Exception(
-            "API error"
-        )
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError) as exc_info:
-            service.send_messages_advanced(model_id, messages, max_tokens=100)
-        assert "Failed to send messages" in str(exc_info.value)
-
-    # ===== Language Model Discovery Tests =====
-
-    def test_list_available_models_v2_endpoint(self, service):
-        """Test listing models from native language models endpoint."""
-        mock_response = Mock()
-        mock_response.text = "ok"
-        mock_response.json.return_value = {
-            "data": [
-                {
-                    "rid": "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2",
-                    "status": "ENROLLED",
-                    "provider": "ANTHROPIC",
-                    "displayName": "Claude 3.5 Sonnet",
-                }
-            ]
-        }
-
-        with patch.object(
-            service, "_make_request", return_value=mock_response
-        ) as mock_req:
-            result = service.list_available_models()
-
-        assert len(result) == 1
-        assert (
-            result[0]["model_rid"]
-            == "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
-        )
-        assert result[0]["status"] == "ENROLLED"
-        assert result[0]["type"] == "ANTHROPIC"
-        mock_req.assert_called_once_with("GET", "/v2/languageModels")
-
-    def test_list_available_models_openai_proxy_fallback(self, service):
-        """Test fallback to provider-compatible OpenAI models endpoint."""
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {
-            "data": [
-                {
-                    "id": "gpt-4o",
-                    "object": "model",
-                }
-            ]
-        }
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[RuntimeError("404"), fallback_response],
-        ) as mock_req:
-            result = service.list_available_models()
-
-        assert len(result) == 1
-        assert result[0]["model_rid"] == "gpt-4o"
-        assert result[0]["status"] == "AVAILABLE"
-        assert result[0]["type"] == "OPENAI"
-        assert mock_req.call_count == 2
-        assert mock_req.call_args_list[0].args == ("GET", "/v2/languageModels")
-        assert mock_req.call_args_list[1].args == (
-            "GET",
-            "/api/v2/llm/proxy/openai/v1/models",
-        )
-
-    def test_list_available_models_connection_error_fallback(self, service):
-        """Test fallback when the first endpoint fails with network error."""
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {"data": [{"id": "gpt-4.1"}]}
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[requests.ConnectionError("network down"), fallback_response],
-        ) as mock_req:
-            result = service.list_available_models()
-
-        assert len(result) == 1
-        assert result[0]["model_rid"] == "gpt-4.1"
-        assert mock_req.call_args_list[-1].args == (
-            "GET",
-            "/api/v2/llm/proxy/openai/v1/models",
-        )
-
-    def test_list_available_models_prefers_explicit_empty_data(self, service):
-        """Test that an explicit empty `data` list does not fall back to `models`."""
-        mock_response = Mock()
-        mock_response.text = "ok"
-        mock_response.json.return_value = {
-            "data": [],
-            "models": [{"id": "should-not-be-used"}],
-        }
-
-        with patch.object(
-            service, "_make_request", return_value=mock_response
-        ) as mock_req:
-            result = service.list_available_models()
-
-        assert result == []
-        mock_req.assert_called_once_with("GET", "/v2/languageModels")
-
-    def test_list_available_models_json_error_not_swallowed(self, service):
-        """Test that JSON parsing errors are surfaced and do not trigger fallback."""
-        bad_response = Mock()
-        bad_response.text = "not-json"
-        bad_response.json.side_effect = ValueError("invalid json")
-
-        with patch.object(
-            service, "_make_request", return_value=bad_response
-        ) as mock_req:
-            with pytest.raises(ValueError, match="invalid json"):
-                service.list_available_models()
-
-        mock_req.assert_called_once_with("GET", "/v2/languageModels")
-
-    def test_list_available_models_error(self, service):
-        """Test error handling when all model listing endpoints fail."""
-        with patch.object(
-            service, "_make_request", side_effect=RuntimeError("unavailable")
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                service.list_available_models()
-
-        assert "Failed to list available language models" in str(exc_info.value)
-
-    # ===== Enrollment/Status Tests =====
-
-    def test_get_model_enrollment_status(self, service):
-        """Test getting model enrollment status."""
-        model_id = (
-            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
-        )
-        mock_response = Mock()
-        mock_response.text = "ok"
-        mock_response.json.return_value = {
-            "rid": model_id,
-            "status": "ENROLLED",
-            "provider": "ANTHROPIC",
-            "displayName": "Claude 3.5 Sonnet",
-        }
-
-        with patch.object(
-            service, "_make_request", return_value=mock_response
-        ) as mock_req:
-            result = service.get_model_enrollment_status(model_id)
-
-        assert result["model_rid"] == model_id
-        assert result["status"] == "ENROLLED"
-        assert result["type"] == "ANTHROPIC"
-        mock_req.assert_called_once_with(
-            "GET",
-            "/v2/languageModels/ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2",
-        )
-
-    def test_get_model_enrollment_status_openai_proxy_fallback(self, service):
-        """Test status fallback to OpenAI-compatible models listing."""
-        model_id = "gpt-4o"
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {
-            "data": [{"id": "gpt-4o"}, {"id": "gpt-4.1"}]
-        }
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[
-                RuntimeError("not found"),
-                RuntimeError("not found"),
-                fallback_response,
-            ],
-        ) as mock_req:
-            result = service.get_model_enrollment_status(model_id)
-
-        assert result["model_rid"] == "gpt-4o"
-        assert result["status"] == "AVAILABLE_VIA_PROXY"
-        assert result["type"] == "OPENAI"
-        assert mock_req.call_args_list[-1].args == (
-            "GET",
-            "/api/v2/llm/proxy/openai/v1/models",
-        )
-
-    def test_get_model_enrollment_status_not_found_after_fallback(self, service):
-        """Test error when model is not found in fallback list either."""
-        model_id = "missing-model"
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {"data": [{"id": "gpt-4o"}]}
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[
-                RuntimeError("not found"),
-                RuntimeError("not found"),
-                fallback_response,
-            ],
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                service.get_model_enrollment_status(model_id)
-
-        assert "not found via any known endpoint" in str(exc_info.value)
-
-    def test_get_model_enrollment_status_fallback_request_failure(self, service):
-        """Test error details when fallback endpoint request fails."""
-        model_id = "missing-model"
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[
-                RuntimeError("primary endpoint down"),
-                RuntimeError("primary endpoint down"),
-                RuntimeError("fallback endpoint down"),
-            ],
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                service.get_model_enrollment_status(model_id)
-
-        error_text = str(exc_info.value)
-        assert "Primary endpoint error" in error_text
-        assert "Fallback endpoint error" in error_text
-
-    def test_get_model_enrollment_status_json_error_falls_back(self, service):
-        """Test JSON decode errors trigger fallback instead of opaque command errors."""
-        model_id = "gpt-4o"
-        bad_primary_response = Mock()
-        bad_primary_response.text = "not-json"
-        bad_primary_response.json.side_effect = json.JSONDecodeError(
-            "invalid json", "not-json", 0
-        )
-
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {"data": [{"id": "gpt-4o"}]}
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[
-                bad_primary_response,
-                RuntimeError("not found"),
-                fallback_response,
-            ],
-        ):
-            result = service.get_model_enrollment_status(model_id)
-
-        assert result["model_rid"] == "gpt-4o"
-        assert result["status"] == "AVAILABLE_VIA_PROXY"
-
-    def test_enroll_model_success(self, service):
-        """Test enrolling a language model."""
-        model_id = (
-            "ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2"
-        )
-        mock_response = Mock()
-        mock_response.text = "ok"
-        mock_response.json.return_value = {
-            "status": "ENROLLED",
-            "provider": "ANTHROPIC",
-        }
-
-        with patch.object(
-            service, "_make_request", return_value=mock_response
-        ) as mock_req:
-            result = service.enroll_model(model_id)
-
-        assert result["model_rid"] == model_id
-        assert result["status"] == "ENROLLED"
-        assert result["type"] == "ANTHROPIC"
-        assert result["display_name"] == model_id
-        assert "response" not in result
-        mock_req.assert_called_once_with(
-            "POST",
-            "/v2/languageModels/ri.language-model-service..language-model.anthropic_claude_3_5_sonnet_v2/enroll",
-            json_data={},
-        )
-
-    def test_enroll_model_fallback_endpoint(self, service):
-        """Test enrollment fallback when the first endpoint fails."""
-        model_id = "ri.language-model-service..language-model.gpt_4o"
-        fallback_response = Mock()
-        fallback_response.text = "ok"
-        fallback_response.json.return_value = {"status": "ENROLLED"}
-
-        with patch.object(
-            service,
-            "_make_request",
-            side_effect=[RuntimeError("missing endpoint"), fallback_response],
-        ) as mock_req:
-            result = service.enroll_model(model_id)
-
-        assert result["model_rid"] == model_id
-        assert result["status"] == "ENROLLED"
-        assert mock_req.call_args_list[-1].args == (
-            "POST",
-            "/api/v2/llm/models/ri.language-model-service..language-model.gpt_4o/enroll",
-        )
-        assert mock_req.call_args_list[-1].kwargs == {"json_data": {}}
-        assert len(mock_req.call_args_list) == 2
-
-    def test_enroll_model_error(self, service):
-        """Test enrollment error handling when all endpoints fail."""
-        with patch.object(
-            service, "_make_request", side_effect=RuntimeError("unavailable")
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                service.enroll_model(
-                    "ri.language-model-service..language-model.some_model"
-                )
-
-        assert "Failed to enroll model" in str(exc_info.value)
-        assert "Model Catalog UI access for this model" in str(exc_info.value)
-
-    # ===== OpenAI Embeddings Tests =====
-
-    def test_generate_embeddings_single_text(self, service, mock_client):
-        """Test generating embeddings for single text."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Sample text"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {
-                    "embedding": [0.1, 0.2, 0.3],
-                    "index": 0,
-                    "object": "embedding",
-                }
-            ],
-            "model": "text-embedding-3-small",
-            "usage": {
-                "promptTokens": 2,
-                "totalTokens": 2,
-            },
-        }
-        mock_client.language_models.OpenAiModel.embeddings.return_value = mock_response
-
-        # Execute
-        result = service.generate_embeddings(model_id, input_texts)
-
-        # Assert
-        mock_client.language_models.OpenAiModel.embeddings.assert_called_once()
-        call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert call_args[0][0] == model_id
-        assert "request" not in call_args[1]
-        assert call_args[1]["input"] == input_texts
-        assert call_args[1]["preview"] is False
-        assert len(result["data"]) == 1
-        assert result["usage"]["totalTokens"] == 2
-
-    def test_generate_embeddings_multiple_texts(self, service, mock_client):
-        """Test generating embeddings for multiple texts."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Text 1", "Text 2", "Text 3"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [
-                {"embedding": [0.1, 0.2], "index": 0},
-                {"embedding": [0.3, 0.4], "index": 1},
-                {"embedding": [0.5, 0.6], "index": 2},
-            ],
-            "model": "text-embedding-3-small",
-            "usage": {"promptTokens": 6, "totalTokens": 6},
-        }
-        mock_client.language_models.OpenAiModel.embeddings.return_value = mock_response
-
-        # Execute
-        result = service.generate_embeddings(model_id, input_texts)
-
-        # Assert
-        call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert "request" not in call_args[1]
-        assert call_args[1]["input"] == input_texts
-        assert len(result["data"]) == 3
-
-    def test_generate_embeddings_with_dimensions(self, service, mock_client):
-        """Test generating embeddings with custom dimensions."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Test"]
-        dimensions = 1024
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [{"embedding": [0.1] * 1024, "index": 0}],
-            "model": "text-embedding-3-large",
-            "usage": {"promptTokens": 1, "totalTokens": 1},
-        }
-        mock_client.language_models.OpenAiModel.embeddings.return_value = mock_response
-
-        # Execute
-        service.generate_embeddings(model_id, input_texts, dimensions=dimensions)
-
-        # Assert
-        call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert call_args[1]["dimensions"] == dimensions
-
-    def test_generate_embeddings_with_encoding_format(self, service, mock_client):
-        """Test generating embeddings with base64 encoding."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Test"]
-        encoding_format = "base64"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [{"embedding": "YmFzZTY0ZGF0YQ==", "index": 0}],
-            "model": "text-embedding-3-small",
-            "usage": {"promptTokens": 1, "totalTokens": 1},
-        }
-        mock_client.language_models.OpenAiModel.embeddings.return_value = mock_response
-
-        # Execute
-        service.generate_embeddings(
-            model_id, input_texts, encoding_format=encoding_format
-        )
-
-        # Assert
-        call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert call_args[1]["encoding_format"] == "BASE64"
-
-    def test_generate_embeddings_with_all_parameters(self, service, mock_client):
-        """Test generating embeddings with all optional parameters."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Text 1", "Text 2"]
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "data": [{"embedding": [0.1], "index": 0}],
-            "model": "text-embedding-3-large",
-            "usage": {"promptTokens": 4, "totalTokens": 4},
-        }
-        mock_client.language_models.OpenAiModel.embeddings.return_value = mock_response
-
-        # Execute
-        service.generate_embeddings(
-            model_id,
-            input_texts,
-            dimensions=512,
-            encoding_format="float",
-            preview=True,
-        )
-
-        # Assert
-        call_args = mock_client.language_models.OpenAiModel.embeddings.call_args
-        assert call_args[1]["input"] == input_texts
-        assert call_args[1]["dimensions"] == 512
-        assert call_args[1]["encoding_format"] == "FLOAT"
-        assert call_args[1]["preview"] is True
-
-    def test_generate_embeddings_error(self, service, mock_client):
-        """Test error handling in generate_embeddings."""
-        # Setup
-        model_id = "ri.language-models.main.model.xyz789"
-        input_texts = ["Test"]
-        mock_client.language_models.OpenAiModel.embeddings.side_effect = Exception(
-            "Model not found"
-        )
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError) as exc_info:
-            service.generate_embeddings(model_id, input_texts)
-        assert "Failed to generate embeddings" in str(exc_info.value)
-        assert model_id in str(exc_info.value)
+            {"role": "user", "content": [{"type": "text", "text": "Weather?"}]},
+        ],
+        max_tokens=2000,
+        system=[{"type": "text", "text": "Be brief"}],
+        thinking={"type": "enabled", "budgetTokens": 1500},
+        tools=[tool],
+        tool_choice={"type": "auto"},
+        output_config={"effort": "LOW"},
+    )
+
+    assert response.content[1].type == "toolUse"
+    [request] = stub_foundry_http.requests
+    assert request.url.params["preview"] == "true"
+    body = json.loads(request.content)
+    assert [message["role"] for message in body["messages"]] == [
+        "USER",
+        "ASSISTANT",
+        "USER",
+    ]
+    assert body["maxTokens"] == 2000
+    assert body["thinking"] == {"type": "enabled", "budgetTokens": 1500}
+    assert body["tools"] == [tool]
+    assert body["toolChoice"] == {"type": "auto"}
+    assert body["outputConfig"] == {"effort": "LOW"}
+    assert body["system"] == [{"type": "text", "text": "Be brief"}]
+
+
+def test_send_message_sdk_errors_propagate(stub_foundry_http):
+    stub_foundry_http.respond(
+        403, json=fj.error("PermissionDenied", error_code="PERMISSION_DENIED")
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        LanguageModelsService().send_message(lm.MODEL_API_NAME, "Hello")
+
+
+# ===== OpenAiModel.embeddings (beta) =====
+
+
+def test_generate_embeddings_calls_the_beta_endpoint_with_preview(stub_foundry_http):
+    stub_foundry_http.respond(json=lm.embeddings_response())
+
+    response = LanguageModelsService().generate_embeddings(
+        lm.EMBEDDING_MODEL, ["Doc 1", "Doc 2"]
+    )
+
+    assert isinstance(response, OpenAiEmbeddingsResponse)
+    assert len(response.data) == 2
+    assert response.usage.prompt_tokens == 4
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", EMBEDDINGS)
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {"input": ["Doc 1", "Doc 2"]}
+
+
+def test_generate_embeddings_dimensions_and_encoding(stub_foundry_http):
+    stub_foundry_http.respond(json=lm.embeddings_response())
+
+    LanguageModelsService().generate_embeddings(
+        lm.EMBEDDING_MODEL, ["Doc"], dimensions=256, encoding_format="float"
+    )
+
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body == {"input": ["Doc"], "dimensions": 256, "encodingFormat": "FLOAT"}
+
+
+# ===== list_available_models (direct HTTP) =====
+
+
+def test_list_models_from_the_first_endpoint(stub_foundry_http):
+    models = [lm.language_model(), lm.language_model(status="PREVIEW")]
+    stub_foundry_http.respond(json={"data": models})
+
+    listing = LanguageModelsService().list_available_models()
+
+    assert listing == ModelListing(endpoint=f"GET {LIST}", models=models)
+    [request] = stub_foundry_http.requests
+    assert_direct_http(request, "GET", LIST)
+
+
+def test_list_models_falls_back_to_the_openai_proxy(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        {"json": lm.proxy_models(lm.proxy_model(), lm.proxy_model("gpt-4.1"))},
+    )
+
+    listing = LanguageModelsService().list_available_models()
+
+    assert listing.endpoint == f"GET {PROXY_MODELS}"
+    assert [model["id"] for model in listing.models] == ["gpt-4o", "gpt-4.1"]
+    first, second = stub_foundry_http.requests
+    assert_direct_http(first, "GET", LIST)
+    assert_direct_http(second, "GET", PROXY_MODELS)
+
+
+def test_list_models_keeps_the_next_page_token(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [lm.language_model()], "nextPageToken": "tok-2"}
+    )
+
+    listing = LanguageModelsService().list_available_models()
+
+    assert listing.next_page_token == "tok-2"
+
+
+def test_list_models_reads_data_before_models(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [], "models": [lm.language_model()]})
+
+    assert LanguageModelsService().list_available_models().models == []
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_list_models_reads_a_models_list_or_a_bare_list(stub_foundry_http):
+    stub_foundry_http.respond(json={"models": [lm.language_model()]})
+    stub_foundry_http.respond(json=[lm.language_model(), "not a model"])
+
+    service = LanguageModelsService()
+
+    assert service.list_available_models().models == [lm.language_model()]
+    assert service.list_available_models().models == [lm.language_model()]
+
+
+def test_list_models_skips_an_answer_that_is_not_json(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        {"content": b"<html>Foundry</html>", "headers": {"Content-Type": "text/html"}},
+        {"json": lm.proxy_models(lm.proxy_model())},
+    )
+
+    listing = LanguageModelsService().list_available_models()
+
+    assert listing.endpoint == f"GET {PROXY_MODELS}"
+
+
+def test_list_models_reports_the_most_telling_http_error(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        {
+            "status_code": 403,
+            "json": fj.error("PermissionDenied", error_code="PERMISSION_DENIED"),
+        },
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        LanguageModelsService().list_available_models()
+
+    message = str(raised.value)
+    assert f"GET {LIST} -> HTTP 404" in message
+    assert f"GET {PROXY_MODELS} -> HTTP 403" in message
+    cause = raised.value.__cause__
+    assert isinstance(cause, requests.HTTPError)
+    assert cause.response.status_code == 403
+
+
+def test_list_models_prefers_a_non_404_error_over_a_later_404(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        {
+            "status_code": 401,
+            "json": fj.error("Unauthorized", error_code="UNAUTHORIZED"),
+        },
+        not_found(),
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        LanguageModelsService().list_available_models()
+
+    assert raised.value.__cause__.response.status_code == 401
+
+
+def test_list_models_all_not_found(stub_foundry_http):
+    stub_foundry_http.respond_always(404, json=fj.error("NotFound"))
+
+    with pytest.raises(RuntimeError) as raised:
+        LanguageModelsService().list_available_models()
+
+    assert raised.value.__cause__.response.status_code == 404
+    assert len(stub_foundry_http.requests) == 2
+
+
+def test_list_models_without_any_json_answer_is_an_api_error(stub_foundry_http):
+    stub_foundry_http.respond_always(200, content=b"<html></html>")
+
+    with pytest.raises(PltrError) as raised:
+        LanguageModelsService().list_available_models()
+
+    assert raised.value.error_type == "api_error"
+    assert "response is not JSON" in raised.value.message
+
+
+def test_list_models_connection_errors_are_not_retried(stub_foundry_http, monkeypatch):
+    calls = []
+
+    def refuse(self, request, **kwargs):
+        calls.append(request.url)
+        raise requests.ConnectionError("connection refused")
+
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", refuse)
+
+    with pytest.raises(requests.ConnectionError):
+        LanguageModelsService().list_available_models()
+    assert len(calls) == 1
+
+
+# ===== get_model_enrollment_status (direct HTTP) =====
+
+
+def test_status_from_the_first_endpoint_unwraps_a_data_envelope(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": lm.language_model()})
+
+    answer = LanguageModelsService().get_model_enrollment_status(lm.MODEL_RID)
+
+    assert answer.body == lm.language_model()
+    assert answer.endpoint == f"GET {LIST}/{lm.MODEL_RID}"
+    assert not answer.via_openai_proxy
+    [request] = stub_foundry_http.requests
+    assert_direct_http(request, "GET", f"{LIST}/{lm.MODEL_RID}")
+
+
+def test_status_url_encodes_the_model_id(stub_foundry_http):
+    stub_foundry_http.respond(json=lm.language_model())
+
+    LanguageModelsService().get_model_enrollment_status("models/claude 3")
+
+    [request] = stub_foundry_http.requests
+    assert request.url.raw_path == b"/api/v2/languageModels/models%2Fclaude%203"
+
+
+def test_status_from_the_second_endpoint(stub_foundry_http):
+    respond(stub_foundry_http, not_found(), {"json": lm.language_model()})
+
+    answer = LanguageModelsService().get_model_enrollment_status(lm.MODEL_RID)
+
+    assert answer.endpoint == f"GET /api/v2/llm/models/{lm.MODEL_RID}"
+    assert answer.body["status"] == "ENROLLED"
+
+
+def test_status_falls_back_to_the_openai_proxy_list(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        not_found(),
+        {"json": lm.proxy_models(lm.proxy_model("gpt-4.1"), lm.proxy_model())},
+    )
+
+    answer = LanguageModelsService().get_model_enrollment_status("gpt-4o")
+
+    assert answer.via_openai_proxy
+    assert answer.body == lm.proxy_model()
+    assert_direct_http(stub_foundry_http.requests[-1], "GET", PROXY_MODELS)
+
+
+def test_status_of_a_model_nobody_knows_is_not_found(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        not_found(),
+        {"json": lm.proxy_models(lm.proxy_model())},
+    )
+
+    with pytest.raises(PltrError) as raised:
+        LanguageModelsService().get_model_enrollment_status("missing-model")
+
+    assert raised.value.error_type == "not_found"
+    assert raised.value.exit_code == 5
+    assert "missing-model" in raised.value.message
+
+
+def test_status_when_every_endpoint_fails(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        not_found(),
+        {"status_code": 503, "json": fj.error("Unavailable", error_code="INTERNAL")},
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        LanguageModelsService().get_model_enrollment_status(lm.MODEL_RID)
+
+    assert f"GET {PROXY_MODELS} -> HTTP 503" in str(raised.value)
+    assert raised.value.__cause__.response.status_code == 503
+
+
+def test_status_skips_an_answer_that_is_not_json(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        {"content": b"not json"},
+        {"json": lm.language_model()},
+    )
+
+    answer = LanguageModelsService().get_model_enrollment_status(lm.MODEL_RID)
+
+    assert answer.endpoint == f"GET /api/v2/llm/models/{lm.MODEL_RID}"
+
+
+# ===== enroll_model (direct HTTP) =====
+
+
+def test_enroll_posts_an_empty_object_to_the_first_endpoint(stub_foundry_http):
+    stub_foundry_http.respond(json={"status": "ENROLLED"})
+
+    answer = LanguageModelsService().enroll_model(lm.MODEL_RID)
+
+    assert answer.body == {"status": "ENROLLED"}
+    assert answer.endpoint == f"POST {LIST}/{lm.MODEL_RID}/enroll"
+    [request] = stub_foundry_http.requests
+    assert_direct_http(request, "POST", f"{LIST}/{lm.MODEL_RID}/enroll")
+    assert json.loads(request.content) == {}
+
+
+def test_enroll_falls_back_to_the_second_endpoint(stub_foundry_http):
+    respond(stub_foundry_http, not_found(), {"status_code": 204})
+
+    answer = LanguageModelsService().enroll_model(lm.MODEL_RID)
+
+    assert answer.body is None
+    assert answer.endpoint == f"POST /api/v2/llm/models/{lm.MODEL_RID}/enroll"
+    assert_direct_http(
+        stub_foundry_http.requests[-1],
+        "POST",
+        f"/api/v2/llm/models/{lm.MODEL_RID}/enroll",
+    )
+
+
+def test_enroll_failure_points_to_the_model_catalog(stub_foundry_http):
+    respond(
+        stub_foundry_http,
+        not_found(),
+        {"status_code": 400, "json": fj.error("InvalidModel", "INVALID_ARGUMENT")},
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        LanguageModelsService().enroll_model(lm.MODEL_RID)
+
+    assert "Model Catalog" in str(raised.value)
+    assert raised.value.__cause__.response.status_code == 400

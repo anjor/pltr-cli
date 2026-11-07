@@ -3,9 +3,6 @@
 import json
 from typing import Dict, List, Optional
 
-from rich import print as rprint
-from rich.table import Table
-
 from pltr.config.settings import Settings
 
 
@@ -178,33 +175,6 @@ class AliasManager:
                 return True
 
         return False
-
-    def display_aliases(self, name: Optional[str] = None) -> None:
-        """Display aliases in a formatted table.
-
-        Args:
-            name: Optional specific alias to display
-        """
-        if name:
-            command = self.get_alias(name)
-            if command:
-                rprint(f"[green]{name}[/green] → {command}")
-            else:
-                rprint(f"[red]Alias '{name}' not found[/red]")
-            return
-
-        if not self.aliases:
-            rprint("[yellow]No aliases configured[/yellow]")
-            return
-
-        table = Table(title="Command Aliases", show_header=True)
-        table.add_column("Alias", style="cyan")
-        table.add_column("Command", style="green")
-
-        for alias_name, command in sorted(self.aliases.items()):
-            table.add_row(alias_name, command)
-
-        rprint(table)
 
     def get_completion_items(self) -> List[str]:
         """Get alias names for shell completion.

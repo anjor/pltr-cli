@@ -1,15 +1,14 @@
 """Contract-test cases for src/pltr/commands/widgets.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "widgets dev-mode disable",
-    "widgets dev-mode enable",
-    "widgets dev-mode get",
-    "widgets dev-mode pause",
-    "widgets get",
-    "widgets release delete",
-    "widgets release get",
-    "widgets release list",
-    "widgets repository get",
+from tests import foundry_json_widgets as wj
+from tests.test_contract.cases import CONTRACT_RID
+
+SUCCESS = {
+    "widgets get": [{"json": wj.widget_set(CONTRACT_RID)}],
+    "widgets release list": [
+        {"json": {"data": [wj.release(widget_set_rid=CONTRACT_RID)]}}
+    ],
+    "widgets release get": [{"json": wj.release(widget_set_rid=CONTRACT_RID)}],
+    "widgets release delete": [{"status_code": 204}],
+    "widgets repository get": [{"json": wj.repository(CONTRACT_RID)}],
 }

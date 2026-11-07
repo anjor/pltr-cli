@@ -75,6 +75,18 @@ jobs:
       run: |
         uv run ruff format --check .
 
+    - name: Check every SDK call against the installed SDK (#185)
+      run: |
+        uv run python scripts/check_sdk_calls.py
+
+    - name: Check generated API commands are up to date (#186)
+      run: |
+        uv run python scripts/generate_api_commands.py --check
+
+    - name: Report SDK method coverage (#186)
+      run: |
+        uv run python scripts/coverage.py
+
     - name: Run security checks (if configured)
       run: |
         # Add security scanning tools here if needed

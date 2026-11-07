@@ -22,7 +22,7 @@ LOCAL = {
     "alias list": "reads the local alias file",
     "alias show": "reads the local alias file",
     "alias clear": "edits the local alias file",
-    "alias export": "writes the local aliases to a file",
+    "alias export": "prints the local aliases as JSON (stdout or --output)",
     "alias import": "reads aliases from a file",
     "alias resolve": "resolves an alias locally",
 }

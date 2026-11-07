@@ -1,24 +1,56 @@
-"""Tests for completion commands."""
+"""Tests for the completion commands and the completion protocol they rely on.
 
+The scripts `pltr completion show/install` write call the `pltr` executable
+with Typer's completion protocol (`_PLTR_COMPLETE=complete_bash`, ...), the
+protocol the `pltr` entry point (a Typer app) answers. (The old scripts sent
+click's `bash_complete` protocol, which the entry point rejects with "Shell
+complete not supported.", so completion never worked; the tests that pinned
+those scripts' text are replaced by tests that run their protocol against
+the real app, and by an end-to-end bash test.)
+"""
+
+import json
 import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import tempfile
 
+import pytest
 from typer.testing import CliRunner
 
+from pltr.cli import app as pltr_app
 from pltr.commands import completion
 from pltr.utils.completion import (
-    get_cached_rids,
     cache_rid,
-    complete_rid,
-    complete_profile,
     complete_output_format,
+    complete_profile,
+    complete_rid,
     complete_sql_query,
+    get_cached_rids,
 )
 
-
 runner = CliRunner()
+
+
+def show_script(shell: str) -> str:
+    result = runner.invoke(pltr_app, ["completion", "show", "--shell", shell])
+    assert result.exit_code == 0, result.output
+    return result.stdout
+
+
+def complete_with_script_protocol(shell: str, env: dict) -> str:
+    """Ask the real app for completions the way the shell's script does."""
+    match = re.search(r"_PLTR_COMPLETE=(\w+)", show_script(shell))
+    assert match is not None
+    result = runner.invoke(
+        pltr_app, [], env={"_PLTR_COMPLETE": match.group(1), **env}, prog_name="pltr"
+    )
+    assert result.exit_code == 0, result.output
+    return result.stdout
 
 
 class TestCompletionCommands:
@@ -33,62 +65,70 @@ class TestCompletionCommands:
         assert "show" in result.output
         assert "uninstall" in result.output
 
-    def test_show_bash_completion(self):
-        """Test showing bash completion script."""
-        result = runner.invoke(completion.app, ["show", "--shell", "bash"])
-        assert result.exit_code == 0
-        assert "_pltr_completion()" in result.output
-        assert "COMP_WORDS" in result.output
-        assert "complete -o nosort -F _pltr_completion pltr" in result.output
+    @pytest.mark.parametrize(
+        "shell, expected",
+        [
+            ("bash", "complete -o default -F _pltr_completion pltr"),
+            ("zsh", "#compdef pltr"),
+            ("fish", "complete --command pltr"),
+        ],
+    )
+    def test_show_prints_the_bare_script(self, shell, expected):
+        result = runner.invoke(pltr_app, ["completion", "show", "--shell", shell])
 
-    def test_show_zsh_completion(self):
-        """Test showing zsh completion script."""
-        result = runner.invoke(completion.app, ["show", "--shell", "zsh"])
-        assert result.exit_code == 0
-        assert "#compdef pltr" in result.output
-        assert "_pltr()" in result.output
-        assert "compdef _pltr pltr" in result.output
+        assert result.exit_code == 0, result.output
+        assert expected in result.stdout
+        assert f"_PLTR_COMPLETE=complete_{shell}" in result.stdout
+        assert "_complete pltr" not in result.stdout  # click's protocol
+        assert "Completion Script" not in result.stdout  # no Rich panel
+        assert result.stderr == ""
 
-    def test_show_fish_completion(self):
-        """Test showing fish completion script."""
-        result = runner.invoke(completion.app, ["show", "--shell", "fish"])
-        assert result.exit_code == 0
-        assert "function _pltr_completion" in result.output
-        assert "complete -c pltr" in result.output
+    def test_zsh_script_completes_on_the_first_tab_when_autoloaded(self):
+        script = show_script("zsh")
 
-    def test_show_unsupported_shell(self):
-        """Test showing completion for unsupported shell."""
-        result = runner.invoke(completion.app, ["show", "--shell", "tcsh"])
-        assert result.exit_code == 1
-        assert "Unsupported shell: tcsh" in result.output
+        assert "if [[ $zsh_eval_context[-1] == loadautofunc ]]; then" in script
+        assert '  _pltr_completion "$@"' in script
+        assert "  compdef _pltr_completion pltr" in script
+        assert script.rstrip().endswith("fi")
 
-    @patch.dict(os.environ, {"SHELL": "/bin/bash"})
-    def test_auto_detect_bash_shell(self):
-        """Test auto-detection of bash shell."""
-        result = runner.invoke(completion.app, ["show"])
-        assert result.exit_code == 0
-        assert "_pltr_completion()" in result.output  # Bash script
+    def test_show_unsupported_shell_is_a_usage_error(self):
+        result = runner.invoke(pltr_app, ["completion", "show", "--shell", "tcsh"])
 
-    @patch.dict(os.environ, {"SHELL": "/usr/bin/zsh"})
-    def test_auto_detect_zsh_shell(self):
-        """Test auto-detection of zsh shell."""
-        result = runner.invoke(completion.app, ["show"])
-        assert result.exit_code == 0
-        assert "#compdef pltr" in result.output  # Zsh script
+        assert result.exit_code == 2
+        assert result.stdout == ""
 
-    @patch.dict(os.environ, {"SHELL": "/usr/local/bin/fish"})
-    def test_auto_detect_fish_shell(self):
-        """Test auto-detection of fish shell."""
-        result = runner.invoke(completion.app, ["show"])
-        assert result.exit_code == 0
-        assert "function _pltr_completion" in result.output  # Fish script
+    @pytest.mark.parametrize(
+        "shell_path, expected",
+        [
+            ("/bin/bash", "_PLTR_COMPLETE=complete_bash"),
+            ("/usr/bin/zsh", "_PLTR_COMPLETE=complete_zsh"),
+            ("/usr/local/bin/fish", "_PLTR_COMPLETE=complete_fish"),
+        ],
+    )
+    def test_show_detects_the_shell(self, shell_path, expected):
+        with patch.dict(os.environ, {"SHELL": shell_path}):
+            result = runner.invoke(completion.app, ["show"])
+
+        assert result.exit_code == 0, result.output
+        assert expected in result.stdout
 
     @patch.dict(os.environ, {}, clear=True)
     def test_no_shell_detection(self):
         """Test when shell cannot be detected."""
         result = runner.invoke(completion.app, ["show"])
-        assert result.exit_code == 1
-        assert "Could not detect shell type" in result.output
+        assert result.exit_code == 2
+        assert "could not detect your shell" in result.stderr
+
+    def test_no_shell_detection_json_error(self, monkeypatch):
+        monkeypatch.delenv("SHELL", raising=False)
+        monkeypatch.setenv("PLTR_FORMAT", "json")
+
+        result = runner.invoke(pltr_app, ["completion", "show"])
+
+        assert result.exit_code == 2
+        error = json.loads(result.stderr.strip().splitlines()[-1])
+        assert error["type"] == "usage_error"
+        assert "could not detect your shell" in error["message"]
 
     def test_install_with_custom_path(self):
         """Test installing completion with custom path."""
@@ -98,9 +138,21 @@ class TestCompletionCommands:
                 completion.app,
                 ["install", "--shell", "bash", "--path", str(custom_path)],
             )
-            assert result.exit_code == 0
-            assert custom_path.exists()
-            assert "_pltr_completion()" in custom_path.read_text()
+            assert result.exit_code == 0, result.output
+            assert custom_path.read_text() == show_script("bash")
+            assert result.stdout == ""
+            assert f"Completion file written to: {custom_path}" in result.stderr
+            assert "source ~/.bashrc" in result.stderr
+
+    def test_install_detected_shell_to_the_default_path(self, isolated_home):
+        with patch.dict(os.environ, {"SHELL": "/usr/bin/zsh"}):
+            result = runner.invoke(pltr_app, ["completion", "install"])
+
+        assert result.exit_code == 0, result.output
+        target = isolated_home / ".zfunc" / "_pltr"
+        assert target.read_text() == show_script("zsh")
+        assert "Detected shell: zsh" in result.stderr
+        assert f"fpath=({target.parent} $fpath)" in result.stderr
 
     def test_uninstall_nonexistent(self):
         """Test uninstalling when no completion file exists."""
@@ -112,7 +164,7 @@ class TestCompletionCommands:
             ):
                 result = runner.invoke(completion.app, ["uninstall", "--shell", "bash"])
                 assert result.exit_code == 0
-                assert "No completion file found" in result.output
+                assert "No completion file found" in result.stderr
 
     def test_uninstall_existing(self):
         """Test uninstalling existing completion file."""
@@ -127,7 +179,88 @@ class TestCompletionCommands:
                 result = runner.invoke(completion.app, ["uninstall", "--shell", "bash"])
                 assert result.exit_code == 0
                 assert not mock_path.exists()
-                assert "Removed completion file" in result.output
+                assert "Removed completion file" in result.stderr
+
+
+class TestCompletionProtocol:
+    """The scripts' protocol, run against the real app (including `pltr api`)."""
+
+    def test_bash(self):
+        out = complete_with_script_protocol(
+            "bash", {"COMP_WORDS": "pltr api wid", "COMP_CWORD": "2"}
+        )
+        assert out.split() == ["widgets"]
+
+    def test_bash_option_values(self):
+        out = complete_with_script_protocol(
+            "bash", {"COMP_WORDS": "pltr folder get --format ", "COMP_CWORD": "4"}
+        )
+        assert out.split() == ["table", "json", "csv"]
+
+    def test_zsh(self):
+        out = complete_with_script_protocol(
+            "zsh", {"_TYPER_COMPLETE_ARGS": "pltr api widgets widget-set "}
+        )
+        assert "get" in out and "release" in out
+
+    def test_fish(self):
+        out = complete_with_script_protocol(
+            "fish",
+            {
+                "_TYPER_COMPLETE_ARGS": "pltr api wid",
+                "_TYPER_COMPLETE_FISH_ACTION": "get-args",
+            },
+        )
+        assert out.split()[0] == "widgets"
+
+    def test_clicks_protocol_is_not_what_the_entry_point_answers(self):
+        """Why the old scripts never completed anything."""
+        result = runner.invoke(
+            pltr_app,
+            [],
+            env={
+                "_PLTR_COMPLETE": "bash_complete",
+                "COMP_WORDS": "pltr fo",
+                "COMP_CWORD": "1",
+            },
+            prog_name="pltr",
+        )
+        assert result.exit_code == 1
+        assert "Shell complete not supported" in result.stderr
+
+
+PLTR_EXECUTABLE = Path(sys.executable).parent / "pltr"
+
+
+@pytest.mark.skipif(
+    shutil.which("bash") is None or not PLTR_EXECUTABLE.exists(),
+    reason="needs bash and the pltr console script",
+)
+def test_bash_script_completes_with_the_installed_executable(tmp_path):
+    """Source the generated script in a real bash and complete with `pltr`."""
+    script = tmp_path / "pltr.bash"
+    script.write_text(show_script("bash"))
+    program = "\n".join(
+        [
+            f"source {script}",
+            "COMP_WORDS=(pltr api wid)",
+            "COMP_CWORD=2",
+            "_pltr_completion pltr",
+            "printf '%s\\n' \"${COMPREPLY[@]}\"",
+        ]
+    )
+    env = dict(
+        os.environ,
+        PATH=f"{PLTR_EXECUTABLE.parent}{os.pathsep}{os.environ.get('PATH', '')}",
+        HOME=str(tmp_path),
+        XDG_CONFIG_HOME=str(tmp_path / ".config"),
+    )
+
+    out = subprocess.run(
+        ["bash", "-c", program], env=env, capture_output=True, text=True, timeout=120
+    )
+
+    assert out.stdout.split() == ["widgets"], out.stderr
 
 
 class TestCompletionFunctions:

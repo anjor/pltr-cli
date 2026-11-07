@@ -71,19 +71,32 @@ class TestSimpleDataWorkflows:
         result = runner.invoke(
             app, ["dataset", "get", "ri.foundry.main.dataset.example"]
         )
-        # Just ensure it doesn't crash with a Python error
-        assert result.exit_code in [0, 1]  # Either success or expected failure
+        # The keyring is mocked out, so there are no credentials: a documented
+        # authentication error (exit code 3), not a crash.
+        assert result.exit_code == 3, result.output
+        assert isinstance(result.exception, SystemExit)
 
-    def test_sql_execute_basic_functionality(self, runner, authenticated_profile):
-        """Test basic SQL execute functionality (may fail without real credentials)."""
-        # This test may fail but shouldn't crash
-        result = runner.invoke(app, ["sql", "execute", "SELECT 1"])
-        # Just ensure it doesn't crash with a Python error
-        assert result.exit_code in [0, 1]  # Either success or expected failure
+    def test_sql_execute_basic_functionality(
+        self, runner, stub_foundry_http, isolated_home
+    ):
+        """`sql execute` runs a query end to end against a real FoundryClient
+        (only HTTP is faked) and prints its rows."""
+        import json
+
+        from tests import foundry_json_sql as sj
+
+        stub_foundry_http.respond(json=sj.succeeded())
+        stub_foundry_http.respond(**sj.results({"1": [1]}))
+
+        result = runner.invoke(app, ["sql", "execute", "SELECT 1", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == {"data": [{"1": 1}]}
 
     def test_ontology_list_basic_functionality(self, runner, authenticated_profile):
         """Test basic ontology list functionality (may fail without real credentials)."""
         # This test may fail but shouldn't crash
         result = runner.invoke(app, ["ontology", "list"])
-        # Just ensure it doesn't crash with a Python error
-        assert result.exit_code in [0, 1]  # Either success or expected failure
+        # Success, or the documented exit code of an expected failure: 3 (no
+        # usable credentials, e.g. no keyring) or 7 (network). A crash is 1.
+        assert result.exit_code in [0, 3, 7]

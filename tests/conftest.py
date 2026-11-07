@@ -16,6 +16,7 @@ import requests.adapters
 import requests.structures
 from foundry_sdk import FoundryClient, UserTokenAuth
 
+from pltr.auth.manager import AuthSource
 from pltr.auth.storage import CredentialStorage
 from pltr.config.settings import Settings
 from pltr.config.profiles import ProfileManager
@@ -131,9 +132,20 @@ def stub_foundry_http(monkeypatch) -> StubFoundryHttp:
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_requests_send)
     auth_manager = Mock()
     auth_manager.return_value.get_client.return_value = stub.client
-    # For direct-HTTP code (BaseService._make_request): host and token.
+    # For direct-HTTP code (BaseService._make_request: host and token) and for
+    # `pltr verify` (which reports the auth source and uses the context's
+    # client): a context shaped like pltr.auth.manager.AuthContext.
     auth_manager.return_value.get_auth_context.return_value = SimpleNamespace(
-        base_url=f"https://{STUB_HOSTNAME}", get_token=lambda: STUB_TOKEN
+        base_url=f"https://{STUB_HOSTNAME}",
+        host=STUB_HOSTNAME,
+        get_token=lambda: STUB_TOKEN,
+        client=stub.client,
+        source=AuthSource(
+            kind="environment",
+            auth_type="token",
+            host=STUB_HOSTNAME,
+            variables=("FOUNDRY_HOST", "FOUNDRY_TOKEN"),
+        ),
     )
     monkeypatch.setattr("pltr.services.base.AuthManager", auth_manager)
     return stub
