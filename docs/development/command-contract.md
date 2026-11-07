@@ -255,7 +255,17 @@ emit(page, format=format, output=output, columns=CHILD_COLUMNS)
 iterable of `bytes` (an SDK streamed response's `iter_bytes()`, so large
 files aren't held in memory). The data goes to `--output FILE` (`-` means
 stdout), or to stdout, but never to a terminal (a usage error, exit code 2).
-A partially written file is deleted when the stream fails.
+When the output path is an optional argument rather than `--output` (`None`
+meaning stdout), pass `output_hint=` (for example `"an OUTPUT_PATH (or - for
+stdout)"`) to both, so the message names it.
+
+A file is written through `write_bytes_atomically(path, chunks)`: the data
+goes to a temporary file next to it, which replaces the file only once the
+stream is complete. A failed download leaves no partial file and keeps an
+existing one. The file gets the permissions `open(path, "wb")` would give
+it, a symlink's target is replaced, and a path that isn't a regular file
+(`/dev/null`, a FIFO) is written directly. Services that download to a path
+use the same function.
 
 **Messages.** `success(msg)`, `info(msg)`, `warn(msg)` and
 `with spinner(msg): ...` all write to stderr. The first two are suppressed in

@@ -18,6 +18,7 @@ from pltr.contract import (
     emit,
     emit_bytes,
     format_cell,
+    write_bytes_atomically,
 )
 from tests import foundry_json as fj
 
@@ -242,13 +243,82 @@ def test_emit_bytes_refuses_a_terminal(monkeypatch):
     check_binary_output("file.bin")
 
 
-def test_emit_bytes_removes_a_partial_file(tmp_path):
+def test_binary_output_hint_for_a_positional_path(monkeypatch):
+    monkeypatch.setattr("pltr.contract.output._stdout_is_terminal", lambda: True)
+    hint = "an OUTPUT_PATH (or - for stdout)"
+    with pytest.raises(click.UsageError) as excinfo:
+        check_binary_output(None, output_hint=hint)
+    assert excinfo.value.message == (
+        "This command returns binary data: pass an OUTPUT_PATH (or - for stdout), "
+        "or redirect stdout to a file or a pipe."
+    )
+    with pytest.raises(click.UsageError, match="OUTPUT_PATH"):
+        emit_bytes(b"x", output_hint=hint)
+
+
+def broken_stream():
+    yield b"partial"
+    raise ConnectionError("stream broke")
+
+
+def test_emit_bytes_leaves_no_partial_file(tmp_path):
     target = tmp_path / "out.bin"
 
-    def chunks():
-        yield b"partial"
-        raise ConnectionError("stream broke")
+    with pytest.raises(ConnectionError):
+        emit_bytes(broken_stream(), output=str(target))
+    assert list(tmp_path.iterdir()) == []  # no partial file, no temporary file
+
+
+def test_emit_bytes_keeps_an_existing_file_when_the_stream_fails(tmp_path):
+    target = tmp_path / "out.bin"
+    target.write_bytes(b"the old content")
 
     with pytest.raises(ConnectionError):
-        emit_bytes(chunks(), output=str(target))
-    assert not target.exists()
+        emit_bytes(broken_stream(), output=str(target))
+    assert target.read_bytes() == b"the old content"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_emit_bytes_replaces_an_existing_file_keeping_its_mode(tmp_path):
+    target = tmp_path / "out.bin"
+    target.write_bytes(b"old")
+    target.chmod(0o640)
+
+    assert emit_bytes([b"new ", b"content"], output=str(target)) == 11
+    assert target.read_bytes() == b"new content"
+    assert target.stat().st_mode & 0o777 == 0o640
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_a_new_file_gets_the_umask_mode(tmp_path):
+    """Like open(path, "wb"), not a temporary file's 0600."""
+    import os
+
+    umask = os.umask(0o022)
+    try:
+        target = tmp_path / "out.bin"
+        write_bytes_atomically(target, b"x")
+    finally:
+        os.umask(umask)
+    assert target.stat().st_mode & 0o777 == 0o644
+
+
+def test_write_through_a_symlink_replaces_its_target(tmp_path):
+    real = tmp_path / "real.bin"
+    real.write_bytes(b"old")
+    link = tmp_path / "link.bin"
+    link.symlink_to(real)
+
+    assert write_bytes_atomically(str(link), b"new") == 3
+    assert link.is_symlink()
+    assert real.read_bytes() == b"new"
+
+
+def test_a_special_file_is_written_directly(tmp_path):
+    """/dev/null is never replaced by a regular file."""
+    import os
+
+    if not os.path.exists(os.devnull) or os.path.isfile(os.devnull):
+        pytest.skip("no character device to write to")
+    assert write_bytes_atomically(os.devnull, [b"ab", b"c"]) == 3
+    assert not os.path.isfile(os.devnull)

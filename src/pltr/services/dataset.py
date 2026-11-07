@@ -30,7 +30,7 @@ from typing import (
 )
 from urllib.parse import quote
 
-from ..contract import ExitCode, PltrError
+from ..contract import ExitCode, PltrError, write_bytes_atomically
 from .base import BaseService
 
 #: Types of a dataset transaction.
@@ -436,7 +436,7 @@ class DatasetService(BaseService):
             start_transaction_rid=start_transaction_rid,
             end_transaction_rid=end_transaction_rid,
         ) as chunks:
-            return _write_atomically(output, chunks)
+            return write_bytes_atomically(output, chunks)
 
     def delete_file(
         self,
@@ -836,31 +836,3 @@ def _all_parse(values: List[str], kind: Any) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _write_atomically(output: Path, chunks: Any) -> int:
-    """Write ``chunks`` to a temporary file, then move it to ``output``."""
-    import os
-    import tempfile
-
-    handle = tempfile.NamedTemporaryFile(
-        mode="wb",
-        dir=str(output.parent),
-        prefix=f".{output.name}.",
-        suffix=".part",
-        delete=False,
-    )
-    written = 0
-    try:
-        with handle:
-            for chunk in chunks:
-                handle.write(chunk)
-                written += len(chunk)
-        os.replace(handle.name, output)
-    except BaseException:
-        try:
-            os.remove(handle.name)
-        except OSError:
-            pass
-        raise
-    return written

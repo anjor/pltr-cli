@@ -55,6 +55,15 @@
   apply` and the `ontology object-type-create`/`link-type-create` fallback,
   and as an unexpected error (exit 1) by SDK calls. Both are now
   `invalid_response` (exit 7).
+- A download that failed mid-stream deleted the file it was replacing
+  (`media-sets download --overwrite`, `media-sets thumbnail-retrieve
+  --overwrite`, `audit get --output`, `pltr api ... --output`). Binary output
+  now goes to a temporary file next to the target, which replaces it only
+  when the download is complete, so the old file is kept. Files written this
+  way, including `dataset files get` downloads, get the usual permissions
+  (dataset downloads were created readable by their owner only, 0600), a
+  symlinked path keeps its symlink, and `/dev/null` or a FIFO is written
+  directly.
 - Unexpected failures inside the SDK (`SDKInternalError` that isn't an HTTP
   or OAuth failure) say "foundry-platform-sdk failed unexpectedly: ..." with
   a hint to report them (still `unexpected_error`, exit 1).

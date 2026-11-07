@@ -322,49 +322,101 @@ def _stdout_is_terminal() -> bool:
         return False
 
 
-def check_binary_output(output: Optional[str]) -> None:
+#: How a command takes its output file, for :func:`check_binary_output`.
+OUTPUT_OPTION_HINT = "--output FILE"
+
+
+def check_binary_output(
+    output: Optional[str], *, output_hint: str = OUTPUT_OPTION_HINT
+) -> None:
     """Refuse to write binary data to a terminal (a usage error, exit code 2).
 
     Call it before requesting binary content, so a command fails before it
-    downloads anything; :func:`emit_bytes` checks again. ``output`` is the
-    command's ``--output`` value (``-`` means stdout, even on a terminal).
+    downloads anything; :func:`emit_bytes` checks again. ``output`` is where
+    the command writes (``None`` for stdout; ``-`` means stdout, even on a
+    terminal). ``output_hint`` names how the user picks an output file in
+    the message, e.g. ``"an OUTPUT_PATH (or - for stdout)"`` for a command
+    whose path is an argument.
     """
     if output is None and _stdout_is_terminal():
         raise click.UsageError(
-            "This command returns binary data: pass --output FILE, or redirect "
+            f"This command returns binary data: pass {output_hint}, or redirect "
             "stdout to a file or a pipe."
         )
 
 
+def write_bytes_atomically(path: Union[str, "os.PathLike[str]"], chunks: Any) -> int:
+    """Write ``chunks`` to the file ``path``; a failure leaves it untouched.
+
+    The data goes to a temporary file next to ``path`` that is moved into
+    place once complete, so a failed stream never leaves a partial file and
+    keeps an existing one. The new file gets the permissions a plain
+    ``open(path, "wb")`` would (an existing file's mode, else the umask's).
+    A symlink is followed (its target is replaced), and a path that exists
+    but isn't a regular file (``/dev/null``, a FIFO, a terminal) is written
+    directly. ``chunks`` is ``bytes`` or an iterable of ``bytes``. Returns
+    the number of bytes written.
+    """
+    import secrets
+
+    if isinstance(chunks, (bytes, bytearray)):
+        chunks = [bytes(chunks)]
+    target = os.path.realpath(path)
+    if os.path.exists(target) and not os.path.isfile(target):
+        written = 0
+        with open(target, "wb") as handle:
+            for chunk in chunks:
+                handle.write(chunk)
+                written += len(chunk)
+        return written
+
+    directory, name = os.path.split(target)
+    temporary = os.path.join(directory, f".{name}.{secrets.token_hex(4)}.part")
+    # 0o666 & ~umask, like open(); O_EXCL never reuses an existing file.
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    written = 0
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            for chunk in chunks:
+                handle.write(chunk)
+                written += len(chunk)
+        if os.path.exists(target):
+            import shutil
+
+            shutil.copymode(target, temporary)
+        os.replace(temporary, target)
+    except BaseException:
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        raise
+    return written
+
+
 def emit_bytes(
-    chunks: Union[bytes, Iterable[bytes]], *, output: Optional[str] = None
+    chunks: Union[bytes, Iterable[bytes]],
+    *,
+    output: Optional[str] = None,
+    output_hint: str = OUTPUT_OPTION_HINT,
 ) -> int:
     """Write binary data (file content, Arrow, Parquet, images) to stdout or a file.
 
     ``chunks`` is ``bytes`` or an iterable of ``bytes``, for example an SDK
     streamed response's ``iter_bytes()``, so large downloads aren't held in
     memory. The data goes to ``output`` (``-`` means stdout), or to stdout,
-    but never to a terminal (see :func:`check_binary_output`). A partially
-    written file is deleted when the stream fails. In text mode a
-    "Wrote N bytes to FILE" message goes to stderr. Returns the number of
-    bytes written.
+    but never to a terminal (see :func:`check_binary_output`, which also
+    explains ``output_hint``). A file is written through
+    :func:`write_bytes_atomically`: a failed stream leaves no partial file
+    and keeps an existing one. In text mode a "Wrote N bytes to FILE"
+    message goes to stderr. Returns the number of bytes written.
     """
-    check_binary_output(output)
+    check_binary_output(output, output_hint=output_hint)
     if isinstance(chunks, (bytes, bytearray)):
         chunks = [bytes(chunks)]
     written = 0
     if output and output != "-":
-        try:
-            with open(output, "wb") as handle:
-                for chunk in chunks:
-                    handle.write(chunk)
-                    written += len(chunk)
-        except BaseException:
-            try:
-                os.remove(output)
-            except OSError:
-                pass
-            raise
+        written = write_bytes_atomically(output, chunks)
         success(f"Wrote {written} bytes to {output}")
         return written
     stream = click.get_binary_stream("stdout")
