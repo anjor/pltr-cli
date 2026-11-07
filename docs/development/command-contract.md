@@ -363,6 +363,10 @@ Text mode prints `Error: <message>`, then the details and a hint.
 - **Passed through:** `typer.Exit` and `click.Abort`.
 - **Debugging:** `PLTR_DEBUG=1` re-raises the exception after rendering it,
   so you see the traceback.
+- **Secrets:** bearer tokens and Authorization header values are redacted
+  from every rendered message (`redact_secrets`), whatever raised it, for
+  example a stored token with a trailing newline that the HTTP library
+  rejects as `Illegal header value b'Bearer ...\r'`.
 - **Parse-time errors.** Click's own errors (a missing argument, an unknown
   option) are rendered as JSON when the invocation asked for JSON (`--format
   json`/`-f json` among the arguments, or `PLTR_FORMAT=json`). This works

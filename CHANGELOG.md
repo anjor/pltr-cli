@@ -807,6 +807,10 @@ from `--help`. They will be removed in the next release.
   `python -m pltr`.
 - `pltr shell` works on click 8.2: it printed an empty error box at start and
   crashed on the first command.
+- Error messages could show your token: a token stored with a trailing
+  newline was rejected with `Illegal header value b'Bearer <token>\r'`, token
+  included. Bearer tokens and Authorization header values are now redacted
+  from every error message, in text and JSON.
 - `pltr shell` on Windows treated backslashes as escape characters, so
   `C:\data\x.csv` reached the command as `C:datax.csv`. On Windows a
   backslash is now part of the word (quotes still group words), and Tab
