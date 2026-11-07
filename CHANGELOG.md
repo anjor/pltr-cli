@@ -809,6 +809,10 @@ from `--help`. They will be removed in the next release.
   `python -m pltr`.
 - `pltr shell` works on click 8.2: it printed an empty error box at start and
   crashed on the first command.
+- Usage errors ended with `(env var: 'None')`, for example `Missing option
+  '--parent-folder' / '-p' (env var: 'None').`: with click 8.2.0 and 8.2.1
+  every Typer option claimed an environment variable. Only options that have
+  one (`--format`: `PLTR_FORMAT`) name it now.
 - On Windows, output redirected to a file or a pipe crashed with
   `UnicodeEncodeError` when a table or CSV held text outside the ANSI code
   page (cp1252), such as Chinese names. Redirected stdout and stderr are now

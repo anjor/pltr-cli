@@ -23,9 +23,11 @@ from typing import (
     Callable,
     Dict,
     Iterator,
+    List,
     NamedTuple,
     Optional,
     Sequence,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -245,6 +247,34 @@ def _usage_error_as_json(exc: click.ClickException) -> None:
     raise click.exceptions.Exit(exc.exit_code)
 
 
+def hide_missing_envvars(root: click.Command) -> None:
+    """Turn off ``show_envvar`` on options that have no environment variable.
+
+    click 8.2.0 and 8.2.1 append ``(env var: '<envvar>')`` to an option's
+    error hint whenever ``show_envvar`` is set, and ``typer.Option`` sets it
+    by default, so errors read ``Missing option '--parent-folder' / '-p'
+    (env var: 'None')``. Options with an environment variable (``--format``,
+    ``PLTR_FORMAT``) keep naming it.
+
+    Only the commands already built are walked (``Group.commands``, never
+    ``get_command``), so lazily loaded groups such as ``pltr api`` stay
+    unloaded; their options are plain click options, which don't show
+    environment variables.
+    """
+    stack: List[click.Command] = [root]
+    seen: Set[int] = set()
+    while stack:
+        command = stack.pop()
+        if id(command) in seen:
+            continue
+        seen.add(id(command))
+        for param in command.params:
+            if isinstance(param, click.Option) and param.envvar is None:
+                param.show_envvar = False
+        if isinstance(command, click.Group):
+            stack.extend(command.commands.values())
+
+
 class PltrRootGroup(TyperGroup):
     """Click class of the root ``pltr`` group (``typer.Typer(cls=...)``).
 
@@ -254,7 +284,14 @@ class PltrRootGroup(TyperGroup):
     messages, renders click's parse-time usage errors as structured JSON in
     JSON mode (exit 2), and gives commands that don't use ``@pltr_command``
     the same error rendering for unexpected exceptions.
+
+    When built, it stops options without an environment variable from
+    claiming one in error messages (:func:`hide_missing_envvars`).
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        hide_missing_envvars(self)
 
     def main(  # type: ignore[override]
         self,
