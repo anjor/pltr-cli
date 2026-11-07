@@ -115,7 +115,7 @@ pltr verify
 
 `verify` fetches your user from Foundry (`admin.User.get_current`) through the
 same client every other command uses, prints your user details, and ends with
-`✓ Authentication successful` on stderr. It exits with a non-zero code when
+"Authentication successful" on stderr. It exits with a non-zero code when
 authentication fails (see [Troubleshooting](#-troubleshooting)).
 
 ## 🔧 Advanced Setup
