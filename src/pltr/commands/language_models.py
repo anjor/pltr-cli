@@ -1,657 +1,537 @@
 """
-LanguageModels commands for Foundry.
-Provides commands for Anthropic Claude models and OpenAI embeddings.
+Language model commands: Anthropic Claude messages, OpenAI embeddings, and
+listing, checking and enrolling models.
 """
 
+from typing import Any, Callable, Dict, List, Optional
+
+import click
 import typer
-import json
-from typing import Optional, List, Any, TYPE_CHECKING
-from pathlib import Path
-from rich.console import Console
+from typing_extensions import Annotated
 
-# Lazy import to avoid SDK Literal types being processed by typer at module load time
-if TYPE_CHECKING:
-    pass
-
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_profile,
-    complete_output_format,
+from ..contract import (
+    Columns,
+    FormatOption,
+    OutputOption,
+    PreviewNoopOption,
+    ProfileOption,
+    emit,
+    info,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
+)
+from ..services.language_models import (
+    MODEL_ENROLL_ENDPOINTS,
+    MODEL_LIST_ENDPOINTS,
+    MODEL_STATUS_ENDPOINTS,
+    OPENAI_PROXY_MODELS_ENDPOINT,
+    LanguageModelsService,
 )
 
-# Create main app and sub-apps
 app = typer.Typer(help="Interact with language models")
 anthropic_app = typer.Typer(help="Anthropic Claude models")
 openai_app = typer.Typer(help="OpenAI models")
 
-# Add sub-apps
 app.add_typer(anthropic_app, name="anthropic")
 app.add_typer(openai_app, name="openai")
 
-console = Console()
-formatter = OutputFormatter(console)
+#: Top-level fields of the API's ``AnthropicMessagesRequest`` (its JSON names),
+#: accepted by ``messages-advanced --request``.
+MESSAGES_REQUEST_FIELDS = (
+    "messages",
+    "maxTokens",
+    "stopSequences",
+    "system",
+    "temperature",
+    "thinking",
+    "toolChoice",
+    "tools",
+    "topK",
+    "topP",
+    "outputConfig",
+)
+
+ModelApiName = Annotated[
+    str,
+    typer.Argument(
+        help="The model's API name (LanguageModelApiName in the Foundry API).",
+        show_default=False,
+    ),
+]
+
+ModelIdentifier = Annotated[
+    str,
+    typer.Argument(
+        help=(
+            "Model RID (ri.language-model-service..language-model.<name>) or API name."
+        ),
+        show_default=False,
+    ),
+]
 
 
-def parse_json_input(input_str: str) -> Any:
+# ------------------------------------------------------------------ columns
+
+
+def _response_text(response: Any) -> str:
+    """The text blocks of an ``AnthropicMessagesResponse``, joined."""
+    return "\n".join(block.text for block in response.content if block.type == "text")
+
+
+def _tool_uses(response: Any) -> Optional[List[Dict[str, Any]]]:
+    """The tool calls of an ``AnthropicMessagesResponse``, if any."""
+    calls = [
+        {"id": block.id, "name": block.name, "input": block.input}
+        for block in response.content
+        if block.type == "toolUse"
+    ]
+    return calls or None
+
+
+#: Table/CSV columns for an ``AnthropicMessagesResponse``.
+MESSAGE_COLUMNS: Columns = {
+    "ID": "id",
+    "Model": "model",
+    "Role": "role",
+    "Stop Reason": "stop_reason",
+    "Stop Sequence": "stop_sequence",
+    "Text": _response_text,
+    "Tool Use": _tool_uses,
+    "Input Tokens": "usage.input_tokens",
+    "Output Tokens": "usage.output_tokens",
+}
+
+
+def _embedding_rows(response: Any) -> List[Dict[str, Any]]:
+    """One table/CSV row per vector of an ``OpenAiEmbeddingsResponse``."""
+    return [
+        {"index": index, "embedding": vector}
+        for index, vector in enumerate(response.data)
+    ]
+
+
+def _embedding_preview(row: Dict[str, Any]) -> str:
+    vector = row["embedding"]
+    head = ", ".join(f"{value:.6g}" for value in vector[:4])
+    return f"[{head}, ...]" if len(vector) > 4 else f"[{head}]"
+
+
+#: Table columns for ``openai embeddings`` (the vector is shortened).
+EMBEDDING_TABLE_COLUMNS: Columns = {
+    "Input": "index",
+    "Dimensions": lambda row: len(row["embedding"]),
+    "Embedding": _embedding_preview,
+}
+
+#: CSV columns for ``openai embeddings`` (the whole vector, as a JSON array).
+EMBEDDING_CSV_COLUMNS: Columns = {
+    "Input": "index",
+    "Dimensions": lambda row: len(row["embedding"]),
+    "Embedding": "embedding",
+}
+
+
+def _first(*keys: str) -> Callable[[Dict[str, Any]], Any]:
+    """Column reading the first of ``keys`` the model object has.
+
+    The direct-HTTP endpoints return plain JSON whose field names differ by
+    endpoint; a missing field renders empty.
     """
-    Parse JSON input from string or file.
 
-    Supports:
-    - Inline JSON: '{"key": "value"}' or '["item1", "item2"]'
-    - File reference: @input.json
-
-    Args:
-        input_str: Input string or file reference
-
-    Returns:
-        Parsed JSON data
-
-    Raises:
-        FileNotFoundError: If file reference doesn't exist
-        json.JSONDecodeError: If JSON is invalid
-    """
-    if not input_str:
+    def get(item: Dict[str, Any]) -> Any:
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                return value
         return None
 
-    # Handle file reference
-    if input_str.startswith("@"):
-        file_path = Path(input_str[1:])
-        if not file_path.exists():
-            raise FileNotFoundError(f"Input file not found: {file_path}")
-
-        with open(file_path, "r") as f:
-            return json.load(f)
-
-    # Handle inline JSON
-    return json.loads(input_str)
+    return get
 
 
-def display_anthropic_response(response: dict, format: str, output: Optional[str]):
-    """
-    Display Anthropic model response with token usage.
+#: Table/CSV columns for the model objects of ``list``, ``status`` and ``enroll``.
+MODEL_COLUMNS: Columns = {
+    "Model": _first("rid", "modelRid", "id", "apiName", "name"),
+    "Display Name": _first("displayName", "name"),
+    "Status": _first("status", "enrollmentStatus"),
+    "Type": _first("type", "provider", "modelType", "family", "owned_by"),
+}
 
-    Args:
-        response: Response dictionary from service
-        format: Output format
-        output: Optional output file path
-    """
-    # Display token usage prominently if available
-    if "usage" in response:
-        usage = response["usage"]
-        input_tokens = usage.get("inputTokens", 0)
-        output_tokens = usage.get("outputTokens", 0)
-        total_tokens = usage.get("totalTokens", input_tokens + output_tokens)
 
-        formatter.print_info(
-            f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}"
+# ------------------------------------------------------------------ helpers
+
+
+def _parse_messages_request(value: str) -> Dict[str, Any]:
+    """Parse and check ``--request`` (inline JSON or @file.json)."""
+    request = load_json_input(value, param_hint="'--request'")
+    if not isinstance(request, dict):
+        raise typer.BadParameter(
+            "the request must be a JSON object", param_hint="'--request'"
         )
-
-    # Display full response
-    if output:
-        formatter.save_to_file(response, output, format)
-        formatter.print_success(f"Response saved to {output}")
-    else:
-        formatter.display(response, format)
-
-
-def display_openai_response(response: dict, format: str, output: Optional[str]):
-    """
-    Display OpenAI model response with token usage.
-
-    Args:
-        response: Response dictionary from service
-        format: Output format
-        output: Optional output file path
-    """
-    # Display token usage prominently if available
-    if "usage" in response:
-        usage = response["usage"]
-        prompt_tokens = usage.get("promptTokens", 0)
-        total_tokens = usage.get("totalTokens", prompt_tokens)
-
-        formatter.print_info(
-            f"Token usage - Prompt: {prompt_tokens}, Total: {total_tokens}"
+    unknown = sorted(set(request) - set(MESSAGES_REQUEST_FIELDS))
+    if unknown:
+        raise typer.BadParameter(
+            f"unknown field(s) {', '.join(unknown)}; the request takes "
+            f"{', '.join(MESSAGES_REQUEST_FIELDS)} (the API's JSON names)",
+            param_hint="'--request'",
         )
+    missing = [field for field in ("messages", "maxTokens") if field not in request]
+    if missing:
+        raise typer.BadParameter(
+            f"the request must include {' and '.join(missing)}",
+            param_hint="'--request'",
+        )
+    return request
 
-    # Display full response
-    if output:
-        formatter.save_to_file(response, output, format)
-        formatter.print_success(f"Response saved to {output}")
-    else:
-        formatter.display(response, format)
+
+def _parse_input_texts(value: str) -> List[str]:
+    """Parse ``--input``: a string, a JSON array of strings, or @file.json."""
+    data: Any = value
+    if value.startswith(("@", "[")):
+        data = load_json_input(value, param_hint="'--input'")
+    if isinstance(data, str):
+        return [data]
+    if isinstance(data, list) and data and all(isinstance(t, str) for t in data):
+        return data
+    raise typer.BadParameter(
+        "expected a string or a non-empty JSON array of strings",
+        param_hint="'--input'",
+    )
 
 
-# ===== Shared Language Model Commands =====
+# ===== Models (labeled direct-HTTP exceptions) =====
 
 
 @app.command("list")
+@pltr_command(http=tuple(f"GET {path}" for path in MODEL_LIST_ENDPOINTS))
 def list_models(
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """List available language models for the current enrollment."""
-    try:
-        from ..services.language_models import LanguageModelsService
+    """List the language models available to you.
 
-        service = LanguageModelsService(profile=profile)
+    The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
+    directly and prints the first answer of: GET /api/v2/languageModels, then
+    the OpenAI-compatible proxy's GET /api/v2/llm/proxy/openai/v1/models
+    (which lists the models it serves, without an enrollment status). As
+    these endpoints aren't in the SDK, not every Foundry stack may have them.
 
-        with SpinnerProgressTracker().track_spinner("Fetching available models..."):
-            models = service.list_available_models()
-
-        formatter.format_table(
-            models,
-            columns=["model_rid", "status", "type", "display_name"],
-            format=format,
-            output=output,
+    JSON output is {"data": [...]} with each model as the endpoint returned it.
+    """
+    with spinner("Fetching available models..."):
+        listing = LanguageModelsService(profile=profile).list_available_models()
+    if listing.endpoint.endswith(OPENAI_PROXY_MODELS_ENDPOINT):
+        info(
+            f"Models from the OpenAI-compatible proxy ({listing.endpoint}), "
+            "which reports no enrollment status."
         )
-
-        if output:
-            formatter.print_success(f"Model list saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    else:
+        info(f"Models from {listing.endpoint}")
+    document: Dict[str, Any] = {"data": listing.models}
+    if listing.next_page_token:
+        document["nextPageToken"] = listing.next_page_token
+        info("The endpoint returned more models than this page; pltr doesn't page it.")
+    emit(
+        document,
+        format=format,
+        output=output,
+        columns=MODEL_COLUMNS,
+        rows=lambda doc: doc["data"],
+    )
 
 
 @app.command("status")
+@pltr_command(
+    http=tuple(f"GET {path}" for path in MODEL_STATUS_ENDPOINTS)
+    + (f"GET {OPENAI_PROXY_MODELS_ENDPOINT}",)
+)
 def model_status(
-    model_id: str = typer.Argument(
-        ...,
-        help="Model Resource Identifier (ri.language-model-service..language-model.<id>)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    model_id: ModelIdentifier,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Check enrollment status for a language model via direct API fallback endpoints."""
-    try:
-        from ..services.language_models import LanguageModelsService
+    """Show a language model's enrollment status.
 
-        service = LanguageModelsService(profile=profile)
+    The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
+    directly: GET /api/v2/languageModels/MODEL_ID, then
+    GET /api/v2/llm/models/MODEL_ID. If neither answers, it looks the model up
+    by id in the OpenAI-compatible proxy's model list, which has no enrollment
+    status. As these endpoints aren't in the SDK, not every Foundry stack may
+    have them.
 
-        with SpinnerProgressTracker().track_spinner("Checking model status..."):
-            result = service.get_model_enrollment_status(model_id)
-
-        formatter.format_dict(result, format=format, output=output)
-
-        if output:
-            formatter.print_success(f"Model status saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    JSON output is the model as the endpoint returned it.
+    """
+    with spinner("Checking model status..."):
+        answer = LanguageModelsService(profile=profile).get_model_enrollment_status(
+            model_id
+        )
+    if answer.via_openai_proxy:
+        info(
+            f"The language-model endpoints don't know {model_id}; it is listed by "
+            f"the OpenAI-compatible proxy ({answer.endpoint}), which reports no "
+            "enrollment status."
+        )
+    else:
+        info(f"Status from {answer.endpoint}")
+    emit(
+        answer.body,
+        format=format,
+        output=output,
+        columns=MODEL_COLUMNS,
+        title="Language model",
+    )
 
 
 @app.command("enroll")
+@pltr_command(http=tuple(f"POST {path}" for path in MODEL_ENROLL_ENDPOINTS))
 def enroll_model(
-    model_id: str = typer.Argument(
-        ...,
-        help="Model Resource Identifier (ri.language-model-service..language-model.<id>)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
+    model_id: ModelIdentifier,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
 ):
-    """Enroll/enable a language model via direct API fallback endpoints."""
-    try:
-        from ..services.language_models import LanguageModelsService
+    """Enroll (enable) a language model for API use.
 
-        service = LanguageModelsService(profile=profile)
+    The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
+    directly: POST /api/v2/languageModels/MODEL_ID/enroll, then
+    POST /api/v2/llm/models/MODEL_ID/enroll. As these endpoints aren't in the
+    SDK, not every Foundry stack may have them; if both fail, enroll the
+    model in the Model Catalog in the Foundry UI.
 
-        with SpinnerProgressTracker().track_spinner("Enrolling model..."):
-            result = service.enroll_model(model_id)
-
-        formatter.format_dict(result, format=format, output=output)
-
-        if output:
-            formatter.print_success(f"Enrollment result saved to {output}")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    JSON output is the endpoint's response body (null when it has none).
+    """
+    with spinner("Enrolling model..."):
+        answer = LanguageModelsService(profile=profile).enroll_model(model_id)
+    success(f"Enrolled model {model_id} ({answer.endpoint})")
+    emit(
+        answer.body,
+        format=format,
+        output=output,
+        columns=MODEL_COLUMNS,
+        title="Language model",
+    )
 
 
-# ===== Anthropic Commands =====
+# ===== Anthropic =====
 
 
 @anthropic_app.command("messages")
+@pltr_command(sdk="language_models.AnthropicModel.messages", beta=True)
 def anthropic_messages(
-    model_id: str = typer.Argument(
-        ...,
-        help="Model Resource Identifier (ri.language-models.main.model.<id>)",
-    ),
-    message: str = typer.Option(
-        ...,
-        "--message",
-        "-m",
-        help="User message text",
-    ),
-    max_tokens: int = typer.Option(
-        1024,
-        "--max-tokens",
-        help="Maximum tokens to generate",
-    ),
-    system: Optional[str] = typer.Option(
-        None,
-        "--system",
-        "-s",
-        help="System prompt to guide model behavior",
-    ),
-    temperature: Optional[float] = typer.Option(
-        None,
-        "--temperature",
-        "-t",
-        help="Sampling temperature (0.0-1.0). Lower is more deterministic.",
-        min=0.0,
-        max=1.0,
-    ),
-    stop: Optional[List[str]] = typer.Option(
-        None,
-        "--stop",
-        help="Stop sequences (can be specified multiple times)",
-    ),
-    top_k: Optional[int] = typer.Option(
-        None,
-        "--top-k",
-        help="Sample from top K tokens (Anthropic models only)",
-        min=1,
-    ),
-    top_p: Optional[float] = typer.Option(
-        None,
-        "--top-p",
-        help="Nucleus sampling threshold (0.0-1.0)",
-        min=0.0,
-        max=1.0,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "json",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    model_id: ModelApiName,
+    message: Annotated[
+        str,
+        typer.Option("--message", "-m", help="User message text.", show_default=False),
+    ],
+    max_tokens: Annotated[
+        int, typer.Option("--max-tokens", help="Maximum number of tokens to generate.")
+    ] = 1024,
+    system: Annotated[
+        Optional[str],
+        typer.Option(
+            "--system",
+            "-s",
+            help="System prompt to guide the model.",
+            show_default=False,
+        ),
+    ] = None,
+    temperature: Annotated[
+        Optional[float],
+        typer.Option(
+            "--temperature",
+            "-t",
+            min=0.0,
+            max=1.0,
+            help="Sampling temperature (0.0-1.0). Lower is more deterministic.",
+            show_default=False,
+        ),
+    ] = None,
+    stop: Annotated[
+        Optional[List[str]],
+        typer.Option(
+            "--stop", help="Stop sequence (repeat for several).", show_default=False
+        ),
+    ] = None,
+    top_k: Annotated[
+        Optional[int],
+        typer.Option(
+            "--top-k",
+            min=1,
+            help="Sample from the top K tokens.",
+            show_default=False,
+        ),
+    ] = None,
+    top_p: Annotated[
+        Optional[float],
+        typer.Option(
+            "--top-p",
+            min=0.0,
+            max=1.0,
+            help="Nucleus sampling threshold (0.0-1.0).",
+            show_default=False,
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Send a single message to an Anthropic Claude model.
+    """Send one message to an Anthropic Claude model.
 
-    Simple interface for single-turn Q&A with Claude models. For multi-turn
-    conversations, tool calling, or advanced features, use messages-advanced.
+    For multi-turn conversations, tools or extended thinking, use
+    messages-advanced. The table shows the reply's text and token usage;
+    --format json prints the API's whole response.
 
     Examples:
 
-        # Basic message
-        pltr language-models anthropic messages ri.language-models.main.model.abc123 \\
-            --message "Explain quantum computing"
-
-        # With system prompt and custom parameters
-        pltr language-models anthropic messages ri.language-models.main.model.abc123 \\
-            --message "Write a haiku" \\
-            --system "You are a poetic assistant" \\
-            --temperature 0.8 \\
-            --max-tokens 100
-
-        # With stop sequences
-        pltr language-models anthropic messages ri.language-models.main.model.abc123 \\
-            --message "List three items" \\
-            --stop "." --stop "\\n\\n"
-
-        # Save response to file
-        pltr language-models anthropic messages ri.language-models.main.model.abc123 \\
-            --message "Summarize AI trends" \\
-            --output response.json
+    \b
+    pltr language-models anthropic messages <MODEL_API_NAME> -m "Explain RIDs"
+    pltr language-models anthropic messages <MODEL_API_NAME> -m "Write a haiku" \\
+        --system "You are a poet" --temperature 0.8 --max-tokens 100
     """
-    try:
-        from ..services.language_models import LanguageModelsService
-
-        service = LanguageModelsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Sending message..."):
-            response = service.send_message(
-                model_id=model_id,
-                message=message,
-                max_tokens=max_tokens,
-                system=system,
-                temperature=temperature,
-                stop_sequences=stop if stop else None,
-                top_k=top_k,
-                top_p=top_p,
-                preview=preview,
-            )
-
-        display_anthropic_response(response, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        formatter.print_error(f"Invalid input: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    with spinner("Sending message..."):
+        response = LanguageModelsService(profile=profile).send_message(
+            model_id,
+            message,
+            max_tokens=max_tokens,
+            system=system,
+            temperature=temperature,
+            stop_sequences=list(stop) if stop else None,
+            top_k=top_k,
+            top_p=top_p,
+        )
+    emit(response, format=format, output=output, columns=MESSAGE_COLUMNS)
 
 
 @anthropic_app.command("messages-advanced")
+@pltr_command(sdk="language_models.AnthropicModel.messages", beta=True)
 def anthropic_messages_advanced(
-    model_id: str = typer.Argument(
-        ...,
-        help="Model Resource Identifier (ri.language-models.main.model.<id>)",
-    ),
-    request: str = typer.Option(
-        ...,
-        "--request",
-        "-r",
-        help="Request JSON (inline or @file.json). Must include 'messages' and 'maxTokens'.",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "json",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    model_id: ModelApiName,
+    request: Annotated[
+        str,
+        typer.Option(
+            "--request",
+            "-r",
+            help=(
+                "The API's messages request as JSON, inline or @file.json. "
+                "messages and maxTokens are required."
+            ),
+            show_default=False,
+        ),
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Send messages to Anthropic Claude model with advanced features.
+    """Send a full messages request to an Anthropic Claude model.
 
-    Accepts full SDK request structure, enabling:
-    - Multi-turn conversations
-    - Tool/function calling
-    - Extended thinking mode
-    - Document and image processing
-    - Citations
-
-    The request must be a JSON object containing:
-    - messages: List of message objects with role and content
-    - maxTokens: Maximum tokens to generate
-
-    Optional fields:
-    - system: System prompt blocks
-    - temperature: Sampling temperature (0.0-1.0)
-    - thinking: Extended thinking configuration
-    - tools: Tool definitions for function calling
-    - toolChoice: Tool selection strategy
-    - stopSequences: Sequences that stop generation
-    - topK: Sample from top K tokens
-    - topP: Nucleus sampling threshold
+    For multi-turn conversations, tool use, extended thinking, documents and
+    images. --request is the API's AnthropicMessagesRequest with its JSON
+    field names: messages and maxTokens (required), system, temperature,
+    thinking, tools, toolChoice, stopSequences, topK, topP and outputConfig.
+    Message roles are USER or ASSISTANT (lower case is accepted).
 
     Examples:
 
-        # Multi-turn conversation from file
-        # conversation.json:
-        # {
-        #   "messages": [
-        #     {"role": "USER", "content": [{"type": "text", "text": "Hi"}]},
-        #     {"role": "ASSISTANT", "content": [{"type": "text", "text": "Hello!"}]},
-        #     {"role": "USER", "content": [{"type": "text", "text": "Help me"}]}
-        #   ],
-        #   "maxTokens": 500
-        # }
-        pltr language-models anthropic messages-advanced ri.language-models.main.model.abc123 \\
-            --request @conversation.json
-
-        # Inline JSON with system prompt
-        pltr language-models anthropic messages-advanced ri.language-models.main.model.abc123 \\
-            --request '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}], "maxTokens": 100, "system": [{"type": "text", "text": "Be concise"}]}'
-
-        # With extended thinking
-        pltr language-models anthropic messages-advanced ri.language-models.main.model.abc123 \\
-            --request '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Solve this problem"}]}], "maxTokens": 2000, "thinking": {"type": "enabled", "budget": 10000}}'
+    \b
+    pltr language-models anthropic messages-advanced <MODEL_API_NAME> \\
+        --request @conversation.json
+    pltr language-models anthropic messages-advanced <MODEL_API_NAME> --request \\
+        '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}],
+          "maxTokens": 2000, "thinking": {"type": "enabled", "budgetTokens": 1500}}'
     """
-    try:
-        # Parse request JSON
-        request_data = parse_json_input(request)
-
-        # Validate required fields
-        if not isinstance(request_data, dict):
-            raise ValueError("Request must be a JSON object")
-        if "messages" not in request_data:
-            raise ValueError("Request must include 'messages' field")
-        if "maxTokens" not in request_data:
-            raise ValueError("Request must include 'maxTokens' field")
-
-        from ..services.language_models import LanguageModelsService
-
-        service = LanguageModelsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Sending messages..."):
-            response = service.send_messages_advanced(
-                model_id=model_id,
-                messages=request_data["messages"],
-                max_tokens=request_data["maxTokens"],
-                system=request_data.get("system"),
-                temperature=request_data.get("temperature"),
-                thinking=request_data.get("thinking"),
-                tools=request_data.get("tools"),
-                tool_choice=request_data.get("toolChoice"),
-                stop_sequences=request_data.get("stopSequences"),
-                top_k=request_data.get("topK"),
-                top_p=request_data.get("topP"),
-                preview=preview,
-            )
-
-        display_anthropic_response(response, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-        formatter.print_error(f"Invalid input: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    body = _parse_messages_request(request)
+    with spinner("Sending messages..."):
+        response = LanguageModelsService(profile=profile).send_messages_advanced(
+            model_id,
+            messages=body["messages"],
+            max_tokens=body["maxTokens"],
+            system=body.get("system"),
+            temperature=body.get("temperature"),
+            thinking=body.get("thinking"),
+            tools=body.get("tools"),
+            tool_choice=body.get("toolChoice"),
+            stop_sequences=body.get("stopSequences"),
+            top_k=body.get("topK"),
+            top_p=body.get("topP"),
+            output_config=body.get("outputConfig"),
+        )
+    emit(response, format=format, output=output, columns=MESSAGE_COLUMNS)
 
 
-# ===== OpenAI Commands =====
+# ===== OpenAI =====
 
 
 @openai_app.command("embeddings")
+@pltr_command(sdk="language_models.OpenAiModel.embeddings", beta=True)
 def openai_embeddings(
-    model_id: str = typer.Argument(
-        ...,
-        help="Model Resource Identifier (ri.language-models.main.model.<id>)",
-    ),
-    input: str = typer.Option(
-        ...,
-        "--input",
-        "-i",
-        help='Input text(s). Single string, JSON array \'["text1", "text2"]\', or @file.json',
-    ),
-    dimensions: Optional[int] = typer.Option(
-        None,
-        "--dimensions",
-        "-d",
-        help="Custom embedding dimensions (not all models support this)",
-        min=1,
-    ),
-    encoding: Optional[str] = typer.Option(
-        None,
-        "--encoding",
-        "-e",
-        help="Output encoding format: 'float' or 'base64'",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "json",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    model_id: ModelApiName,
+    input: Annotated[
+        str,
+        typer.Option(
+            "--input",
+            "-i",
+            help=(
+                'Text to embed: a string, a JSON array of strings (\'["a", "b"]\') '
+                "or @file.json."
+            ),
+            show_default=False,
+        ),
+    ],
+    dimensions: Annotated[
+        Optional[int],
+        typer.Option(
+            "--dimensions",
+            "-d",
+            min=1,
+            help="Number of dimensions of the embeddings (not every model supports it).",
+            show_default=False,
+        ),
+    ] = None,
+    encoding: Annotated[
+        Optional[str],
+        typer.Option(
+            "--encoding",
+            "-e",
+            click_type=click.Choice(["float", "base64"], case_sensitive=False),
+            help="Encoding of the embeddings: float or base64.",
+            show_default=False,
+        ),
+    ] = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Generate embeddings for text using an OpenAI model.
+    """Embed texts with an OpenAI embedding model.
 
-    Accepts single text strings or multiple texts for batch processing.
-    Returns embedding vectors that can be used for semantic search,
-    clustering, or similarity comparisons.
+    The table shows one row per input with a preview of its vector; CSV has
+    the whole vector as a JSON array, and --format json prints the API's
+    response ({"data": [[...], ...], "model": ..., "usage": ...}).
 
     Examples:
 
-        # Single text
-        pltr language-models openai embeddings ri.language-models.main.model.xyz789 \\
-            --input "Machine learning is fascinating"
-
-        # Multiple texts (inline JSON array)
-        pltr language-models openai embeddings ri.language-models.main.model.xyz789 \\
-            --input '["Document 1", "Document 2", "Document 3"]'
-
-        # Multiple texts from file
-        # texts.json: ["Text 1", "Text 2", "Text 3"]
-        pltr language-models openai embeddings ri.language-models.main.model.xyz789 \\
-            --input @texts.json
-
-        # Custom dimensions and encoding
-        pltr language-models openai embeddings ri.language-models.main.model.xyz789 \\
-            --input "Sample text" \\
-            --dimensions 1024 \\
-            --encoding base64
-
-        # Save embeddings to file
-        pltr language-models openai embeddings ri.language-models.main.model.xyz789 \\
-            --input '["Text 1", "Text 2"]' \\
-            --output embeddings.json
+    \b
+    pltr language-models openai embeddings <MODEL_API_NAME> -i "Machine learning"
+    pltr language-models openai embeddings <MODEL_API_NAME> -i '["Doc 1", "Doc 2"]' \\
+        --format json --output embeddings.json
     """
-    try:
-        # Parse input - handle string or array
-        input_data = (
-            parse_json_input(input)
-            if input.startswith("@") or input.startswith("[")
-            else input
+    texts = _parse_input_texts(input)
+    with spinner("Generating embeddings..."):
+        response = LanguageModelsService(profile=profile).generate_embeddings(
+            model_id, texts, dimensions=dimensions, encoding_format=encoding
         )
-
-        # Convert to list if single string
-        if isinstance(input_data, str):
-            input_texts = [input_data]
-        elif isinstance(input_data, list):
-            input_texts = input_data
-        else:
-            raise ValueError("Input must be a string or array of strings")
-
-        # Validate encoding format if provided
-        if encoding and encoding not in ["float", "base64"]:
-            raise ValueError("Encoding format must be 'float' or 'base64'")
-
-        from ..services.language_models import LanguageModelsService
-
-        service = LanguageModelsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner("Generating embeddings..."):
-            response = service.generate_embeddings(
-                model_id=model_id,
-                input_texts=input_texts,
-                dimensions=dimensions,
-                encoding_format=encoding,
-                preview=preview,
-            )
-
-        display_openai_response(response, format, output)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-        formatter.print_error(f"Invalid input: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Operation failed: {e}")
-        raise typer.Exit(1)
+    emit(
+        response,
+        format=format,
+        output=output,
+        columns=EMBEDDING_CSV_COLUMNS
+        if format.lower() == "csv"
+        else EMBEDDING_TABLE_COLUMNS,
+        rows=_embedding_rows,
+        title=f"{response.model} ({response.usage.prompt_tokens} prompt tokens)",
+    )

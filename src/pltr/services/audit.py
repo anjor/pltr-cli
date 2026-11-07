@@ -1,105 +1,74 @@
 """
-Audit service wrapper for Foundry SDK.
-Provides access to audit log file operations for compliance and security monitoring.
+Audit service wrapper for the Foundry SDK audit API.
+
+``Organization.LogFile.list`` and ``Organization.LogFile.content`` are GA
+endpoints, called without ``preview``. Methods return the SDK results
+unchanged (a one-page ``ResourceIterator`` of ``LogFile`` models, or a
+streamed response of the log file's bytes) and let SDK exceptions propagate
+so the error layer can classify them.
 """
 
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from .base import BaseService
 
 
 class AuditService(BaseService):
-    """Service wrapper for Foundry Audit operations."""
+    """Service wrapper for Foundry audit log files (``client.audit``)."""
 
     def _get_service(self) -> Any:
-        """Get the Foundry Audit service."""
+        """Get the Foundry audit service."""
         return self.client.audit
 
     def list_log_files(
         self,
         organization_rid: str,
-        start_date: date,
+        *,
+        start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         page_size: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        List audit log files for an organization.
+        page_token: Optional[str] = None,
+    ) -> Any:
+        """List one page of an organization's audit log files (``LogFile.list``, GA).
 
         Args:
-            organization_rid: Organization Resource Identifier
-                Expected format: ri.multipass..organization.<locator>
-            start_date: Start date for audit events (required)
-            end_date: End date for audit events (inclusive, optional)
-            page_size: Number of results per page (optional)
+            organization_rid: Organization RID (ri.multipass..organization.<id>)
+            start_date: First day of audit events to list; the API requires it
+                unless ``page_token`` is given
+            end_date: Last day of audit events to list (inclusive); without
+                it the listing has no end
+            page_size: Number of log files per page
+            page_token: ``nextPageToken`` of an earlier page
 
         Returns:
-            List of log file dictionaries containing:
-            - fileId: Log file identifier
-            - date: Date of the log file
-            - size: Size of the log file in bytes
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> from datetime import date
-            >>> service = AuditService()
-            >>> logs = service.list_log_files(
-            ...     organization_rid="ri.multipass..organization.abc123",
-            ...     start_date=date(2024, 1, 1),
-            ...     end_date=date(2024, 1, 31)
-            ... )
+            The SDK ``ResourceIterator[LogFile]``; constructing it fetched
+            exactly one page (``.data``, ``.next_page_token``). A ``LogFile``
+            has only an ``id``.
         """
-        try:
-            # Build optional parameters
-            kwargs: Dict[str, Any] = {}
-            if end_date:
-                kwargs["end_date"] = end_date
-            if page_size:
-                kwargs["page_size"] = page_size
+        return self.service.Organization.LogFile.list(
+            organization_rid,
+            start_date=start_date,
+            end_date=end_date,
+            page_size=page_size,
+            page_token=page_token,
+        )
 
-            log_files = self.service.Organization.LogFile.list(
-                organization_rid=organization_rid,
-                start_date=start_date,
-                **kwargs,
-            )
-            return [self._serialize_response(log) for log in log_files]
-        except Exception as e:
-            raise RuntimeError(f"Failed to list audit log files: {e}") from e
+    def download_log_file(self, organization_rid: str, log_file_id: str) -> Any:
+        """Request an audit log file's content as a stream (``LogFile.content``, GA).
 
-    def get_log_file_content(
-        self,
-        organization_rid: str,
-        log_file_id: str,
-    ) -> bytes:
-        """
-        Get the content of a specific audit log file.
+        The request is made, and API errors are raised, before this returns;
+        the body is read only while it is streamed.
 
         Args:
-            organization_rid: Organization Resource Identifier
-            log_file_id: Log file identifier (from list_log_files)
+            organization_rid: Organization RID
+            log_file_id: Log file ID (the ``id`` of a listed ``LogFile``)
 
         Returns:
-            Raw bytes content of the log file
-
-        Raises:
-            RuntimeError: If the operation fails
-
-        Example:
-            >>> service = AuditService()
-            >>> content = service.get_log_file_content(
-            ...     organization_rid="ri.multipass..organization.abc123",
-            ...     log_file_id="2024-01-15"
-            ... )
+            The SDK's streaming context manager: ``with download as
+            response:`` then ``response.iter_bytes()`` yields the content,
+            unchanged.
         """
-        try:
-            content = self.service.Organization.LogFile.content(
-                organization_rid=organization_rid,
-                log_file_id=log_file_id,
-            )
-            return content
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to get audit log file content '{log_file_id}': {e}"
-            ) from e
+        return self.service.Organization.LogFile.with_streaming_response.content(
+            organization_rid, log_file_id
+        )

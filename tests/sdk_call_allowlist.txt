@@ -8,23 +8,6 @@
 # Format: <file>::<Class.method>::<SDK path or HTTP call>::<rule>[<n>]  # <reason>
 # Rewrite (keeps existing reasons): uv run python scripts/check_sdk_calls.py --write-allowlist
 
-# src/pltr/services/audit.py
-services/audit.py::AuditService.list_log_files::audit.Organization.LogFile.list::unchecked-kwargs  # #185: dict-built (end_date, page_size; valid keys); pass explicit keywords
-
-# src/pltr/services/connectivity.py
-services/connectivity.py::ConnectivityService._list_connections_from_filesystem::filesystem.Folder.children::preview-on-ga  # not in #184: Folder.children is GA; drop preview=
-services/connectivity.py::ConnectivityService.create_file_import::file_imports.FileImport.create::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.create(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.create_table_import::table_imports.TableImport.create::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.create(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.execute_file_import::file_imports.FileImport.execute::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.execute(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.execute_table_import::table_imports.TableImport.execute::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.execute(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.get_file_import::file_imports.FileImport.get::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.get(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.get_table_import::table_imports.TableImport.get::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.get(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_connections::connectivity.Connection.list::missing-method  # not in #182: no Connection.list, so connections list always falls back to the filesystem scan
-services/connectivity.py::ConnectivityService.list_file_imports::file_imports.FileImport.list::missing-method  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_file_imports::file_imports.FileImport.list::missing-method[2]  # not in #182: client.file_imports doesn't exist; use connectivity.Connection.FileImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
-services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method[2]  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
-
 # src/pltr/services/dataset.py
 services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.add_primary_key::datasets.Dataset.View.add_primary_key::missing-method  # #182 dataset views add-primary-key: use datasets.View.add_primary_key(view_dataset_rid, primary_key=)
@@ -43,11 +26,6 @@ services/dataset.py::DatasetService.get_views::datasets.list_views::missing-meth
 services/dataset.py::DatasetService.read_table::datasets.read_table::missing-method  # #182: dead except-AttributeError fallback (Dataset.read_table works); delete it
 services/dataset.py::DatasetService.remove_backing_datasets::datasets.Dataset.View.remove_backing_datasets::missing-method  # #182 dataset views remove-datasets: use datasets.View.remove_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.replace_backing_datasets::datasets.Dataset.View.replace_backing_datasets::missing-method  # #182 dataset views replace-datasets: use datasets.View.replace_backing_datasets(view_dataset_rid, backing_datasets=)
-
-# src/pltr/services/language_models.py
-services/language_models.py::LanguageModelsService.generate_embeddings::language_models.OpenAiModel.embeddings::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta OpenAiModel.embeddings
-services/language_models.py::LanguageModelsService.send_message::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
-services/language_models.py::LanguageModelsService.send_messages_advanced::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
 
 # src/pltr/services/ontology.py
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
