@@ -1,616 +1,440 @@
 """
-Streams management commands for Foundry.
-Provides commands for managing streaming datasets and publishing records.
+Streams commands (Foundry streams API): streaming datasets, streams and
+publishing records.
 """
 
+from typing import Any, Dict, List, Optional
+
+import click
 import typer
-import json
-from typing import Optional
-from pathlib import Path
-from rich.console import Console
+from typing_extensions import Annotated
 
-from ..services.streams import StreamsService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
+from ..contract import (
+    Columns,
+    ConfirmAliasOption,
+    FormatOption,
+    OutputOption,
+    PreviewNoopOption,
+    ProfileOption,
+    YesOption,
+    confirm_destructive,
+    emit,
+    format_option,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
 )
+from ..services.streams import StreamsService
+from ..utils.completion import cache_rid, complete_rid
 
-# Create main app and sub-apps
 app = typer.Typer(help="Manage streaming datasets and streams")
 dataset_app = typer.Typer(help="Manage streaming datasets")
 stream_app = typer.Typer(help="Manage streams and publish records")
 
-# Add sub-apps
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(stream_app, name="stream")
 
-console = Console()
-formatter = OutputFormatter(console)
+#: Table/CSV columns for a ``streams.models.Dataset``.
+DATASET_COLUMNS: Columns = {
+    "RID": "rid",
+    "Name": "name",
+    "Parent Folder": "parent_folder_rid",
+}
+
+#: Table/CSV columns for a ``Stream``.
+STREAM_COLUMNS: Columns = {
+    "Branch": "branch_name",
+    "View RID": "view_rid",
+    "Stream Type": "stream_type",
+    "Partitions": "partitions_count",
+    "Compressed": "compressed",
+    "Fields": lambda stream: ", ".join(
+        f"{field.name} ({field.schema_.data_type.type})"
+        for field in stream.schema_.fields
+    ),
+    "Key Fields": lambda stream: ", ".join(stream.schema_.key_field_names or []),
+}
+
+_SCHEMA_EXAMPLE = (
+    '{"fields": [{"name": "id", "schema": {"nullable": false, '
+    '"dataType": {"type": "long"}}}], "keyFieldNames": ["id"]}'
+)
+
+DatasetRid = Annotated[
+    str,
+    typer.Argument(
+        help="RID of the streaming dataset (ri.foundry.main.dataset.<id>).",
+        autocompletion=complete_rid,
+        show_default=False,
+    ),
+]
+BranchOption = Annotated[
+    str,
+    typer.Option("--branch", "-b", help="Branch of the stream.", show_default=False),
+]
+SchemaHelp = (
+    'Foundry stream schema as JSON or @file.json: a "fields" list of '
+    '{"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional '
+    '"keyFieldNames", e.g. ' + _SCHEMA_EXAMPLE + ". Types include string, "
+    "integer, long, double, float, boolean, date, timestamp and decimal."
+)
+CompressedOption = Annotated[
+    Optional[bool],
+    typer.Option(
+        "--compressed/--no-compressed",
+        help="Compress the stream (default: off for a new stream).",
+        show_default=False,
+    ),
+]
+PartitionsOption = Annotated[
+    Optional[int],
+    typer.Option(
+        "--partitions",
+        min=1,
+        help=(
+            "Number of partitions (default: 1). Each handles about 5 MB/s; it "
+            "can't be changed later except by a reset."
+        ),
+        show_default=False,
+    ),
+]
+StreamTypeOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--type",
+        click_type=click.Choice(
+            ["LOW_LATENCY", "HIGH_THROUGHPUT"], case_sensitive=False
+        ),
+        help="Stream type (default: LOW_LATENCY).",
+        show_default=False,
+    ),
+]
+ViewRidOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--view",
+        help=(
+            "Write only to the stream view with this RID (advanced; default: the "
+            "branch's latest stream)."
+        ),
+        autocompletion=complete_rid,
+    ),
+]
 
 
-def parse_json_or_file(data_str: Optional[str]) -> Optional[dict]:
-    """
-    Parse JSON from string or file.
+def _load_schema(value: str) -> Dict[str, Any]:
+    """Parse --schema (inline JSON or @file.json) into a stream schema dict."""
+    schema = load_json_input(value, param_hint="'--schema'")
+    if not isinstance(schema, dict) or "fields" not in schema:
+        raise typer.BadParameter(
+            'expected a stream schema object with a "fields" list, e.g. '
+            + _SCHEMA_EXAMPLE,
+            param_hint="'--schema'",
+        )
+    return schema
 
-    Supports:
-    - Inline JSON: '{"key": "value"}'
-    - File reference: @data.json
 
-    Args:
-        data_str: JSON string or file reference
-
-    Returns:
-        Parsed dictionary or None
-
-    Raises:
-        FileNotFoundError: If file reference doesn't exist
-        json.JSONDecodeError: If JSON is invalid
-    """
-    if not data_str:
-        return None
-
-    # Handle file reference
-    if data_str.startswith("@"):
-        file_path = Path(data_str[1:])
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with open(file_path, "r") as f:
-            return json.load(f)
-
-    # Handle inline JSON
-    return json.loads(data_str)
+def _stream_type(value: Optional[str]) -> Optional[str]:
+    return value.upper() if value else None
 
 
 @dataset_app.command("create")
+@pltr_command(sdk="streams.Dataset.create", beta=True)
 def create_dataset(
-    name: str = typer.Argument(
-        ...,
-        help="Dataset name",
-    ),
-    parent_folder_rid: str = typer.Option(
-        ...,
-        "--folder",
-        "-f",
-        help="Parent folder RID (e.g., ri.compass.main.folder.xxx)",
-        autocompletion=complete_rid,
-    ),
-    schema: str = typer.Option(
-        ...,
-        "--schema",
-        "-s",
-        help="Stream schema as JSON or @file.json. Format: {'fieldSchemaList': [{'name': 'field', 'type': 'STRING'}]}",
-    ),
-    branch: Optional[str] = typer.Option(
-        None,
-        "--branch",
-        "-b",
-        help="Branch name (default: master)",
-    ),
-    compressed: Optional[bool] = typer.Option(
-        None,
-        "--compressed",
-        help="Enable compression",
-    ),
-    partitions: Optional[int] = typer.Option(
-        None,
-        "--partitions",
-        help="Number of partitions (default: 1). Each partition handles ~5 MB/s.",
-    ),
-    stream_type: Optional[str] = typer.Option(
-        None,
-        "--type",
-        help="Stream type: HIGH_THROUGHPUT or LOW_LATENCY (default: LOW_LATENCY)",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    name: Annotated[
+        str,
+        typer.Argument(help="Name of the new streaming dataset.", show_default=False),
+    ],
+    parent_folder_rid: Annotated[
+        str,
+        typer.Option(
+            "--folder",
+            "-f",
+            help=(
+                "RID of the folder or project to create the dataset in "
+                "(ri.compass.main.folder.<id>; not a user folder)."
+            ),
+            autocompletion=complete_rid,
+            show_default=False,
+        ),
+    ],
+    schema: Annotated[
+        str, typer.Option("--schema", "-s", help=SchemaHelp, show_default=False)
+    ],
+    branch: Annotated[
+        Optional[str],
+        typer.Option(
+            "--branch",
+            "-b",
+            help="Branch of the initial stream (default: the default branch, usually master).",
+        ),
+    ] = None,
+    compressed: CompressedOption = None,
+    partitions: PartitionsOption = None,
+    stream_type: StreamTypeOption = None,
+    profile: ProfileOption = None,
+    # -f is --folder here, so --format has no short flag.
+    format: Annotated[str, format_option(short=False)] = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Create a new streaming dataset with an initial stream.
-
-    The schema defines the structure of records in the stream.
-    Each field must have a 'name' and 'type' (STRING, INTEGER, DOUBLE, BOOLEAN, etc.).
+    """Create a streaming dataset with a stream on one branch.
 
     Examples:
 
-        # Create basic streaming dataset
-        pltr streams dataset create my-stream \\
-            --folder ri.compass.main.folder.xxx \\
-            --schema '{"fieldSchemaList": [{"name": "value", "type": "STRING"}]}'
-
-        # Create from schema file
         pltr streams dataset create sensor-data \\
-            --folder ri.compass.main.folder.xxx \\
-            --schema @schema.json \\
-            --partitions 5 \\
-            --type HIGH_THROUGHPUT
+            --folder ri.compass.main.folder.<id> \\
+            --schema '{"fields": [{"name": "value", "schema": {"nullable": true, "dataType": {"type": "string"}}}]}'
 
-        # With specific branch
-        pltr streams dataset create my-stream \\
-            --folder ri.compass.main.folder.xxx \\
-            --schema @schema.json \\
-            --branch develop
+        pltr streams dataset create sensor-data --folder ri.compass.main.folder.<id> \\
+            --schema @schema.json --partitions 5 --type HIGH_THROUGHPUT
     """
-    try:
-        # Parse schema
-        schema_dict = parse_json_or_file(schema)
-        if schema_dict is None:
-            console.print("[red]Error: Schema is required[/red]")
-            raise typer.Exit(1)
-
-        with SpinnerProgressTracker().track_spinner("Creating streaming dataset"):
-            service = StreamsService(profile=profile)
-            result = service.create_dataset(
-                name=name,
-                parent_folder_rid=parent_folder_rid,
-                schema=schema_dict,
-                branch_name=branch,
-                compressed=compressed,
-                partitions_count=partitions,
-                stream_type=stream_type,
-                preview=preview,
-            )
-
-        console.print(
-            f"[green]✓[/green] Created streaming dataset: {result.get('name')}"
+    schema_dict = _load_schema(schema)
+    with spinner(f"Creating streaming dataset '{name}'..."):
+        dataset = StreamsService(profile=profile).create_dataset(
+            name=name,
+            parent_folder_rid=parent_folder_rid,
+            schema=schema_dict,
+            branch_name=branch,
+            compressed=compressed,
+            partitions_count=partitions,
+            stream_type=_stream_type(stream_type),
         )
-        console.print(f"  Dataset RID: {result.get('rid')}")
-        console.print(f"  Stream RID: {result.get('streamRid')}")
-
-        formatter.format_output(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        console.print(f"[red]Error parsing schema: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    cache_rid(dataset.rid)
+    success(f"Created streaming dataset '{dataset.name}' ({dataset.rid})")
+    emit(
+        dataset,
+        format=format,
+        output=output,
+        columns=DATASET_COLUMNS,
+        title="Streaming Dataset",
+    )
 
 
 @stream_app.command("create")
+@pltr_command(sdk="streams.Dataset.Stream.create", beta=True)
 def create_stream(
-    dataset_rid: str = typer.Argument(
-        ...,
-        help="Dataset RID (e.g., ri.foundry.main.dataset.xxx)",
-        autocompletion=complete_rid,
-    ),
-    branch: str = typer.Option(
-        ...,
-        "--branch",
-        "-b",
-        help="Branch name to create stream on",
-    ),
-    schema: str = typer.Option(
-        ...,
-        "--schema",
-        "-s",
-        help="Stream schema as JSON or @file.json",
-    ),
-    compressed: Optional[bool] = typer.Option(
-        None,
-        "--compressed",
-        help="Enable compression",
-    ),
-    partitions: Optional[int] = typer.Option(
-        None,
-        "--partitions",
-        help="Number of partitions (default: 1)",
-    ),
-    stream_type: Optional[str] = typer.Option(
-        None,
-        "--type",
-        help="Stream type: HIGH_THROUGHPUT or LOW_LATENCY",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    dataset_rid: DatasetRid,
+    branch: Annotated[
+        str,
+        typer.Option(
+            "--branch",
+            "-b",
+            help="Name of the new branch to create the stream on.",
+            show_default=False,
+        ),
+    ],
+    schema: Annotated[
+        str, typer.Option("--schema", "-s", help=SchemaHelp, show_default=False)
+    ],
+    compressed: CompressedOption = None,
+    partitions: PartitionsOption = None,
+    stream_type: StreamTypeOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
+    """Create a branch of a streaming dataset with a new stream on it.
+
+    Example:
+
+        pltr streams stream create ri.foundry.main.dataset.<id> \\
+            --branch feature --schema @schema.json --partitions 3
     """
-    Create a new stream on a branch of an existing streaming dataset.
-
-    Creates a new branch and stream in one operation.
-
-    Examples:
-
-        # Create stream on new branch
-        pltr streams stream create ri.foundry.main.dataset.xxx \\
-            --branch feature-branch \\
-            --schema '{"fieldSchemaList": [{"name": "id", "type": "INTEGER"}]}'
-
-        # High-throughput stream
-        pltr streams stream create ri.foundry.main.dataset.xxx \\
-            --branch production \\
-            --schema @schema.json \\
-            --partitions 10 \\
-            --type HIGH_THROUGHPUT
-    """
-    try:
-        # Parse schema
-        schema_dict = parse_json_or_file(schema)
-        if schema_dict is None:
-            console.print("[red]Error: Schema is required[/red]")
-            raise typer.Exit(1)
-
-        with SpinnerProgressTracker().track_spinner("Creating stream"):
-            service = StreamsService(profile=profile)
-            result = service.create_stream(
-                dataset_rid=dataset_rid,
-                branch_name=branch,
-                schema=schema_dict,
-                compressed=compressed,
-                partitions_count=partitions,
-                stream_type=stream_type,
-                preview=preview,
-            )
-
-        console.print(f"[green]✓[/green] Created stream on branch: {branch}")
-        console.print(f"  Stream RID: {result.get('streamRid')}")
-
-        formatter.format_output(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        console.print(f"[red]Error parsing schema: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    schema_dict = _load_schema(schema)
+    with spinner(f"Creating stream on branch '{branch}'..."):
+        stream = StreamsService(profile=profile).create_stream(
+            dataset_rid,
+            branch_name=branch,
+            schema=schema_dict,
+            compressed=compressed,
+            partitions_count=partitions,
+            stream_type=_stream_type(stream_type),
+        )
+    cache_rid(dataset_rid)
+    success(f"Created stream on branch '{stream.branch_name}' ({stream.view_rid})")
+    emit(stream, format=format, output=output, columns=STREAM_COLUMNS, title="Stream")
 
 
 @stream_app.command("get")
+@pltr_command(sdk="streams.Dataset.Stream.get")
 def get_stream(
-    dataset_rid: str = typer.Argument(
-        ...,
-        help="Dataset RID",
-        autocompletion=complete_rid,
-    ),
-    branch: str = typer.Option(
-        ...,
-        "--branch",
-        "-b",
-        help="Stream branch name",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    dataset_rid: DatasetRid,
+    branch: BranchOption,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get information about a stream.
-
-    Retrieves stream metadata including schema and configuration.
-
-    Examples:
-
-        # Get stream on master branch
-        pltr streams stream get ri.foundry.main.dataset.xxx --branch master
-
-        # Get stream as JSON
-        pltr streams stream get ri.foundry.main.dataset.xxx \\
-            --branch feature-branch \\
-            --format json
-    """
-    try:
-        with SpinnerProgressTracker().track_spinner("Fetching stream information"):
-            service = StreamsService(profile=profile)
-            result = service.get_stream(
-                dataset_rid=dataset_rid,
-                stream_branch_name=branch,
-                preview=preview,
-            )
-
-        formatter.format_output(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    """Get the stream on a branch: its schema, view RID and settings."""
+    with spinner(f"Fetching stream on branch '{branch}'..."):
+        stream = StreamsService(profile=profile).get_stream(dataset_rid, branch)
+    cache_rid(dataset_rid)
+    emit(stream, format=format, output=output, columns=STREAM_COLUMNS, title="Stream")
 
 
 @stream_app.command("publish")
+@pltr_command(sdk="streams.Dataset.Stream.publish_record")
 def publish_record(
-    dataset_rid: str = typer.Argument(
-        ...,
-        help="Dataset RID",
-        autocompletion=complete_rid,
-    ),
-    branch: str = typer.Option(
-        ...,
-        "--branch",
-        "-b",
-        help="Stream branch name",
-    ),
-    record: str = typer.Option(
-        ...,
-        "--record",
-        "-r",
-        help="Record data as JSON or @file.json",
-    ),
-    view_rid: Optional[str] = typer.Option(
-        None,
-        "--view",
-        help="View RID for partitioning",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    dataset_rid: DatasetRid,
+    branch: BranchOption,
+    record: Annotated[
+        str,
+        typer.Option(
+            "--record",
+            "-r",
+            help=(
+                "Record as a JSON object or @file.json. It must match the stream's "
+                "schema; timestamps used as keys are epoch milliseconds."
+            ),
+            show_default=False,
+        ),
+    ],
+    view_rid: ViewRidOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    preview: PreviewNoopOption = False,
 ):
+    """Publish one record to a stream.
+
+    Example:
+
+        pltr streams stream publish ri.foundry.main.dataset.<id> --branch master \\
+            --record '{"id": 123, "value": "hello"}'
     """
-    Publish a single record to a stream.
-
-    The record must match the stream's schema.
-
-    Examples:
-
-        # Publish inline record
-        pltr streams stream publish ri.foundry.main.dataset.xxx \\
-            --branch master \\
-            --record '{"id": 123, "name": "test", "timestamp": 1234567890}'
-
-        # Publish from file
-        pltr streams stream publish ri.foundry.main.dataset.xxx \\
-            --branch master \\
-            --record @record.json
-    """
-    try:
-        # Parse record
-        record_dict = parse_json_or_file(record)
-        if record_dict is None:
-            console.print("[red]Error: Record is required[/red]")
-            raise typer.Exit(1)
-
-        with SpinnerProgressTracker().track_spinner("Publishing record"):
-            service = StreamsService(profile=profile)
-            service.publish_record(
-                dataset_rid=dataset_rid,
-                stream_branch_name=branch,
-                record=record_dict,
-                view_rid=view_rid,
-                preview=preview,
-            )
-
-        console.print("[green]✓[/green] Record published successfully")
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        console.print(f"[red]Error parsing record: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    record_value = load_json_input(record, param_hint="'--record'")
+    if not isinstance(record_value, dict):
+        raise typer.BadParameter("expected a JSON object", param_hint="'--record'")
+    with spinner("Publishing record..."):
+        StreamsService(profile=profile).publish_record(
+            dataset_rid, branch, record_value, view_rid=view_rid
+        )
+    success(f"Published 1 record to the stream on branch '{branch}'")
+    emit(None, format=format)
 
 
 @stream_app.command("publish-batch")
+@pltr_command(sdk="streams.Dataset.Stream.publish_records")
 def publish_records(
-    dataset_rid: str = typer.Argument(
-        ...,
-        help="Dataset RID",
-        autocompletion=complete_rid,
-    ),
-    branch: str = typer.Option(
-        ...,
-        "--branch",
-        "-b",
-        help="Stream branch name",
-    ),
-    records: str = typer.Option(
-        ...,
-        "--records",
-        "-r",
-        help="Records as JSON array or @file.json",
-    ),
-    view_rid: Optional[str] = typer.Option(
-        None,
-        "--view",
-        help="View RID for partitioning",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    dataset_rid: DatasetRid,
+    branch: BranchOption,
+    records: Annotated[
+        str,
+        typer.Option(
+            "--records",
+            "-r",
+            help=(
+                "Records as a JSON array of objects or @file.json. The batch is "
+                "rejected if any record doesn't match the stream's schema."
+            ),
+            show_default=False,
+        ),
+    ],
+    view_rid: ViewRidOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    preview: PreviewNoopOption = False,
 ):
+    """Publish a batch of records to a stream in one request.
+
+    Example:
+
+        pltr streams stream publish-batch ri.foundry.main.dataset.<id> --branch master \\
+            --records '[{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]'
     """
-    Publish multiple records to a stream in a batch.
-
-    More efficient than publishing records individually.
-
-    Examples:
-
-        # Publish multiple records inline
-        pltr streams stream publish-batch ri.foundry.main.dataset.xxx \\
-            --branch master \\
-            --records '[{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}]'
-
-        # Publish from file
-        pltr streams stream publish-batch ri.foundry.main.dataset.xxx \\
-            --branch master \\
-            --records @records.json
-    """
-    try:
-        # Parse records
-        records_list = parse_json_or_file(records)
-        if not records_list or not isinstance(records_list, list):
-            console.print("[red]Error: Records must be a JSON array[/red]")
-            raise typer.Exit(1)
-
-        with SpinnerProgressTracker().track_spinner("Publishing records"):
-            service = StreamsService(profile=profile)
-            service.publish_records(
-                dataset_rid=dataset_rid,
-                stream_branch_name=branch,
-                records=records_list,
-                view_rid=view_rid,
-                preview=preview,
-            )
-
-        console.print(
-            f"[green]✓[/green] Published {len(records_list)} records successfully"
+    records_value = load_json_input(records, param_hint="'--records'")
+    if (
+        not isinstance(records_value, list)
+        or not records_value
+        or not all(isinstance(item, dict) for item in records_value)
+    ):
+        raise typer.BadParameter(
+            "expected a non-empty JSON array of objects", param_hint="'--records'"
         )
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        console.print(f"[red]Error parsing records: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    record_list: List[Dict[str, Any]] = records_value
+    with spinner(f"Publishing {len(record_list)} records..."):
+        StreamsService(profile=profile).publish_records(
+            dataset_rid, branch, record_list, view_rid=view_rid
+        )
+    success(f"Published {len(record_list)} records to the stream on branch '{branch}'")
+    emit(None, format=format)
 
 
 @stream_app.command("reset")
+@pltr_command(sdk="streams.Dataset.Stream.reset", beta=True, destructive=True)
 def reset_stream(
-    dataset_rid: str = typer.Argument(
-        ...,
-        help="Dataset RID",
-        autocompletion=complete_rid,
-    ),
-    branch: str = typer.Option(
-        ...,
-        "--branch",
-        "-b",
-        help="Stream branch name to reset",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
-    confirm: bool = typer.Option(
-        False,
-        "--confirm",
-        help="Skip confirmation prompt",
-    ),
+    dataset_rid: DatasetRid,
+    branch: BranchOption,
+    schema: Annotated[
+        Optional[str],
+        typer.Option(
+            "--schema",
+            "-s",
+            help=(
+                "New stream schema as JSON or @file.json, in the format of "
+                "'pltr streams dataset create --schema' (default: keep the "
+                "current schema)."
+            ),
+        ),
+    ] = None,
+    compressed: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--compressed/--no-compressed",
+            help="Turn compression on or off (default: keep the current setting).",
+            show_default=False,
+        ),
+    ] = None,
+    partitions: Annotated[
+        Optional[int],
+        typer.Option(
+            "--partitions",
+            min=1,
+            help="New number of partitions (default: keep the current one).",
+            show_default=False,
+        ),
+    ] = None,
+    stream_type: Annotated[
+        Optional[str],
+        typer.Option(
+            "--type",
+            click_type=click.Choice(
+                ["LOW_LATENCY", "HIGH_THROUGHPUT"], case_sensitive=False
+            ),
+            help="New stream type (default: keep the current one).",
+            show_default=False,
+        ),
+    ] = None,
+    yes: YesOption = False,
+    confirm: ConfirmAliasOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
+    """Reset the stream on a branch: delete all of its records.
+
+    Optionally applies a new schema, partition count, stream type or
+    compression; settings you don't pass keep their current values. The
+    branch gets a new stream view (a new view RID). Asks for confirmation;
+    --yes skips it.
     """
-    Reset a stream, clearing all existing data.
-
-    WARNING: This operation is irreversible and will delete all records.
-
-    Examples:
-
-        # Reset with confirmation
-        pltr streams stream reset ri.foundry.main.dataset.xxx --branch master
-
-        # Skip confirmation
-        pltr streams stream reset ri.foundry.main.dataset.xxx \\
-            --branch master \\
-            --confirm
-    """
-    if not confirm:
-        proceed = typer.confirm(
-            f"⚠️  This will delete all data in stream on branch '{branch}'. Continue?"
+    schema_dict = _load_schema(schema) if schema is not None else None
+    confirm_destructive(
+        f"Reset the stream on branch '{branch}' of {dataset_rid}? This deletes "
+        "all of its records.",
+        yes=yes,
+    )
+    with spinner(f"Resetting stream on branch '{branch}'..."):
+        stream = StreamsService(profile=profile).reset_stream(
+            dataset_rid,
+            branch,
+            schema=schema_dict,
+            compressed=compressed,
+            partitions_count=partitions,
+            stream_type=_stream_type(stream_type),
         )
-        if not proceed:
-            console.print("Operation cancelled")
-            raise typer.Exit(0)
-
-    try:
-        with SpinnerProgressTracker().track_spinner("Resetting stream"):
-            service = StreamsService(profile=profile)
-            result = service.reset_stream(
-                dataset_rid=dataset_rid,
-                stream_branch_name=branch,
-                preview=preview,
-            )
-
-        console.print(f"[green]✓[/green] Stream reset successfully on branch: {branch}")
-
-        formatter.format_output(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        console.print(f"[red]Authentication Error: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    success(f"Reset the stream on branch '{branch}' (new view {stream.view_rid})")
+    emit(stream, format=format, output=output, columns=STREAM_COLUMNS, title="Stream")

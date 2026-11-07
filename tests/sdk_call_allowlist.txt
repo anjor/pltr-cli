@@ -181,25 +181,6 @@ services/resource_role.py::ResourceRoleService.grant_role::filesystem.ResourceRo
 services/resource_role.py::ResourceRoleService.list_resource_roles::filesystem.ResourceRole.list::missing-method  # #182 resource-role list: use filesystem.Resource.Role.list(resource_rid, include_inherited=...)
 services/resource_role.py::ResourceRoleService.revoke_role::filesystem.ResourceRole.revoke::missing-method  # #182 resource-role revoke: use filesystem.Resource.Role.remove(resource_rid, roles=[...])
 
-# src/pltr/services/sql.py
-services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.cancel_query::sql_queries.SqlQuery.cancel::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.cancel_query::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.execute_query::sql_queries.SqlQuery.execute::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_results::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_results::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.get_query_status::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.submit_query::sql_queries.SqlQuery.execute::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/sql.py::SqlService.wait_for_completion::sql_queries.SqlQuery.get_status::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/streams.py
-services/streams.py::StreamsService.create_dataset::streams.Dataset.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/streams.py::StreamsService.create_stream::streams.Dataset.Stream.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/streams.py::StreamsService.get_stream::streams.Dataset.Stream.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.publish_record::streams.Dataset.Stream.publish_record::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.publish_records::streams.Dataset.Stream.publish_records::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/streams.py::StreamsService.reset_stream::streams.Dataset.Stream.reset::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
 # src/pltr/services/third_party_applications.py
 services/third_party_applications.py::ThirdPartyApplicationsService.get_application::third_party_applications.ThirdPartyApplication.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
