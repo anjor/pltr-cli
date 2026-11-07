@@ -295,9 +295,10 @@ def create_connection(
 
     Example:
 
-        pltr connectivity connection create "My API" <FOLDER_RID> \\
-            '{"type": "rest", "domains": [{"host": "api.example.com"}]}' \\
-            '{"type": "foundryWorker", "networkEgressPolicyRids": ["<RID>"]}'
+    \b
+    pltr connectivity connection create "My API" <FOLDER_RID> \\
+        '{"type": "rest", "domains": [{"host": "api.example.com"}]}' \\
+        '{"type": "foundryWorker", "networkEgressPolicyRids": ["<RID>"]}'
     """
     configuration_json = _json_object(
         configuration,
@@ -697,9 +698,10 @@ def create_table_import(
 
     Example:
 
-        pltr connectivity import table <CONNECTION_RID> <DATASET_RID> \\
-            --name "Orders" --mode SNAPSHOT \\
-            --config '{"type": "jdbcImportConfig", "query": "SELECT * FROM orders"}'
+    \b
+    pltr connectivity import table <CONNECTION_RID> <DATASET_RID> \\
+        --name "Orders" --mode SNAPSHOT \\
+        --config '{"type": "jdbcImportConfig", "query": "SELECT * FROM orders"}'
     """
     config_json = load_json_input(config, param_hint="'--config'")
     if not isinstance(config_json, dict):

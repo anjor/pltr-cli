@@ -215,8 +215,8 @@ def list_models(
     The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
     directly and prints the first answer of: GET /api/v2/languageModels, then
     the OpenAI-compatible proxy's GET /api/v2/llm/proxy/openai/v1/models
-    (which lists the models it serves, without an enrollment status). Neither
-    endpoint is part of Foundry's documented API.
+    (which lists the models it serves, without an enrollment status). As
+    these endpoints aren't in the SDK, not every Foundry stack may have them.
 
     JSON output is {"data": [...]} with each model as the endpoint returned it.
     """
@@ -259,7 +259,8 @@ def model_status(
     directly: GET /api/v2/languageModels/MODEL_ID, then
     GET /api/v2/llm/models/MODEL_ID. If neither answers, it looks the model up
     by id in the OpenAI-compatible proxy's model list, which has no enrollment
-    status. None of these endpoints is part of Foundry's documented API.
+    status. As these endpoints aren't in the SDK, not every Foundry stack may
+    have them.
 
     JSON output is the model as the endpoint returned it.
     """
@@ -296,9 +297,9 @@ def enroll_model(
 
     The Foundry Platform SDK has no endpoint for this, so pltr calls Foundry
     directly: POST /api/v2/languageModels/MODEL_ID/enroll, then
-    POST /api/v2/llm/models/MODEL_ID/enroll. Neither is part of Foundry's
-    documented API; if both fail, enroll the model in the Model Catalog in
-    the Foundry UI.
+    POST /api/v2/llm/models/MODEL_ID/enroll. As these endpoints aren't in the
+    SDK, not every Foundry stack may have them; if both fail, enroll the
+    model in the Model Catalog in the Foundry UI.
 
     JSON output is the endpoint's response body (null when it has none).
     """
@@ -386,10 +387,10 @@ def anthropic_messages(
 
     Examples:
 
-        pltr language-models anthropic messages MODEL --message "Explain RIDs"
-
-        pltr language-models anthropic messages MODEL --message "Write a haiku" \\
-            --system "You are a poet" --temperature 0.8 --max-tokens 100
+    \b
+    pltr language-models anthropic messages <MODEL_API_NAME> -m "Explain RIDs"
+    pltr language-models anthropic messages <MODEL_API_NAME> -m "Write a haiku" \\
+        --system "You are a poet" --temperature 0.8 --max-tokens 100
     """
     with spinner("Sending message..."):
         response = LanguageModelsService(profile=profile).send_message(
@@ -436,12 +437,12 @@ def anthropic_messages_advanced(
 
     Examples:
 
-        pltr language-models anthropic messages-advanced MODEL \\
-            --request @conversation.json
-
-        pltr language-models anthropic messages-advanced MODEL --request \\
-            '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}],
-              "maxTokens": 2000, "thinking": {"type": "enabled", "budgetTokens": 1500}}'
+    \b
+    pltr language-models anthropic messages-advanced <MODEL_API_NAME> \\
+        --request @conversation.json
+    pltr language-models anthropic messages-advanced <MODEL_API_NAME> --request \\
+        '{"messages": [{"role": "USER", "content": [{"type": "text", "text": "Hi"}]}],
+          "maxTokens": 2000, "thinking": {"type": "enabled", "budgetTokens": 1500}}'
     """
     body = _parse_messages_request(request)
     with spinner("Sending messages..."):
@@ -514,10 +515,10 @@ def openai_embeddings(
 
     Examples:
 
-        pltr language-models openai embeddings MODEL --input "Machine learning"
-
-        pltr language-models openai embeddings MODEL --input '["Doc 1", "Doc 2"]' \\
-            --format json --output embeddings.json
+    \b
+    pltr language-models openai embeddings <MODEL_API_NAME> -i "Machine learning"
+    pltr language-models openai embeddings <MODEL_API_NAME> -i '["Doc 1", "Doc 2"]' \\
+        --format json --output embeddings.json
     """
     texts = _parse_input_texts(input)
     with spinner("Generating embeddings..."):

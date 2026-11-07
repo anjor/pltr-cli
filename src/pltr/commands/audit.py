@@ -131,7 +131,8 @@ def get_log_file_content(
 
     Example:
 
-        pltr audit get <ORGANIZATION_RID> <LOG_FILE_ID> --output audit.log
+    \b
+    pltr audit get <ORGANIZATION_RID> <LOG_FILE_ID> --output audit.log
     """
     check_binary_output(output)
     with spinner(f"Fetching audit log file {log_file_id}..."):
