@@ -44,6 +44,11 @@ app = typer.Typer(
     help="Command-line interface for Palantir Foundry APIs",
     no_args_is_help=True,
     cls=PltrRootGroup,
+    # PLTR_DEBUG=1 tracebacks must not print each frame's local variables:
+    # they hold tokens, Authorization headers and OAuth client secrets. Only the
+    # root app's settings apply: typer installs its traceback hook when the root
+    # app is called, and sub-apps are only ever added to it with add_typer.
+    pretty_exceptions_show_locals=False,
 )
 
 # Add subcommands

@@ -796,6 +796,9 @@ from `--help`. They will be removed in the next release.
 - `pltr completion` scripts complete commands, options, option values and the
   `pltr api` tree in bash, zsh and fish; the scripts it installed never
   completed anything.
+- Tracebacks (now printed only with `PLTR_DEBUG=1`) showed every frame's
+  local variables, which included the bearer token, the `Authorization`
+  header and the OAuth client secret. They show the code and the error only.
 
 ## [0.16.0] - 2026-06-25
 
