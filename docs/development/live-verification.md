@@ -200,10 +200,11 @@ that capture its inputs.
 
 ## Checklist: assumptions not verified live
 
-Every item of the "Not verified live" sections of `changelog.d/a1` to `c1`,
-grouped by area. **Smoke** names the checks that verify it (and what to look
-at); **Manual** says what to try by hand. "Partly" means the smoke check covers
-the common case only.
+Every assumption recorded as "not verified live" while this release was
+built, grouped by area. The labels (a1 to e1) name the work items the notes
+came from; the notes themselves were folded into `CHANGELOG.md`. **Smoke**
+names the checks that verify it (and what to look at); **Manual** says what
+to try by hand. "Partly" means the smoke check covers the common case only.
 
 ### Output contract, errors and authentication (a1, a3)
 
@@ -441,3 +442,65 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 - **`ontologies attachment upload` sends `Content-Type: */*` whatever
   `--content-type` says.** Manual: upload an attachment and check its MIME
   type.
+
+### Command manifest and agent skill (d1)
+
+- **`pltr commands` makes no Foundry call**: nothing to verify live.
+- **The agent skill's workflow payloads.** The skill's commands and flags are
+  checked against the CLI, but not its payloads. The ontology search filter
+  (`{"type": "eq", "field": ..., "value": ...}`, `and`, `gt`): Smoke:
+  `ontology.object-search` (set `ontology.where`). SQL that refers to a
+  dataset by RID or path in backticks: Smoke: `sql.execute`. The build
+  target JSON: Manual: `pltr orchestration builds create '{"type": "manual",
+  "targetRids": ["<dataset-rid>"]}' --branch master` on a dataset you may
+  build. Role IDs such as `compass:manage`: Manual: `pltr resource-role list
+  <resource-rid>` shows the role IDs in use on your stack.
+
+### Cleanup: `pltr cp` schemas, errors, downloads (e1)
+
+- **`pltr cp`'s dataset sequence**: create, list the files, start a SNAPSHOT
+  transaction, download, upload into it, commit, read the source's schema on
+  `--branch`, and put it with the branch and the committed transaction.
+  Partly: `write.cp` copies the scratch dataset after `write.schema-set`.
+  Manual: `pltr cp <dataset-rid> <folder-rid>`, then
+  `pltr dataset schema get <copy-rid>` and `pltr dataset preview <copy-rid>`.
+- **`getSchema` answers `SchemaNotFound` (not `DatasetViewNotFound`) for a
+  source that has files but no schema**, so the copy is made without one.
+  Manual: upload a file to a new dataset without setting a schema, then
+  `pltr cp` it: it should exit 0 with a copy and no schema.
+- **`putSchema` with `dataframeReader: CSV` makes Foundry read copied CSV
+  files, and the `PARQUET` default fits datasets built by transforms.**
+  Partly: `write.cp` copies CSV files. Manual: `pltr cp` a dataset built by a
+  transform, then `pltr dataset preview <copy-rid>`.
+- **Decode failures are told apart from argument mistakes** by where the
+  pydantic error was raised; checked against foundry-platform-sdk 1.111.0 and
+  pydantic 2.11 only. Smoke: `contract.invalid-rid` (an argument mistake still
+  exits 2). A response that doesn't match the SDK's model can't be provoked on
+  demand: after an SDK or pydantic upgrade, look out for `invalid_response`
+  errors (exit 7) where a usage error is expected, and the reverse.
+- **`pltr cp --branch X` for a branch other than the new dataset's default
+  branch** may fail with `BranchNotFound`, because `Dataset.create` makes only
+  the default branch (behaviour unchanged). Manual:
+  `pltr cp <dataset-rid> <folder-rid> --branch <other-branch>`.
+
+### The smoke test itself (d2)
+
+The smoke script has run only against fakes, so a failing check can be the
+script's fault. It assumes that:
+
+- a made-up folder RID answers 404 (403 is accepted too), a made-up token 401,
+  and made-up OAuth client credentials fail the token request: `contract.not-found`,
+  `auth.invalid-token`, `auth.invalid-oauth-client`;
+- `resource get`, `folder get` and `project get` return a trashed resource
+  with its `trashStatus` (`DIRECTLY_TRASHED`) rather than 404:
+  `write.dataset-trashed`;
+- CSV files with a schema from `schema set --from-csv --dataframe-reader CSV`
+  read back as rows with the CSV's columns: `write.read-table`;
+- `pltr cp` of the scratch dataset prints the copy as `data[0]`: `write.cp`;
+- a streaming dataset can be created in the scratch folder (streaming may not
+  be enabled on every stack): `write.stream-create`;
+- `builds search --started-after <30 days ago>` finds a build on an active
+  stack: `orchestration.builds-search` (otherwise the build checks skip unless
+  `orchestration.build_rid` is set);
+- `admin user search <your username>` finds you (prefix search):
+  `admin.user-search`.

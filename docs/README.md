@@ -32,4 +32,5 @@ on the official `foundry-platform-sdk`. Start with the
 - **[The command contract](development/command-contract.md)**: how a command handles output, errors, exit codes, confirmation and beta endpoints, and how to convert or add one
 - **[SDK call check](development/sdk-guardrail.md)**: the CI check that every SDK call exists and binds, and how service tests use the real SDK client
 - **[Service layer](api/wrapper.md)**: the architecture and how to add a command
+- **[Live verification](development/live-verification.md)**: the smoke test against a real stack, and the assumptions only a live stack can confirm
 - **[Release process](../RELEASE.md)**: releasing, the changelog, and the checklist for bumping `foundry-platform-sdk`

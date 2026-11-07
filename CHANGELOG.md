@@ -261,6 +261,19 @@ can search. See Added.
     doesn't exist; `--check` runs the same checks.
   - `tests/test_docs_examples.py` checks every `pltr` example in the README,
     `docs/` and `claude_skill/` against the real command tree.
+  - `scripts/smoke.py`, a live smoke test for maintainers (#189). Run against
+    a real stack, it drives the real `pltr` with `--format json`, checks the
+    result and the output contract (exit code, one JSON document on stdout,
+    JSON Lines and the structured error on stderr), and prints a
+    pass/fail/skip table (`--markdown` to paste into a pull request).
+    Read-only checks cover every area and one `pltr api` command per
+    namespace; `--allow-writes --scratch-folder RID` adds a write pass that
+    moves everything it creates to the trash; `--include-admin` adds admin
+    checks and never deletes permanently. Inputs come from `smoke.toml`
+    (example: `scripts/smoke.example.toml`), flags or earlier checks; a check
+    without its input is skipped. `docs/development/live-verification.md`
+    explains how to run it and lists every assumption of this release that
+    wasn't verified live, with the check that covers it.
 
 ### Changed
 

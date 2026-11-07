@@ -588,7 +588,10 @@ the README, `docs/` and `claude_skill/` must name real commands and options.
   keyring access and environment-variable credentials.
 
 Service and command tests run against a real `FoundryClient` with only HTTP
-faked (the `stub_foundry_http` fixture in `tests/conftest.py`). See
+faked (the `stub_foundry_http` fixture in `tests/conftest.py`). Behaviour on
+a real stack is checked with a smoke test, `uv run python scripts/smoke.py`;
+**[live verification](docs/development/live-verification.md)** explains how
+to run it and lists the assumptions only a live stack can confirm. See also
 **[the command contract](docs/development/command-contract.md)**,
 **[the SDK call check](docs/development/sdk-guardrail.md)** and
 **[the service layer guide](docs/api/wrapper.md)**.
@@ -612,7 +615,9 @@ Contributions are welcome: bug fixes, new commands and documentation.
 3. Add tests that use `stub_foundry_http`.
 4. Record user-visible changes under `## [Unreleased]` in
    [CHANGELOG.md](CHANGELOG.md), and update the README and `docs/`.
-5. Run the checks above and open a pull request.
+5. Run the checks above and open a pull request. Say in it what you verified
+   on a live stack (paste the smoke test's table if you ran it) and which
+   assumptions you couldn't check.
 
 ## License
 
