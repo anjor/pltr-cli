@@ -308,3 +308,30 @@ def test_folder_kind_accepts_a_project(stub_foundry_http) -> None:
 def test_click_param_type_name_is_resource() -> None:
     assert isinstance(ResourceRef("folder"), click.ParamType)
     assert ResourceRef("folder").name == "resource"
+
+
+def test_batch_api_errors_name_the_paths(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        403,
+        json=fj.error("ApiUsageDenied", "PERMISSION_DENIED"),
+    )
+
+    with pytest.raises(Exception) as caught:
+        resolve_paths(stub_foundry_http.client, ["/S/P/a", "/S/P/b"])
+
+    info = classify_error(caught.value)
+    assert info.type == "permission_denied"
+    assert "Could not resolve the paths '/S/P/a', '/S/P/b'" in info.message
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["C:/Program Files/Git/Space/Project/data", "D:\\Space\\Project\\data"],
+)
+def test_a_windows_rewritten_path_is_a_usage_error_with_advice(value: str) -> None:
+    with pytest.raises(click.BadParameter) as caught:
+        ResourceRef("dataset").convert(value, None, None)
+
+    message = caught.value.format_message()
+    assert "MSYS_NO_PATHCONV=1" in message
+    assert "Git Bash" in message

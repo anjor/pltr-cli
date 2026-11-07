@@ -148,7 +148,13 @@ account: it's the full path, starting with the space, as Foundry shows it.
 Spaces and the root folder can't be looked up by path; use their RIDs
 (`pltr space list`). `wrong_resource_type` (exit code 2) means the path
 exists but is the wrong kind of resource for the command, for example a
-folder given to `pltr dataset get`. User and group IDs are UUIDs, not usernames: find them with
+folder given to `pltr dataset get`.
+
+On Windows, Git Bash (MSYS) rewrites arguments that start with `/` into
+Windows paths, so `/Space/Project/name` reaches pltr as
+`C:/Program Files/Git/Space/Project/name` and fails with a usage error that
+says so. Run the command with `MSYS_NO_PATHCONV=1`, or start the path with two
+slashes (`//Space/Project/name`). User and group IDs are UUIDs, not usernames: find them with
 `pltr admin user search` and `pltr admin group search`.
 
 ### SQL queries

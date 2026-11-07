@@ -136,6 +136,9 @@ class ResourceRef(click.ParamType):
 
     name = "resource"
 
+    #: A Windows path: what Git Bash (MSYS) makes of a leading-slash argument.
+    _WINDOWS_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+
     def __init__(self, kind: str) -> None:
         if kind not in KINDS:
             raise ValueError(f"Unknown resource kind: {kind!r}")
@@ -144,6 +147,15 @@ class ResourceRef(click.ParamType):
     def convert(
         self, value: Any, param: Optional[click.Parameter], ctx: Optional[click.Context]
     ) -> Any:
+        if isinstance(value, str) and self._WINDOWS_PATH.match(value):
+            self.fail(
+                f"{value!r} is a Windows path, not a RID or a Compass path. Git "
+                "Bash (MSYS) rewrites arguments that start with / into Windows "
+                "paths: run the command with MSYS_NO_PATHCONV=1, or start the "
+                "Compass path with two slashes (//Space/Project/name).",
+                param,
+                ctx,
+            )
         return value
 
     def __repr__(self) -> str:
@@ -240,6 +252,7 @@ def _resolve_one(resource_client: Any, path: str) -> Any:
 
 
 def _resolve_batch(resource_client: Any, paths: List[str]) -> Dict[str, Any]:
+    from foundry_sdk import _errors as sdk
     from foundry_sdk.v2.filesystem.models import (
         GetByPathResourcesBatchRequestElement,
     )
@@ -247,9 +260,15 @@ def _resolve_batch(resource_client: Any, paths: List[str]) -> Dict[str, Any]:
     returned: Dict[str, Any] = {}
     for start in range(0, len(paths), MAX_BATCH_SIZE):
         chunk = paths[start : start + MAX_BATCH_SIZE]
-        response = resource_client.get_by_path_batch(
-            body=[GetByPathResourcesBatchRequestElement(path=path) for path in chunk]
-        )
+        try:
+            response = resource_client.get_by_path_batch(
+                body=[
+                    GetByPathResourcesBatchRequestElement(path=path) for path in chunk
+                ]
+            )
+        except sdk.PalantirRPCException as exc:
+            quoted = ", ".join(repr(path) for path in chunk)
+            raise PathResolutionError(f"Could not resolve the paths {quoted}") from exc
         for resource in response.data:
             returned.setdefault(_normalize(resource.path), resource)
     found: Dict[str, Any] = {}
