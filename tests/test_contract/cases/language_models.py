@@ -1,12 +1,31 @@
 """Contract-test cases for src/pltr/commands/language_models.py (see __init__.py)."""
 
-# Not converted to the output/error contract yet. Delete a command's
-# entry when you convert it (and add its SUCCESS case).
-NOT_CONVERTED = {
-    "language-models anthropic messages",
-    "language-models anthropic messages-advanced",
-    "language-models enroll",
-    "language-models list",
-    "language-models openai embeddings",
-    "language-models status",
+import json
+
+from tests import foundry_json_language_models as lm
+
+SUCCESS = {
+    "language-models anthropic messages": [{"json": lm.anthropic_response()}],
+    "language-models anthropic messages-advanced": [{"json": lm.anthropic_response()}],
+    "language-models openai embeddings": [{"json": lm.embeddings_response()}],
+    # list, status and enroll are labeled direct-HTTP commands (requests, not httpx)
+    "language-models list": [{"json": {"data": [lm.language_model()]}}],
+    "language-models status": [{"json": lm.language_model()}],
+    "language-models enroll": [{"json": {"status": "ENROLLED"}}],
+}
+
+ARGS = {
+    # --request must be a messages request object
+    "language-models anthropic messages-advanced": [
+        lm.MODEL_API_NAME,
+        "--request",
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "USER", "content": [{"type": "text", "text": "Hi"}]}
+                ],
+                "maxTokens": 16,
+            }
+        ),
+    ],
 }

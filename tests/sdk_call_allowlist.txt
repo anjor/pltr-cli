@@ -73,11 +73,6 @@ services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by
 services/functions.py::FunctionsService.get_query_by_rid::functions.Query.get_by_rid::too-many-positional  # #182 functions query get-by-rid: rid is keyword-only; Query.get_by_rid(rid=..., preview=True)
 services/functions.py::FunctionsService.get_value_type::functions.ValueType.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/language_models.py
-services/language_models.py::LanguageModelsService.generate_embeddings::language_models.OpenAiModel.embeddings::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta OpenAiModel.embeddings
-services/language_models.py::LanguageModelsService.send_message::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
-services/language_models.py::LanguageModelsService.send_messages_advanced::language_models.AnthropicModel.messages::unchecked-kwargs  # #185/#184: dict-built; keys valid, but it carries preview=<--preview flag> to beta AnthropicModel.messages
-
 # src/pltr/services/mediasets.py
 services/mediasets.py::MediaSetsService.abort_transaction::media_sets.MediaSet.abort::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.calculate_thumbnail::media_sets.MediaSet.calculate::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
