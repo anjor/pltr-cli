@@ -10,6 +10,675 @@ listed under "Breaking changes" or marked **Breaking**.
 Entries for 0.5.0 to 0.16.0 were written after the fact from the git history
 and pull requests. Numbers in parentheses are pull requests or issues.
 
+## [Unreleased]
+
+This release puts every pltr command on one set of rules for output, errors
+and confirmations, fixes about 40 commands that could never succeed, and adds
+`pltr api`, a command for every method of the Foundry Platform SDK. It changes
+the JSON output, where messages are printed, the exit codes and some arguments
+and flags, so scripts that call pltr need updating: read "Breaking changes"
+first. Renamed and removed flags keep working for one release, as hidden
+aliases that print a deprecation warning (see "Deprecated").
+
+pltr now requires foundry-platform-sdk 1.111.0 or later (#179).
+
+### Breaking changes
+
+- **JSON output is the Foundry SDK's own serialization.** `--format json`
+  prints the API's response as foundry-platform-sdk serializes it: Foundry API
+  field names (camelCase, as in Foundry's REST docs), no null fields and no
+  fields pltr made up. Lists print `{"data": [...], "nextPageToken": "..."}`,
+  with `nextPageToken` only when more pages exist. A command with no result
+  prints `null`. This replaces pltr's own snake_case keys in every command:
+  for example, read `.rid` instead of `.transaction_rid`, and `.nextPageToken`
+  instead of `.pagination.next_page_token`.
+- **stdout carries only data.** Status lines, progress, warnings, prompts and
+  errors go to stderr. With `--format json`, stderr carries only JSON Lines:
+  warnings are `{"type": "warning", "message": ...}`, and a failure ends with
+  one structured error (`type`, `message`, `exitCode`, and for API errors
+  `statusCode`, `errorCode`, `errorName`, `errorInstanceId`, `parameters`).
+- **Exit codes are documented.** Every error used to exit with 1. Now: 0
+  success; 1 unexpected error, or "no" at a confirmation prompt; 2 usage error
+  (bad arguments, invalid JSON input, an invalid RID, or `--yes` needed); 3
+  authentication; 4 permission denied (HTTP 403); 5 not found (404); 6
+  validation error (400, 422); 7 other API or network errors (409, 413, 429,
+  5xx, timeouts, connection errors).
+- **Destructive commands ask first, and `--yes`/`-y` skips the question,
+  everywhere.** Deletes, removes, revokes, resets, cancels, aborts, replaces,
+  clears and schema changes ask on stderr; several asked nothing before (see
+  Changed). Nothing prompts when stdin is not a terminal: without `--yes`
+  such a command exits with code 2 and changes nothing. Answering "no" exits
+  with 1; several commands exited with 0. `--confirm` and `--force`, where
+  they meant "don't ask", are hidden aliases of `--yes` for one release.
+- **`-f` means `--format`.** It used to mean `--force` on `configure delete`,
+  `resource delete`, `resource permanently-delete` and
+  `data-health check delete`. Commands where `-f` was already something else
+  keep it (`--folder`, `--folder-rid`, and `--force` on `alias add`).
+- **Beta endpoints work without `--preview`.** Commands that call a beta
+  Foundry endpoint send `preview=true` themselves, and their help starts with
+  `[beta]`. Commands that call GA endpoints no longer send `preview`, so the
+  SDK's warning is gone. `--preview` flags are hidden no-ops for one release.
+- **List commands fetch one page by default.** They take `--page-size`,
+  `--page-token`, `--max-pages N` and `--all`. Several fetched every page.
+  Without `--page-size` the API's default page size is used, not pltr's
+  `page_size` setting.
+- **Table and CSV columns changed** in most commands: every column reads a
+  field the API returns. Many old columns read fields that don't exist and
+  were always empty or `N/A`. `--format` accepts only `table`, `json` and
+  `csv`; other values fell back to a table.
+- **Removed commands.** None of them could work with the SDK:
+  `connectivity connection list`, `dataset views list`,
+  `resource get-metadata`, `resource-role get-principal-roles`,
+  `resource-role get-available-roles`, and `widgets dev-mode get`, `enable`,
+  `disable` and `pause`. See Removed for what to use instead.
+- **New arguments** for commands that never worked as documented:
+  `connectivity import` commands take the connection RID first;
+  `data-health report get` takes the check RID and the report RID;
+  `dataset views create` takes `VIEW_NAME --parent-folder --backing-dataset`;
+  `ontology object-search` filters with `--where` (`--query` is gone);
+  `ontology object-aggregate` takes `--aggregation`; `resource-role grant` and
+  `revoke` take `--principal-id` (or `--everyone`) and `--role`;
+  `orchestration builds search` needs a filter.
+- **Authentication.** `FOUNDRY_HOST` with `FOUNDRY_TOKEN`, or with
+  `FOUNDRY_CLIENT_ID` and `FOUNDRY_CLIENT_SECRET`, now works without a stored
+  profile, keyring or configuration directory (#190, #144). pltr uses the
+  first of: `--profile`, `PLTR_PROFILE`, the default profile, the environment
+  variables. A variable never overrides, or fills gaps in, a stored profile.
+  `PLTR_PROFILE` naming a profile that doesn't exist is an error; it fell
+  back to the default profile. `pltr verify` calls the SDK's
+  `User.get_current`, so OAuth clients need the `api:admin-read` scope, and it
+  reports which credentials it used.
+
+Also new: **`pltr api`**, a generated command for every callable method of the
+SDK's V2 client (390 commands for foundry-platform-sdk 1.111.0), and
+**`pltr commands`**, a machine-readable manifest of every command that agents
+can search. See Added.
+
+### Added
+
+- **`pltr api <namespace> <resource> [<sub-resource>...] <method>`**: one
+  command for every callable method of the Foundry Platform SDK's V2 client,
+  generated from the SDK: 390 commands in 18 namespaces for
+  foundry-platform-sdk 1.111.0 (#186). It covers build and job status (#145).
+  See `docs/api-commands.md`.
+  - Path parameters are arguments, other parameters are options. Models,
+    unions and dicts take JSON inline, as `@file.json` or as `@-` (stdin);
+    `bytes` bodies take `--body FILE` or `--body -`.
+  - The commands follow the same output, error and confirmation rules as the
+    curated ones and have the same shared options. A paged command prints one
+    page exactly as the API returns it (with fields such as `totalCount`);
+    `--max-pages` and `--all` print the merged items in the paged shape.
+  - 203 beta commands are labeled `[beta]` and send `preview=true`, if the
+    installed SDK method still takes it. 58 destructive commands, an explicit
+    reviewed list, ask for confirmation. 20 commands with binary responses
+    write to `--output FILE`, or to stdout when it isn't a terminal.
+  - The commands load lazily, so `pltr --help` stays fast.
+  - Four SDK methods have no command: `functions.Query.streaming_execute` and
+    `streaming_execute_events` (server-sent events), and `MediaSet.tile` and
+    `ModelStudio.ConfigVersion.get`, which foundry-platform-sdk 1.111.0 can't
+    call (it fails to URL-quote their integer path parameters).
+- Environment-variable authentication, as described under Breaking changes.
+  `FOUNDRY_HOSTNAME`, the SDK's name for the host, is accepted when
+  `FOUNDRY_HOST` isn't set. Hosts work with or without `https://`. If both a
+  token and client credentials are set, the token wins.
+- `PLTR_FORMAT=table|json|csv` sets the default `--format` of every command.
+- `PLTR_DEBUG=1` prints the Python traceback of an unexpected error.
+- `PLTR_KEYRING_TIMEOUT`: how many seconds to wait for the system keyring
+  (default 30; `0` waits indefinitely).
+- `pltr verify --format table|json|csv` and `--output`. JSON is
+  `{"authSource": {...}, "user": {...}}`: where the credentials came from
+  (profile or environment, and how it was selected), the auth type and host,
+  and the SDK's `User`.
+- New commands:
+  - `connectivity import execute-file` and `execute-table`: run an import and
+    print the RID of the build that runs it.
+  - `data-health report latest CHECK_RID [--limit N]`: a check's most recent
+    reports, the way to find the report RIDs that `report get` needs.
+  - `media-sets clear MEDIA_SET_RID MEDIA_ITEM_PATH` [beta]: soft-delete the
+    media item at a path (#170).
+  - `ontology action-apply-batch ONTOLOGY ACTION REQUESTS`: apply several
+    actions of one action type in one request.
+- New options, by area:
+  - **dataset**: `files upload` uploads a directory recursively, in one
+    transaction that pltr opens and commits (or aborts if an upload fails),
+    with `--path` and `--transaction-type`; `files get --recursive/-r`, and
+    `-` as the output path for stdout (downloads stream and are written
+    atomically); `files list --path-prefix`; `--start-transaction-rid` and
+    `--end-transaction-rid` on `files list`, `get` and `info`;
+    `files delete --transaction-rid`; `preview --column` and `--branch`;
+    `schema get --branch`, `--transaction-rid` and `--version-id`;
+    `schema set --dataframe-reader`, and `--json` accepts `@file.json`, the
+    API's `{"fieldSchemaList": [...]}` and the output of `schema get`;
+    `branches create --transaction-rid`; `views add-primary-key --latest-wins`
+    and `--deletion-column`; `--branch` on every `views` command and
+    `DATASET_RID@BRANCH` for backing datasets; `jobs list --order-by` and
+    `--ascending`; `schedules list --branch`.
+  - **ontology**: `object-search --where`, `--order-by`,
+    `--default-load-level`, `--derived-properties/--no-derived-properties`;
+    `object-aggregate --aggregation`, `--where`, `--accuracy`, `--branch`, and
+    `--group-by` as JSON or as property names; `object-get --scenario-rid`,
+    `--transaction-id`, `--branch/-b` and `--derived-properties`;
+    `object-list` and `object-linked --branch/-b` and `--derived-properties`;
+    `object-type-list` and `object-type-get --include-datasources`;
+    `action-apply --return-edits`, `--attribution` and `--scenario-rid`. JSON
+    inputs accept `@file.json` and `@-`, and are checked against the SDK's
+    models before anything is sent. The ontology argument accepts the
+    ontology's API name as well as its RID.
+  - **folder, space, project, resource, resource-role**:
+    `space create --default-role-set-id`, `--file-system-id` and
+    `--usage-account-rid`; `space update --default-role-set-id` and
+    `--usage-account-rid`; `project create --owner-role` and `--default-role`;
+    `project create-from-template --default-role`; `resource-role grant` and
+    `revoke --everyone`; `resource-role list --include-inherited`, and
+    `--principal-type EVERYONE`; `resource search --limit` and
+    `--max-folders`; `resource batch-get` and `batch-get-by-path` warn about
+    RIDs and paths they couldn't get.
+  - **admin**: `group create --organization` (required) and `--attribute`;
+    `marking create --role ROLE:PRINCIPAL_ID` and `--member`;
+    `marking list --include-deleted/--exclude-deleted` and `--marking-type`;
+    `org create --description` and `--host`; `org replace --host`.
+  - **orchestration**: `builds search --where`, `--status`, `--branch`,
+    `--created-by`, `--started-after`, `--started-before`, `--finished-after`,
+    `--finished-before` and `--order-by`; `builds create --fallback-branch`
+    and `--retry-count`; `schedules create` and `replace --scope-mode`; JSON
+    arguments accept `@file.json`; `builds get-batch` and `jobs get-batch`
+    accept RIDs separated by spaces.
+  - **functions**: `--include-prerelease` on the `query` commands, and
+    `--latest-version-resolution` on `query get` and `query execute`.
+  - **models**: `version list --branch`.
+  - **streams and media-sets**: `streams stream reset --schema`,
+    `--partitions`, `--type` and `--compressed/--no-compressed` (new stream
+    settings; the others are kept); `--no-compressed` on the create commands;
+    `@-` for JSON inputs; `media-sets download` and `thumbnail-retrieve`
+    accept `-` for stdout; `media-sets upload --branch`, and its
+    TRANSACTION_ID is optional (only transactional media sets need it).
+  - **language-models**: `anthropic messages-advanced` accepts
+    `outputConfig`.
+  - **widgets**: `release list --branch`.
+  - **local commands**: `configure configure --yes`; `configure configure`
+    infers `--auth-type` from the credentials given;
+    `configure list-profiles --format json`
+    (`{"data": [{"name", "default"}]}`); `alias list`, `show` and `resolve`
+    print tables, JSON or CSV; `pltr shell` expands aliases, completes alias
+    names, accepts `help [command]`, `exit`/`quit`, `!command` and comments,
+    and runs commands from stdin when it isn't a terminal
+    (`pltr shell < commands.txt`).
+  - The shared options where they were missing: `--format/-f`,
+    `--output/-o` and `--profile/-p` (some commands keep a short flag for
+    something else, as their help shows), and the paging options on every
+    paged command.
+- For developers:
+  - `pltr.contract`, the shared output, error, exit-code and confirmation
+    layer, with command metadata (beta, destructive, paged, SDK methods) that
+    `pltr.contract.iter_commands` lists for the whole tree (#187). See
+    `docs/development/command-contract.md`.
+  - A CI check of every SDK call in `src/pltr` against the real SDK
+    signatures and preview rules (#185): `tests/test_sdk_call_guardrail.py`,
+    `scripts/check_sdk_calls.py` and `docs/development/sdk-guardrail.md`.
+  - `stub_foundry_http` (`tests/conftest.py`): tests run against a real
+    `FoundryClient` with only HTTP faked (#179). A CLI-wide contract test runs
+    every command against stubbed 404 and 400 responses.
+  - `scripts/generate_api_commands.py` regenerates `pltr api` (a test fails
+    when it is stale); `scripts/coverage.py` reports which commands reach each
+    SDK method. CI runs both and the SDK call check.
+  - `tests/test_docs_examples.py` checks every `pltr` example in the README,
+    `docs/` and `claude_skill/` against the real command tree.
+
+### Changed
+
+#### Everywhere
+
+- Python warnings raised while a command runs (for example the SDK's
+  `UserWarning`s) print as `Warning: ...` on stderr, or as JSON warning lines.
+- Usage errors found while parsing arguments (a missing argument, an unknown
+  option) are JSON errors when the command was asked for JSON (`--format json`
+  or `PLTR_FORMAT=json`).
+- An unexpected error prints one `Error: ...` line instead of a traceback; set
+  `PLTR_DEBUG=1` for the traceback.
+- pltr depends on prompt-toolkit instead of click-repl.
+
+#### Authentication, `verify` and `configure`
+
+- **Breaking:** `pltr verify` uses the SDK, not the internal
+  `/multipass/api/me` endpoint. Its table shows the auth source, auth type,
+  host and the user's fields (the groups row is gone), and it fails with exit
+  code 3 (no usable or rejected credentials), 4, 5 or 7.
+- **Breaking:** `configure configure` never prompts when stdin is not a
+  terminal: missing values are a usage error (exit 2) that names the options
+  to pass. Replacing an existing profile asks first (`--yes` skips).
+  `--auth-type` accepts only `token` or `oauth`, and credentials of the other
+  auth type (such as `--client-id` with `--auth-type token`) are rejected
+  instead of dropped.
+- **Breaking:** `configure delete` asks unless `--yes`/`-y`; `-f` is
+  `--format`. `configure delete` and `configure set-default` exit with 5 for
+  an unknown profile. Deleting a profile whose keyring entry is already gone
+  removes it, with a warning.
+- **Breaking:** `configure` exits with code 3, pointing to environment
+  variable authentication, when the system keyring can't be used; it crashed
+  with a traceback.
+- **Breaking:** the commands that call Foundry endpoints directly
+  (`dataset schema apply`, the `ontology object-type-create` and
+  `link-type-create` fallback, `language-models list`, `status` and `enroll`)
+  always use `https://` with the profile's or environment's host, like the
+  SDK client.
+- Keyring calls have a time limit (`PLTR_KEYRING_TIMEOUT`), and any keyring
+  failure gives an error that points to the environment variables.
+- Reading settings or profiles no longer creates `~/.config/pltr`; it is
+  created when something is saved.
+
+#### `alias`, `completion` and `shell`
+
+- **Breaking:** `alias remove`, `alias clear`, and `alias import` when it
+  replaces aliases, ask unless `--yes`/`-y`. Answering "no" exits with 1.
+- **Breaking:** an unknown alias exits with 5 in `alias show`, `edit`,
+  `remove` and `resolve`; `show` and `resolve` printed a message and exited
+  with 0. Name clashes without `--force`, reserved names, circular references
+  and bad import files are usage errors (exit 2; was 1). An alias can't use
+  the name of any top-level command (`folder`, `space`, `api` and others were
+  allowed and shadowed the command).
+- **Breaking:** `completion show` prints the bare script (it printed a panel
+  with line numbers), so `eval "$(pltr completion show --shell bash)"` works.
+  An unsupported or undetectable shell exits with 2.
+- `pltr shell` prints its banner and "Goodbye!" on stderr, and only when
+  stdin is a terminal. It runs each line as its own `pltr` invocation.
+
+#### `folder` and `space`
+
+- **Breaking:** `space delete` doesn't prompt when stdin is not a terminal.
+- `space update` reads the space and sends back the fields you don't change.
+  `Space.replace` resets omitted fields, so the description was cleared and
+  the default role set and usage account were reset.
+- `folder create --parent-folder` help says that folders can only be created
+  inside a project.
+
+#### `project`, `resource`, `resource-role` and `cp`
+
+- **Breaking:** `project remove-orgs` and `resource remove-markings` ask for
+  confirmation. `project delete`, `resource delete`,
+  `resource permanently-delete` and `resource-role revoke` don't prompt when
+  stdin is not a terminal.
+- **Breaking:** `resource list` and `resource search` no longer accept `-o`
+  for `--format`. `-f` stays `--folder-rid` there, so `--format` and
+  `--output` have no short flags on these two commands.
+- **Breaking:** `resource list` and `resource search --type` take the API's
+  resource type names (`FOUNDRY_DATASET`, `COMPASS_FOLDER`, ...;
+  case-insensitive, with `dataset` and `folder` as short names). An unknown
+  type is a usage error. `--type dataset` used to match nothing.
+- **Breaking:** `resource-role grant` and `revoke` take
+  `--principal-id USER_OR_GROUP_ID` (a UUID) or `--everyone`, and
+  `--role ROLE_ID`. Usernames and group names are rejected (exit 2).
+- **Breaking:** `project delete` moves the project to the trash
+  (`Resource.delete`) after checking that the RID is a project. Restore it
+  with `pltr resource restore`.
+- **Breaking:** `project list` without `--space-rid` reads every page of every
+  space, and rejects `--page-token` and `--max-pages`.
+- **Breaking:** `resource search` stops after `--max-folders` folders (default
+  1000) with a warning that the results may be incomplete; it used to fail
+  and lose what it had found. An empty query is a usage error.
+- **Breaking:** `cp` prints the resources it created (JSON:
+  `{"data": [...]}`) and its progress on stderr. When some items of a folder
+  fail, it copies the others (unless `--fail-fast`) and exits with the first
+  failure's error; it exited with 0.
+- JSON shapes worth knowing: `project list-orgs` prints organization RIDs,
+  `resource list-markings` marking IDs, and `resource-role list`
+  `{"data": [{"resourceRolePrincipal": {...}, "roleId": "..."}]}`. The API
+  returns IDs only, so the names and descriptions pltr used to show were
+  always empty.
+- `project update` reads the project and sends back the field you don't
+  change; `Project.replace` cleared an omitted description.
+- `project create` looks up the calling user (`admin.User.get_current`) as
+  the default owner; `--owner-type` accepts `USER` or `GROUP` and needs
+  `--owner-id`. `project create-from-template --var` is optional.
+- `project list` without `--space-rid` lists the projects of every space.
+- `resource-role list --principal-type` filters each page locally; the API
+  has no such filter.
+- `cp --dry-run` prints the resources it would copy. Skipped items are
+  warnings.
+
+#### `dataset`
+
+- **Breaking:** `--branch` defaults to the dataset's default branch (the
+  API's choice, usually `master`) instead of the literal `master`, on
+  `files list`, `upload`, `get`, `delete` and `info`, `transactions start`,
+  `schema set`, `views get` and `jobs list`. `schema apply` still defaults to
+  `master`.
+- **Breaking:** `schema set`, `schema apply`, `views remove-datasets` and
+  `views replace-datasets` ask for confirmation. `branches delete`,
+  `files delete` and `transactions abort` don't prompt when stdin is not a
+  terminal.
+- **Breaking:** `transactions list` lists every branch's transactions unless
+  you pass `--branch`.
+- **Breaking:** an invalid RID is a usage error (exit 2).
+- **Breaking:** `files get` prints the downloaded file's metadata on stdout.
+- JSON shapes worth knowing: transactions are `Transaction` objects, so read
+  `.rid`; `preview` prints `{"data": [{column: value}]}` (BINARY values in
+  base64); `schedules list` prints schedule RIDs only, as the API returns
+  them; `transactions build` prints the build RID as a JSON string;
+  `schema get` and `schema set` print the API's response, with the schema
+  under `schema.fieldSchemaList`; `files upload` of a directory and
+  `files get --recursive` print `{"data": [...]}` of files.
+- `schema get` no longer warns that it needs API preview access: the endpoint
+  is GA.
+- `branches create --parent BRANCH` (default `master`) starts the new branch
+  at the parent's latest transaction. `branches delete master` is refused
+  (exit 2).
+- A leading `/` in a dataset file path is dropped (the API rejects it).
+
+#### `ontology`
+
+- **Breaking:** `object-search --query/-q` is gone: the API has no free-text
+  search. Use `--where` with the API's typed query, for example
+  `{"type": "eq", "field": "department", "value": "Engineering"}`. `--query`
+  is hidden for one release and fails with a usage error that suggests the
+  `--where` equivalent.
+- **Breaking:** `object-aggregate` takes the API's aggregation objects in
+  `--aggregation`, for example
+  `[{"type": "count"}, {"type": "avg", "field": "salary"}]`. The
+  `AGGREGATIONS` argument still works for one release, with a warning. The
+  documented `{"count": "count"}` shape never worked and is rejected.
+- **Breaking:** `object-linked` fetches one page by default, and
+  `object-list` uses the API's default page size.
+- **Breaking:** `action-apply` exits with 6 when Foundry reports the
+  parameters invalid (nothing was applied). `action-validate` exits with 0 and
+  prints the validation result, valid or not.
+- JSON shapes worth knowing: `ontology list` prints `{"data": [...]}`;
+  `object-search` prints `{"data", "nextPageToken", "totalCount"}`;
+  `object-count` prints `{"count": N}`; `object-aggregate` prints the API's
+  `{"accuracy", "data": [{"group", "metrics"}]}`; `action-apply` and
+  `action-validate` print `{"operationId", "validation", "edits"}`;
+  `query-execute` prints `{"value": ...}`; `object-type-create` and
+  `link-type-create` print Foundry's response body, or `null`.
+
+#### `admin`
+
+- **Breaking:** user and group IDs must be UUIDs: `user get`, `markings`,
+  `revoke-tokens`, `delete` and `batch-get`, and `group get`, `delete` and
+  `batch-get` reject anything else (exit 2) with a hint to find the ID with
+  `admin user search` or `admin group search`. Usernames, emails and group
+  names never worked.
+- **Breaking:** `user delete`, `user revoke-tokens`, `group delete`,
+  `org replace` and `marking replace` don't prompt when stdin is not a
+  terminal. Answering "no" exits with 1; it printed "Operation cancelled." and
+  exited with 0.
+- **Breaking:** `marking create --category-id` and `org create --admin-id`
+  (at least one) are required, as the API requires them.
+- JSON shapes worth knowing: the `batch-get` commands print
+  `{"data": {"<ID>": {...}}}`; `user markings` prints
+  `{"view": ["<marking ID>", ...]}`.
+- `org replace` and `marking replace` keep the current description (and, for
+  organizations, the host) unless you pass `--description` or `--host`; they
+  were cleared. This reads the organization or marking first, which needs
+  view permission.
+- `user list` uses the API's default page size unless you pass `--page-size`.
+- The help of `admin user`, `group`, `org`, `marking` and `role` says how each
+  is identified and where to find the IDs.
+
+#### `sql`, `streams` and `media-sets`
+
+- **Breaking:** `sql execute`, `results`, `wait` and `export` (to a `.json`
+  file) print `{"data": [...]}`, one object per row keyed by column name.
+  Binary values are base64, NaN and infinity are `null`, and duplicate column
+  names get a `_2`, `_3` suffix, with a warning. `execute` used to print
+  `Query ID:` and `Status:` lines before the JSON on stdout.
+- **Breaking:** `sql submit`, `status` and `cancel` print the API's query
+  status (`{"type": "running", "queryId": "..."}`, `succeeded`, `failed` with
+  `errorMessage`, or `canceled`) and take `--format`. Capture an ID with
+  `pltr sql submit "..." --format json | jq -r .queryId`.
+- **Breaking:** a query that fails or is canceled exits with 7 from `execute`,
+  `submit`, `wait` and `export`. Reaching `--timeout` exits with 7
+  (`timeout`) and leaves the query running. `sql results` exits with 6 while
+  the query is running and 7 if it failed; it no longer checks the status
+  first (the API waits up to a minute). `sql wait` always prints the rows.
+- **Breaking:** `sql cancel` asks for confirmation. `streams stream reset` and
+  `media-sets abort` don't prompt when stdin is not a terminal, and "no"
+  exits with 1. `media-sets commit` no longer asks: committing deletes
+  nothing.
+- **Breaking:** stream schemas use the API's format,
+  `{"fields": [{"name": "id", "schema": {"nullable": false, "dataType": {"type": "long"}}}], "keyFieldNames": ["id"]}`.
+  The documented `{"fieldSchemaList": [...]}` shape never worked and is
+  rejected (exit 2). `--type` accepts only `LOW_LATENCY` and
+  `HIGH_THROUGHPUT`.
+- **Breaking:** `media-sets download` and `thumbnail-retrieve` exit with 2
+  when the output file exists and `--overwrite` isn't given, and stream the
+  content to the file. A download that fails part-way deletes the partial
+  file; with `--overwrite`, the file it replaced is gone too. An empty
+  thumbnail exits with 7.
+- JSON shapes worth knowing: `media-sets get` prints the API's media item
+  info; `get-by-path` prints `{"mediaItemRid": "..."}`; `create` prints the
+  transaction ID as a string; `upload` prints
+  `{"mediaItemRid", "mediaSetViewRid"}`; `streams stream create`, `get` and
+  `reset` print the stream; `streams dataset create` no longer prints a
+  stream RID (the API returns none).
+- Media set RIDs look like `ri.mio.main.media-set.<uuid>`; the help used to
+  say `ri.mediasets.main.media-set...`.
+
+#### `orchestration`, `data-health`, `functions` and `models`
+
+- **Breaking:** `orchestration builds search` requires a filter (`--where`
+  or one of the filter options), as the API does.
+- **Breaking:** `orchestration builds cancel` and `schedules replace` ask for
+  confirmation; `schedules delete` no longer prompts when stdin is not a
+  terminal. `data-health check replace` asks; `check delete` no longer
+  prompts when stdin is not a terminal.
+- **Breaking:** `data-health check delete` skips the question with
+  `--yes/-y`; `--force` is a hidden alias and `-f` is `--format`.
+- **Breaking:** `data-health report get CHECK_RID CHECK_REPORT_RID`: the API
+  addresses a report through its check. Find report RIDs with
+  `data-health report latest`.
+- **Breaking:** `orchestration schedules run` prints the schedule run (its
+  result and the build it started) instead of a success message.
+- **Breaking:** `models version get MODEL_RID MODEL_VERSION_RID` takes a
+  version RID, not a name such as `v1.0.0`; list them with
+  `models version list`.
+- JSON shapes worth knowing: `builds get-batch` and `jobs get-batch` print
+  `{"data": {"<RID>": {...}}}`; `functions query execute` prints
+  `{"value": ...}`; `models model create` and `get` print `{"rid": ...}`
+  (a model has no other fields in the API).
+- `functions query execute-by-rid` looks the query up by RID, then executes
+  that version by API name: the API has no execute-by-RID endpoint.
+- `data-health report get` shows the status and message as table columns
+  instead of a colored line.
+
+#### `connectivity`, `language-models` and `audit`
+
+- **Breaking:** the `connectivity import` commands take the connection RID
+  first, as the API nests imports under connections:
+  - `import file CONNECTION_RID DATASET_RID --name NAME --mode SNAPSHOT|APPEND|UPDATE [--subfolder PATH] [--branch NAME] [--filters JSON]`
+    (was `import file CONNECTION_RID SOURCE_PATH TARGET_DATASET_RID [--config JSON] [--execute]`);
+  - `import table CONNECTION_RID DATASET_RID --name NAME --mode SNAPSHOT|APPEND --config JSON [--allow-schema-changes] [--branch NAME]`
+    (was `import table CONNECTION_RID SOURCE_TABLE TARGET_DATASET_RID [--config JSON] [--execute]`);
+  - `get-file` and `get-table CONNECTION_RID IMPORT_RID` (was `IMPORT_RID`),
+    and `list-file` and `list-table CONNECTION_RID` (was an optional
+    `--connection/-c`).
+
+  None of these could succeed before, so the old forms aren't kept.
+- **Breaking:** `connection update-secrets` and `update-export-settings` ask
+  for confirmation, because they overwrite the current values.
+- **Breaking:** `connection get-config`, `language-models anthropic messages`,
+  `messages-advanced` and `openai embeddings` default to a table; they
+  defaulted to JSON.
+- **Breaking:** `audit list` fetches one page by default and stops paging at
+  the first empty page: without `--end-date` the API always returns a next
+  page token.
+- **Breaking:** `audit get` never writes to a terminal: pass `--output FILE`
+  (`-` for stdout) or redirect stdout.
+- JSON shapes worth knowing: `connection get`, `create` and
+  `upload-jdbc-drivers` print the API's `Connection`; `get-config` prints the
+  configuration itself; the import commands print the API's `FileImport` or
+  `TableImport`; `anthropic messages` prints the API's response (`content`,
+  `stopReason`, `usage`); `openai embeddings` prints `data` as a list of
+  vectors; `language-models list` prints `{"data": [...]}` with each model as
+  the endpoint returned it, without the values pltr used to fill in.
+- `anthropic messages-advanced` reports unknown request fields (such as
+  `max_tokens` instead of `maxTokens`) and invalid requests as usage errors
+  before sending anything. The thinking example in its help used `budget`;
+  the field is `budgetTokens`.
+- The model argument of `anthropic messages`, `messages-advanced` and
+  `openai embeddings` is the model's API name, not a RID.
+- `language-models list`, `status` and `enroll` try `/api/v2/languageModels`
+  first (they called `/v2/...` at the host root), skip answers that aren't
+  JSON, and when every endpoint fails, report each endpoint's status.
+- `openai embeddings --encoding` accepts only `float` or `base64`, and
+  `audit list` dates must be `YYYY-MM-DD`.
+- `audit get` streams the log file and deletes a partly written `--output`
+  file when the download fails.
+
+#### `widgets`, `aip-agents` and `third-party-apps`
+
+- **Breaking:** `widgets release delete` doesn't prompt when stdin is not a
+  terminal, and "no" exits with 1.
+- Every command in these groups calls a beta endpoint, with `preview=true`.
+  `third-party-apps get` shows only the RID: the API returns nothing else.
+
+### Deprecated
+
+These still work in this release, print a deprecation warning and are hidden
+from `--help`. They will be removed in the next release.
+
+- `--confirm`, an alias of `--yes`, on `space delete`, `project delete`,
+  `resource-role revoke`, `streams stream reset`, `admin user delete`,
+  `admin user revoke-tokens`, `admin group delete`, `admin org replace` and
+  `admin marking replace`.
+- `--force`, an alias of `--yes`, on `configure delete`, `resource delete`,
+  `resource permanently-delete` and `data-health check delete`.
+- `--no-confirm`, an alias of `--yes`, on `alias remove` and `alias clear`;
+  their `--confirm` (the old default) does nothing.
+- `--preview`, which does nothing now: on every `sql` command (also
+  `--no-preview`), every `streams`, `functions` and `models` command,
+  `media-sets get-by-path`, `create`, `commit`, `abort`, `upload`,
+  `reference`, `thumbnail-calculate` and `thumbnail-retrieve`,
+  `orchestration schedules get`, `create` and `replace`,
+  `data-health check get`, `create`, `replace` and `delete` and
+  `report get`, `language-models anthropic messages`, `messages-advanced`
+  and `openai embeddings`, and `third-party-apps get`.
+- `media-sets commit --yes/-y`: commit no longer asks.
+- `ontology object-aggregate`'s `AGGREGATIONS` argument (use
+  `--aggregation`) and `--filter` (use `--where`).
+- `admin group create --org-rid` (use `--organization`).
+- `admin org available-roles --page-size` and `--page-token`: they have no
+  effect; the API returns every role in one response.
+- `resource search --page-size` (use `--limit`).
+- `resource-role grant` and `revoke --principal-type/-t`: ignored; the
+  principal's ID is enough.
+- `cp --debug`: set `PLTR_DEBUG=1` instead.
+- For library users: `DatasetService.create_dataset`, `get_schema`,
+  `list_files`, `create_transaction` and `delete_dataset`, kept for `pltr cp`.
+
+### Removed
+
+- Commands that could never succeed:
+  - `connectivity connection list`: the SDK has no endpoint that lists
+    connections. Its folder-scan fallback (and
+    `PLTR_CONNECTIONS_FALLBACK_START_FOLDER_RID`) is gone too. Data Connection
+    sources appear in `pltr folder list FOLDER_RID` as `MAGRITTE_SOURCE`
+    resources.
+  - `dataset views list`: the SDK has no endpoint that lists a dataset's
+    views.
+  - `resource get-metadata`: the SDK has no `Resource.get_metadata`. Use
+    `pltr resource get`.
+  - `resource-role get-principal-roles` and `get-available-roles`: the SDK has
+    no such endpoints. `pltr resource-role list` shows the roles granted on a
+    resource.
+  - `widgets dev-mode get`, `disable` and `pause` (the SDK doesn't have them),
+    and `widgets dev-mode enable`, which alone would be confusing. Use
+    `pltr api widgets dev-mode-settings enable` (or `set-widget-set-by-id`)
+    and the `dev-mode-settings-v2` commands.
+- Options:
+  - `connectivity import file` and `table --execute` (use
+    `import execute-file` and `execute-table`), `import file --config/-c` (use
+    `--name`, `--mode`, `--filters`, `--subfolder` and `--branch`), and
+    `import list-file` and `list-table --connection/-c` (now the
+    `CONNECTION_RID` argument). None of them ever worked.
+  - `space list --organization-rid/-org`: `Space.list` has no organization
+    filter, and the option never worked. It is hidden for one release and
+    exits with 2, explaining how to filter the JSON output on
+    `organizations`.
+  - `ontology object-search --query/-q` (see Changed) and
+    `dataset views create --description` (views have no description): hidden
+    for one release, and they fail with an explanation.
+  - `--preview` on `media-sets get`, `download` and `upload-temp`: their
+    endpoints became GA (#179).
+  - `-o` as the short form of `--format` on `resource list` and
+    `resource search`, and `-f` as the short form of `--force` on
+    `configure delete`, `resource delete`, `resource permanently-delete` and
+    `data-health check delete` (`-f` is `--format` now).
+  - The token-usage line on stderr of `language-models anthropic messages`,
+    `messages-advanced` and `openai embeddings`; it always printed 0. The
+    output has the token counts.
+- For library users: `DatasetService.list_files_paginated`, `get_branches`,
+  `get_transactions`, `get_views`, `get_schedules`, `get_jobs`,
+  `get_branch_transactions`, `get_transaction_status` and `preview_data`;
+  `AdminService.list_users_paginated` and `_serialize_response`;
+  `ObjectTypeService.list_outgoing_link_types`;
+  `OntologyObjectService.list_objects_paginated`;
+  `ResourceRoleService.bulk_grant_roles` and `bulk_revoke_roles`;
+  `AliasManager.display_aliases`. Services return SDK models instead of
+  snake_case dicts, and let SDK exceptions propagate.
+
+### Fixed
+
+- Commands that could never succeed (#182):
+  - dataset: `branches list` and `create`, `branches transactions`,
+    `transactions list` and `build`, `jobs list`, every `views` command and
+    `preview`;
+  - ontology: `action-apply`, `action-validate`, `object-aggregate`,
+    `object-search`, `object-count`, and `object-linked` (#179);
+  - filesystem: `folder batch-get`, `space create`, `project delete`,
+    `resource batch-get`, `resource batch-get-by-path`, and
+    `resource-role grant`, `revoke` and `list`;
+  - admin: `user search`, `group search`, `group create`, `marking create`,
+    `org create`, `org available-roles`, `role get` and every `batch-get`;
+  - orchestration: `builds search`, `builds get-batch`, `jobs get` and
+    `jobs get-batch`;
+  - `data-health report get`, `functions query get-by-rid` and
+    `execute-by-rid`, `models version get` and `list`,
+    `media-sets get-by-path`, and the `connectivity import` commands.
+- Commands that failed unless you passed `--preview` (#184):
+  `orchestration schedules get`, `create` and `replace`, the `data-health`,
+  `functions`, `models` and `streams` beta commands, `media-sets` beta
+  commands, `language-models anthropic messages`, `messages-advanced` and
+  `openai embeddings`, and `third-party-apps get`. Commands that called GA
+  endpoints with `preview` no longer print the SDK's warning.
+- Output that read fields the API doesn't return and printed empty values,
+  `N/A`, `unknown` or `None` (#183): `folder`, `space`, `project`,
+  `resource`, `resource-role`, `connectivity connection` and `media-sets`
+  tables; `ontology action-apply`, `action-validate`, `object-count` and
+  `query-execute`; `models model create`. `ontology object-get`,
+  `object-list` and `object-linked` printed `{}` for every object (#179).
+- `sql` JSON output wasn't valid JSON (status text on stdout).
+- `project list` filtered on a type and RID prefix that projects don't have,
+  so it most likely never listed anything.
+- `media-sets download` failed with a `TypeError`, and `upload` and
+  `upload-temp` sent the file object instead of its bytes (#179).
+- `dataset files upload --transaction-rid` also sent `branchName=master`,
+  which the API rejects.
+- `dataset schema set` checks the schema against the API's field types and
+  reports problems as usage errors.
+- `audit list` could page forever; `audit get` printed `[...]` in log content
+  as terminal markup.
+- `pltr cp` moves a partly copied dataset to the trash when a step fails (the
+  cleanup called a method that doesn't exist), and `--fail-fast` no longer
+  counts a failure once per folder level.
+- The `data-health check create` help example used the severity `WARNING`;
+  severities are `MODERATE` and `CRITICAL`.
+- `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No
+  profile specified and no default profile configured" unless a profile
+  existed.
+- The direct-HTTP commands sent `Authorization: Bearer None` with OAuth
+  profiles and ignored environment-variable auth. They now share the SDK
+  client's credentials (one OAuth token for both).
+- A system keyring that blocks (the macOS Keychain over SSH, an agent
+  sandbox) no longer hangs pltr, a missing keyring backend gives a clear error
+  instead of a traceback (#144), and corrupted stored credentials say which
+  profile to configure again.
+- Aliases work with the `pltr` executable; they only worked with
+  `python -m pltr`.
+- `pltr shell` works on click 8.2: it printed an empty error box at start and
+  crashed on the first command.
+- `pltr completion` scripts complete commands, options, option values and the
+  `pltr api` tree in bash, zsh and fish; the scripts it installed never
+  completed anything.
+
 ## [0.16.0] - 2026-06-25
 
 ### Changed
@@ -316,6 +985,7 @@ No changes to pltr itself; only the version number changed.
   and OAuth2 profiles, with credentials in the system keyring),
   `pltr verify`, `pltr dataset get` and `pltr dataset create`.
 
+[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.16.0...HEAD
 [0.16.0]: https://github.com/anjor/pltr-cli/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/anjor/pltr-cli/compare/v0.14.1...v0.15.0
 [0.14.1]: https://github.com/anjor/pltr-cli/compare/v0.14.0...v0.14.1

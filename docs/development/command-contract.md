@@ -71,8 +71,8 @@ Import everything from `pltr.contract` and nothing from its submodules.
 5. **Contract-test cases:** in `tests/test_contract/cases/<module>.py`, delete
    the command from `NOT_CONVERTED` and add its `SUCCESS` case (see
    [The contract test](#the-contract-test)).
-6. **Changelog:** write a fragment `changelog.d/<branch-suffix>.md` (see
-   [Changelog](#changelog-fragment)).
+6. **Changelog:** add your entries under `## [Unreleased]` in
+   `CHANGELOG.md` (see [Changelog](#changelog)).
 
 ## Before and after: `pltr folder get`
 
@@ -457,11 +457,11 @@ parallel conversions don't conflict:
   the generated `pltr api` tree, whose generator tests the success path.
   Curated commands don't use it.
 
-## Changelog fragment
+## Changelog
 
-Don't edit `CHANGELOG.md`. Write `changelog.d/<branch-suffix>.md` with
-Keep a Changelog headings (`### Breaking`, `### Added`, `### Changed`,
-`### Deprecated`, `### Removed`, `### Fixed`). Record every removed
+Add your entries under `## [Unreleased]` in `CHANGELOG.md`, in the Keep a
+Changelog sections (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`),
+and mark changes that break scripts with **Breaking**. Record every removed
 command, renamed or removed flag, changed default and changed output shape.
 For a converted module that always includes:
 
@@ -472,7 +472,9 @@ For a converted module that always includes:
 - `[beta]` labels;
 - deprecated aliases.
 
-End with `### Docs to update` and `### Not verified live`.
+Say in the pull request what you couldn't verify against a live stack, and
+update the README and `docs/` examples you changed; `tests/test_docs_examples.py`
+fails on examples that name a command or option that doesn't exist.
 
 ## Gotchas
 
