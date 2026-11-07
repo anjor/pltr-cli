@@ -246,17 +246,19 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 
 - **`dataset schema apply` calls internal endpoints whose shapes are
   assumed.** Smoke: `write.schema-apply` (and `write.schema-get` after it).
-- **`branches create` from a parent branch whose latest transaction is OPEN.**
-  Manual: `pltr dataset transactions start <ds>`, then `pltr dataset branches
-  create <ds> b2`, then `pltr dataset transactions abort <ds> <txn> --yes` and
-  `pltr dataset branches delete <ds> b2 --yes`.
+- **`branches create` from a parent branch whose latest transaction is OPEN**
+  fails with `TransactionNotCommitted`, which pltr explains (commit or abort it,
+  or pass `--transaction-rid`). Manual: `pltr dataset transactions start <ds>`,
+  then `pltr dataset branches create <ds> b2` (expect exit 6 and the hint), then
+  `pltr dataset transactions abort <ds> <txn> --yes`.
 - **`views remove-datasets`/`replace-datasets` match backing datasets sent with
   an empty `stopPropagatingMarkingIds`.** Manual: `pltr dataset views create v1
   --parent-folder <folder> --backing-dataset <ds1> --backing-dataset <ds2>`,
   then `pltr dataset views remove-datasets <view> <ds2> --yes` and `pltr
   dataset views get <view>`.
-- **`files upload --transaction-type` without `--branch`.** Smoke:
-  `write.files-upload-append`.
+- **`files upload FILE --transaction-type` without `--branch`** now opens a
+  transaction on the default branch, uploads into it and commits; `SNAPSHOT`
+  asks for confirmation. Smoke: `write.files-upload-append`.
 - **`schema set --dataframe-reader CSV` makes Foundry read uploaded CSV
   files.** Smoke: `write.schema-set`, `write.read-table` (it needs the columns
   `id`, `name`, `value`, and notes header rows read as data).
@@ -479,9 +481,15 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
   demand: after an SDK or pydantic upgrade, look out for `invalid_response`
   errors (exit 7) where a usage error is expected, and the reverse.
 - **`pltr cp --branch X` for a branch other than the new dataset's default
-  branch** may fail with `BranchNotFound`, because `Dataset.create` makes only
-  the default branch (behaviour unchanged). Manual:
-  `pltr cp <dataset-rid> <folder-rid> --branch <other-branch>`.
+  branch.** `Dataset.create` makes only the default branch, so pltr creates `X`
+  on the copy (with no transaction) before the SNAPSHOT transaction. Assumes such
+  a branch accepts the transaction and then `putSchema`. Manual:
+  `pltr cp <dataset-rid> <folder-rid> --branch <other-branch>`, then
+  `pltr dataset files list <copy-rid> --branch <other-branch>`.
+- **`pltr cp -r` refuses a target inside the source folder**, using
+  `Resource.path` (assumed to be the `/`-joined display-name path). Manual:
+  `pltr cp -r <folder-rid> <subfolder-rid>` should exit 2 before creating
+  anything; `pltr cp -r <folder-rid> <sibling-rid>` should copy.
 
 ### The smoke test itself (d2)
 
