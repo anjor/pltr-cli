@@ -108,3 +108,10 @@ dev = [
 [tool.pytest.ini_options]
 # Tests import the dev tooling in scripts/ (e.g. scripts.sdk_calls).
 pythonpath = ["."]
+filterwarnings = [
+    # foundry-platform-sdk calls typing._eval_type without type_params, which
+    # Python 3.13 deprecates. pltr imports SDK models inside commands, so when
+    # a test is the first to import one, the command would report this
+    # third-party warning on stderr and the test would depend on test order.
+    "ignore:Failing to pass a value to the 'type_params' parameter:DeprecationWarning",
+]

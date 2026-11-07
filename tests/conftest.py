@@ -34,6 +34,21 @@ def _clean_output_environment(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _plain_terminal_output(monkeypatch):
+    """Render help and usage errors as plain text, as on a developer's machine.
+
+    On GitHub Actions (GITHUB_ACTIONS), or with FORCE_COLOR / PY_COLORS set,
+    Typer forces Rich's terminal mode, so help text and usage errors carry ANSI
+    codes and assertions on their text fail. _TYPER_FORCE_DISABLE_TERMINAL is
+    Typer's own switch; subprocesses (`python -m pltr`) inherit it.
+    """
+    for name in ("FORCE_COLOR", "PY_COLORS", "TTY_COMPATIBLE", "TTY_INTERACTIVE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("_TYPER_FORCE_DISABLE_TERMINAL", "1")
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", False)
+
+
+@pytest.fixture(autouse=True)
 def _private_home(monkeypatch, tmp_path_factory):
     """Keep every test away from the real home directory.
 
