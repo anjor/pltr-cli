@@ -2,8 +2,10 @@
 Dataset commands (Foundry datasets API).
 """
 
-from pathlib import Path, PurePosixPath
-from typing import Any, List, Optional, Tuple
+import ntpath
+import posixpath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from typing import Any, List, Optional, Tuple, TypeVar
 
 import click
 import typer
@@ -959,19 +961,59 @@ def upload_file(
     )
 
 
+#: A local path: a real ``Path``, or a pure one in tests.
+_P = TypeVar("_P", bound=PurePath)
+
+
+def _resolved(path: PurePath) -> PurePath:
+    """``path`` resolved (symlinks too), or normalized when it's a pure path
+    (tests simulate Windows with ``PureWindowsPath``)."""
+    if isinstance(path, Path):
+        return path.resolve()
+    flavour = ntpath if isinstance(path, PureWindowsPath) else posixpath
+    return type(path)(flavour.normpath(str(path)))
+
+
+def _unsafe_part(part: str, windows: bool) -> bool:
+    """Whether a part of a remote path can't be one local path component."""
+    if part == "..":
+        return True
+    # On Windows "\" separates paths too, ":" names a drive or a stream, and a
+    # trailing "." or " " is dropped ("..." or ".. " become ".."). Elsewhere
+    # they are ordinary characters.
+    return windows and ("\\" in part or ":" in part or part.endswith((".", " ")))
+
+
 def _download_targets(
-    files: List[Any], prefix: Optional[str], output_dir: Path
-) -> List[Tuple[Any, Path]]:
-    """Local paths under ``output_dir`` for files listed under ``prefix``."""
+    files: List[Any], prefix: Optional[str], output_dir: _P
+) -> List[Tuple[Any, _P]]:
+    """Local paths under ``output_dir`` for files listed under ``prefix``.
+
+    Each "/"-separated part of a remote path becomes one local path
+    component. A path that is absolute, has a part that isn't safe as a
+    component (see ``_unsafe_part``), or resolves outside ``output_dir`` (for
+    example through a symlink) stops the download before any file is written.
+    """
+    windows = isinstance(output_dir, PureWindowsPath)
+    root = _resolved(output_dir)
     targets = []
     for file in files:
         relative = PurePosixPath(file.path[len(prefix) :] if prefix else file.path)
-        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        parts = relative.parts
+        safe = (
+            bool(parts)
+            and not relative.is_absolute()
+            and not any(_unsafe_part(part, windows) for part in parts)
+        )
+        target = output_dir.joinpath(*parts)
+        if not safe or not _resolved(target).is_relative_to(root):
             raise PltrError(
-                f"Refusing to download {file.path!r}: it would be written outside "
-                f"{output_dir}.",
+                f"Refusing to download {file.path!r}: it can't be written safely "
+                f"inside {output_dir}. Nothing was downloaded.",
+                hint="Download that file on its own to a local path you choose: "
+                "pltr dataset files get DATASET_RID REMOTE_PATH LOCAL_FILE",
             )
-        targets.append((file, output_dir.joinpath(*relative.parts)))
+        targets.append((file, target))
     return targets
 
 
@@ -1022,7 +1064,10 @@ def get_file(
     a failed download leaves no partial file and keeps an existing one.
     stdout gets the downloaded files' metadata: the File (JSON), or
     {"data": [...]} with --recursive. With OUTPUT_PATH - the file's content
-    goes to stdout instead.
+    goes to stdout instead. With --recursive, a file whose path can't be
+    written safely inside OUTPUT_PATH (a .. part, a symlink out of it, or on
+    Windows a \\ or : in a name) stops the download before any file is
+    written.
     """
     service = DatasetService(profile=profile)
     if str(output_path) == "-":

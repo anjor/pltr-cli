@@ -756,6 +756,14 @@ from `--help`. They will be removed in the next release.
   which the API rejects.
 - `dataset schema set` checks the schema against the API's field types and
   reports problems as usage errors.
+- Security: `dataset files get --recursive` only refused `..` between `/`
+  separators, so on Windows a dataset file named like `data\..\..\x.bat`, or
+  with a drive (`C:`), was written outside the output directory. On Windows
+  it now also refuses names with `\` or `:` and names ending in `.` or a
+  space (Windows drops those), and on every platform it refuses a file whose
+  resolved path, symlinks included, isn't inside the output directory. The
+  check runs before any file is written. Elsewhere `\` and `:` stay ordinary
+  characters.
 - `audit list` could page forever; `audit get` printed `[...]` in log content
   as terminal markup.
 - `pltr cp` never copied a dataset's schema: it passed the whole schema

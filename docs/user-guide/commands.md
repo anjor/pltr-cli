@@ -178,6 +178,9 @@ Notes:
 
 - `files get` streams to disk and never leaves a partial file. With `-` as
   the output path, the content goes to stdout and the metadata isn't printed.
+  `files get --recursive` refuses, before writing any file, a dataset path
+  that can't be written safely inside the output directory: a `..` part, a
+  symlink out of it, or on Windows a `\` or `:` in a name.
 - `schema set --json` takes the API's `{"fieldSchemaList": [...]}`, the JSON
   output of `schema get`, or the older `{"fields": [...]}` form, inline or as
   `@file.json`. `--from-csv FILE` infers the column types from a local CSV.

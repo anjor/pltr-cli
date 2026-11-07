@@ -3,11 +3,15 @@
 import csv
 import io
 import json
+from pathlib import PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
+from pltr.commands.dataset import _download_targets
+from pltr.contract import PltrError
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -496,6 +500,79 @@ def test_recursive_get_refuses_paths_outside_the_target(stub, tmp_path):
     assert "Refusing to download" in result.stderr
     assert len(stub.requests) == 1  # nothing downloaded
     assert not (tmp_path / "escape.csv").exists()
+
+
+WINDOWS_OUT = PureWindowsPath(r"C:\work\out")
+POSIX_OUT = PurePosixPath("/work/out")
+
+
+def remote_files(*paths: str) -> list:
+    return [SimpleNamespace(path=path) for path in paths]
+
+
+@pytest.mark.parametrize(
+    "remote",
+    [
+        r"data\..\..\..\Users\me\evil.bat",  # "\" separates paths on Windows
+        "data/C:/Windows/evil.dll",  # a drive
+        "C:evil.dll",  # drive-relative
+        "data/evil.csv:stream",  # an alternate data stream
+        "data/.. /evil.csv",  # Windows drops the trailing space: ".."
+        "data/.../evil.csv",  # Windows drops trailing dots
+        "../evil.csv",
+        "/etc/evil.csv",
+    ],
+)
+def test_recursive_get_refuses_unsafe_names_on_windows(remote):
+    """Simulates Windows: only "/" separated parts were checked (#181 review)."""
+    with pytest.raises(PltrError, match="can't be written safely"):
+        _download_targets(remote_files(remote), None, WINDOWS_OUT)
+
+
+def test_recursive_get_keeps_safe_names_on_windows():
+    files = remote_files("data/ok.csv", "data/report..v2.csv", "data/2024/b.csv")
+
+    targets = _download_targets(files, "data/", WINDOWS_OUT)
+
+    assert [str(target) for _, target in targets] == [
+        r"C:\work\out\ok.csv",
+        r"C:\work\out\report..v2.csv",
+        r"C:\work\out\2024\b.csv",
+    ]
+
+
+def test_backslashes_and_colons_are_ordinary_characters_elsewhere():
+    files = remote_files(r"data\a.csv", "data/10:00.csv", "data/report..v2.csv")
+
+    targets = _download_targets(files, None, POSIX_OUT)
+
+    assert [str(target) for _, target in targets] == [
+        r"/work/out/data\a.csv",
+        "/work/out/data/10:00.csv",
+        "/work/out/data/report..v2.csv",
+    ]
+    with pytest.raises(PltrError):
+        _download_targets(remote_files("data/../../evil.csv"), None, POSIX_OUT)
+
+
+def test_recursive_get_refuses_a_symlink_out_of_the_target(stub, tmp_path):
+    """A target that resolves outside OUTPUT_PATH is refused before anything
+    is written, whatever made it point there."""
+    out = tmp_path / "out"
+    out.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (out / "link").symlink_to(elsewhere, target_is_directory=True)
+    stub.respond(json=dj.page([dj.file("data/ok.csv"), dj.file("data/link/x.csv")]))
+
+    result = invoke("dataset", "files", "get", DATASET, "data", str(out), "-r")
+
+    assert result.exit_code == 1
+    assert "Refusing to download 'data/link/x.csv'" in result.stderr
+    assert "Hint: Download that file on its own" in result.stderr
+    assert len(stub.requests) == 1  # the listing; nothing downloaded
+    assert list(elsewhere.iterdir()) == []
+    assert not (out / "ok.csv").exists()
 
 
 def test_recursive_get_to_stdout_is_rejected(stub):
