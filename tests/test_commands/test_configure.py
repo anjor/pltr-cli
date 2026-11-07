@@ -89,7 +89,7 @@ def test_configure_stores_credentials_in_the_keyring(config_dir, keyring_fake):
     assert ProfileManager().get_default() == "work"
     assert "secret-token" not in (config_dir / "profiles.json").read_text()
     assert result.stdout == ""
-    assert "Profile 'work' configured and set as the default" in result.stderr
+    assert "Profile 'work' configured successfully and set as default" in result.stderr
 
 
 def test_configure_json_prints_null(config_dir, keyring_fake):
@@ -313,7 +313,7 @@ def test_set_default(config_dir, keyring_fake):
 
     assert result.exit_code == 0, result.output
     assert ProfileManager().get_default() == "staging"
-    assert "Profile 'staging' is now the default" in result.stderr
+    assert "Profile 'staging' set as default" in result.stderr
 
 
 def test_set_default_unknown_profile_is_not_found(config_dir, keyring_fake):

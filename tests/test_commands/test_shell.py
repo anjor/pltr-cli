@@ -266,8 +266,9 @@ class TestShellSession:
         assert "Hello from pltr!" in result.stdout
 
     def test_profile_option_sets_pltr_profile(self, monkeypatch):
-        # monkeypatch restores the variable after the test
-        monkeypatch.delenv("PLTR_PROFILE", raising=False)
+        # setenv (not a delenv of an unset variable, which records nothing)
+        # makes monkeypatch remove the variable the shell sets after the test.
+        monkeypatch.setenv("PLTR_PROFILE", "before")
 
         result = run_shell(args=["--profile", "work"])
 

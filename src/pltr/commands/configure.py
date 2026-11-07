@@ -216,9 +216,9 @@ def configure(
     manager.add_profile(profile)
     if manager.get_default() is None or len(manager.list_profiles()) == 1:
         manager.set_default(profile)
-        success(f"Profile '{profile}' configured and set as the default")
+        success(f"Profile '{profile}' configured successfully and set as default")
     else:
-        success(f"Profile '{profile}' configured")
+        success(f"Profile '{profile}' configured successfully")
     emit(None, format=format)
 
 
@@ -256,7 +256,7 @@ def set_default(
     if profile not in manager.list_profiles():
         raise _profile_not_found(profile, manager)
     manager.set_default(profile)
-    success(f"Profile '{profile}' is now the default")
+    success(f"Profile '{profile}' set as default")
     emit(None, format=format)
 
 
