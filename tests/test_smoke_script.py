@@ -891,3 +891,20 @@ def test_a_partial_write_selection_still_cleans_up():
         "write.project-delete",
         "write.project-trashed",
     ]
+
+
+def test_a_second_ctrl_c_stops_the_cleanup_too():
+    def interrupt(argv, env):
+        raise KeyboardInterrupt
+
+    routes = write_pass_routes()
+    routes["dataset files upload"] = interrupt
+    routes["resource delete"] = interrupt
+    runner = FakeRunner(routes, default=ok(None))
+    code, out, err = run_main(
+        ["--allow-writes", "--scratch-folder", SCRATCH, "--only", "write"], runner
+    )
+    assert code == smoke.EXIT_INTERRUPTED
+    assert out == ""
+    assert "smoke.py: stopped" in err and "pltr-smoke-20261107-120000" in err
+    assert len(runner.ran("resource delete")) == 1

@@ -2256,7 +2256,8 @@ def run_checks(
     """Run checks in order; returns (results, interrupted).
 
     After Ctrl-C only the cleanup checks still run (if their inputs exist),
-    so the write pass doesn't leave its resources behind.
+    so the write pass doesn't leave its resources behind. A second Ctrl-C
+    stops at once (KeyboardInterrupt).
     """
     done: Dict[str, CheckResult] = {}
     results: List[CheckResult] = []
@@ -2280,6 +2281,8 @@ def run_checks(
                     run = runner(argv, check_env(check, ctx), options.timeout)
                     outcome = evaluate(check, run, ctx)
                 except KeyboardInterrupt:
+                    if interrupted:
+                        raise  # a second Ctrl-C stops the cleanup too
                     interrupted = True
                     outcome = CheckResult(check, FAIL, "interrupted")
                 outcome.argv = argv
@@ -2798,7 +2801,15 @@ def main(
         ctx = Context(inputs, run_values(Path(tmp), started))
         version = pltr_version(runner, args.timeout)
         print(f"Running {len(checks)} checks with {version}...", file=err, flush=True)
-        results, interrupted = run_checks(checks, ctx, runner, options, progress)
+        try:
+            results, interrupted = run_checks(checks, ctx, runner, options, progress)
+        except KeyboardInterrupt:
+            print(
+                "smoke.py: stopped. If the write checks ran, move what's left of "
+                f"{ctx.get('run.name')} in the scratch folder to the trash.",
+                file=err,
+            )
+            return EXIT_INTERRUPTED
         left = leftovers(ctx, results)
     report = Report(
         results=results,

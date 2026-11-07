@@ -137,9 +137,9 @@ query after it has finished.
 Everything is created inside the run's folder or project, and the cleanup
 checks move the copy, the streaming dataset, the project and finally the
 run's folder to the trash; they run even after earlier failures and after
-Ctrl-C. Nothing is ever permanently deleted: empty the trash yourself. If a
-cleanup check fails, the report lists what was left behind, with the command
-that trashes it.
+Ctrl-C (a second Ctrl-C stops at once). Nothing is ever permanently deleted:
+empty the trash yourself. If a cleanup check fails, the report lists what was
+left behind, with the command that trashes it.
 
 The write checks only ever change what the run created: the scratch folder and
 `writes.space_rid` are only used as parents (a test enforces this).
