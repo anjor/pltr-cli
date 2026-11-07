@@ -260,6 +260,45 @@ pltr api ontologies linked-object list-linked-objects my-ontology Aircraft N123 
 See **[docs/api-commands.md](docs/api-commands.md)** for the argument
 mapping, paging, the destructive list and how the commands are generated.
 
+## Using pltr from agents
+
+pltr is built to be driven by AI agents (Claude Code, Codex, ...) and
+scripts as much as by people. An agent works in four steps:
+
+1. **Authenticate headless** with environment variables, no setup needed
+   (see [Headless use](#headless-use-ci-containers-and-ai-agents)):
+   `FOUNDRY_HOST` plus `FOUNDRY_TOKEN`, or `FOUNDRY_CLIENT_ID` and
+   `FOUNDRY_CLIENT_SECRET`. Check with `pltr verify --format json`.
+2. **Find the command** in the command manifest instead of reading every
+   `--help` page. `pltr commands search` ranks commands by name,
+   description and SDK method:
+
+   ```bash
+   pltr commands search list dataset branches
+   pltr commands search Dataset.Branch.list
+   ```
+
+3. **Read its manifest entry**: usage, arguments, options (types, choices,
+   defaults), whether it's beta, destructive or paged, its output formats and
+   the SDK method it calls:
+
+   ```bash
+   pltr commands show dataset branches list --format json
+   ```
+
+4. **Run it with `--format json`** (or `PLTR_FORMAT=json`). stdout is
+   exactly one JSON document; on failure, stderr's last line is a JSON error
+   and the exit code says what went wrong (see
+   [Output, errors and exit codes](#output-errors-and-exit-codes)).
+
+Destructive commands never prompt without a terminal: they fail with exit
+code 2 and change nothing unless you pass `--yes`.
+
+`pltr commands list --format json` prints the whole manifest, one entry per
+command, deterministically (sorted, no timestamps). The
+[Claude Code skill](docs/user-guide/claude-skill.md) in `claude_skill/` packages
+these rules for agents, with a command reference generated from the manifest.
+
 ## 📚 Documentation
 
 pltr-cli provides comprehensive documentation to help you get the most out of the tool:
