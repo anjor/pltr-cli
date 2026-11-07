@@ -230,6 +230,11 @@ emit(result, *, format, output=None, columns=None, rows=None, title=None)
 - Without `columns`, `auto_columns` uses every set model field, named by its
   API name. That suits generated commands; curated commands should declare
   columns.
+- **Tabular results** (a `pyarrow.Table`, such as an SQL query result or
+  dataset rows read as Arrow): `columns, rows = table_rows(table)` gives one
+  dict per row in the table's column order, binary values (also nested)
+  base64-encoded and duplicate column names suffixed `_2`, `_3` (with a
+  warning); then `emit(rows, format=format, output=output, columns=columns)`.
 
 **Paging.** A paged command has `paged=True`, the four paging options and:
 

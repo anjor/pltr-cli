@@ -67,6 +67,7 @@ from .output import (
     emit,
     emit_bytes,
     format_cell,
+    table_rows,
     write_bytes_atomically,
 )
 from .runtime import (
@@ -124,6 +125,7 @@ __all__ = [
     "ColumnError",
     "column_value",
     "format_cell",
+    "table_rows",
     "Page",
     "collect_pages",
     "to_jsonable",

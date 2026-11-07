@@ -23,6 +23,13 @@
   with no schema (a schema needs a committed transaction), and says so.
 - `pltr cp --help` explains the RID arguments and how datasets, schemas and
   failures are handled.
+- `dataset preview` turns Arrow rows into output with the same shared code
+  as `sql` (`pltr.contract.table_rows`): duplicate column names get a `_2`,
+  `_3` suffix with a warning instead of the later column overwriting the
+  earlier one. Values are unchanged (binary values are base64).
+- `DatasetService.preview_rows()` is now `preview_table()` and returns the
+  `pyarrow.Table`; `decode_arrow_rows()` is now `arrow_table()` (library
+  API).
 
 ### Removed
 

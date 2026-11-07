@@ -7,7 +7,6 @@ filter turns into a failure. Transactions and uploads are covered in
 test_dataset_transactions.py.
 """
 
-import base64
 import json
 
 import pytest
@@ -22,7 +21,7 @@ from foundry_sdk.v2.datasets.models import (
 )
 
 from pltr.contract import PltrError
-from pltr.services.dataset import DatasetService, decode_arrow_rows
+from pltr.services.dataset import DatasetService, arrow_table
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -107,36 +106,33 @@ def test_read_table_sends_every_option(stub_foundry_http):
     assert params["endTransactionRid"] == dj.OTHER_TRANSACTION_RID
 
 
-def test_preview_rows_reads_arrow_and_decodes_rows(stub_foundry_http):
+def test_preview_table_reads_arrow(stub_foundry_http):
     stub_foundry_http.respond(
         content=dj.arrow_stream({"id": [1, 2], "region": ["EMEA", None]})
     )
 
-    columns, rows = DatasetService().preview_rows(DATASET, limit=2, columns=["id"])
+    table = DatasetService().preview_table(DATASET, limit=2, columns=["id"])
 
-    assert columns == ["id", "region"]
-    assert rows == [{"id": 1, "region": "EMEA"}, {"id": 2, "region": None}]
+    assert table.column_names == ["id", "region"]
+    assert table.to_pylist() == [
+        {"id": 1, "region": "EMEA"},
+        {"id": 2, "region": None},
+    ]
     params = only_request(stub_foundry_http).url.params
     assert dict(params) == {"format": "ARROW", "columns": "id", "rowLimit": "2"}
 
 
-def test_decode_arrow_rows_base64_encodes_binary_values():
-    columns, rows = decode_arrow_rows(
-        dj.arrow_stream({"blob": [b"\xff\x00"], "nested": [[b"ok"]]})
-    )
+def test_arrow_table_of_raw_ipc_bytes():
+    table = arrow_table(dj.arrow_stream({"blob": [b"\xff\x00"]}))
 
-    assert columns == ["blob", "nested"]
-    assert rows == [
-        {
-            "blob": base64.b64encode(b"\xff\x00").decode(),
-            "nested": [base64.b64encode(b"ok").decode()],
-        }
-    ]
+    assert table.column_names == ["blob"]
+    assert table.to_pylist() == [{"blob": b"\xff\x00"}]
 
 
-def test_decode_arrow_rows_of_an_empty_response():
-    assert decode_arrow_rows(None) == ([], [])
-    assert decode_arrow_rows(b"") == ([], [])
+def test_arrow_table_of_an_empty_response():
+    for empty in (None, b""):
+        table = arrow_table(empty)
+        assert (table.column_names, table.num_rows) == ([], 0)
 
 
 # -------------------------------------------------------------- schema

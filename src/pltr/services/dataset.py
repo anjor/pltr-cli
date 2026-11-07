@@ -12,7 +12,6 @@ public API, so it calls Foundry's schema-inference and foundry-metadata
 endpoints through ``BaseService._make_request``.
 """
 
-import base64
 import csv
 import re
 from contextlib import contextmanager
@@ -111,28 +110,28 @@ class DatasetService(BaseService):
             end_transaction_rid=end_transaction_rid,
         )
 
-    def preview_rows(
+    def preview_table(
         self,
         dataset_rid: str,
         *,
         limit: int = 10,
         branch: Optional[str] = None,
         columns: Optional[List[str]] = None,
-    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+    ) -> Any:
         """Read up to ``limit`` rows (``Dataset.read_table`` in Arrow format).
 
         Returns:
-            ``(column names, rows)``; each row maps column name to value.
-            BINARY values are base64-encoded strings.
+            A ``pyarrow.Table`` (one without columns for an empty response);
+            ``pltr.contract.table_rows`` turns it into JSON-safe rows.
         """
-        table = self.read_table(
+        response = self.read_table(
             dataset_rid,
             format="ARROW",
             branch=branch,
             columns=columns,
             row_limit=limit,
         )
-        return decode_arrow_rows(table)
+        return arrow_table(response)
 
     # ------------------------------------------------------------- schema
 
@@ -766,38 +765,19 @@ def _view_backing_datasets(backing_datasets: Sequence[BackingDataset]) -> List[A
     ]
 
 
-def decode_arrow_rows(table: Any) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Decode a ``read_table`` Arrow response into (column names, rows).
+def arrow_table(response: Any) -> Any:
+    """The ``pyarrow.Table`` of a ``read_table`` Arrow response.
 
-    ``table`` is the SDK's ``TableResponse`` (or raw Arrow IPC stream bytes),
-    or ``None`` for an empty response. BINARY values become base64 strings so
-    every row is JSON-safe.
+    ``response`` is the SDK's ``TableResponse`` (or raw Arrow IPC stream
+    bytes); ``None`` or an empty body gives a table without columns.
     """
-    if not table:
-        return [], []
-    if hasattr(table, "to_pyarrow"):
-        arrow = table.to_pyarrow()
-    else:
-        import pyarrow as pa
+    import pyarrow as pa
 
-        arrow = pa.ipc.open_stream(bytes(table)).read_all()
-    rows = [
-        {name: _json_safe(value) for name, value in row.items()}
-        for row in arrow.to_pylist()
-    ]
-    return list(arrow.column_names), rows
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, (bytes, bytearray)):
-        return base64.b64encode(bytes(value)).decode("ascii")
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe(item) for item in value]
-    return value
+    if not response:
+        return pa.table({})
+    if hasattr(response, "to_pyarrow"):
+        return response.to_pyarrow()
+    return pa.ipc.open_stream(bytes(response)).read_all()
 
 
 _DATE_PATTERNS = (

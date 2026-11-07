@@ -18,6 +18,7 @@ from pltr.contract import (
     emit,
     emit_bytes,
     format_cell,
+    table_rows,
     write_bytes_atomically,
 )
 from tests import foundry_json as fj
@@ -216,6 +217,68 @@ def test_emit_paged_response_model_table_and_csv_show_its_data(capsys):
 def test_a_result_with_data_but_no_page_token_is_a_single_object(capsys):
     emit({"data": [1, 2], "model": "m"}, format="csv")
     assert capsys.readouterr().out == 'data,model\n"[1,2]",m\n'
+
+
+# ----------------------------------------------------------- Arrow tables
+
+
+def test_table_rows_keeps_column_order_and_values():
+    import pyarrow as pa
+
+    table = pa.table({"b": [1, None], "a": ["x", "y"]})
+
+    columns, rows = table_rows(table)
+
+    assert list(columns) == ["b", "a"]
+    assert rows == [{"b": 1, "a": "x"}, {"b": None, "a": "y"}]
+    assert [column_value(rows[0], spec) for spec in columns.values()] == [1, "x"]
+
+
+def test_table_rows_base64_encodes_binary_values_also_nested():
+    import pyarrow as pa
+
+    table = pa.table(
+        {
+            "raw": pa.array([b"\xff\x00"], pa.binary()),
+            "items": pa.array([[b"ok"]], pa.list_(pa.binary())),
+            "pair": pa.array([{"key": b"k"}], pa.struct([("key", pa.binary())])),
+            "lookup": pa.array([[("a", b"v")]], pa.map_(pa.string(), pa.binary())),
+            "text": ["plain"],
+        }
+    )
+
+    _, [row] = table_rows(table)
+
+    assert row == {
+        "raw": "/wA=",
+        "items": ["b2s="],
+        "pair": {"key": "aw=="},
+        "lookup": [["a", "dg=="]],
+        "text": "plain",
+    }
+    json.dumps(row)  # JSON-safe
+
+
+def test_table_rows_renames_duplicate_columns(capsys):
+    import pyarrow as pa
+
+    table = pa.Table.from_arrays([pa.array([1]), pa.array([2])], names=["id", "id"])
+
+    columns, rows = table_rows(table)
+
+    assert list(columns) == ["id", "id_2"]
+    assert rows == [{"id": 1, "id_2": 2}]
+    assert "renamed id -> id_2" in capsys.readouterr().err
+
+
+def test_table_rows_of_an_empty_table(capsys):
+    import pyarrow as pa
+
+    columns, rows = table_rows(pa.table({}))
+
+    assert (dict(columns), rows) == ({}, [])
+    emit(rows, format="json")
+    assert json.loads(capsys.readouterr().out) == {"data": []}
 
 
 # --------------------------------------------------------------------- binary

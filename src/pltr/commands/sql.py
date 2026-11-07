@@ -7,9 +7,8 @@ JSON output is ``{"data": [...]}`` with one object per row, keyed by column
 name.
 """
 
-import base64
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import click
 import typer
@@ -34,6 +33,7 @@ from ..contract import (
     pltr_command,
     spinner,
     success,
+    table_rows,
     warn,
 )
 from ..services.sql import SqlService, check_not_failed, query_id_of
@@ -148,65 +148,8 @@ def _status_columns(status: Any, query_id: Optional[str] = None) -> Columns:
     return columns
 
 
-def _unique_names(names: List[str]) -> List[str]:
-    """Column names with duplicates suffixed ``_2``, ``_3``, ... (in order)."""
-    seen = set()
-    unique = []
-    for name in names:
-        candidate, number = name, 2
-        while candidate in seen:
-            candidate, number = f"{name}_{number}", number + 1
-        seen.add(candidate)
-        unique.append(candidate)
-    return unique
-
-
-def _json_safe(value: Any) -> Any:
-    """Replace bytes (binary columns, also nested) with base64 strings."""
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return base64.b64encode(bytes(value)).decode("ascii")
-    if isinstance(value, (list, tuple)):  # lists, and map entries (tuples)
-        return [_json_safe(item) for item in value]
-    if isinstance(value, dict):  # structs
-        return {key: _json_safe(item) for key, item in value.items()}
-    return value
-
-
-def _column(name: str) -> Callable[[Dict[str, Any]], Any]:
-    def value(row: Dict[str, Any]) -> Any:
-        return row[name]
-
-    return value
-
-
-def result_rows(table: Any) -> Tuple[Columns, List[Dict[str, Any]]]:
-    """The rows of a query result (a ``pyarrow.Table``) and their columns.
-
-    Rows are dicts keyed by column name, in the result's column order, with
-    JSON-safe values: binary values become base64 strings. Duplicate column
-    names (``SELECT a.id, b.id ...``) get a ``_2``, ``_3`` suffix so no value
-    is lost, with a warning on stderr.
-    """
-    names = _unique_names(list(table.column_names))
-    if names != list(table.column_names):
-        renamed = ", ".join(
-            f"{old} -> {new}"
-            for old, new in zip(table.column_names, names)
-            if old != new
-        )
-        warn(f"The result has duplicate column names; renamed {renamed}.")
-        table = table.rename_columns(names)
-    rows: List[Dict[str, Any]] = table.to_pylist()
-    binary = [field.name for field in table.schema if "binary" in str(field.type)]
-    if binary:
-        for row in rows:
-            for name in binary:
-                row[name] = _json_safe(row[name])
-    return {name: _column(name) for name in names}, rows
-
-
 def _emit_rows(table: Any, *, format: str, output: Optional[str]) -> None:
-    columns, rows = result_rows(table)
+    columns, rows = table_rows(table)
     emit(rows, format=format, output=output, columns=columns)
 
 

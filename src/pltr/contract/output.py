@@ -35,7 +35,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import click
 
-from .runtime import info, success
+from .runtime import info, success, warn
 from .serialize import Page, _is_resource_iterator, to_document, to_jsonable
 
 ColumnSpec = Union[str, Callable[[Any], Any]]
@@ -144,6 +144,67 @@ def _key_getter(key: Any) -> Callable[[Any], Any]:
         return item.get(key)
 
     return get
+
+
+# ------------------------------------------------------------ Arrow tables
+
+
+def _unique_names(names: List[str]) -> List[str]:
+    """Column names with duplicates suffixed ``_2``, ``_3``, ... (in order)."""
+    seen = set()
+    unique = []
+    for name in names:
+        candidate, number = name, 2
+        while candidate in seen:
+            candidate, number = f"{name}_{number}", number + 1
+        seen.add(candidate)
+        unique.append(candidate)
+    return unique
+
+
+def _base64_bytes(value: Any) -> Any:
+    """Replace bytes (also nested in lists, map entries, structs) with base64."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        import base64
+
+        return base64.b64encode(bytes(value)).decode("ascii")
+    if isinstance(value, (list, tuple)):  # lists, and map entries (tuples)
+        return [_base64_bytes(item) for item in value]
+    if isinstance(value, dict):  # structs
+        return {key: _base64_bytes(item) for key, item in value.items()}
+    return value
+
+
+def table_rows(table: Any) -> Tuple[Columns, List[Dict[str, Any]]]:
+    """The columns and rows of a ``pyarrow.Table``, ready for :func:`emit`.
+
+    For tabular API results (SQL query results, dataset rows read as Arrow)::
+
+        columns, rows = table_rows(table)
+        emit(rows, format=format, output=output, columns=columns)
+
+    Rows are dicts keyed by column name, in the table's column order, with
+    JSON-safe values: binary values (also nested in lists, maps and structs)
+    become base64 strings; other values (dates, decimals) are serialized by
+    :func:`emit`. Duplicate column names (``SELECT a.id, b.id ...``) get a
+    ``_2``, ``_3`` suffix so no value is lost, with a warning on stderr.
+    """
+    names = _unique_names(list(table.column_names))
+    if names != list(table.column_names):
+        renamed = ", ".join(
+            f"{old} -> {new}"
+            for old, new in zip(table.column_names, names)
+            if old != new
+        )
+        warn(f"The result has duplicate column names; renamed {renamed}.")
+        table = table.rename_columns(names)
+    rows: List[Dict[str, Any]] = table.to_pylist()
+    binary = [field.name for field in table.schema if "binary" in str(field.type)]
+    if binary:
+        for row in rows:
+            for name in binary:
+                row[name] = _base64_bytes(row[name])
+    return {name: _key_getter(name) for name in names}, rows
 
 
 def _identity(item: Any) -> Any:
