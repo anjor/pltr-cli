@@ -297,3 +297,105 @@ def check_kind(path: str, resource: Any, kind: ResourceKind, label: str) -> None
     """
     if not kind.accepts(resource):
         raise WrongResourceTypeError(path, resource, kind, label)
+
+
+# ----------------------------------------------------------- command layer
+
+
+def _parameter_label(param: click.Parameter) -> str:
+    """How messages name a parameter: ``DATASET_RID`` or ``--parent-folder``."""
+    if isinstance(param, click.Option):
+        return next((opt for opt in param.opts if opt.startswith("--")), param.opts[0])
+    return param.human_readable_name
+
+
+def _values(value: Any) -> List[Any]:
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Replace the Compass paths in a command's resource parameters with RIDs.
+
+    Called by ``@pltr_command`` before the command body runs, with the
+    keyword arguments the command is called with. The command's
+    :class:`ResourceRef` parameters are read from the current click context.
+    Without a path among their values nothing happens (no client, no
+    request); otherwise every path is resolved in one call
+    (:func:`resolve_paths`), checked against its parameter's kind, reported
+    on stderr (text mode only) and replaced by its RID.
+    """
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return kwargs
+    targets = [
+        param
+        for param in ctx.command.params
+        if isinstance(param.type, ResourceRef) and param.name in kwargs
+    ]
+    wanted = [
+        (value, param)
+        for param in targets
+        for value in _values(kwargs[str(param.name)])
+        if is_path(value)
+    ]
+    if not wanted:
+        return kwargs
+
+    from pltr.services import base
+
+    from .runtime import info
+
+    profile = kwargs.get("profile", ctx.params.get("profile"))
+    client = base.AuthManager().get_client(profile)
+    resolved = resolve_paths(client, [path for path, _ in wanted])
+    for path, param in wanted:
+        assert isinstance(param.type, ResourceRef)
+        check_kind(path, resolved[path], param.type.kind, _parameter_label(param))
+    for path, resource in resolved.items():
+        info(f"Resolved {path!r} to {resource.rid} ({resource.type})")
+
+    def substitute(value: Any) -> Any:
+        return resolved[value].rid if is_path(value) else value
+
+    result = dict(kwargs)
+    for param in targets:
+        name = str(param.name)
+        value = result[name]
+        if isinstance(value, (list, tuple)):
+            result[name] = type(value)(substitute(item) for item in value)
+        else:
+            result[name] = substitute(value)
+    return result
+
+
+def _with_path_help(text: str) -> str:
+    text = text.rstrip()
+    return f"{text} {PATH_HELP}" if text else PATH_HELP
+
+
+def resource_argument(kind: str, *, help: str, **kwargs: Any) -> Any:
+    """A ``typer.Argument`` that takes a resource RID or a Compass path.
+
+    Use it in ``Annotated[str, resource_argument("dataset", help="...")]``.
+    The help gets :data:`PATH_HELP` appended.
+    """
+    import typer
+
+    return typer.Argument(
+        help=_with_path_help(help), click_type=ResourceRef(kind), **kwargs
+    )
+
+
+def resource_option(*flags: str, kind: str, help: str, **kwargs: Any) -> Any:
+    """A ``typer.Option`` that takes a resource RID or a Compass path.
+
+    Use it in ``Annotated[str, resource_option("--parent-folder", kind="folder",
+    help="...")]``. The help gets :data:`PATH_HELP` appended.
+    """
+    import typer
+
+    return typer.Option(
+        *flags, help=_with_path_help(help), click_type=ResourceRef(kind), **kwargs
+    )

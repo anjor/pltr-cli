@@ -70,6 +70,12 @@ from .output import (
     table_rows,
     write_bytes_atomically,
 )
+from .resources import (
+    PATH_HELP,
+    ResourceRef,
+    resource_argument,
+    resource_option,
+)
 from .runtime import (
     FORMAT_ENVVAR,
     FORMATS,
@@ -132,6 +138,11 @@ __all__ = [
     "to_document",
     "FORMATS",
     "FORMAT_ENVVAR",
+    # Compass paths in resource parameters (#193)
+    "ResourceRef",
+    "resource_argument",
+    "resource_option",
+    "PATH_HELP",
     # stderr
     "info",
     "success",
