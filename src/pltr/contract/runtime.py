@@ -142,6 +142,38 @@ def debug_enabled() -> bool:
     return bool(os.environ.get(DEBUG_ENVVAR, "").strip())
 
 
+def _is_utf8(encoding: Optional[str]) -> bool:
+    import codecs
+
+    try:
+        return codecs.lookup(encoding or "ascii").name == "utf-8"
+    except LookupError:
+        return False
+
+
+def ensure_utf8_output() -> None:
+    """Write UTF-8 to stdout and stderr when they are redirected.
+
+    A redirected stream uses the locale's encoding, which on Windows is the
+    ANSI code page (cp1252): a table or CSV holding text outside it (an
+    alias or a display name in Chinese, say) crashed with
+    UnicodeEncodeError. Files and pipes now always get UTF-8, which is also
+    what pltr writes to ``--output`` files. Terminals keep their encoding,
+    and a stream that can't be reconfigured (a test runner's capture) is
+    left alone.
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            if _is_utf8(getattr(stream, "encoding", None)) or stream.isatty():
+                continue
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError, ValueError):
+            continue
+
+
 # --------------------------------------------------------------------- stderr
 
 

@@ -40,6 +40,7 @@ from .runtime import (
     begin_invocation,
     capture_warnings,
     debug_enabled,
+    ensure_utf8_output,
     format_from_context,
     is_json,
     output_format,
@@ -247,8 +248,9 @@ def _usage_error_as_json(exc: click.ClickException) -> None:
 class PltrRootGroup(TyperGroup):
     """Click class of the root ``pltr`` group (``typer.Typer(cls=...)``).
 
-    Per invocation it resets the output mode (from ``--format`` in the
-    arguments or ``$PLTR_FORMAT``), routes Python warnings to stderr
+    Per invocation it makes redirected stdout/stderr UTF-8
+    (:func:`ensure_utf8_output`), resets the output mode (from ``--format``
+    in the arguments or ``$PLTR_FORMAT``), routes Python warnings to stderr
     messages, renders click's parse-time usage errors as structured JSON in
     JSON mode (exit 2), and gives commands that don't use ``@pltr_command``
     the same error rendering for unexpected exceptions.
@@ -262,6 +264,7 @@ class PltrRootGroup(TyperGroup):
         standalone_mode: bool = True,
         **extra: Any,
     ) -> Any:
+        ensure_utf8_output()
         previous = begin_invocation(sys.argv[1:] if args is None else list(args))
         try:
             with capture_warnings():

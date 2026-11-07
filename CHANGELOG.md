@@ -807,6 +807,12 @@ from `--help`. They will be removed in the next release.
   `python -m pltr`.
 - `pltr shell` works on click 8.2: it printed an empty error box at start and
   crashed on the first command.
+- On Windows, output redirected to a file or a pipe crashed with
+  `UnicodeEncodeError` when a table or CSV held text outside the ANSI code
+  page (cp1252), such as Chinese names. Redirected stdout and stderr are now
+  always UTF-8, like `--output` files, on every OS; a terminal keeps its
+  encoding. Scripts that read pltr's redirected output as cp1252 must read
+  UTF-8.
 - Error messages could show your token: a token stored with a trailing
   newline was rejected with `Illegal header value b'Bearer <token>\r'`, token
   included. Bearer tokens and Authorization header values are now redacted

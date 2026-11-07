@@ -12,7 +12,10 @@ Import everything from `pltr.contract` and nothing from its submodules.
 ## The contract (what users and agents rely on)
 
 1. **stdout is data only, in every format.** Spinners, progress, success,
-   info and warning messages, prompts and errors go to stderr.
+   info and warning messages, prompts and errors go to stderr. When stdout
+   or stderr is redirected to a file or a pipe, it is UTF-8 on every OS
+   (the root group reconfigures it; Windows would use cp1252); a terminal
+   keeps its encoding.
 2. **`--format json` prints the SDK's own serialization**, exactly one JSON
    document: `model.model_dump(mode="json", by_alias=True, exclude_none=True)`.
    That means Foundry API field names (camelCase), no null fields and no
