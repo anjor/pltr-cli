@@ -98,6 +98,71 @@ def test_paged_command_all_fetches_every_page(stub_foundry_http, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
+def test_max_pages_stops_and_returns_the_resume_token(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
+        200, json={"data": [user(USER_ID, "a")], "nextPageToken": "p2"}
+    )
+    stub_foundry_http.respond(
+        200, json={"data": [user(OTHER_USER_ID, "b")], "nextPageToken": "p3"}
+    )
+
+    result = pltr_api("admin", "user", "list", "--max-pages", "2", "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert len(stub_foundry_http.requests) == 2
+    assert json.loads(result.stdout) == {
+        "data": [user(USER_ID, "a"), user(OTHER_USER_ID, "b")],
+        "nextPageToken": "p3",
+    }
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_page_size_for_an_endpoint_without_one_is_a_usage_error(
+    stub_foundry_http, pltr_api
+):
+    """OntologyObjectSet.load_links pages by token only."""
+    result = pltr_api(
+        "ontologies",
+        "ontology-object-set",
+        "load-links",
+        "flights",
+        "--object-set",
+        '{"type": "base", "objectType": "Aircraft"}',
+        "--page-size",
+        "5",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "usage_error"
+    assert "page size" in error["message"]
+
+
+def test_one_page_keeps_page_level_fields(stub_foundry_http, pltr_api):
+    """A single page is the API's response as-is, e.g. with totalCount."""
+    page = {
+        "data": [{"__apiName": "Aircraft", "__primaryKey": "N1", "tailNumber": "N1"}],
+        "nextPageToken": "p2",
+        "totalCount": "7",
+    }
+    stub_foundry_http.respond(200, json=page)
+    stub_foundry_http.respond(200, json=page)
+    list_objects = ("ontologies", "ontology-object", "list", "flights", "Aircraft")
+
+    as_json = pltr_api(*list_objects, "--page-size", "1", "--format", "json")
+    as_csv = pltr_api(*list_objects, "--format", "csv")
+
+    assert as_json.exit_code == 0, as_json.output
+    assert dict(stub_foundry_http.requests[0].url.params) == {"pageSize": "1"}
+    assert json.loads(as_json.stdout) == page
+    assert as_csv.stdout == "__apiName,__primaryKey,tailNumber\nAircraft,N1,N1\n"
+    assert "--page-token p2" in as_csv.stderr
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
 def test_response_paged_command_keeps_extra_fields_and_pages_body(
     stub_foundry_http, pltr_api
 ):
