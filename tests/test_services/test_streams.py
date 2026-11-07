@@ -1,376 +1,185 @@
-"""Tests for Streams service."""
+"""Tests for StreamsService against a real FoundryClient (only HTTP is faked).
 
+Dataset.create, Dataset.Stream.create and Dataset.Stream.reset are beta: their
+requests must carry preview=true. Stream.get, publish_record and
+publish_records are GA: passing preview= would make the SDK emit a
+UserWarning, which the module-level filter turns into a failure.
+"""
+
+import json
+
+import pydantic
 import pytest
-from unittest.mock import Mock, patch
+from foundry_sdk.v2.streams.errors import StreamNotFound
+from foundry_sdk.v2.streams.models import Dataset, Stream
+
 from pltr.services.streams import StreamsService
+from tests import foundry_json_streams as st
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+STREAMS = f"/api/v2/streams/datasets/{st.DATASET_RID}/streams"
+HIGH_SCALE = f"/api/v2/highScale/streams/datasets/{st.DATASET_RID}/streams"
 
 
-class TestStreamsService:
-    """Test Streams service functionality."""
+def test_create_dataset_is_beta_and_sends_the_schema(stub_foundry_http):
+    stub_foundry_http.respond(json=st.dataset())
 
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.streams = Mock()
-        client.streams.Dataset = Mock()
-        client.streams.Dataset.Stream = Mock()
-        return client
+    dataset = StreamsService().create_dataset(
+        name="sensor-data",
+        parent_folder_rid=st.FOLDER_RID,
+        schema=st.SCHEMA,
+        branch_name="develop",
+        compressed=True,
+        partitions_count=5,
+        stream_type="HIGH_THROUGHPUT",
+    )
 
-    @pytest.fixture
-    def service(self, mock_client):
-        """Create StreamsService with mocked client."""
-        with patch("pltr.services.base.AuthManager") as mock_auth:
-            mock_auth.return_value.get_client.return_value = mock_client
-            service = StreamsService()
-            return service
+    assert isinstance(dataset, Dataset)
+    assert (dataset.rid, dataset.parent_folder_rid) == (st.DATASET_RID, st.FOLDER_RID)
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/streams/datasets/create",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "name": "sensor-data",
+        "parentFolderRid": st.FOLDER_RID,
+        "schema": st.SCHEMA,
+        "branchName": "develop",
+        "partitionsCount": 5,
+        "streamType": "HIGH_THROUGHPUT",
+        "compressed": True,
+    }
 
-    # ===== Dataset Creation Tests =====
 
-    def test_create_dataset(self, service, mock_client):
-        """Test creating a streaming dataset."""
-        # Setup
-        name = "test-stream"
-        parent_folder_rid = "ri.compass.main.folder.123"
-        schema = {"fieldSchemaList": [{"name": "value", "type": "STRING"}]}
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": "ri.foundry.main.dataset.abc123",
-            "name": name,
-            "streamRid": "ri.foundry.main.stream.xyz789",
-        }
-        mock_client.streams.Dataset.create.return_value = mock_response
+def test_create_dataset_leaves_out_unset_settings(stub_foundry_http):
+    stub_foundry_http.respond(json=st.dataset())
 
-        # Execute
-        result = service.create_dataset(
-            name=name, parent_folder_rid=parent_folder_rid, schema=schema
+    StreamsService().create_dataset(
+        name="sensor-data", parent_folder_rid=st.FOLDER_RID, schema=st.SCHEMA
+    )
+
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "name": "sensor-data",
+        "parentFolderRid": st.FOLDER_RID,
+        "schema": st.SCHEMA,
+    }
+
+
+def test_create_dataset_rejects_a_schema_without_fields(stub_foundry_http):
+    """The format the old help documented never matched the SDK's StreamSchema."""
+    with pytest.raises(pydantic.ValidationError):
+        StreamsService().create_dataset(
+            name="x",
+            parent_folder_rid=st.FOLDER_RID,
+            schema={"fieldSchemaList": [{"name": "value", "type": "STRING"}]},
         )
+    assert stub_foundry_http.requests == []
 
-        # Assert
-        mock_client.streams.Dataset.create.assert_called_once_with(
-            name=name,
-            parent_folder_rid=parent_folder_rid,
-            schema=schema,
-            branch_name=None,
-            compressed=None,
-            partitions_count=None,
-            stream_type=None,
-            preview=False,
-        )
-        assert result["name"] == name
-        assert "rid" in result
-        assert "streamRid" in result
 
-    def test_create_dataset_with_options(self, service, mock_client):
-        """Test creating a dataset with all options."""
-        # Setup
-        name = "high-throughput-stream"
-        parent_folder_rid = "ri.compass.main.folder.123"
-        schema = {"fieldSchemaList": [{"name": "id", "type": "INTEGER"}]}
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "rid": "ri.foundry.main.dataset.abc123",
-            "name": name,
-        }
-        mock_client.streams.Dataset.create.return_value = mock_response
+def test_create_stream_is_beta(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream("feature"))
 
-        # Execute
-        service.create_dataset(
-            name=name,
-            parent_folder_rid=parent_folder_rid,
-            schema=schema,
-            branch_name="develop",
-            compressed=True,
-            partitions_count=5,
-            stream_type="HIGH_THROUGHPUT",
-            preview=True,
-        )
+    stream = StreamsService().create_stream(
+        st.DATASET_RID, branch_name="feature", schema=st.SCHEMA, partitions_count=3
+    )
 
-        # Assert
-        mock_client.streams.Dataset.create.assert_called_once_with(
-            name=name,
-            parent_folder_rid=parent_folder_rid,
-            schema=schema,
-            branch_name="develop",
-            compressed=True,
-            partitions_count=5,
-            stream_type="HIGH_THROUGHPUT",
-            preview=True,
-        )
+    assert isinstance(stream, Stream)
+    assert stream.branch_name == "feature"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", STREAMS)
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "branchName": "feature",
+        "schema": st.SCHEMA,
+        "partitionsCount": 3,
+    }
 
-    def test_create_dataset_error(self, service, mock_client):
-        """Test error handling in create_dataset."""
-        # Setup
-        mock_client.streams.Dataset.create.side_effect = Exception("Permission denied")
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to create streaming dataset"):
-            service.create_dataset(
-                name="test",
-                parent_folder_rid="ri.compass.main.folder.123",
-                schema={},
-            )
+def test_get_stream_is_ga(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
 
-    # ===== Stream Creation Tests =====
+    stream = StreamsService().get_stream(st.DATASET_RID, "master")
 
-    def test_create_stream(self, service, mock_client):
-        """Test creating a stream on a branch."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "feature-branch"
-        schema = {"fieldSchemaList": [{"name": "value", "type": "STRING"}]}
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": branch_name,
-        }
-        mock_client.streams.Dataset.Stream.create.return_value = mock_response
+    assert (stream.view_rid, stream.partitions_count) == (st.VIEW_RID, 1)
+    assert [field.name for field in stream.schema_.fields] == ["id", "value"]
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", f"{STREAMS}/master")
+    assert dict(request.url.params) == {}
 
-        # Execute
-        result = service.create_stream(
-            dataset_rid=dataset_rid, branch_name=branch_name, schema=schema
-        )
 
-        # Assert
-        mock_client.streams.Dataset.Stream.create.assert_called_once_with(
-            dataset_rid=dataset_rid,
-            branch_name=branch_name,
-            schema=schema,
-            compressed=None,
-            partitions_count=None,
-            stream_type=None,
-            preview=False,
-        )
-        assert result["branchName"] == branch_name
-        assert "streamRid" in result
+def test_get_stream_not_found(stub_foundry_http):
+    stub_foundry_http.respond(404, json=st.stream_not_found("nope"))
 
-    def test_create_stream_error(self, service, mock_client):
-        """Test error handling in create_stream."""
-        # Setup
-        mock_client.streams.Dataset.Stream.create.side_effect = Exception(
-            "Branch already exists"
-        )
+    with pytest.raises(StreamNotFound) as caught:
+        StreamsService().get_stream(st.DATASET_RID, "nope")
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to create stream"):
-            service.create_stream(
-                dataset_rid="ri.foundry.main.dataset.123",
-                branch_name="main",
-                schema={},
-            )
+    assert caught.value.parameters["streamBranchName"] == "nope"
 
-    # ===== Get Stream Tests =====
 
-    def test_get_stream(self, service, mock_client):
-        """Test getting stream information."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": branch_name,
-            "schema": {"fieldSchemaList": []},
-        }
-        mock_client.streams.Dataset.Stream.get.return_value = mock_response
+def test_publish_record_is_ga(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-        # Execute
-        result = service.get_stream(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name
-        )
+    result = StreamsService().publish_record(
+        st.DATASET_RID, "master", {"id": 1, "value": "a"}, view_rid=st.VIEW_RID
+    )
 
-        # Assert
-        mock_client.streams.Dataset.Stream.get.assert_called_once_with(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=False
-        )
-        assert result["branchName"] == branch_name
-        assert "streamRid" in result
+    assert result is None
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{HIGH_SCALE}/master/publishRecord",
+    )
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {
+        "record": {"id": 1, "value": "a"},
+        "viewRid": st.VIEW_RID,
+    }
 
-    def test_get_stream_with_preview(self, service, mock_client):
-        """Test getting stream with preview mode."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        mock_response = Mock()
-        mock_response.dict.return_value = {"streamRid": "ri.foundry.main.stream.xyz789"}
-        mock_client.streams.Dataset.Stream.get.return_value = mock_response
 
-        # Execute
-        service.get_stream(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=True
-        )
+def test_publish_records_is_ga(stub_foundry_http):
+    stub_foundry_http.respond(204)
 
-        # Assert
-        mock_client.streams.Dataset.Stream.get.assert_called_once_with(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=True
-        )
+    StreamsService().publish_records(st.DATASET_RID, "master", [{"id": 1}, {"id": 2}])
 
-    def test_get_stream_error(self, service, mock_client):
-        """Test error handling in get_stream."""
-        # Setup
-        mock_client.streams.Dataset.Stream.get.side_effect = Exception(
-            "Stream not found"
-        )
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{HIGH_SCALE}/master/publishRecords",
+    )
+    assert dict(request.url.params) == {}
+    assert json.loads(request.content) == {"records": [{"id": 1}, {"id": 2}]}
 
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to get stream"):
-            service.get_stream(
-                dataset_rid="ri.foundry.main.dataset.123", stream_branch_name="master"
-            )
 
-    # ===== Publish Record Tests =====
+def test_reset_stream_is_beta_and_keeps_unset_settings(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream())
 
-    def test_publish_record(self, service, mock_client):
-        """Test publishing a single record."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        record = {"id": 123, "name": "test"}
+    stream = StreamsService().reset_stream(st.DATASET_RID, "master")
 
-        # Execute
-        service.publish_record(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, record=record
-        )
+    assert stream.view_rid == st.VIEW_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", f"{STREAMS}/master/reset")
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {}
 
-        # Assert
-        mock_client.streams.Dataset.Stream.publish_record.assert_called_once_with(
-            dataset_rid=dataset_rid,
-            stream_branch_name=branch_name,
-            record=record,
-            view_rid=None,
-            preview=False,
-        )
 
-    def test_publish_record_with_view(self, service, mock_client):
-        """Test publishing record with view RID."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        record = {"id": 123}
-        view_rid = "ri.foundry.main.view.abc"
+def test_reset_stream_with_new_settings(stub_foundry_http):
+    stub_foundry_http.respond(json=st.stream(partitionsCount=4))
 
-        # Execute
-        service.publish_record(
-            dataset_rid=dataset_rid,
-            stream_branch_name=branch_name,
-            record=record,
-            view_rid=view_rid,
-            preview=True,
-        )
+    StreamsService().reset_stream(
+        st.DATASET_RID,
+        "master",
+        schema=st.SCHEMA,
+        compressed=False,
+        partitions_count=4,
+        stream_type="LOW_LATENCY",
+    )
 
-        # Assert
-        mock_client.streams.Dataset.Stream.publish_record.assert_called_once_with(
-            dataset_rid=dataset_rid,
-            stream_branch_name=branch_name,
-            record=record,
-            view_rid=view_rid,
-            preview=True,
-        )
-
-    def test_publish_record_error(self, service, mock_client):
-        """Test error handling in publish_record."""
-        # Setup
-        mock_client.streams.Dataset.Stream.publish_record.side_effect = Exception(
-            "Schema mismatch"
-        )
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to publish record"):
-            service.publish_record(
-                dataset_rid="ri.foundry.main.dataset.123",
-                stream_branch_name="master",
-                record={},
-            )
-
-    # ===== Publish Records (Batch) Tests =====
-
-    def test_publish_records(self, service, mock_client):
-        """Test publishing multiple records."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        records = [{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}]
-
-        # Execute
-        service.publish_records(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, records=records
-        )
-
-        # Assert
-        mock_client.streams.Dataset.Stream.publish_records.assert_called_once_with(
-            dataset_rid=dataset_rid,
-            stream_branch_name=branch_name,
-            records=records,
-            view_rid=None,
-            preview=False,
-        )
-
-    def test_publish_records_error(self, service, mock_client):
-        """Test error handling in publish_records."""
-        # Setup
-        mock_client.streams.Dataset.Stream.publish_records.side_effect = Exception(
-            "Batch failed"
-        )
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to publish 2 records"):
-            service.publish_records(
-                dataset_rid="ri.foundry.main.dataset.123",
-                stream_branch_name="master",
-                records=[{}, {}],
-            )
-
-    # ===== Reset Stream Tests =====
-
-    def test_reset_stream(self, service, mock_client):
-        """Test resetting a stream."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        mock_response = Mock()
-        mock_response.dict.return_value = {
-            "streamRid": "ri.foundry.main.stream.xyz789",
-            "branchName": branch_name,
-        }
-        mock_client.streams.Dataset.Stream.reset.return_value = mock_response
-
-        # Execute
-        result = service.reset_stream(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name
-        )
-
-        # Assert
-        mock_client.streams.Dataset.Stream.reset.assert_called_once_with(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=False
-        )
-        assert result["branchName"] == branch_name
-
-    def test_reset_stream_with_preview(self, service, mock_client):
-        """Test resetting stream with preview mode."""
-        # Setup
-        dataset_rid = "ri.foundry.main.dataset.123"
-        branch_name = "master"
-        mock_response = Mock()
-        mock_response.dict.return_value = {}
-        mock_client.streams.Dataset.Stream.reset.return_value = mock_response
-
-        # Execute
-        service.reset_stream(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=True
-        )
-
-        # Assert
-        mock_client.streams.Dataset.Stream.reset.assert_called_once_with(
-            dataset_rid=dataset_rid, stream_branch_name=branch_name, preview=True
-        )
-
-    def test_reset_stream_error(self, service, mock_client):
-        """Test error handling in reset_stream."""
-        # Setup
-        mock_client.streams.Dataset.Stream.reset.side_effect = Exception("Reset failed")
-
-        # Execute & Assert
-        with pytest.raises(RuntimeError, match="Failed to reset stream"):
-            service.reset_stream(
-                dataset_rid="ri.foundry.main.dataset.123", stream_branch_name="master"
-            )
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "schema": st.SCHEMA,
+        "partitionsCount": 4,
+        "streamType": "LOW_LATENCY",
+        "compressed": False,
+    }

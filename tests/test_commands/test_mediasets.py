@@ -1,520 +1,746 @@
-"""
-Tests for mediasets CLI commands.
-"""
+"""Tests for `pltr media-sets` against a real FoundryClient (only HTTP is faked)."""
 
+import csv
+import io
+import json
+from typing import Iterator, List
+
+import httpx
 import pytest
-from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 
-from pltr.commands.mediasets import app
-from pltr.auth.base import ProfileNotFoundError, MissingCredentialsError
+from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_mediasets as ms
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
 
 runner = CliRunner()
 
+PNG = b"\x89PNG\r\n\x1a\n fake image bytes"
+
+
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, ["media-sets", *args], **kwargs)
+
+
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
+
+
+def only_request(stub):
+    [request] = stub.requests
+    return request
+
+
+class ChunkedStream(httpx.SyncByteStream):
+    """A response body sent in chunks; ``fail`` drops the connection after them."""
+
+    def __init__(self, chunks: List[bytes], fail: bool = False):
+        self.chunks = chunks
+        self.fail = fail
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield from self.chunks
+        if self.fail:
+            raise httpx.ReadError("connection reset by peer")
+
 
 @pytest.fixture
-def mock_mediasets_service():
-    """Mock MediaSetsService for command tests."""
-    with patch("pltr.commands.mediasets.MediaSetsService") as mock_service_class:
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        yield mock_service
+def interactive(monkeypatch):
+    """Pretend stdin is a terminal so confirmation prompts are allowed."""
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
 
 
-@pytest.fixture
-def sample_media_item():
-    """Sample media item for testing."""
-    return {
-        "media_item_rid": "ri.mediasets.main.media-item.test",
-        "filename": "test-image.jpg",
-        "size": 12345,
-        "content_type": "image/jpeg",
-        "created_time": "2024-01-01T00:00:00Z",
-        "updated_time": "2024-01-02T00:00:00Z",
+# -------------------------------------------------------------------- help
+
+
+def test_beta_commands_are_labeled_in_help():
+    lines = invoke("--help").stdout.splitlines()
+
+    def line_for(command):
+        return next(line for line in lines if f" {command} " in line)
+
+    for command in (
+        "get-by-path",
+        "create",
+        "commit",
+        "abort",
+        "upload",
+        "reference",
+        "thumbnail-calculate",
+        "thumbnail-retrieve",
+        "clear",
+    ):
+        assert "[beta]" in line_for(command), command
+    for command in ("get", "download", "upload-temp"):
+        assert "[beta]" not in line_for(command), command
+
+
+def test_help_explains_the_rid_formats():
+    help_text = invoke("get", "--help").stdout
+    assert "ri.mio.main.media-set.<uuid>" in help_text
+    assert "ri.mio.main.media-item.<uuid>" in help_text
+
+
+# --------------------------------------------------------------------- get
+
+
+def test_get_table_shows_real_fields_and_the_given_item_rid(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.item_info())
+
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID)
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        ms.MEDIA_ITEM_RID,
+        "images/photo.png",
+        "image/png",
+        "image/heic",
+        ms.VIEW_RID,
+        "1700000000000",
+        fj.USER_ID,
+        "2024-01-02T03:04:05",
+    ):
+        assert expected in result.stdout, expected
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", ms.ITEM)
+    assert dict(request.url.params) == {}  # GA
+
+
+def test_get_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.item_info())
+
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "csv")
+
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert row == {
+        "Media Item RID": ms.MEDIA_ITEM_RID,
+        "Path": "images/photo.png",
+        "MIME Type": "image/png",
+        "Size (bytes)": "20",
+        "Originally Uploaded MIME Type": "image/heic",
+        "View RID": ms.VIEW_RID,
+        "Logical Timestamp": "1700000000000",
+        "Created By": fj.USER_ID,
+        "Created": "2024-01-02T03:04:05+00:00",
     }
 
 
-@pytest.fixture
-def sample_media_reference():
-    """Sample media reference for testing."""
-    return {
-        "reference_id": "ref-12345",
-        "url": "https://example.com/media/test",
-        "expires_at": "2024-01-01T01:00:00Z",
+def test_get_json_is_the_sdk_serialization(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.item_info())
+
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "viewRid": ms.VIEW_RID,
+        "path": "images/photo.png",
+        "logicalTimestamp": "1700000000000",  # SDK Long: a string in JSON
+        "attribution": {
+            "creatorId": fj.USER_ID,
+            "creationTimestamp": "2024-01-02T03:04:05+00:00",
+        },
+        "mimeType": "image/png",
+        "originallyUploadedFileMimeType": "image/heic",
+        "sizeBytes": 20,
+        "sizeBytesLong": "20",
+    }
+    assert result.stderr == ""
+
+
+def test_get_without_optional_fields(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"viewRid": ms.VIEW_RID, "logicalTimestamp": 1, "sizeBytesLong": 3}
+    )
+
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "csv")
+
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert (row["Path"], row["Created By"], row["Size (bytes)"]) == ("", "", "3")
+
+
+def test_get_not_found(stub_foundry_http):
+    stub_foundry_http.respond(404, json=fj.error("MediaItemNotFound"))
+
+    result = invoke("get", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    assert json_lines(result.stderr)[-1]["errorName"] == "MediaItemNotFound"
+
+
+# ------------------------------------------------------------- get-by-path
+
+
+def test_get_by_path(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.rid_by_path())
+
+    result = invoke(
+        "get-by-path",
+        ms.MEDIA_SET_RID,
+        "images/photo.png",
+        "--branch",
+        "dev",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"mediaItemRid": ms.MEDIA_ITEM_RID}
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{ms.ITEMS}/getRidByPath"
+    assert dict(request.url.params) == {
+        "mediaItemPath": "images/photo.png",
+        "branchName": "dev",
+        "preview": "true",
     }
 
 
-@pytest.fixture
-def sample_thumbnail_status():
-    """Sample thumbnail status for testing."""
-    return {
-        "status": "COMPLETED",
-        "transformation_id": "transform-12345",
-        "media_item_rid": "ri.mediasets.main.media-item.test",
-    }
+def test_get_by_path_table(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.rid_by_path())
+
+    result = invoke("get-by-path", ms.MEDIA_SET_RID, "images/photo.png")
+
+    assert result.exit_code == 0, result.output
+    assert "images/photo.png" in result.stdout
+    assert ms.MEDIA_ITEM_RID in result.stdout
 
 
-# Get Media Item Tests
-def test_get_media_item_success(mock_mediasets_service, sample_media_item):
-    """Test successful media item retrieval."""
-    mock_mediasets_service.get_media_set_info.return_value = sample_media_item
+def test_get_by_path_without_an_item_warns(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.rid_by_path(None))
 
-    result = runner.invoke(
-        app,
-        [
-            "get",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
+    result = invoke("get-by-path", ms.MEDIA_SET_RID, "nothing/here", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {}
+    assert json_lines(result.stderr) == [
+        {"type": "warning", "message": "No media item at path 'nothing/here'."}
+    ]
+
+
+def test_get_by_path_preview_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.rid_by_path())
+
+    result = invoke("get-by-path", ms.MEDIA_SET_RID, "a", "--preview")
+
+    assert result.exit_code == 0, result.output
+    assert "--preview is deprecated" in result.stderr
+
+
+# ------------------------------------------------------------ transactions
+
+
+def test_create_prints_the_transaction_id(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.TRANSACTION_ID)
+
+    result = invoke("create", ms.MEDIA_SET_RID, "--branch", "dev", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == ms.TRANSACTION_ID
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"/api/v2/mediasets/{ms.MEDIA_SET_RID}/transactions",
     )
-
-    assert result.exit_code == 0
-    mock_mediasets_service.get_media_set_info.assert_called_once()
+    assert dict(request.url.params) == {"branchName": "dev", "preview": "true"}
 
 
-def test_get_media_item_auth_error(mock_mediasets_service):
-    """Test media item retrieval with authentication error."""
-    mock_mediasets_service.get_media_set_info.side_effect = ProfileNotFoundError(
-        "Profile not found"
-    )
+def test_create_table(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.TRANSACTION_ID)
 
-    result = runner.invoke(
-        app,
-        [
-            "get",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
-    )
+    result = invoke("create", ms.MEDIA_SET_RID)
+
+    assert result.exit_code == 0, result.output
+    assert ms.TRANSACTION_ID in result.stdout
+    assert f"Created transaction {ms.TRANSACTION_ID}" in result.stderr
+    assert "pltr media-sets upload" in result.stderr
+
+
+def test_commit_does_not_ask(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("commit", ms.MEDIA_SET_RID, ms.TRANSACTION_ID)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""
+    assert f"Committed transaction {ms.TRANSACTION_ID}" in result.stderr
+    request = only_request(stub_foundry_http)
+    assert request.url.path.endswith(f"/transactions/{ms.TRANSACTION_ID}/commit")
+    assert request.url.params["preview"] == "true"
+
+
+def test_commit_yes_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("commit", ms.MEDIA_SET_RID, ms.TRANSACTION_ID, "-y", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) is None
+    [warning] = json_lines(result.stderr)
+    assert "--yes has no effect on 'media-sets commit'" in warning["message"]
+
+
+def test_commit_invalid_transaction_id_is_a_usage_error(stub_foundry_http):
+    result = invoke("commit", ms.MEDIA_SET_RID, "not-a-uuid", "-f", "json")
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+def test_abort_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke("abort", ms.MEDIA_SET_RID, ms.TRANSACTION_ID, "-f", "json")
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "confirmation_required"
+    assert stub_foundry_http.requests == []
+
+
+def test_abort_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke("abort", ms.MEDIA_SET_RID, ms.TRANSACTION_ID, "--yes", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) is None
+    request = only_request(stub_foundry_http)
+    assert request.url.path.endswith(f"/transactions/{ms.TRANSACTION_ID}/abort")
+    assert request.url.params["preview"] == "true"
+
+
+def test_abort_prompts_when_interactive(stub_foundry_http, interactive):
+    stub_foundry_http.respond(204)
+
+    result = invoke("abort", ms.MEDIA_SET_RID, ms.TRANSACTION_ID, input="y\n")
+
+    assert result.exit_code == 0, result.output
+    assert "items uploaded in it will be deleted" in result.stderr
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_abort_answering_no(stub_foundry_http, interactive):
+    result = invoke("abort", ms.MEDIA_SET_RID, ms.TRANSACTION_ID, input="n\n")
 
     assert result.exit_code == 1
-    assert "Authentication error" in result.output
+    assert stub_foundry_http.requests == []
 
 
-def test_get_media_item_with_format(mock_mediasets_service, sample_media_item):
-    """Test media item retrieval with different formats."""
-    mock_mediasets_service.get_media_set_info.return_value = sample_media_item
+# ------------------------------------------------------------------ upload
 
-    result = runner.invoke(
-        app,
-        [
-            "get",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            "--format",
-            "json",
-        ],
+
+def test_upload_in_a_transaction(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=ms.put_item())
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"%PDF-1.7 fake")
+
+    result = invoke(
+        "upload",
+        ms.MEDIA_SET_RID,
+        str(source),
+        "docs/scan.pdf",
+        ms.TRANSACTION_ID,
+        "-f",
+        "json",
     )
 
-    assert result.exit_code == 0
-
-
-# Get By Path Tests
-def test_get_by_path_success(mock_mediasets_service):
-    """Test successful media item path lookup."""
-    mock_mediasets_service.get_media_item_by_path.return_value = {
-        "rid": "ri.mediasets.main.media-item.test",
-        "path": "/images/test.jpg",
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == ms.put_item()
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("POST", ms.ITEMS)
+    assert dict(request.url.params) == {
+        "mediaItemPath": "docs/scan.pdf",
+        "transactionId": ms.TRANSACTION_ID,
+        "preview": "true",
     }
+    assert request.content == b"%PDF-1.7 fake"
 
-    result = runner.invoke(
-        app,
-        ["get-by-path", "ri.mediasets.main.media-set.test", "/images/test.jpg"],
+
+def test_upload_table_and_commit_hint(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=ms.put_item())
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"x")
+
+    result = invoke(
+        "upload", ms.MEDIA_SET_RID, str(source), "docs/scan.pdf", ms.TRANSACTION_ID
     )
 
-    assert result.exit_code == 0
-    mock_mediasets_service.get_media_item_by_path.assert_called_once()
-
-
-# Transaction Tests
-def test_create_transaction_success(mock_mediasets_service):
-    """Test successful transaction creation."""
-    mock_mediasets_service.create_transaction.return_value = "transaction-12345"
-
-    result = runner.invoke(
-        app,
-        ["create", "ri.mediasets.main.media-set.test"],
+    assert result.exit_code == 0, result.output
+    for expected in (ms.MEDIA_ITEM_RID, ms.VIEW_RID, "docs/scan.pdf"):
+        assert expected in result.stdout
+    assert (
+        f"pltr media-sets commit {ms.MEDIA_SET_RID} {ms.TRANSACTION_ID}"
+        in result.stderr
     )
 
-    assert result.exit_code == 0
-    assert "Successfully created transaction" in result.output
-    mock_mediasets_service.create_transaction.assert_called_once()
 
+def test_upload_without_transaction(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=ms.put_item())
+    source = tmp_path / "a.txt"
+    source.write_bytes(b"hello")
 
-def test_commit_transaction_success(mock_mediasets_service):
-    """Test successful transaction commit."""
-    result = runner.invoke(
-        app,
-        [
-            "commit",
-            "ri.mediasets.main.media-set.test",
-            "transaction-12345",
-            "--yes",
-        ],
-    )
+    result = invoke("upload", ms.MEDIA_SET_RID, str(source), "a.txt", "--branch", "dev")
 
-    assert result.exit_code == 0
-    assert "Successfully committed transaction" in result.output
-    mock_mediasets_service.commit_transaction.assert_called_once()
-
-
-def test_abort_transaction_success(mock_mediasets_service):
-    """Test successful transaction abort."""
-    result = runner.invoke(
-        app,
-        [
-            "abort",
-            "ri.mediasets.main.media-set.test",
-            "transaction-12345",
-            "--yes",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "Successfully aborted transaction" in result.output
-    mock_mediasets_service.abort_transaction.assert_called_once()
-
-
-# Upload Tests
-def test_upload_media_file_not_found(mock_mediasets_service):
-    """Test upload with non-existent file."""
-    result = runner.invoke(
-        app,
-        [
-            "upload",
-            "ri.mediasets.main.media-set.test",
-            "/nonexistent/file.jpg",
-            "/images/file.jpg",
-            "transaction-12345",
-        ],
-    )
-
-    assert result.exit_code == 1
-    assert "File not found" in result.output
-
-
-# Download Tests
-def test_download_media_success(mock_mediasets_service, tmp_path):
-    """Test successful media download."""
-    mock_mediasets_service.download_media.return_value = {
-        "media_set_rid": "ri.mediasets.main.media-set.test",
-        "media_item_rid": "ri.mediasets.main.media-item.test",
-        "output_path": str(tmp_path / "downloaded.jpg"),
-        "file_size": 12345,
-        "downloaded": True,
-        "original": False,
+    assert result.exit_code == 0, result.output
+    assert dict(only_request(stub_foundry_http).url.params) == {
+        "branchName": "dev",
+        "mediaItemPath": "a.txt",
+        "preview": "true",
     }
+    assert "commit" not in result.stderr
 
-    result = runner.invoke(
-        app,
-        [
-            "download",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(tmp_path / "downloaded.jpg"),
-        ],
+
+def test_upload_missing_file(stub_foundry_http, tmp_path):
+    result = invoke("upload", ms.MEDIA_SET_RID, str(tmp_path / "nope.pdf"), "a.pdf")
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+
+
+# ---------------------------------------------------------------- download
+
+
+def test_download_to_a_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=PNG)
+    target = tmp_path / "nested" / "photo.png"
+
+    result = invoke("download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target))
+
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == PNG
+    assert result.stdout == ""
+    assert f"Wrote {len(PNG)} bytes to {target}" in result.stderr
+    assert list(target.parent.iterdir()) == [target]
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("GET", f"{ms.ITEM}/content")
+    assert dict(request.url.params) == {}  # GA
+
+
+def test_download_original_json_mode_keeps_stdout_empty(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=PNG)
+    target = tmp_path / "photo.heic"
+
+    result = invoke(
+        "download",
+        ms.MEDIA_SET_RID,
+        ms.MEDIA_ITEM_RID,
+        str(target),
+        "--original",
+        "-f",
+        "json",
     )
 
-    assert result.exit_code == 0
-    assert "Successfully downloaded" in result.output
+    assert result.exit_code == 0, result.output
+    assert (result.stdout, result.stderr) == ("", "")
+    assert target.read_bytes() == PNG
+    assert only_request(stub_foundry_http).url.path == f"{ms.ITEM}/original"
 
 
-def test_download_media_file_exists(mock_mediasets_service, tmp_path):
-    """Test download when output file already exists."""
-    # Create existing file
-    existing_file = tmp_path / "existing.jpg"
-    existing_file.write_text("existing content")
+def test_download_to_stdout(stub_foundry_http):
+    stub_foundry_http.respond(content=PNG)
 
-    result = runner.invoke(
-        app,
-        [
-            "download",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(existing_file),
-        ],
+    result = invoke("download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout_bytes == PNG  # the content and nothing else
+    assert "Wrote" not in result.stderr
+
+
+def test_download_streams_large_content_in_chunks(stub_foundry_http, tmp_path):
+    content = bytes(range(256)) * 4096  # 1 MiB
+    stub_foundry_http.respond(
+        stream=ChunkedStream([content[:300_000], content[300_000:]])
     )
+    target = tmp_path / "out" / "video.bin"
 
-    assert result.exit_code == 1
-    assert "File already exists" in result.output
+    result = invoke("download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target))
 
-
-# Reference Tests
-def test_get_reference_success(mock_mediasets_service, sample_media_reference):
-    """Test successful media reference retrieval."""
-    mock_mediasets_service.get_media_reference.return_value = sample_media_reference
-
-    result = runner.invoke(
-        app,
-        [
-            "reference",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
-    )
-
-    assert result.exit_code == 0
-    mock_mediasets_service.get_media_reference.assert_called_once()
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == content
 
 
-# Thumbnail Calculate Tests
-def test_thumbnail_calculate_success(mock_mediasets_service, sample_thumbnail_status):
-    """Test successful thumbnail calculation initiation."""
-    mock_mediasets_service.calculate_thumbnail.return_value = sample_thumbnail_status
-
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-calculate",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
-    )
-
-    assert result.exit_code == 0
-    mock_mediasets_service.calculate_thumbnail.assert_called_once_with(
-        "ri.mediasets.main.media-set.test",
-        "ri.mediasets.main.media-item.test",
-        preview=False,
-    )
-
-
-def test_thumbnail_calculate_with_format(
-    mock_mediasets_service, sample_thumbnail_status
+def test_download_interrupted_mid_stream_leaves_no_partial_file(
+    stub_foundry_http, tmp_path
 ):
-    """Test thumbnail calculation with JSON format."""
-    mock_mediasets_service.calculate_thumbnail.return_value = sample_thumbnail_status
+    stub_foundry_http.respond(stream=ChunkedStream([b"partial"], fail=True))
+    out = tmp_path / "out"
+    target = out / "photo.png"
 
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-calculate",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            "--format",
-            "json",
-        ],
+    result = invoke(
+        "download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target), "-f", "json"
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 7
+    assert result.stdout == ""
+    assert json_lines(result.stderr)[-1]["type"] == "network_error"
+    assert list(out.iterdir()) == []
 
 
-def test_thumbnail_calculate_auth_error(mock_mediasets_service):
-    """Test thumbnail calculation with authentication error."""
-    mock_mediasets_service.calculate_thumbnail.side_effect = MissingCredentialsError(
-        "Missing credentials"
+def test_download_keeps_an_existing_file_without_overwrite(stub_foundry_http, tmp_path):
+    target = tmp_path / "photo.png"
+    target.write_bytes(b"old")
+
+    result = invoke("download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target))
+
+    assert result.exit_code == 2
+    assert "pass --overwrite" in result.stderr
+    assert target.read_bytes() == b"old"
+    assert stub_foundry_http.requests == []
+
+
+def test_download_overwrite(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=PNG)
+    target = tmp_path / "photo.png"
+    target.write_bytes(b"old")
+
+    result = invoke(
+        "download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target), "--overwrite"
     )
 
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-calculate",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == PNG
+
+
+def test_api_error_keeps_the_existing_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(
+        403, json=fj.error("MediaSetPermissionDenied", "PERMISSION_DENIED")
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    target = out / "photo.png"
+    target.write_bytes(b"old")
+
+    result = invoke(
+        "download",
+        ms.MEDIA_SET_RID,
+        ms.MEDIA_ITEM_RID,
+        str(target),
+        "--overwrite",
+        "-f",
+        "json",
     )
 
-    assert result.exit_code == 1
-    assert "Authentication error" in result.output
+    assert result.exit_code == 4
+    assert result.stdout == ""
+    assert json_lines(result.stderr)[-1]["type"] == "permission_denied"
+    assert target.read_bytes() == b"old"  # the API error comes before writing
+    assert list(out.iterdir()) == [target]
 
 
-# Thumbnail Retrieve Tests
-def test_thumbnail_retrieve_success(mock_mediasets_service, tmp_path):
-    """Test successful thumbnail retrieval."""
-    output_file = tmp_path / "thumbnail.webp"
-    mock_mediasets_service.retrieve_thumbnail.return_value = {
-        "media_set_rid": "ri.mediasets.main.media-set.test",
-        "media_item_rid": "ri.mediasets.main.media-item.test",
-        "output_path": str(output_file),
-        "file_size": 5000,
-        "downloaded": True,
-        "format": "image/webp",
+def test_download_output_path_cannot_be_a_directory(stub_foundry_http, tmp_path):
+    result = invoke("download", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(tmp_path))
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+
+
+# --------------------------------------------------------------- reference
+
+
+def test_reference_table_reads_the_nested_media_set_view_item(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.media_reference(token="read-token"))
+
+    result = invoke("reference", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    assert list(csv.DictReader(io.StringIO(result.stdout))) == [
+        {
+            "MIME Type": "image/png",
+            "Media Set RID": ms.MEDIA_SET_RID,
+            "Media Set View RID": ms.VIEW_RID,
+            "Media Item RID": ms.MEDIA_ITEM_RID,
+            "Token": "read-token",
+        }
+    ]
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{ms.ITEM}/reference"
+    assert request.url.params["preview"] == "true"
+
+
+def test_reference_json(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.media_reference())
+
+    result = invoke("reference", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "json")
+
+    assert json.loads(result.stdout) == ms.media_reference()
+
+
+# -------------------------------------------------------------- thumbnails
+
+
+def test_thumbnail_calculate(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.thumbnail_status("pending"))
+
+    result = invoke(
+        "thumbnail-calculate", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "csv"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert list(csv.DictReader(io.StringIO(result.stdout))) == [
+        {"Media Item RID": ms.MEDIA_ITEM_RID, "Status": "pending"}
+    ]
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{ms.ITEM}/transform/imagery/thumbnail/calculate"
+    assert request.url.params["preview"] == "true"
+
+
+def test_thumbnail_calculate_successful_points_to_retrieve(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.thumbnail_status("successful"))
+
+    result = invoke("thumbnail-calculate", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID)
+
+    assert "successful" in result.stdout
+    assert "pltr media-sets thumbnail-retrieve" in result.stderr
+
+
+def test_thumbnail_calculate_json(stub_foundry_http):
+    stub_foundry_http.respond(json=ms.thumbnail_status("failed"))
+
+    result = invoke(
+        "thumbnail-calculate", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-f", "json"
+    )
+
+    assert json.loads(result.stdout) == {"type": "failed"}
+
+
+def test_thumbnail_retrieve(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=b"RIFF....WEBP")
+    target = tmp_path / "thumb.webp"
+
+    result = invoke(
+        "thumbnail-retrieve", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, str(target)
+    )
+
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == b"RIFF....WEBP"
+    assert result.stdout == ""
+    request = only_request(stub_foundry_http)
+    assert request.url.path == f"{ms.ITEM}/transform/imagery/thumbnail/retrieve"
+    assert request.url.params["preview"] == "true"
+
+
+def test_thumbnail_retrieve_to_stdout(stub_foundry_http):
+    stub_foundry_http.respond(content=b"RIFF....WEBP")
+
+    result = invoke("thumbnail-retrieve", ms.MEDIA_SET_RID, ms.MEDIA_ITEM_RID, "-")
+
+    assert result.stdout_bytes == b"RIFF....WEBP"
+
+
+def test_empty_thumbnail_is_an_error_and_writes_no_file(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(content=b"")
+    out = tmp_path / "out"
+    target = out / "thumb.webp"
+
+    result = invoke(
+        "thumbnail-retrieve",
+        ms.MEDIA_SET_RID,
+        ms.MEDIA_ITEM_RID,
+        str(target),
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 7
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["message"]) == (
+        "api_error",
+        "The thumbnail is empty; it may not be calculated yet.",
+    )
+    assert list(out.iterdir()) == []
+
+
+# ------------------------------------------------------------- upload-temp
+
+
+def test_upload_temp(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=ms.media_reference())
+    source = tmp_path / "photo.png"
+    source.write_bytes(b"png-bytes")
+
+    result = invoke("upload-temp", str(source), "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == ms.media_reference()
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == (
+        "PUT",
+        "/api/v2/mediasets/media/upload",
+    )
+    assert dict(request.url.params) == {"filename": "photo.png"}  # GA: no preview
+    assert request.content == b"png-bytes"
+
+
+def test_upload_temp_filename_and_attribution(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json=ms.media_reference())
+    source = tmp_path / "photo.png"
+    source.write_bytes(b"png-bytes")
+
+    result = invoke(
+        "upload-temp",
+        str(source),
+        "--filename",
+        "renamed.png",
+        "--attribution",
+        "team-x",
+    )
+
+    assert result.exit_code == 0, result.output
+    request = only_request(stub_foundry_http)
+    assert request.url.params["filename"] == "renamed.png"
+    assert request.headers["attribution"] == "team-x"
+    assert ms.MEDIA_ITEM_RID in result.stdout
+    assert "deleted after an hour" in result.stderr
+
+
+# ------------------------------------------------------------------- clear
+
+
+def test_clear_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke("clear", ms.MEDIA_SET_RID, "images/photo.png")
+
+    assert result.exit_code == 2
+    assert "Re-run with --yes" in result.stderr
+    assert stub_foundry_http.requests == []
+
+
+def test_clear_with_yes(stub_foundry_http):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "clear",
+        ms.MEDIA_SET_RID,
+        "images/photo.png",
+        "--transaction-id",
+        ms.TRANSACTION_ID,
+        "--yes",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) is None
+    request = only_request(stub_foundry_http)
+    assert (request.method, request.url.path) == ("DELETE", f"{ms.ITEMS}/clearAtPath")
+    assert dict(request.url.params) == {
+        "mediaItemPath": "images/photo.png",
+        "preview": "true",
+        "transactionId": ms.TRANSACTION_ID,
     }
 
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-retrieve",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(output_file),
-        ],
+
+def test_clear_prompts_when_interactive(stub_foundry_http, interactive):
+    stub_foundry_http.respond(204)
+
+    result = invoke(
+        "clear", ms.MEDIA_SET_RID, "images/photo.png", "--branch", "dev", input="y\n"
     )
 
-    assert result.exit_code == 0
-    assert "Successfully downloaded thumbnail" in result.output
-    mock_mediasets_service.retrieve_thumbnail.assert_called_once()
-
-
-def test_thumbnail_retrieve_file_exists(mock_mediasets_service, tmp_path):
-    """Test thumbnail retrieval when output file already exists."""
-    existing_file = tmp_path / "existing.webp"
-    existing_file.write_text("existing content")
-
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-retrieve",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(existing_file),
-        ],
-    )
-
-    assert result.exit_code == 1
-    assert "File already exists" in result.output
-
-
-def test_thumbnail_retrieve_with_overwrite(mock_mediasets_service, tmp_path):
-    """Test thumbnail retrieval with overwrite flag."""
-    existing_file = tmp_path / "existing.webp"
-    existing_file.write_text("existing content")
-
-    mock_mediasets_service.retrieve_thumbnail.return_value = {
-        "media_set_rid": "ri.mediasets.main.media-set.test",
-        "media_item_rid": "ri.mediasets.main.media-item.test",
-        "output_path": str(existing_file),
-        "file_size": 5000,
-        "downloaded": True,
-        "format": "image/webp",
-    }
-
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-retrieve",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(existing_file),
-            "--overwrite",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "Successfully downloaded thumbnail" in result.output
-
-
-def test_thumbnail_retrieve_auth_error(mock_mediasets_service, tmp_path):
-    """Test thumbnail retrieval with authentication error."""
-    mock_mediasets_service.retrieve_thumbnail.side_effect = ProfileNotFoundError(
-        "Profile not found"
-    )
-
-    result = runner.invoke(
-        app,
-        [
-            "thumbnail-retrieve",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-            str(tmp_path / "thumbnail.webp"),
-        ],
-    )
-
-    assert result.exit_code == 1
-    assert "Authentication error" in result.output
-
-
-# Upload Temp Tests
-def test_upload_temp_success(mock_mediasets_service, tmp_path, sample_media_reference):
-    """Test successful temporary media upload."""
-    # Create a test file
-    test_file = tmp_path / "test-image.jpg"
-    test_file.write_bytes(b"fake image content")
-
-    mock_mediasets_service.upload_temp_media.return_value = sample_media_reference
-
-    result = runner.invoke(
-        app,
-        ["upload-temp", str(test_file)],
-    )
-
-    assert result.exit_code == 0
-    assert "Successfully uploaded temporary media" in result.output
-    mock_mediasets_service.upload_temp_media.assert_called_once()
-
-
-def test_upload_temp_with_filename(
-    mock_mediasets_service, tmp_path, sample_media_reference
-):
-    """Test temporary upload with custom filename."""
-    test_file = tmp_path / "test-image.jpg"
-    test_file.write_bytes(b"fake image content")
-
-    mock_mediasets_service.upload_temp_media.return_value = sample_media_reference
-
-    result = runner.invoke(
-        app,
-        ["upload-temp", str(test_file), "--filename", "custom-name.jpg"],
-    )
-
-    assert result.exit_code == 0
-    call_args = mock_mediasets_service.upload_temp_media.call_args
-    assert call_args[1]["filename"] == "custom-name.jpg"
-
-
-def test_upload_temp_with_attribution(
-    mock_mediasets_service, tmp_path, sample_media_reference
-):
-    """Test temporary upload with attribution."""
-    test_file = tmp_path / "test-image.jpg"
-    test_file.write_bytes(b"fake image content")
-
-    mock_mediasets_service.upload_temp_media.return_value = sample_media_reference
-
-    result = runner.invoke(
-        app,
-        ["upload-temp", str(test_file), "--attribution", "Photo by Test User"],
-    )
-
-    assert result.exit_code == 0
-    call_args = mock_mediasets_service.upload_temp_media.call_args
-    assert call_args[1]["attribution"] == "Photo by Test User"
-
-
-def test_upload_temp_file_not_found(mock_mediasets_service):
-    """Test temporary upload with non-existent file."""
-    result = runner.invoke(
-        app,
-        ["upload-temp", "/nonexistent/file.jpg"],
-    )
-
-    assert result.exit_code == 1
-    assert "File not found" in result.output
-
-
-def test_upload_temp_auth_error(mock_mediasets_service, tmp_path):
-    """Test temporary upload with authentication error."""
-    test_file = tmp_path / "test-image.jpg"
-    test_file.write_bytes(b"fake image content")
-
-    mock_mediasets_service.upload_temp_media.side_effect = MissingCredentialsError(
-        "Missing credentials"
-    )
-
-    result = runner.invoke(
-        app,
-        ["upload-temp", str(test_file)],
-    )
-
-    assert result.exit_code == 1
-    assert "Authentication error" in result.output
-
-
-# Error handling tests
-def test_command_generic_error(mock_mediasets_service):
-    """Test generic error handling in commands."""
-    mock_mediasets_service.get_media_set_info.side_effect = Exception(
-        "Unexpected error"
-    )
-
-    result = runner.invoke(
-        app,
-        [
-            "get",
-            "ri.mediasets.main.media-set.test",
-            "ri.mediasets.main.media-item.test",
-        ],
-    )
-
-    assert result.exit_code == 1
-    assert "Failed to get media item" in result.output
+    assert result.exit_code == 0, result.output
+    assert "Clear the media item at 'images/photo.png'" in result.stderr
+    assert "Cleared the media item" in result.stderr
+    assert only_request(stub_foundry_http).url.params["branchName"] == "dev"

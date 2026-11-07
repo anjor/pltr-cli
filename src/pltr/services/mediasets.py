@@ -1,419 +1,164 @@
 """
-MediaSets service wrapper for Foundry SDK v2 API.
-Provides operations for managing media sets and media content.
+MediaSets service wrapper for the Foundry SDK (``client.media_sets``).
+
+Beta endpoints, always called with ``preview=True``: ``MediaSet.get_rid_by_path``,
+``create``, ``commit``, ``abort``, ``upload``, ``reference``, ``calculate``,
+``retrieve`` and ``clear``. GA endpoints, called without ``preview``:
+``MediaSet.info``, ``read``, ``read_original`` and ``upload_media``.
+
+Methods return SDK models unchanged and let SDK exceptions propagate so the
+error layer can classify them. Media content is streamed: the download
+methods return the SDK's streaming context manager, whose response yields
+the content with ``iter_bytes()`` instead of holding it in memory.
 """
 
-from typing import Any, Optional, Dict
-from pathlib import Path
+from typing import Any, Optional
 
 from .base import BaseService
 
 
 class MediaSetsService(BaseService):
-    """Service wrapper for Foundry MediaSets operations using v2 API."""
+    """Service wrapper for Foundry media sets (``client.media_sets``)."""
 
     def _get_service(self) -> Any:
-        """Get the Foundry MediaSets service."""
+        """Get the Foundry media sets namespace."""
         return self.client.media_sets
 
-    def get_media_set_info(
-        self, media_set_rid: str, media_item_rid: str
-    ) -> Dict[str, Any]:
+    def get_media_item_info(self, media_set_rid: str, media_item_rid: str) -> Any:
+        """Get a media item's metadata (``MediaSet.info``, GA).
+
+        Returns a ``GetMediaItemInfoResponse``; it doesn't repeat the item RID.
         """
-        Get information about a specific media item in a media set.
+        return self.service.MediaSet.info(media_set_rid, media_item_rid)
 
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_rid: Media Item Resource Identifier
-
-        Returns:
-            Media item information dictionary
-        """
-        try:
-            response = self.service.MediaSet.info(
-                media_set_rid=media_set_rid,
-                media_item_rid=media_item_rid,
-            )
-            return self._format_media_item_info(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get media item info: {e}")
-
-    def get_media_item_by_path(
+    def get_media_item_rid_by_path(
         self,
         media_set_rid: str,
         media_item_path: str,
+        *,
         branch_name: Optional[str] = None,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Get media item RID by its path within the media set.
+    ) -> Any:
+        """Look up the RID of the item at a path (``MediaSet.get_rid_by_path``, beta).
 
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_path: Path to the media item within the media set
-            branch_name: Branch name (optional)
-            preview: Enable preview mode
-
-        Returns:
-            Response containing media item RID
+        Returns a ``GetMediaItemRidByPathResponse`` (``media_item_rid``).
         """
-        try:
-            response = self.service.MediaSet.get_rid_by_path(
-                media_set_rid=media_set_rid,
-                media_item_path=media_item_path,
-                branch_name=branch_name,
-                preview=preview,
-            )
-            return {"rid": response.rid, "path": media_item_path}
-        except Exception as e:
-            raise RuntimeError(f"Failed to get media item by path: {e}")
+        return self.service.MediaSet.get_rid_by_path(
+            media_set_rid,
+            media_item_path=media_item_path,
+            branch_name=branch_name,
+            preview=True,
+        )
 
     def create_transaction(
-        self,
-        media_set_rid: str,
-        branch_name: Optional[str] = None,
-        preview: bool = False,
+        self, media_set_rid: str, *, branch_name: Optional[str] = None
     ) -> str:
-        """
-        Create a new transaction for uploading to a media set.
+        """Open a transaction (``MediaSet.create``, beta); returns its ID."""
+        return self.service.MediaSet.create(
+            media_set_rid, branch_name=branch_name, preview=True
+        )
 
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            branch_name: Branch name (optional)
-            preview: Enable preview mode
+    def commit_transaction(self, media_set_rid: str, transaction_id: str) -> None:
+        """Commit a transaction (``MediaSet.commit``, beta)."""
+        self.service.MediaSet.commit(media_set_rid, transaction_id, preview=True)
 
-        Returns:
-            Transaction ID
-        """
-        try:
-            response = self.service.MediaSet.create(
-                media_set_rid=media_set_rid,
-                branch_name=branch_name,
-                preview=preview,
-            )
-            return response.transaction_id
-        except Exception as e:
-            raise RuntimeError(f"Failed to create transaction: {e}")
-
-    def commit_transaction(
-        self,
-        media_set_rid: str,
-        transaction_id: str,
-        preview: bool = False,
-    ) -> None:
-        """
-        Commit an open transaction, making uploaded items available.
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            transaction_id: Transaction ID to commit
-            preview: Enable preview mode
-        """
-        try:
-            self.service.MediaSet.commit(
-                media_set_rid=media_set_rid,
-                transaction_id=transaction_id,
-                preview=preview,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to commit transaction: {e}")
-
-    def abort_transaction(
-        self,
-        media_set_rid: str,
-        transaction_id: str,
-        preview: bool = False,
-    ) -> None:
-        """
-        Abort an open transaction, deleting any uploaded items.
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            transaction_id: Transaction ID to abort
-            preview: Enable preview mode
-        """
-        try:
-            self.service.MediaSet.abort(
-                media_set_rid=media_set_rid,
-                transaction_id=transaction_id,
-                preview=preview,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to abort transaction: {e}")
+    def abort_transaction(self, media_set_rid: str, transaction_id: str) -> None:
+        """Abort a transaction, deleting its uploads (``MediaSet.abort``, beta)."""
+        self.service.MediaSet.abort(media_set_rid, transaction_id, preview=True)
 
     def upload_media(
         self,
         media_set_rid: str,
-        file_path: str,
-        media_item_path: str,
-        transaction_id: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
+        body: bytes,
+        *,
+        media_item_path: Optional[str] = None,
+        transaction_id: Optional[str] = None,
+        branch_name: Optional[str] = None,
+    ) -> Any:
+        """Upload a media item (``MediaSet.upload``, beta).
+
+        Transactional media sets need ``transaction_id``. Returns a
+        ``PutMediaItemResponse`` (``media_item_rid``, ``media_set_view_rid``).
         """
-        Upload a media file to a media set within a transaction.
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            file_path: Local path to the file to upload
-            media_item_path: Path within the media set where file should be stored
-            transaction_id: Transaction ID for the upload
-            preview: Enable preview mode
-
-        Returns:
-            Upload response information
-        """
-        try:
-            file_path_obj = Path(file_path)
-            if not file_path_obj.exists():
-                raise FileNotFoundError(f"File not found: {file_path}")
-
-            self.service.MediaSet.upload(
-                media_set_rid=media_set_rid,
-                media_item_path=media_item_path,
-                body=file_path_obj.read_bytes(),
-                transaction_id=transaction_id,
-                preview=preview,
-            )
-
-            return {
-                "media_set_rid": media_set_rid,
-                "media_item_path": media_item_path,
-                "transaction_id": transaction_id,
-                "file_size": file_path_obj.stat().st_size,
-                "uploaded": True,
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to upload media: {e}")
+        return self.service.MediaSet.upload(
+            media_set_rid,
+            body,
+            branch_name=branch_name,
+            media_item_path=media_item_path,
+            transaction_id=transaction_id,
+            preview=True,
+        )
 
     def download_media(
-        self,
-        media_set_rid: str,
-        media_item_rid: str,
-        output_path: str,
-        original: bool = False,
-    ) -> Dict[str, Any]:
+        self, media_set_rid: str, media_item_rid: str, *, original: bool = False
+    ) -> Any:
+        """Request a media item's content as a stream.
+
+        ``MediaSet.read`` (GA), or ``MediaSet.read_original`` (GA) for the file
+        as originally uploaded. API errors are raised here, before any content
+        is read. Returns the SDK's streaming context manager::
+
+            with service.download_media(set_rid, item_rid) as response:
+                for chunk in response.iter_bytes(): ...
         """
-        Download a media item from a media set.
+        streaming = self.service.MediaSet.with_streaming_response
+        if original:
+            return streaming.read_original(media_set_rid, media_item_rid)
+        return streaming.read(media_set_rid, media_item_rid)
 
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_rid: Media Item Resource Identifier
-            output_path: Local path where file should be saved
-            original: Whether to download original version (vs processed)
+    def get_media_reference(self, media_set_rid: str, media_item_rid: str) -> Any:
+        """Get a media item's ``MediaReference`` (``MediaSet.reference``, beta)."""
+        return self.service.MediaSet.reference(
+            media_set_rid, media_item_rid, preview=True
+        )
 
-        Returns:
-            Download response information
+    def calculate_thumbnail(self, media_set_rid: str, media_item_rid: str) -> Any:
+        """Start calculating an image's thumbnail (``MediaSet.calculate``, beta).
+
+        Returns a ``TrackedTransformation{Pending,Failed,Successful}Response``
+        (only ``type``).
         """
-        try:
-            output_path_obj = Path(output_path)
-            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+        return self.service.MediaSet.calculate(
+            media_set_rid, media_item_rid, preview=True
+        )
 
-            if original:
-                response = self.service.MediaSet.read_original(
-                    media_set_rid=media_set_rid,
-                    media_item_rid=media_item_rid,
-                )
-            else:
-                response = self.service.MediaSet.read(
-                    media_set_rid=media_set_rid,
-                    media_item_rid=media_item_rid,
-                )
+    def retrieve_thumbnail(self, media_set_rid: str, media_item_rid: str) -> Any:
+        """Request a calculated thumbnail (200px wide webp) as a stream.
 
-            file_size = self._write_response_to_file(response, output_path_obj)
-            return {
-                "media_set_rid": media_set_rid,
-                "media_item_rid": media_item_rid,
-                "output_path": str(output_path_obj),
-                "file_size": file_size,
-                "downloaded": True,
-                "original": original,
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to download media: {e}")
-
-    def get_media_reference(
-        self,
-        media_set_rid: str,
-        media_item_rid: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
+        ``MediaSet.retrieve`` (beta). Returns the SDK's streaming context
+        manager, like :meth:`download_media`.
         """
-        Get a reference to a media item (e.g., for embedding).
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_rid: Media Item Resource Identifier
-            preview: Enable preview mode
-
-        Returns:
-            Media reference information
-        """
-        try:
-            response = self.service.MediaSet.reference(
-                media_set_rid=media_set_rid,
-                media_item_rid=media_item_rid,
-                preview=preview,
-            )
-            return self._format_media_reference(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get media reference: {e}")
-
-    def _format_media_item_info(self, info_response: Any) -> Dict[str, Any]:
-        """Format media item info response for display."""
-        return {
-            "media_item_rid": getattr(info_response, "rid", "unknown"),
-            "filename": getattr(info_response, "filename", "unknown"),
-            "size": getattr(info_response, "size", 0),
-            "content_type": getattr(info_response, "content_type", "unknown"),
-            "created_time": getattr(info_response, "created_time", None),
-            "updated_time": getattr(info_response, "updated_time", None),
-        }
-
-    def _format_media_reference(self, reference_response: Any) -> Dict[str, Any]:
-        """Format media reference response for display."""
-        return {
-            "reference_id": getattr(reference_response, "reference_id", "unknown"),
-            "url": getattr(reference_response, "url", "unknown"),
-            "expires_at": getattr(reference_response, "expires_at", None),
-        }
-
-    def _write_response_to_file(self, response: Any, output_path: Path) -> int:
-        """
-        Write response content to file and return file size.
-
-        Args:
-            response: SDK response object (with .content attribute or iterable)
-            output_path: Path object for the output file
-
-        Returns:
-            File size in bytes
-        """
-        with open(output_path, "wb") as file:
-            if isinstance(response, (bytes, bytearray)):
-                file.write(response)
-            elif hasattr(response, "content"):
-                file.write(response.content)
-            else:
-                # Handle streaming response
-                for chunk in response:
-                    file.write(chunk)
-        return output_path.stat().st_size
-
-    def calculate_thumbnail(
-        self,
-        media_set_rid: str,
-        media_item_rid: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Initiate thumbnail generation for an image.
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_rid: Media Item Resource Identifier
-            preview: Enable preview mode
-
-        Returns:
-            Thumbnail calculation status information
-        """
-        try:
-            response = self.service.MediaSet.calculate(
-                media_set_rid=media_set_rid,
-                media_item_rid=media_item_rid,
-                preview=preview,
-            )
-            return self._format_thumbnail_status(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to calculate thumbnail: {e}")
-
-    def retrieve_thumbnail(
-        self,
-        media_set_rid: str,
-        media_item_rid: str,
-        output_path: str,
-        preview: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Retrieve a calculated thumbnail (200px wide webp).
-
-        Args:
-            media_set_rid: Media Set Resource Identifier
-            media_item_rid: Media Item Resource Identifier
-            output_path: Local path where thumbnail should be saved
-            preview: Enable preview mode
-
-        Returns:
-            Download response information
-        """
-        try:
-            output_path_obj = Path(output_path)
-            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-
-            response = self.service.MediaSet.retrieve(
-                media_set_rid=media_set_rid,
-                media_item_rid=media_item_rid,
-                preview=preview,
-            )
-
-            file_size = self._write_response_to_file(response, output_path_obj)
-
-            # Validate that we received actual content
-            if file_size == 0:
-                output_path_obj.unlink(missing_ok=True)
-                raise RuntimeError(
-                    "Downloaded thumbnail is empty - thumbnail may not be ready yet"
-                )
-
-            return {
-                "media_set_rid": media_set_rid,
-                "media_item_rid": media_item_rid,
-                "output_path": str(output_path_obj),
-                "file_size": file_size,
-                "downloaded": True,
-                "format": "image/webp",
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to retrieve thumbnail: {e}")
+        streaming = self.service.MediaSet.with_streaming_response
+        return streaming.retrieve(media_set_rid, media_item_rid, preview=True)
 
     def upload_temp_media(
+        self, body: bytes, *, filename: str, attribution: Optional[str] = None
+    ) -> Any:
+        """Upload temporary media (``MediaSet.upload_media``, GA).
+
+        The item is deleted after an hour unless it is persisted. Returns a
+        ``MediaReference``.
+        """
+        return self.service.MediaSet.upload_media(
+            body, filename=filename, attribution=attribution
+        )
+
+    def clear_media_item(
         self,
-        file_path: str,
-        filename: Optional[str] = None,
-        attribution: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        media_set_rid: str,
+        media_item_path: str,
+        *,
+        branch_name: Optional[str] = None,
+        transaction_id: Optional[str] = None,
+    ) -> None:
+        """Clear (soft-delete) the item at a path (``MediaSet.clear``, beta).
+
+        The item and all older items at that path become unretrievable.
+        Transactional media sets need ``transaction_id``.
         """
-        Upload temporary media (auto-deleted after 1 hour if not persisted).
-
-        Args:
-            file_path: Local path to the file to upload
-            filename: Optional filename override
-            attribution: Optional attribution string
-
-        Returns:
-            Media reference information
-        """
-        try:
-            file_path_obj = Path(file_path)
-            if not file_path_obj.exists():
-                raise FileNotFoundError(f"File not found: {file_path}")
-
-            # Use provided filename or default to file name
-            upload_filename = filename or file_path_obj.name
-
-            response = self.service.MediaSet.upload_media(
-                body=file_path_obj.read_bytes(),
-                filename=upload_filename,
-                attribution=attribution,
-            )
-
-            return self._format_media_reference(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to upload temporary media: {e}")
-
-    def _format_thumbnail_status(self, status_response: Any) -> Dict[str, Any]:
-        """Format thumbnail calculation status response for display."""
-        return {
-            "status": getattr(status_response, "status", "unknown"),
-            "transformation_id": getattr(status_response, "transformation_id", None),
-            "media_item_rid": getattr(status_response, "media_item_rid", None),
-        }
+        self.service.MediaSet.clear(
+            media_set_rid,
+            media_item_path=media_item_path,
+            branch_name=branch_name,
+            transaction_id=transaction_id,
+            preview=True,
+        )
