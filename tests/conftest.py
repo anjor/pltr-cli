@@ -33,6 +33,20 @@ def _clean_output_environment(monkeypatch):
     monkeypatch.delenv("PLTR_DEBUG", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _private_home(monkeypatch, tmp_path_factory):
+    """Keep every test away from the real home directory.
+
+    Commands write a RID completion cache (~/.cache/pltr) after successful
+    calls; without this, tests that don't ask for `isolated_home` write it to
+    the developer's (or CI runner's) real home. Tests that set HOME themselves
+    still win, because their monkeypatching runs after this fixture's.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+
 @pytest.fixture
 def isolated_home(monkeypatch, tmp_path) -> Path:
     """Point the home and config directories at a temporary directory.
