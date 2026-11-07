@@ -26,7 +26,8 @@ names; find them in Foundry's web interface, or with commands such as
 - **Datasets**: branches, files (upload and download, including whole
   directories), transactions, schemas, views and previews.
 - **Filesystem**: folders, projects, spaces and resources, including the
-  trash, markings and role grants; `pltr cp` copies datasets and folders.
+  trash, markings and role grants; `pltr cp` copies datasets (their files and
+  schema) and folders.
 - **Ontology**: object types, objects (list, search, aggregate, count, linked
   objects), actions and queries.
 - **Orchestration**: builds, jobs and schedules.
@@ -347,6 +348,7 @@ pltr folder create "Reports" --parent-folder <project-or-folder-rid>
 pltr project create "New Project" --space-rid <space-rid>
 pltr resource search "sales" --folder-rid <folder-rid>
 pltr resource-role grant <resource-rid> --principal-id <user-or-group-id> --role <role-id>
+pltr cp <dataset-rid> <target-folder-rid>   # files and schema; --no-schema for files only
 
 # Orchestration
 pltr orchestration builds search --status FAILED --branch master

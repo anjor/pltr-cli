@@ -61,8 +61,8 @@ Import everything from `pltr.contract` and nothing from its submodules.
      API call.
    - Put the help text in the docstring, not in `help=`, so beta commands get
      their `[beta]` label.
-   - Remove `formatter = OutputFormatter(...)`, `console = Console()` and
-     `console.print(...)`.
+   - Don't create a `Console()` or call `console.print(...)`: print through
+     `pltr.contract`.
 3. **Flags:** keep existing flag names. When a flag is renamed or removed,
    keep the old one as a hidden alias for one release. Use
    `ConfirmAliasOption`/`ForceAliasOption` for `--confirm`/`--force` that

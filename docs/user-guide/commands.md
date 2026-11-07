@@ -191,17 +191,33 @@ Notes:
 ## Copying: `pltr cp`
 
 `pltr cp SOURCE_RID TARGET_FOLDER_RID` copies a dataset, or a folder and
-everything in it with `--recursive`, into another folder.
+everything in it with `--recursive`, into another folder or a project.
 
 ```bash
 pltr cp <dataset-rid> <target-folder-rid>
+pltr cp <dataset-rid> <target-folder-rid> --branch develop --no-schema
 pltr cp <folder-rid> <target-folder-rid> --recursive --name-suffix "-copy"
 pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
 ```
 
-It prints the resources it created (JSON: `{"data": [...]}`) and its progress
-on stderr. When some items of a folder fail, it copies the others (or stops
-with `--fail-fast`) and exits with the first failure's error.
+- A dataset copy gets the files of `--branch`, committed in one SNAPSHOT
+  transaction on the same branch. Then, with `--schema` (the default), the
+  source's schema on that branch is put on the committed copy; a source
+  without a schema is copied without one. The API doesn't report the
+  source's dataframe reader, so the copy's schema gets `CSV` when every file
+  is a `.csv` file, `AVRO` when every file is `.avro`, and otherwise the
+  API's default (`PARQUET`). A source with no files on the branch gives an
+  empty copy with no schema.
+- If any step of a dataset copy fails, including the schema, the partial
+  copy is moved to the trash and pltr exits with the error. `--no-schema`
+  copies only the files.
+- A folder copy recreates its subfolders and datasets; other resource types
+  are skipped with a warning. When some items fail, the others are still
+  copied (unless `--fail-fast`), and pltr exits with the first failure's
+  error.
+- It prints the resources it created (JSON: `{"data": [...]}`, the API's
+  `Folder` and `Dataset` objects) and its progress on stderr. `--dry-run`
+  creates nothing and prints the resources it would copy.
 
 ## Filesystem: `folder`, `space`, `project`, `resource`, `resource-role`
 
