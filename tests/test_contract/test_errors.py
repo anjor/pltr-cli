@@ -217,6 +217,45 @@ def test_oauth_token_failure_is_an_auth_error(stub_foundry_http):
     assert stub_foundry_http.requests[0].url.path.endswith("/oauth2/token")
 
 
+@pytest.mark.parametrize(
+    "status, error_type, exit_code, says",
+    [
+        (400, "auth_error", 3, "client secret and scopes"),
+        (403, "auth_error", 3, "client secret and scopes"),
+        # Not about the credentials: agents must not be told to fix them.
+        (429, "rate_limited", 7, "retry after a short wait"),
+        (500, "server_error", 7, "retry later"),
+        (503, "server_error", 7, "retry later"),
+        (404, "not_found", 5, "check the profile's host"),
+    ],
+)
+def test_oauth_token_failure_by_status(
+    stub_foundry_http, status, error_type, exit_code, says
+):
+    client = FoundryClient(
+        auth=ConfidentialClientAuth(
+            client_id="id", client_secret="s", scopes=["api:read-data"]
+        ),
+        hostname="test.palantirfoundry.com",
+    )
+    stub_foundry_http.respond_always(status, json={"error": "nope"})
+    with pytest.raises(Exception) as excinfo:
+        client.filesystem.Folder.get(fj.FOLDER_RID)
+
+    info = classify_error(excinfo.value)
+
+    assert (info.type, info.exit_code, info.status_code) == (
+        error_type,
+        exit_code,
+        status,
+    )
+    assert info.message.startswith(f"OAuth2 token request failed (HTTP {status})")
+    assert says in info.message
+    if error_type != "auth_error":
+        assert "client secret" not in info.message
+        assert "pltr configure" not in (info.hint or "")
+
+
 def test_bare_http_status_errors():
     request = httpx.Request("GET", "https://host/api/v2/thing")
     response = httpx.Response(404, request=request)

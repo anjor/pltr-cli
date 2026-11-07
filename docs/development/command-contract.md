@@ -304,7 +304,7 @@ Commands contain no `try/except` for reporting.
 | 0 | | success |
 | 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
 | 2 | `usage_error`, `confirmation_required` | bad or missing arguments, invalid JSON input, an invalid RID, a destructive command without `--yes` when stdin is not a terminal |
-| 3 | `auth_error` | no usable profile or credentials, an OAuth token failure, HTTP 401 |
+| 3 | `auth_error` | no usable profile or credentials, an OAuth token request refused (400, 401, 403), HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
 | 5 | `not_found`, `api_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack) |
 | 6 | `validation_error` | HTTP 400, 422 |
@@ -326,8 +326,10 @@ Text mode prints `Error: <message>`, then the details and a hint.
     `errorCode` is derived from the HTTP status where that is unambiguous.
   - The SDK's `SDKInternalError`, which is never a usage error: an error
     response whose body isn't a Foundry error is classified by its HTTP
-    status, a failed OAuth token request is an `auth_error`, a success body
-    that isn't JSON is an `invalid_response` (exit 7), and anything else is
+    status, an OAuth token request refused with 400, 401 or 403 is an
+    `auth_error` (other statuses, such as 429 and 5xx, are classified by
+    status: they aren't about the credentials), a success body that isn't
+    JSON is an `invalid_response` (exit 7), and anything else is
     an `unexpected_error` (exit 1, "foundry-platform-sdk failed
     unexpectedly", with a hint to report it).
   - `requests.HTTPError`, including the Foundry error body, for the labeled

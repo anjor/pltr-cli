@@ -356,6 +356,11 @@ can search. See Added.
   failure gives an error that points to the environment variables.
 - Reading settings or profiles no longer creates `~/.config/pltr`; it is
   created when something is saved.
+- A failed OAuth2 token request is an authentication error (exit 3, "check
+  the client ID, client secret and scopes") only when the token endpoint
+  refuses the credentials (HTTP 400, 401 or 403). A 429 or 5xx answer is
+  `rate_limited` or `server_error` (exit 7), so retrying is the right move,
+  not changing the credentials.
 
 #### `alias`, `completion` and `shell`
 

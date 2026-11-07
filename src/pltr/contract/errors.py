@@ -252,13 +252,33 @@ def _oauth_token_failure(exc: BaseException) -> Optional[Any]:
     return None
 
 
+#: Statuses of a failed OAuth2 token request that mean the client's
+#: credentials or scopes were refused. Others (429, 5xx, ...) aren't about the
+#: credentials and are classified like any API status.
+_OAUTH_CREDENTIAL_STATUSES = (400, 401, 403)
+
+
 def _oauth_error(response: Any) -> ErrorInfo:
     status = int(response.status_code)
+    if status in _OAUTH_CREDENTIAL_STATUSES:
+        return ErrorInfo(
+            "auth_error",
+            f"OAuth2 token request failed (HTTP {status}): check the client ID, "
+            "client secret and scopes of your profile.",
+            ExitCode.AUTH,
+            status_code=status,
+        )
+    error_type, exit_code = _status_info(status)
+    if status == 429:
+        advice = "the token endpoint is rate limiting; retry after a short wait."
+    elif status >= 500:
+        advice = "the token endpoint failed; retry later."
+    else:
+        advice = "check the profile's host."
     return ErrorInfo(
-        "auth_error",
-        f"OAuth2 token request failed (HTTP {status}): check the client ID, "
-        "client secret and scopes of your profile.",
-        ExitCode.AUTH,
+        error_type,
+        f"OAuth2 token request failed (HTTP {status}): {advice}",
+        exit_code,
         status_code=status,
     )
 
