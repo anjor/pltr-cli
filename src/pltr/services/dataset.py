@@ -274,6 +274,38 @@ class DatasetService(BaseService):
             dataset_rid, name=branch_name, transaction_rid=transaction_rid
         )
 
+    def create_branch_from_parent(
+        self, dataset_rid: str, branch_name: str, parent: str = "master"
+    ) -> Any:
+        """Create a branch at the latest transaction of a parent branch.
+
+        ``Branch.get`` gives the parent's latest OPEN or COMMITTED
+        transaction (none for a branch without transactions: the new branch
+        has none either). A branch can only start at a committed transaction,
+        so when the parent's is still open ``Branch.create`` fails with
+        ``TransactionNotCommitted``; that error is raised with a message that
+        says what to do.
+
+        Returns:
+            The created ``Branch`` model
+        """
+        from foundry_sdk.v2.datasets.errors import TransactionNotCommitted
+
+        transaction_rid = self.get_branch(dataset_rid, parent).transaction_rid
+        try:
+            return self.create_branch(
+                dataset_rid, branch_name, transaction_rid=transaction_rid
+            )
+        except TransactionNotCommitted as exc:
+            raise RuntimeError(
+                f"Can't start branch '{branch_name}' from branch '{parent}': its "
+                f"latest transaction {transaction_rid} is still open, and a branch "
+                "can only start at a committed transaction. Commit or abort that "
+                "transaction first, or pass --transaction-rid with a committed "
+                f"one ('pltr dataset branches transactions {dataset_rid} {parent}' "
+                "lists them, newest first)"
+            ) from exc
+
     def delete_branch(self, dataset_rid: str, branch_name: str) -> None:
         """Delete a branch (``Branch.delete``, GA)."""
         self.service.Dataset.Branch.delete(dataset_rid, branch_name)

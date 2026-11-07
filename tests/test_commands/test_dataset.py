@@ -826,6 +826,68 @@ def test_create_branch_at_a_transaction(stub):
     assert json.loads(create.content)["transactionRid"] == dj.OTHER_TRANSACTION_RID
 
 
+def transaction_not_committed() -> dict:
+    return fj.error(
+        "TransactionNotCommitted",
+        "INVALID_ARGUMENT",
+        {
+            "datasetRid": DATASET,
+            "transactionRid": dj.TRANSACTION_RID,
+            "transactionStatus": "OPEN",
+        },
+    )
+
+
+def test_create_branch_from_a_parent_with_an_open_transaction(stub):
+    """The parent's latest transaction can be OPEN, and a branch can only
+    start at a committed one (#181 review): say what to do."""
+    stub.respond(json=dj.branch("master", dj.TRANSACTION_RID))
+    stub.respond(400, json=transaction_not_committed())
+
+    result = invoke("dataset", "branches", "create", DATASET, "feature", "-f", "json")
+
+    assert result.exit_code == 6
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == (
+        "validation_error",
+        "TransactionNotCommitted",
+    )
+    message = error["message"]
+    assert message.startswith(
+        f"Can't start branch 'feature' from branch 'master': its latest "
+        f"transaction {dj.TRANSACTION_RID} is still open"
+    )
+    assert "--transaction-rid" in message
+    assert f"pltr dataset branches transactions {DATASET} master" in message
+    _, create = stub.requests
+    assert json.loads(create.content) == {
+        "name": "feature",
+        "transactionRid": dj.TRANSACTION_RID,
+    }
+
+
+def test_create_branch_at_an_open_transaction_reports_the_api_error(stub):
+    stub.respond(400, json=transaction_not_committed())
+
+    result = invoke(
+        "dataset",
+        "branches",
+        "create",
+        DATASET,
+        "feature",
+        "--transaction-rid",
+        dj.TRANSACTION_RID,
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 6
+    error = json_lines(result.stderr)[-1]
+    assert error["errorName"] == "TransactionNotCommitted"
+    assert "--transaction-rid" not in error["message"]  # the user passed it
+
+
 def test_create_branch_rejects_parent_and_transaction(stub):
     result = invoke(
         "dataset",

@@ -190,6 +190,10 @@ Notes:
   confirmation prompt lists the fields it will set.
 - `schema apply` calls the endpoints Foundry's web interface uses for schema
   inference (direct HTTP, not the SDK). Its `--branch` defaults to `master`.
+- `branches create` starts the new branch at the parent's latest transaction,
+  which must be committed: if it is still open, commit or abort it first, or
+  pass `--transaction-rid` with a committed transaction (`branches
+  transactions <dataset-rid> <parent>` lists them, newest first).
 - `transactions list` lists every branch's transactions unless you pass
   `--branch`. `schedules list` prints RIDs only, as the API returns them.
 - JSON output: a transaction's RID is `.rid`; `preview` prints

@@ -611,7 +611,7 @@ def create_branch(
         typer.Option(
             "--parent",
             help="Branch to start from: the new branch points at its latest "
-            "transaction (default: master).",
+            "transaction, which must be committed (default: master).",
             show_default=False,
         ),
     ] = None,
@@ -628,17 +628,25 @@ def create_branch(
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Create a branch, starting from a parent branch or a transaction."""
+    """Create a branch, starting from a parent branch or a transaction.
+
+    A branch can only start at a committed transaction. If the parent's
+    latest transaction is still open, commit or abort it first, or pass
+    --transaction-rid with a committed transaction ('pltr dataset branches
+    transactions' lists a branch's transactions, newest first).
+    """
     if parent is not None and transaction_rid is not None:
         raise typer.BadParameter("pass --parent or --transaction-rid, not both")
     service = DatasetService(profile=profile)
     with spinner(f"Creating branch '{branch_name}' on {dataset_rid}..."):
         if transaction_rid is None:
-            parent_branch = service.get_branch(dataset_rid, parent or "master")
-            transaction_rid = parent_branch.transaction_rid
-        branch = service.create_branch(
-            dataset_rid, branch_name, transaction_rid=transaction_rid
-        )
+            branch = service.create_branch_from_parent(
+                dataset_rid, branch_name, parent or "master"
+            )
+        else:
+            branch = service.create_branch(
+                dataset_rid, branch_name, transaction_rid=transaction_rid
+            )
     cache_rid(dataset_rid)
     success(f"Created branch '{branch.name}' on {dataset_rid}")
     emit(branch, format=format, output=output, columns=BRANCH_COLUMNS, title="Branch")

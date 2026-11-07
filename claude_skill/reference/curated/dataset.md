@@ -66,7 +66,7 @@ Create a branch, starting from a parent branch or a transaction.
 
 - `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
 - `BRANCH_NAME`: Name of the new branch.
-- `--parent` TEXT: Branch to start from: the new branch points at its latest transaction (default: master).
+- `--parent` TEXT: Branch to start from: the new branch points at its latest transaction, which must be committed (default: master).
 - `--transaction-rid` TEXT: Start the new branch at this committed transaction (RID) instead of a parent branch.
 - SDK: `datasets.Dataset.Branch.get`, `datasets.Dataset.Branch.create`
 

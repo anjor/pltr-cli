@@ -349,6 +349,46 @@ def test_create_branch_without_transaction(stub_foundry_http):
     assert json.loads(only_request(stub_foundry_http).content) == {"name": "empty"}
 
 
+def test_create_branch_from_parent_starts_at_its_transaction(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("dev", dj.OTHER_TRANSACTION_RID))
+    stub_foundry_http.respond(json=dj.branch("feature", dj.OTHER_TRANSACTION_RID))
+
+    branch = DatasetService().create_branch_from_parent(DATASET, "feature", "dev")
+
+    assert isinstance(branch, Branch)
+    get, create = stub_foundry_http.requests
+    assert get.url.path == f"{API}/{DATASET}/branches/dev"
+    assert json.loads(create.content) == {
+        "name": "feature",
+        "transactionRid": dj.OTHER_TRANSACTION_RID,
+    }
+
+
+def test_create_branch_from_a_parent_whose_transaction_is_open(stub_foundry_http):
+    from foundry_sdk.v2.datasets.errors import TransactionNotCommitted
+
+    stub_foundry_http.respond(json=dj.branch("master", dj.TRANSACTION_RID))
+    stub_foundry_http.respond(
+        400,
+        json=fj.error(
+            "TransactionNotCommitted",
+            "INVALID_ARGUMENT",
+            {
+                "datasetRid": DATASET,
+                "transactionRid": dj.TRANSACTION_RID,
+                "transactionStatus": "OPEN",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="is still open") as excinfo:
+        DatasetService().create_branch_from_parent(DATASET, "feature")
+
+    # The SDK error is the cause, so the error layer classifies it (exit 6).
+    assert isinstance(excinfo.value.__cause__, TransactionNotCommitted)
+    assert "--transaction-rid" in str(excinfo.value)
+
+
 def test_delete_branch(stub_foundry_http):
     stub_foundry_http.respond(204)
 
