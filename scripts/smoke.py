@@ -1548,7 +1548,7 @@ CHECKS: Tuple[Check, ...] = (
     ),
     C(
         "write.files-upload",
-        f"dataset files upload {{run.tmp}}/upload/smoke.csv {NEW_DS} --path smoke/smoke.csv",
+        f"dataset files upload {{run.tmp}}/upload/smoke.csv {NEW_DS} --path smoke/smoke.csv --yes",
         "Uploads a file (the API opens and commits a transaction).",
         write=True,
         expect=(equals("path", "smoke/smoke.csv"),),
@@ -1556,7 +1556,7 @@ CHECKS: Tuple[Check, ...] = (
     C(
         "write.files-upload-append",
         f"dataset files upload {{run.tmp}}/upload/smoke-append.csv {NEW_DS} "
-        "--path smoke/smoke-append.csv --transaction-type APPEND",
+        "--path smoke/smoke-append.csv --transaction-type APPEND --yes",
         "--transaction-type without --branch.",
         write=True,
         expect=(equals("path", "smoke/smoke-append.csv"),),
@@ -1589,7 +1589,7 @@ CHECKS: Tuple[Check, ...] = (
     C(
         "write.transaction-upload",
         f"dataset files upload {{run.tmp}}/upload/smoke-txn.csv {NEW_DS} "
-        "--transaction-rid {created.transaction} --path smoke/smoke-txn.csv",
+        "--transaction-rid {created.transaction} --path smoke/smoke-txn.csv --yes",
         "Uploads into the open transaction.",
         write=True,
         expect=(equals("transactionRid", "{created.transaction}"),),
@@ -1603,7 +1603,7 @@ CHECKS: Tuple[Check, ...] = (
     ),
     C(
         "write.directory-upload",
-        f"dataset files upload {{run.tmp}}/upload/smoke-dir {NEW_DS} --path dir",
+        f"dataset files upload {{run.tmp}}/upload/smoke-dir {NEW_DS} --path dir --yes",
         "Uploads a directory in one transaction.",
         write=True,
         expect=(paged(min_items=2),),

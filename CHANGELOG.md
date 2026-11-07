@@ -426,9 +426,10 @@ can search. See Added.
   `schema set`, `views get` and `jobs list`. `schema apply` still defaults to
   `master`.
 - **Breaking:** `schema set`, `schema apply`, `views remove-datasets` and
-  `views replace-datasets` ask for confirmation. `branches delete`,
-  `files delete` and `transactions abort` don't prompt when stdin is not a
-  terminal.
+  `views replace-datasets` ask for confirmation, and so does
+  `files upload --transaction-type SNAPSHOT`, which replaces every file on the
+  branch (`files upload` has `--yes` now). `branches delete`, `files delete`
+  and `transactions abort` don't prompt when stdin is not a terminal.
 - **Breaking:** `transactions list` lists every branch's transactions unless
   you pass `--branch`.
 - **Breaking:** an invalid RID is a usage error (exit 2).
@@ -757,6 +758,13 @@ from `--help`. They will be removed in the next release.
   `upload-temp` sent the file object instead of its bytes (#179).
 - `dataset files upload --transaction-rid` also sent `branchName=master`,
   which the API rejects.
+- `dataset files upload FILE DATASET --transaction-type TYPE` without
+  `--branch` sent `transactionType` without `branchName`, and the API
+  documents `transactionType` only together with `branchName` (what the API
+  did with it wasn't verified against a live stack). A single file with
+  `--transaction-type` now goes through the same flow as a directory: pltr
+  opens a transaction of that type on `--branch` or the default branch,
+  uploads into it and commits it, or aborts it if the upload fails.
 - `dataset schema set` checks the schema against the API's field types and
   reports problems as usage errors.
 - Security: `dataset files get --recursive` only refused `..` between `/`

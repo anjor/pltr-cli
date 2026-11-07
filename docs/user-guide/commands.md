@@ -110,7 +110,7 @@ delete files in it, and commit it to make the changes visible (or abort it).
 | `dataset branches delete` | Delete a branch, but not master (asks first) |
 | `dataset branches transactions` | [beta] List a branch's transactions, newest first (paged) |
 | `dataset files list` | List the files in a dataset's current view of a branch (paged) |
-| `dataset files upload` | Upload a local file or directory to a dataset |
+| `dataset files upload` | Upload a local file or directory to a dataset (asks first for a SNAPSHOT) |
 | `dataset files get` | Download a file, or a folder with `--recursive`, from a dataset |
 | `dataset files delete` | Delete a file from a dataset's current view (asks first) |
 | `dataset files info` | Get a file's metadata: path, size, last update and transaction |
@@ -148,9 +148,10 @@ pltr dataset files get <dataset-rid> raw ./raw --recursive
 pltr dataset files get <dataset-rid> raw/sales.csv - | head
 
 # Upload one file (the API commits it at once), or a directory in one
-# transaction that pltr opens and commits
+# transaction that pltr opens and commits (SNAPSHOT replaces every file, so
+# it asks first; --yes skips the question)
 pltr dataset files upload sales.csv <dataset-rid> --path raw/sales.csv
-pltr dataset files upload ./exports <dataset-rid> --path raw --transaction-type SNAPSHOT
+pltr dataset files upload ./exports <dataset-rid> --path raw --transaction-type SNAPSHOT --yes
 
 # Several uploads in one transaction of your own
 TXN=$(pltr dataset transactions start <dataset-rid> --type APPEND --format json | jq -r .rid)

@@ -33,14 +33,18 @@ pltr dataset files upload data.csv ri.foundry.main.dataset.abc123
 # or aborts it if any upload fails
 pltr dataset files upload ./exports ri.foundry.main.dataset.abc123 --path exports
 
-# Replace the dataset's files with the directory's contents
+# Replace the dataset's files with the directory's contents (asks first;
+# --yes skips the question)
 pltr dataset files upload ./exports ri.foundry.main.dataset.abc123 \
-  --transaction-type SNAPSHOT
+  --transaction-type SNAPSHOT --yes
 ```
 
 `--branch <name>` uploads to another branch (default: the dataset's default
-branch, `master` on most enrollments) and `--transaction-type` sets the type of
-the transaction the upload creates (default: UPDATE).
+branch, `master` on most enrollments). `--transaction-type` sets the type of
+the transaction (default: UPDATE); with it, pltr opens the transaction for a
+single file too, uploads into it and commits it. A SNAPSHOT upload replaces
+every file on the branch, so it asks for confirmation, and without a terminal
+it fails unless you pass `--yes`.
 
 ## Transaction Lifecycle
 

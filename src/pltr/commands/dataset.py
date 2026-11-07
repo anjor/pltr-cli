@@ -809,7 +809,7 @@ def _abort_after_failure(
         warn(f"Aborted transaction {transaction_rid}; the dataset is unchanged.")
 
 
-def _upload_directory(
+def _upload_in_transaction(
     service: DatasetService,
     dataset_rid: str,
     plan: List[Tuple[Path, str]],
@@ -818,7 +818,9 @@ def _upload_directory(
     transaction_rid: Optional[str],
     transaction_type: Optional[str],
 ) -> List[Any]:
-    """Upload every file of ``plan`` in one transaction (see upload_file)."""
+    """Upload every file of ``plan`` in one transaction (see upload_file):
+    ``transaction_rid``, left open, or a new one that is committed, or
+    aborted if an upload fails."""
     if transaction_rid is not None:
         uploaded = []
         for local, remote in plan:
@@ -828,7 +830,7 @@ def _upload_directory(
                 )
             )
             info(f"Uploaded {remote}")
-        success(f"Uploaded {len(uploaded)} files into transaction {transaction_rid}")
+        success(f"Uploaded {_count_files(uploaded)} into transaction {transaction_rid}")
         info(
             "The transaction is still open. Commit it with: pltr dataset "
             f"transactions commit {dataset_rid} {transaction_rid}"
@@ -853,9 +855,13 @@ def _upload_directory(
         _abort_after_failure(service, dataset_rid, transaction.rid)
         raise
     success(
-        f"Uploaded {len(uploaded)} files and committed transaction {transaction.rid}"
+        f"Uploaded {_count_files(uploaded)} and committed transaction {transaction.rid}"
     )
     return uploaded
+
+
+def _count_files(files: List[Any]) -> str:
+    return "1 file" if len(files) == 1 else f"{len(files)} files"
 
 
 @files_app.command("upload")
@@ -865,7 +871,8 @@ def _upload_directory(
         "datasets.Dataset.Transaction.create",
         "datasets.Dataset.Transaction.commit",
         "datasets.Dataset.Transaction.abort",
-    )
+    ),
+    destructive=True,  # a SNAPSHOT upload replaces the branch's files
 )
 def upload_file(
     file_path: Annotated[
@@ -912,23 +919,28 @@ def upload_file(
             click_type=click.Choice(
                 ("APPEND", "UPDATE", "SNAPSHOT"), case_sensitive=False
             ),
-            help="Type of the transaction the upload creates (default: UPDATE). "
-            "SNAPSHOT replaces the dataset's files. Not with --transaction-rid.",
+            help="Type of the transaction pltr opens for the upload and commits "
+            "(default: UPDATE). SNAPSHOT replaces every file on the branch and "
+            "asks for confirmation. Not with --transaction-rid.",
             show_default=False,
         ),
     ] = None,
+    yes: YesOption = False,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
     """Upload a local file or directory to a dataset.
 
-    A file is uploaded in one request (read into memory: the API has no
-    chunked upload); the API opens and commits a transaction for it unless
-    you pass --transaction-rid. A directory is uploaded file by file in one
-    transaction that pltr opens and commits, or aborts if any upload fails,
-    so the dataset never shows a partial upload. JSON output is the uploaded
-    File, or {"data": [...]} of Files for a directory.
+    A file is read into memory and uploaded in one request (the API has no
+    chunked upload). By default the API opens and commits an UPDATE
+    transaction for it; with --transaction-rid it goes into that open
+    transaction. A directory, or a file with --transaction-type, is uploaded
+    in one transaction that pltr opens on the branch and commits, or aborts
+    if any upload fails, so the dataset never shows a partial upload.
+    --transaction-type SNAPSHOT replaces every file on the branch, so it asks
+    for confirmation; --yes skips it. JSON output is the uploaded File, or
+    {"data": [...]} of Files for a directory.
     """
     if transaction_rid is not None and branch is not None:
         raise typer.BadParameter("pass --branch or --transaction-rid, not both")
@@ -938,11 +950,25 @@ def upload_file(
             "can't be used with --transaction-rid"
         )
     plan = _upload_plan(file_path, dataset_path)
+    if transaction_type == "SNAPSHOT":
+        where = f"branch '{branch}'" if branch else "the default branch"
+        new = (
+            f"the {len(plan)} files of {file_path}"
+            if file_path.is_dir()
+            else plan[0][1]
+        )
+        confirm_destructive(
+            f"Replace every file on {where} of dataset {dataset_rid} with {new} "
+            "(a SNAPSHOT transaction)?",
+            yes=yes,
+        )
     service = DatasetService(profile=profile)
 
-    if file_path.is_dir():
-        # One progress line per file instead of a spinner.
-        uploaded = _upload_directory(
+    if file_path.is_dir() or transaction_type is not None:
+        # The API takes transactionType only with branchName, so a file with
+        # --transaction-type goes through a transaction pltr opens, like a
+        # directory. One progress line per step instead of a spinner.
+        uploaded = _upload_in_transaction(
             service,
             dataset_rid,
             plan,
@@ -951,9 +977,20 @@ def upload_file(
             transaction_type=transaction_type,
         )
         cache_rid(dataset_rid)
-        emit(uploaded, format=format, output=output, columns=FILE_COLUMNS)
+        if file_path.is_dir():
+            emit(uploaded, format=format, output=output, columns=FILE_COLUMNS)
+        else:
+            emit(
+                uploaded[0],
+                format=format,
+                output=output,
+                columns=FILE_COLUMNS,
+                title="File",
+            )
         return
 
+    # One file without --transaction-type: the API opens and commits an UPDATE
+    # transaction on the branch, or it goes into --transaction-rid.
     [(local, remote)] = plan
     with spinner(f"Uploading {local.name} to {dataset_rid}..."):
         uploaded_file = service.upload_file(
@@ -962,7 +999,6 @@ def upload_file(
             remote,
             branch=branch,
             transaction_rid=transaction_rid,
-            transaction_type=transaction_type,
         )
     cache_rid(dataset_rid)
     success(f"Uploaded {local} to {dataset_rid} as {uploaded_file.path}")

@@ -153,8 +153,14 @@ def test_upload_a_file_to_a_dataset_path(stub, local_csv, path_option, expected)
     assert upload_path(stub.requests[0]) == expected
 
 
+def queue_upload_in_a_transaction(stub, path="sales.csv", transaction_type="APPEND"):
+    stub.respond(json=dj.transaction(transaction_type=transaction_type))
+    stub.respond(json=dj.file(path))
+    stub.respond(json=dj.transaction(status="COMMITTED", closed_time=dj.CLOSED_TIME))
+
+
 def test_upload_a_file_on_a_branch_as_a_snapshot(stub, local_csv):
-    stub.respond(json=dj.file("sales.csv"))
+    queue_upload_in_a_transaction(stub, transaction_type="SNAPSHOT")
 
     result = invoke(
         "dataset",
@@ -166,13 +172,147 @@ def test_upload_a_file_on_a_branch_as_a_snapshot(stub, local_csv):
         "dev",
         "--transaction-type",
         "snapshot",
+        "--yes",
+        "-f",
+        "json",
     )
 
     assert result.exit_code == 0, result.output
-    assert dict(stub.requests[0].url.params) == {
-        "branchName": "dev",
-        "transactionType": "SNAPSHOT",
-    }
+    assert json.loads(result.stdout) == dj.sdk_json(dj.file("sales.csv"))
+    start, upload, commit = stub.requests
+    assert dict(start.url.params) == {"branchName": "dev"}
+    assert json.loads(start.content) == {"transactionType": "SNAPSHOT"}
+    assert dict(upload.url.params) == {"transactionRid": TRANSACTION}
+    assert commit.url.path == f"{API}/{DATASET}/transactions/{TRANSACTION}/commit"
+
+
+def test_upload_a_file_with_a_transaction_type_and_no_branch(stub, local_csv):
+    """transactionType was sent without branchName, which the API documents
+    only with branchName (#181 review). pltr opens the transaction itself,
+    on the default branch, uploads into it and commits it."""
+    queue_upload_in_a_transaction(stub)
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        "APPEND",
+    )
+
+    assert result.exit_code == 0, result.output
+    start, upload, commit = stub.requests
+    assert (start.method, start.url.path) == ("POST", f"{API}/{DATASET}/transactions")
+    assert dict(start.url.params) == {}  # the default branch
+    assert json.loads(start.content) == {"transactionType": "APPEND"}
+    assert upload_path(upload) == "sales.csv"
+    assert dict(upload.url.params) == {"transactionRid": TRANSACTION}
+    assert upload.content == b"id,region\n1,EMEA\n"
+    assert commit.url.path.endswith(f"/transactions/{TRANSACTION}/commit")
+    assert "Uploaded 1 file and committed transaction" in result.stderr
+
+
+def test_failed_single_file_upload_aborts_its_transaction(stub, local_csv):
+    stub.respond(json=dj.transaction(transaction_type="UPDATE"))
+    stub.respond(500, json=fj.error("UploadFailed", "INTERNAL"))
+    stub.respond(json=dj.transaction(status="ABORTED", closed_time=dj.CLOSED_TIME))
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        "UPDATE",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 7
+    assert json_lines(result.stderr)[-1]["errorName"] == "UploadFailed"
+    assert stub.requests[-1].url.path.endswith(f"/transactions/{TRANSACTION}/abort")
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_snapshot_upload_needs_yes_when_not_interactive(
+    stub, local_csv, local_dir, directory
+):
+    path = local_dir if directory else local_csv
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(path),
+        DATASET,
+        "--transaction-type",
+        "SNAPSHOT",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "confirmation_required"
+    assert "Replace every file on the default branch" in error["message"]
+    assert stub.requests == []
+
+
+def test_snapshot_upload_prompts_when_interactive(stub, local_csv, interactive):
+    declined = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--branch",
+        "dev",
+        "--transaction-type",
+        "SNAPSHOT",
+        input="n\n",
+    )
+    assert declined.exit_code == 1
+    assert (
+        f"Replace every file on branch 'dev' of dataset {DATASET} with sales.csv "
+        "(a SNAPSHOT transaction)? [y/N]"
+    ) in declined.stderr
+    assert stub.requests == []
+
+    queue_upload_in_a_transaction(stub, transaction_type="SNAPSHOT")
+    accepted = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--branch",
+        "dev",
+        "--transaction-type",
+        "SNAPSHOT",
+        input="y\n",
+    )
+    assert accepted.exit_code == 0, accepted.output
+    assert len(stub.requests) == 3
+
+
+@pytest.mark.parametrize("transaction_type", ["APPEND", "UPDATE"])
+def test_other_transaction_types_do_not_ask(stub, local_csv, transaction_type):
+    queue_upload_in_a_transaction(stub, transaction_type=transaction_type)
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        transaction_type,
+    )
+
+    assert result.exit_code == 0, result.output
 
 
 def test_upload_a_file_into_an_open_transaction(stub, local_csv):
@@ -303,6 +443,7 @@ def test_upload_a_directory_with_a_transaction_type(stub, local_dir):
         DATASET,
         "--transaction-type",
         "SNAPSHOT",
+        "--yes",
     )
 
     assert result.exit_code == 0, result.output

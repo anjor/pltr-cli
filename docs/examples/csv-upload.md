@@ -96,13 +96,14 @@ pltr dataset transactions commit "$DATASET_RID" "$TRANSACTION_RID"
 ## Replace a Dataset's Contents
 
 A SNAPSHOT transaction replaces all of the dataset's files with the ones in the
-transaction (older versions stay in the dataset's history):
+transaction (older versions stay in the dataset's history). pltr asks before a
+SNAPSHOT upload; `--yes` skips the question, and a script needs it:
 
 ```bash
-pltr dataset files upload updated_data.csv "$DATASET_RID" --transaction-type SNAPSHOT
+pltr dataset files upload updated_data.csv "$DATASET_RID" --transaction-type SNAPSHOT --yes
 
 # or a whole directory
-pltr dataset files upload ./export "$DATASET_RID" --transaction-type SNAPSHOT
+pltr dataset files upload ./export "$DATASET_RID" --transaction-type SNAPSHOT --yes
 ```
 
 ## Schema Management for CSV Datasets
@@ -189,7 +190,7 @@ pltr dataset files upload "$CSV_FILE" "$DATASET_RID"
 
   ```bash
   mkdir parts && split -l 1000000 large.csv parts/part_
-  pltr dataset files upload ./parts "$DATASET_RID" --path large --transaction-type SNAPSHOT
+  pltr dataset files upload ./parts "$DATASET_RID" --path large --transaction-type SNAPSHOT --yes
   ```
 
   Each part needs its own header row if the schema expects one.
