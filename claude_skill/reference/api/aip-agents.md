@@ -23,7 +23,7 @@ client.aip_agents.Agent: agent-version, all-sessions, get, session
 
 `pltr api aip-agents agent get AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - Options: `--version` TEXT
 - beta · SDK: `aip_agents.Agent.get`
 
@@ -37,7 +37,7 @@ client.aip_agents.Agent.AgentVersion: get, list
 
 `pltr api aip-agents agent agent-version get AGENT_RID AGENT_VERSION_STRING [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `AGENT_VERSION_STRING`: The semantic version of the Chatbot Studio Agent, formatted as "majorVersion.minorVersion".
 - beta · SDK: `aip_agents.Agent.AgentVersion.get`
 
@@ -47,7 +47,7 @@ client.aip_agents.Agent.AgentVersion: get, list
 
 `pltr api aip-agents agent agent-version list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - beta · paged · SDK: `aip_agents.Agent.AgentVersion.list`
 
 ## pltr api aip-agents agent session
@@ -60,7 +60,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session blocking-continue AGENT_RID SESSION_RID --parameter-inputs JSON --user-input JSON [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `--parameter-inputs` JSON (required): Any supplied values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to pass to the Chatbot Studio Agent for the exchange.
 - `--user-input` JSON (required): The user message for the Chatbot Studio Agent to respond to.
@@ -73,7 +73,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session cancel AGENT_RID SESSION_RID --message-id TEXT [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `--message-id` TEXT (required): The identifier for the in-progress exchange to cancel.
 - Options: `--response` TEXT
@@ -85,7 +85,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session create AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - Options: `--agent-version` TEXT
 - beta · SDK: `aip_agents.Agent.Session.create`
 
@@ -95,7 +95,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session delete AGENT_RID SESSION_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `aip_agents.Agent.Session.delete`
 
@@ -105,7 +105,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session get AGENT_RID SESSION_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - beta · SDK: `aip_agents.Agent.Session.get`
 
@@ -115,7 +115,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - beta · paged · SDK: `aip_agents.Agent.Session.list`
 
 ### pltr api aip-agents agent session rag-context
@@ -124,7 +124,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session rag-context AGENT_RID SESSION_RID --parameter-inputs JSON --user-input JSON [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `--parameter-inputs` JSON (required): Any values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to use for the context retrieval.
 - `--user-input` JSON (required): The user message to retrieve relevant context for from the configured Chatbot Studio Agent data sources.
@@ -136,7 +136,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session streaming-continue AGENT_RID SESSION_RID --parameter-inputs JSON --user-input JSON [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `--parameter-inputs` JSON (required): Any supplied values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to pass to the Chatbot Studio Agent for the exchange.
 - `--user-input` JSON (required): The user message for the Chatbot Studio Agent to respond to.
@@ -149,7 +149,7 @@ client.aip_agents.Agent.Session: blocking-continue, cancel, content, create, del
 
 `pltr api aip-agents agent session update-title AGENT_RID SESSION_RID --title TEXT [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `--title` TEXT (required): The new title for the session.
 - beta · SDK: `aip_agents.Agent.Session.update_title`
@@ -164,7 +164,7 @@ client.aip_agents.Agent.Session.Content: get
 
 `pltr api aip-agents agent session content get AGENT_RID SESSION_RID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - beta · SDK: `aip_agents.Agent.Session.Content.get`
 
@@ -178,7 +178,7 @@ client.aip_agents.Agent.Session.SessionTrace: get
 
 `pltr api aip-agents agent session session-trace get AGENT_RID SESSION_RID SESSION_TRACE_ID [OPTIONS]`
 
-- `AGENT_RID`: An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
+- `AGENT_RID` (RID or path): An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/).
 - `SESSION_RID`: The Resource Identifier (RID) of the conversation session.
 - `SESSION_TRACE_ID`: The unique identifier for the trace.
 - beta · SDK: `aip_agents.Agent.Session.SessionTrace.get`

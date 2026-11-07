@@ -23,7 +23,7 @@ SPEC = {
                     "http": "GET /v2/filesystem/folders/{folderRid}/children",
                     "paged": "iterator",
                     "params": [
-                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "required": True},
+                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "resource": "folder", "required": True},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                     ],
@@ -36,7 +36,7 @@ SPEC = {
                     "http": "POST /v2/filesystem/folders",
                     "params": [
                         {"name": "display_name", "in": "body", "type": "str", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True, "help": "The parent folder Resource Identifier (RID). For Projects, this will be the Space RID and for Spaces, this value will be the root folder (`ri.compass.main.folder.0`)."},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True, "help": "The parent folder Resource Identifier (RID). For Projects, this will be the Space RID and for Spaces, this value will be the root folder (`ri.compass.main.folder.0`)."},
                     ],
                 },
                 {
@@ -46,7 +46,7 @@ SPEC = {
                     "help": "Get the Folder with the specified rid.\n\nRequired scopes: [api:filesystem-read]",
                     "http": "GET /v2/filesystem/folders/{folderRid}",
                     "params": [
-                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "required": True},
+                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "resource": "folder", "required": True},
                     ],
                 },
                 {
@@ -68,9 +68,9 @@ SPEC = {
                     "beta": True,
                     "destructive": True,
                     "params": [
-                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "required": True},
+                        {"name": "folder_rid", "in": "path", "api": "folderRid", "type": "str", "schema": "FolderRid", "resource": "folder", "required": True},
                         {"name": "display_name", "in": "body", "type": "str", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True, "help": "The parent folder Resource Identifier (RID). For Projects, this will be the Space RID and for Spaces, this value will be the root folder (`ri.compass.main.folder.0`)."},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True, "help": "The parent folder Resource Identifier (RID). For Projects, this will be the Space RID and for Spaces, this value will be the root folder (`ri.compass.main.folder.0`)."},
                     ],
                 },
             ],
@@ -88,7 +88,7 @@ SPEC = {
                     "help": "Adds a list of Organizations to a Project.\n\nRequired scopes: [api:filesystem-write]",
                     "http": "POST /v2/filesystem/projects/{projectRid}/addOrganizations",
                     "params": [
-                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                         {"name": "organization_rids", "in": "body", "type": "str", "multiple": True, "required": True},
                     ],
                 },
@@ -129,7 +129,7 @@ SPEC = {
                     "help": "Get the Project with the specified rid.\n\nRequired scopes: [api:filesystem-read]",
                     "http": "GET /v2/filesystem/projects/{projectRid}",
                     "params": [
-                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                     ],
                 },
                 {
@@ -140,7 +140,7 @@ SPEC = {
                     "http": "GET /v2/filesystem/projects/{projectRid}/organizations",
                     "paged": "iterator",
                     "params": [
-                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                     ],
@@ -153,7 +153,7 @@ SPEC = {
                     "http": "POST /v2/filesystem/projects/{projectRid}/removeOrganizations",
                     "destructive": True,
                     "params": [
-                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                         {"name": "organization_rids", "in": "body", "type": "str", "multiple": True, "required": True},
                     ],
                 },
@@ -166,7 +166,7 @@ SPEC = {
                     "beta": True,
                     "destructive": True,
                     "params": [
-                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                        {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                         {"name": "display_name", "in": "body", "type": "str", "required": True, "help": "The display name of the Project. Must be unique and cannot contain a /"},
                         {"name": "description", "in": "body", "type": "str", "help": "The description associated with the Project."},
                     ],
@@ -186,7 +186,7 @@ SPEC = {
                             "help": "Add references to the given project\n\nRequired scopes: [api:filesystem-write]",
                             "http": "POST /v2/filesystem/projects/{projectRid}/references/add",
                             "params": [
-                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                                 {"name": "resources", "in": "body", "type": "json", "schema": "List[AddResourceReferenceRequest]", "required": True},
                             ],
                         },
@@ -198,7 +198,7 @@ SPEC = {
                             "http": "GET /v2/filesystem/projects/{projectRid}/references",
                             "paged": "iterator",
                             "params": [
-                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                                 {"name": "reference_type", "in": "query", "api": "referenceType", "type": "choice", "choices": ["EXTERNAL", "FILESYSTEM"], "help": "Filter references by type. If not provided, all references are returned."},
@@ -212,7 +212,7 @@ SPEC = {
                             "http": "POST /v2/filesystem/projects/{projectRid}/references/remove",
                             "destructive": True,
                             "params": [
-                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "required": True},
+                                {"name": "project_rid", "in": "path", "api": "projectRid", "type": "str", "schema": "ProjectRid", "resource": "project", "required": True},
                                 {"name": "resources", "in": "body", "type": "str", "multiple": True, "required": True, "help": "The resource identifiers to remove as references. These may be either filesystem or external resource identifiers."},
                             ],
                         },
@@ -233,7 +233,7 @@ SPEC = {
                     "help": "Adds a list of Markings to a resource.\n\nRequired scopes: [api:filesystem-write]",
                     "http": "POST /v2/filesystem/resources/{resourceRid}/addMarkings",
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                         {"name": "marking_ids", "in": "body", "type": "str", "multiple": True, "required": True},
                     ],
                 },
@@ -245,7 +245,7 @@ SPEC = {
                     "http": "DELETE /v2/filesystem/resources/{resourceRid}",
                     "destructive": True,
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                     ],
                 },
                 {
@@ -255,7 +255,7 @@ SPEC = {
                     "help": "Get the Resource with the specified rid.\n\nRequired scopes: [api:filesystem-read]",
                     "http": "GET /v2/filesystem/resources/{resourceRid}",
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                     ],
                 },
                 {
@@ -265,7 +265,7 @@ SPEC = {
                     "help": "Returns a list of access requirements a user needs in order to view a resource. Access requirements are\ncomposed of Organizations and Markings, and can either be applied directly to the resource or inherited.\n\nRequired scopes: [api:filesystem-read]",
                     "http": "GET /v2/filesystem/resources/{resourceRid}/getAccessRequirements",
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                     ],
                 },
                 {
@@ -317,7 +317,7 @@ SPEC = {
                     "http": "GET /v2/filesystem/resources/{resourceRid}/markings",
                     "paged": "iterator",
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                     ],
@@ -330,7 +330,7 @@ SPEC = {
                     "http": "POST /v2/filesystem/resources/{resourceRid}/permanentlyDelete",
                     "destructive": True,
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                     ],
                 },
                 {
@@ -341,7 +341,7 @@ SPEC = {
                     "http": "POST /v2/filesystem/resources/{resourceRid}/removeMarkings",
                     "destructive": True,
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                         {"name": "marking_ids", "in": "body", "type": "str", "multiple": True, "required": True},
                     ],
                 },
@@ -352,7 +352,7 @@ SPEC = {
                     "help": "Restore the given resource and any directly trashed ancestors from the trash. If the resource is not\ntrashed, this operation will be ignored.\n\nRequired scopes: [api:filesystem-write]",
                     "http": "POST /v2/filesystem/resources/{resourceRid}/restore",
                     "params": [
-                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                        {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                     ],
                 },
             ],
@@ -370,7 +370,7 @@ SPEC = {
                             "help": "Calls POST /v2/filesystem/resources/{resourceRid}/roles/add (SDK: client.filesystem.Resource.Role.add).\n\nRequired scopes: [api:filesystem-write]",
                             "http": "POST /v2/filesystem/resources/{resourceRid}/roles/add",
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                                 {"name": "roles", "in": "body", "type": "json", "schema": "List[ResourceRoleIdentifier]", "required": True},
                             ],
                         },
@@ -382,7 +382,7 @@ SPEC = {
                             "http": "GET /v2/filesystem/resources/{resourceRid}/roles",
                             "paged": "iterator",
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                                 {"name": "include_inherited", "in": "query", "api": "includeInherited", "type": "bool", "help": "Whether to include inherited roles on the resource."},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
@@ -396,7 +396,7 @@ SPEC = {
                             "http": "POST /v2/filesystem/resources/{resourceRid}/roles/remove",
                             "destructive": True,
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                                 {"name": "roles", "in": "body", "type": "json", "schema": "List[ResourceRoleIdentifier]", "required": True},
                             ],
                         },
@@ -416,7 +416,7 @@ SPEC = {
                             "http": "POST /v2/filesystem/resources/{resourceRid}/tags/add",
                             "beta": True,
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                                 {"name": "tag_rids", "in": "body", "type": "str", "multiple": True, "required": True},
                             ],
                         },
@@ -428,7 +428,7 @@ SPEC = {
                             "http": "GET /v2/filesystem/resources/{resourceRid}/tags",
                             "beta": True,
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                             ],
                         },
                         {
@@ -440,7 +440,7 @@ SPEC = {
                             "beta": True,
                             "destructive": True,
                             "params": [
-                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "required": True},
+                                {"name": "resource_rid", "in": "path", "api": "resourceRid", "type": "str", "schema": "ResourceRid", "resource": "resource", "required": True},
                                 {"name": "tag_rids", "in": "body", "type": "str", "multiple": True, "required": True},
                             ],
                         },

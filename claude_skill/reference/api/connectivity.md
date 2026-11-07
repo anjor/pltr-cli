@@ -13,11 +13,11 @@ client.connectivity.Connection: create, file-import, get, get-configuration, get
 
 Creates a new Connection with a [direct connection](https://palantir.com/docs/foundry/data-connec...
 
-`pltr api connectivity connection create --configuration JSON --display-name TEXT --parent-folder-rid TEXT --worker JSON [OPTIONS]`
+`pltr api connectivity connection create --configuration JSON --display-name TEXT --parent-folder-rid RID|PATH --worker JSON [OPTIONS]`
 
 - `--configuration` JSON (required): CreateConnectionRequestConnectionConfiguration.
 - `--display-name` TEXT (required): The display name of the Connection.
-- `--parent-folder-rid` TEXT (required)
+- `--parent-folder-rid` RID|PATH (required)
 - `--worker` JSON (required): CreateConnectionRequestConnectionWorker.
 - SDK: `connectivity.Connection.create`
 
@@ -27,7 +27,7 @@ Get the Connection with the specified rid.
 
 `pltr api connectivity connection get CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - SDK: `connectivity.Connection.get`
 
 ### pltr api connectivity connection get-configuration
@@ -36,7 +36,7 @@ Retrieves the ConnectionConfiguration of the [Connection](https://palantir.com/d
 
 `pltr api connectivity connection get-configuration CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - SDK: `connectivity.Connection.get_configuration`
 
 ### pltr api connectivity connection get-configuration-batch
@@ -54,7 +54,7 @@ Updates the [export settings on the Connection.](https://palantir.com/docs/found
 
 `pltr api connectivity connection update-export-settings CONNECTION_RID --export-settings JSON [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `--export-settings` JSON (required): ConnectionExportSettings.
 - SDK: `connectivity.Connection.update_export_settings`
 
@@ -64,7 +64,7 @@ Updates the secrets on the connection to the specified secret values.
 
 `pltr api connectivity connection update-secrets CONNECTION_RID --secrets JSON [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `--secrets` JSON (required): The secrets to be updated.
 - **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.update_secrets`
 
@@ -74,7 +74,7 @@ Upload custom jdbc drivers to an existing JDBC connection.
 
 `pltr api connectivity connection upload-custom-jdbc-drivers CONNECTION_RID --body PATH --file-name TEXT [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `--body` PATH (required): Body of the request.
 - `--file-name` TEXT (required): The file name of the uploaded JDBC driver.
 - SDK: `connectivity.Connection.upload_custom_jdbc_drivers`
@@ -87,10 +87,10 @@ client.connectivity.Connection.FileImport: create, delete, execute, get, list, r
 
 Creates a new FileImport.
 
-`pltr api connectivity connection file-import create CONNECTION_RID --dataset-rid TEXT --display-name TEXT --file-import-filters JSON --import-mode SNAPSHOT|APPEND|UPDATE [OPTIONS]`
+`pltr api connectivity connection file-import create CONNECTION_RID --dataset-rid RID|PATH --display-name TEXT --file-import-filters JSON --import-mode SNAPSHOT|APPEND|UPDATE [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
-- `--dataset-rid` TEXT (required): The RID of the output dataset.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
+- `--dataset-rid` RID|PATH (required): The RID of the output dataset.
 - `--display-name` TEXT (required)
 - `--file-import-filters` JSON (required): Use filters to limit which files should be imported.
 - `--import-mode` SNAPSHOT|APPEND|UPDATE (required)
@@ -103,7 +103,7 @@ Delete the FileImport with the specified RID.
 
 `pltr api connectivity connection file-import delete CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `FILE_IMPORT_RID`: FileImportRid.
 - **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.FileImport.delete`
 
@@ -113,7 +113,7 @@ Executes the FileImport, which runs asynchronously as a [Foundry Build](https://
 
 `pltr api connectivity connection file-import execute CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `FILE_IMPORT_RID`: FileImportRid.
 - SDK: `connectivity.Connection.FileImport.execute`
 
@@ -123,7 +123,7 @@ Get the FileImport with the specified rid.
 
 `pltr api connectivity connection file-import get CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `FILE_IMPORT_RID`: FileImportRid.
 - SDK: `connectivity.Connection.FileImport.get`
 
@@ -133,7 +133,7 @@ Lists all file imports defined for this connection.
 
 `pltr api connectivity connection file-import list CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - paged · SDK: `connectivity.Connection.FileImport.list`
 
 ### pltr api connectivity connection file-import replace
@@ -142,7 +142,7 @@ Replace the FileImport with the specified rid.
 
 `pltr api connectivity connection file-import replace CONNECTION_RID FILE_IMPORT_RID --display-name TEXT --file-import-filters JSON --import-mode SNAPSHOT|APPEND|UPDATE [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `FILE_IMPORT_RID`: FileImportRid.
 - `--display-name` TEXT (required)
 - `--file-import-filters` JSON (required): Use filters to limit which files should be imported.
@@ -158,11 +158,11 @@ client.connectivity.Connection.TableImport: create, delete, execute, get, list, 
 
 Creates a new TableImport.
 
-`pltr api connectivity connection table-import create CONNECTION_RID --config JSON --dataset-rid TEXT --display-name TEXT --import-mode SNAPSHOT|APPEND [OPTIONS]`
+`pltr api connectivity connection table-import create CONNECTION_RID --config JSON --dataset-rid RID|PATH --display-name TEXT --import-mode SNAPSHOT|APPEND [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `--config` JSON (required): CreateTableImportRequestTableImportConfig.
-- `--dataset-rid` TEXT (required): The RID of the output dataset.
+- `--dataset-rid` RID|PATH (required): The RID of the output dataset.
 - `--display-name` TEXT (required)
 - `--import-mode` SNAPSHOT|APPEND (required)
 - Options: `--allow-schema-changes`, `--branch-name` TEXT
@@ -174,7 +174,7 @@ Delete the TableImport with the specified RID.
 
 `pltr api connectivity connection table-import delete CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `TABLE_IMPORT_RID`: TableImportRid.
 - **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.TableImport.delete`
 
@@ -184,7 +184,7 @@ Executes the TableImport, which runs asynchronously as a [Foundry Build](https:/
 
 `pltr api connectivity connection table-import execute CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `TABLE_IMPORT_RID`: TableImportRid.
 - SDK: `connectivity.Connection.TableImport.execute`
 
@@ -194,7 +194,7 @@ Get the TableImport with the specified rid.
 
 `pltr api connectivity connection table-import get CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `TABLE_IMPORT_RID`: TableImportRid.
 - SDK: `connectivity.Connection.TableImport.get`
 
@@ -204,7 +204,7 @@ Lists all table imports defined for this connection.
 
 `pltr api connectivity connection table-import list CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - paged · SDK: `connectivity.Connection.TableImport.list`
 
 ### pltr api connectivity connection table-import replace
@@ -213,7 +213,7 @@ Replace the TableImport with the specified rid.
 
 `pltr api connectivity connection table-import replace CONNECTION_RID TABLE_IMPORT_RID --config JSON --display-name TEXT --import-mode SNAPSHOT|APPEND [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `TABLE_IMPORT_RID`: TableImportRid.
 - `--config` JSON (required): ReplaceTableImportRequestTableImportConfig.
 - `--display-name` TEXT (required)
@@ -229,11 +229,11 @@ client.connectivity.Connection.VirtualTable: create
 
 Creates a new [Virtual Table](https://palantir.com/docs/foundry/data-integration/virtual-tables/)...
 
-`pltr api connectivity connection virtual-table create CONNECTION_RID --config JSON --name TEXT --parent-rid TEXT [OPTIONS]`
+`pltr api connectivity connection virtual-table create CONNECTION_RID --config JSON --name TEXT --parent-rid RID|PATH [OPTIONS]`
 
-- `CONNECTION_RID`: ConnectionRid.
+- `CONNECTION_RID` (RID or path): ConnectionRid.
 - `--config` JSON (required): VirtualTableConfig.
 - `--name` TEXT (required)
-- `--parent-rid` TEXT (required)
+- `--parent-rid` RID|PATH (required)
 - Options: `--markings` TEXT
 - SDK: `connectivity.Connection.VirtualTable.create`

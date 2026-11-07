@@ -59,7 +59,7 @@ client.widgets.Repository: get, publish
 
 `pltr api widgets repository get REPOSITORY_RID [OPTIONS]`
 
-- `REPOSITORY_RID`: A Resource Identifier (RID) identifying a repository.
+- `REPOSITORY_RID` (RID or path): A Resource Identifier (RID) identifying a repository.
 - beta · SDK: `widgets.Repository.get`
 
 ### pltr api widgets repository publish
@@ -68,7 +68,7 @@ client.widgets.Repository: get, publish
 
 `pltr api widgets repository publish REPOSITORY_RID --body PATH --repository-version TEXT [OPTIONS]`
 
-- `REPOSITORY_RID`: A Resource Identifier (RID) identifying a repository.
+- `REPOSITORY_RID` (RID or path): A Resource Identifier (RID) identifying a repository.
 - `--body` PATH (required): The zip file that contains the contents of your widget set.
 - `--repository-version` TEXT (required)
 - Options: `--branch` TEXT

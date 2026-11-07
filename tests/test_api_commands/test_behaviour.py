@@ -1006,3 +1006,83 @@ def test_error_in_table_mode_is_readable(stub_foundry_http, pltr_api):
     assert result.exit_code == 5
     assert "UserNotFound: The given User could not be found." in result.stderr
     assert result.stdout == ""
+
+
+from tests import foundry_json_filesystem as fjf  # noqa: E402
+
+DATASET_RID = "ri.foundry.main.dataset.d1"
+
+
+def _resource(rid: str, path: str, resource_type: str) -> dict:
+    return {
+        "rid": rid,
+        "displayName": path.rsplit("/", 1)[-1],
+        "path": path,
+        "type": resource_type,
+        "createdBy": "6f2a1b3c-0000-4000-8000-000000000001",
+        "updatedBy": "6f2a1b3c-0000-4000-8000-000000000001",
+        "createdTime": "2024-01-01T00:00:00Z",
+        "updatedTime": "2024-01-02T00:00:00Z",
+        "trashStatus": "NOT_TRASHED",
+        "parentFolderRid": "ri.compass.main.folder.parent",
+        "projectRid": "ri.compass.main.folder.project",
+        "spaceRid": "ri.compass.main.folder.space-1",
+    }
+
+
+def test_a_path_argument_is_resolved_to_its_rid(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
+        json=_resource(DATASET_RID, "/S/P/sales", "FOUNDRY_DATASET")
+    )
+    stub_foundry_http.respond(
+        json=fjf.dataset(DATASET_RID, "sales", "ri.compass.main.folder.f1")
+    )
+
+    result = pltr_api("datasets", "dataset", "get", "/S/P/sales", "--format", "json")
+
+    assert result.exit_code == 0, result.stderr
+    assert json.loads(result.stdout)["rid"] == DATASET_RID
+    lookup, get = stub_foundry_http.requests
+    assert lookup.url.path == "/api/v2/filesystem/resources/getByPath"
+    assert get.url.path == f"/api/v2/datasets/{DATASET_RID}"
+
+
+def test_a_path_body_option_is_resolved_to_its_rid(stub_foundry_http, pltr_api):
+    folder_rid = "ri.compass.main.folder.f1"
+    stub_foundry_http.respond(json=_resource(folder_rid, "/S/P/out", "COMPASS_FOLDER"))
+    stub_foundry_http.respond(json=fjf.dataset(DATASET_RID, "new", folder_rid))
+
+    result = pltr_api(
+        "datasets",
+        "dataset",
+        "create",
+        "--name",
+        "new",
+        "--parent-folder-rid",
+        "/S/P/out",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.stderr
+    _, create = stub_foundry_http.requests
+    assert json.loads(create.content)["parentFolderRid"] == folder_rid
+
+
+def test_a_path_of_the_wrong_kind_fails_before_the_call(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
+        json=_resource("ri.compass.main.folder.f1", "/S/P/out", "COMPASS_FOLDER")
+    )
+
+    result = pltr_api("datasets", "dataset", "get", "/S/P/out", "--format", "json")
+
+    assert result.exit_code == 2
+    assert json.loads(result.stderr.splitlines()[-1])["type"] == "wrong_resource_type"
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_generated_help_mentions_paths(pltr_api):
+    result = pltr_api("datasets", "dataset", "get", "--help")
+
+    assert result.exit_code == 0
+    assert "Compass path" in " ".join(result.stdout.split())

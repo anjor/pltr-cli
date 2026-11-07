@@ -65,7 +65,7 @@ SPEC = {
                     "http": "GET /v2/widgets/repositories/{repositoryRid}",
                     "beta": True,
                     "params": [
-                        {"name": "repository_rid", "in": "path", "api": "repositoryRid", "type": "str", "schema": "RepositoryRid", "required": True, "help": "A Resource Identifier (RID) identifying a repository."},
+                        {"name": "repository_rid", "in": "path", "api": "repositoryRid", "type": "str", "schema": "RepositoryRid", "resource": "repository", "required": True, "help": "A Resource Identifier (RID) identifying a repository."},
                     ],
                 },
                 {
@@ -76,7 +76,7 @@ SPEC = {
                     "http": "POST /v2/widgets/repositories/{repositoryRid}/publish",
                     "beta": True,
                     "params": [
-                        {"name": "repository_rid", "in": "path", "api": "repositoryRid", "type": "str", "schema": "RepositoryRid", "required": True, "help": "A Resource Identifier (RID) identifying a repository."},
+                        {"name": "repository_rid", "in": "path", "api": "repositoryRid", "type": "str", "schema": "RepositoryRid", "resource": "repository", "required": True, "help": "A Resource Identifier (RID) identifying a repository."},
                         {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "The zip file that contains the contents of your widget set. It must include a valid manifest file at the path `.palantir/widgets.config.json`."},
                         {"name": "repository_version", "in": "query", "api": "repositoryVersion", "type": "str", "required": True},
                         {"name": "branch", "in": "query", "api": "branch", "type": "str", "help": "The Foundry branch to publish the release on, specified as either its RID or dataset branch identifier. If omitted, publishes the release on the default branch."},

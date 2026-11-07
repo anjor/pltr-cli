@@ -154,7 +154,11 @@ def _help(text: str) -> str:
     @file.json, or @- for stdin.` and untyped path parameters as `Path
     parameter x.`; the index explains JSON input once, so keep only the type.
     """
-    text = _PATH_PARAMETER.sub("", " ".join(text.split()))
+    from pltr.contract import PATH_HELP
+
+    # "(RID or path)" and RID|PATH already say a parameter takes a path.
+    text = " ".join(text.replace(PATH_HELP, "").split())
+    text = _PATH_PARAMETER.sub("", text)
     text = _JSON_INPUT.sub(lambda match: f" {match.group(1)}.", text).strip()
     if text.startswith("Type: "):
         return text[len("Type: ") :]

@@ -24,7 +24,7 @@ SPEC = {
                     "beta": True,
                     "params": [
                         {"name": "name", "in": "body", "type": "str", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                         {"name": "schema", "in": "body", "type": "json", "schema": "StreamSchema", "required": True, "help": "The Foundry schema to apply to the new stream."},
                         {"name": "branch_name", "in": "body", "type": "str", "help": "The branch to create the initial stream on. If not specified, the default branch will be used ('master' for most enrollments)."},
                         {"name": "compressed", "in": "body", "type": "bool", "help": "Whether or not compression is enabled for the stream. Defaults to false."},
@@ -48,7 +48,7 @@ SPEC = {
                             "http": "POST /v2/streams/datasets/{datasetRid}/streams",
                             "beta": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "branch_name", "in": "body", "type": "str", "required": True},
                                 {"name": "schema", "in": "body", "type": "json", "schema": "CreateStreamRequestStreamSchema", "required": True, "help": "The Foundry schema for this stream."},
                                 {"name": "compressed", "in": "body", "type": "bool", "help": "Whether or not compression is enabled for the stream. Defaults to false."},
@@ -63,7 +63,7 @@ SPEC = {
                             "help": "Get a stream by its branch name. If the branch does not exist, there is no stream on that branch, or the\nuser does not have permission to access the stream, a 404 error will be returned.\n\nRequired scopes: [api:streams-read]",
                             "http": "GET /v2/streams/datasets/{datasetRid}/streams/{streamBranchName}",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                             ],
                         },
@@ -75,7 +75,7 @@ SPEC = {
                             "http": "GET /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/getEndOffsets",
                             "beta": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "view_rid", "in": "query", "api": "viewRid", "type": "str", "help": "If provided, this endpoint will only read from the stream corresponding to the specified view RID. If not provided, this endpoint will read from the latest stream on the branch.  Providing this value is an advanced configuration, to be used when additional control over the underlying streaming data structures is needed."},
                             ],
@@ -88,7 +88,7 @@ SPEC = {
                             "http": "GET /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/getRecords",
                             "beta": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "limit", "in": "query", "api": "limit", "type": "int", "required": True, "help": "The total number of records to be retrieved. The response may contain fewer records than requested depending on number of records in the partition and server-defined limits."},
                                 {"name": "partition_id", "in": "query", "api": "partitionId", "type": "str", "required": True, "help": "The ID of the partition to retrieve records from."},
@@ -103,7 +103,7 @@ SPEC = {
                             "help": "Publish a single binary record to the stream. The stream's schema must be a single binary field.\n\nRequired scopes: [api:streams-write]",
                             "http": "POST /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/publishBinaryRecord",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "The binary record to publish to the stream"},
                                 {"name": "view_rid", "in": "query", "api": "viewRid", "type": "str", "help": "If provided, this endpoint will only write to the stream corresponding to the specified view RID. If not provided, this endpoint will write to the latest stream on the branch.  Providing this value is an advanced configuration, to be used when additional control over the underlying streaming data structures is needed."},
@@ -116,7 +116,7 @@ SPEC = {
                             "help": "Publish a single record to the stream. The record will be validated against the stream's schema, and\nrejected if it is invalid.\n\nRequired scopes: [api:streams-write]",
                             "http": "POST /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/publishRecord",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "record", "in": "body", "type": "json", "schema": "Record", "required": True, "help": "The record to publish to the stream. Timestamp fields used as stream keys must use Unix epoch milliseconds."},
                                 {"name": "view_rid", "in": "body", "type": "str", "help": "If provided, this endpoint will only write to the stream corresponding to the specified view RID. If not provided, this endpoint will write the latest stream on the branch.  Providing this value is an advanced configuration, to be used when additional control over the underlying streaming data structures is needed."},
@@ -129,7 +129,7 @@ SPEC = {
                             "help": "Publish a batch of records to the stream. The records will be validated against the stream's schema, and\nthe batch will be rejected if one or more of the records are invalid.\n\nRequired scopes: [api:streams-write]",
                             "http": "POST /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/publishRecords",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "records", "in": "body", "type": "json", "schema": "List[Record]", "required": True, "help": "The records to publish to the stream. Timestamp fields used as stream keys must use Unix epoch milliseconds."},
                                 {"name": "view_rid", "in": "body", "type": "str", "help": "If provided, this endpoint will only write to the stream corresponding to the specified view RID. If not provided, this endpoint will write to the latest stream on the branch.  Providing this value is an advanced configuration, to be used when additional control over the underlying streaming data structures is needed."},
@@ -144,7 +144,7 @@ SPEC = {
                             "beta": True,
                             "destructive": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "compressed", "in": "body", "type": "bool", "help": "Whether or not compression is enabled for the stream.  If omitted, the compression setting of the existing stream on the branch will be used."},
                                 {"name": "partitions_count", "in": "body", "type": "int", "help": "The number of partitions for the Foundry stream. Generally, each partition can handle about 5 mb/s of data, so for higher volume streams, more partitions are recommended.  If omitted, the partitions count of the existing stream on the branch will be used."},
@@ -168,7 +168,7 @@ SPEC = {
                                     "http": "POST /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/subscribers/{subscriberSubscriberId}/commitOffsets",
                                     "beta": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_subscriber_id", "in": "path", "api": "subscriberSubscriberId", "type": "str", "schema": "SubscriberId", "required": True},
                                         {"name": "offsets", "in": "body", "type": "json", "schema": "PartitionOffsets", "required": True, "help": "The last processed offset for each partition. The server will store these as read positions (offset + 1), so the next read starts after the committed offset."},
@@ -183,7 +183,7 @@ SPEC = {
                                     "http": "POST /v2/streams/datasets/{datasetRid}/streams/{streamBranchName}/subscribers",
                                     "beta": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_id", "in": "body", "type": "str", "required": True},
                                         {"name": "read_position", "in": "body", "type": "json", "schema": "ReadPosition", "help": "Where to start reading from. Defaults to `earliest` if not specified.  The `readPosition` determines where the subscriber will start reading: - `earliest`: Start from the beginning of each partition (offset 0). Use this to process   all historical data. - `latest`: Start from the current end of each partition. Use this to skip historical data   and only process new records arriving after registration. - `specific`: Start from explicit offsets for each partition. Use this to resume from a   known checkpoint."},
@@ -198,7 +198,7 @@ SPEC = {
                                     "beta": True,
                                     "destructive": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_subscriber_id", "in": "path", "api": "subscriberSubscriberId", "type": "str", "schema": "SubscriberId", "required": True},
                                     ],
@@ -211,7 +211,7 @@ SPEC = {
                                     "http": "GET /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/subscribers/{subscriberSubscriberId}/getReadPosition",
                                     "beta": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_subscriber_id", "in": "path", "api": "subscriberSubscriberId", "type": "str", "schema": "SubscriberId", "required": True},
                                         {"name": "view_rid", "in": "query", "api": "viewRid", "type": "str", "help": "The view RID to get positions for. If not provided, uses the latest view for the dataset/branch."},
@@ -225,7 +225,7 @@ SPEC = {
                                     "http": "POST /v2/highScale/streams/datasets/{datasetRid}/streams/{streamBranchName}/subscribers/{subscriberSubscriberId}/readRecords",
                                     "beta": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_subscriber_id", "in": "path", "api": "subscriberSubscriberId", "type": "str", "schema": "SubscriberId", "required": True},
                                         {"name": "auto_commit", "in": "body", "type": "bool", "help": "If true, the read position is automatically committed after reading records. The committed position will be the offset after the last record read. If false, you must call the `commitOffsets` endpoint to commit offsets. Defaults to false."},
@@ -243,7 +243,7 @@ SPEC = {
                                     "beta": True,
                                     "destructive": True,
                                     "params": [
-                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                         {"name": "stream_branch_name", "in": "path", "api": "streamBranchName", "type": "str", "schema": "BranchName", "required": True},
                                         {"name": "subscriber_subscriber_id", "in": "path", "api": "subscriberSubscriberId", "type": "str", "schema": "SubscriberId", "required": True},
                                         {"name": "position", "in": "body", "type": "json", "schema": "ReadPosition", "required": True, "help": "The position to reset offsets to."},

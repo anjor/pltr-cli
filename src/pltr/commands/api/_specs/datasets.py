@@ -23,7 +23,7 @@ SPEC = {
                     "http": "POST /v2/datasets",
                     "params": [
                         {"name": "name", "in": "body", "type": "str", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                     ],
                 },
                 {
@@ -33,7 +33,7 @@ SPEC = {
                     "help": "Get the Dataset with the specified rid.\n\nRequired scopes: [api:datasets-read]",
                     "http": "GET /v2/datasets/{datasetRid}",
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                     ],
                 },
                 {
@@ -44,7 +44,7 @@ SPEC = {
                     "http": "GET /v2/datasets/{datasetRid}/getHealthCheckReports",
                     "beta": True,
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch. If none is provided, the default Branch name - `master` for most enrollments - will be used."},
                     ],
                 },
@@ -56,7 +56,7 @@ SPEC = {
                     "http": "GET /v2/datasets/{datasetRid}/getHealthChecks",
                     "beta": True,
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch. If none is provided, the default Branch name - `master` for most enrollments - will be used."},
                     ],
                 },
@@ -68,7 +68,7 @@ SPEC = {
                     "http": "GET /v2/datasets/{datasetRid}/getSchedules",
                     "paged": "iterator",
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch. If none is provided, the default Branch name - `master` for most enrollments - will be used."},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int"},
                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str"},
@@ -81,7 +81,7 @@ SPEC = {
                     "help": "Gets a dataset's schema. If no `endTransactionRid` is provided, the latest committed version will be used.\n\nRequired scopes: [api:datasets-read]",
                     "http": "GET /v2/datasets/{datasetRid}/getSchema",
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str"},
                         {"name": "end_transaction_rid", "in": "query", "api": "endTransactionRid", "type": "str", "help": "The Resource Identifier (RID) of the end Transaction. If a user does not provide a value, the RID of the latest committed transaction will be used."},
                         {"name": "version_id", "in": "query", "api": "versionId", "type": "str", "help": "The schema version that should be used. If none is provided, the latest version will be used."},
@@ -106,7 +106,7 @@ SPEC = {
                     "beta": True,
                     "paged": "iterator",
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "order_by", "in": "body", "type": "json", "schema": "List[GetDatasetJobsSort]", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch. If none is provided, the default Branch name - `master` for most enrollments - will be used."},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "Max number of results to return. A limit of 1000 on if no limit is supplied in the search request"},
@@ -122,7 +122,7 @@ SPEC = {
                     "http": "PUT /v2/datasets/{datasetRid}/putSchema",
                     "destructive": True,
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "schema", "in": "body", "type": "json", "schema": "DatasetSchema", "required": True, "help": "The schema that will be added."},
                         {"name": "branch_name", "in": "body", "type": "str"},
                         {"name": "dataframe_reader", "in": "body", "type": "choice", "choices": ["AVRO", "CSV", "PARQUET", "DATASOURCE"], "help": "The dataframe reader used for reading the dataset schema. Defaults to PARQUET."},
@@ -137,7 +137,7 @@ SPEC = {
                     "http": "GET /v2/datasets/{datasetRid}/readTable",
                     "binary": True,
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "format", "in": "query", "api": "format", "type": "choice", "choices": ["ARROW", "CSV"], "required": True, "option": "--api-format", "help": "The export format. Must be `ARROW` or `CSV`."},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch."},
                         {"name": "columns", "in": "query", "api": "columns", "type": "str", "multiple": True, "help": "A subset of the dataset columns to include in the result. Defaults to all columns."},
@@ -155,7 +155,7 @@ SPEC = {
                     "beta": True,
                     "paged": "iterator",
                     "params": [
-                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                        {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                     ],
@@ -175,7 +175,7 @@ SPEC = {
                             "help": "Creates a branch on an existing dataset. A branch may optionally point to a (committed) transaction.\n\nRequired scopes: [api:datasets-write]",
                             "http": "POST /v2/datasets/{datasetRid}/branches",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "name", "in": "body", "type": "str", "required": True},
                                 {"name": "transaction_rid", "in": "body", "type": "str", "help": "The most recent OPEN or COMMITTED transaction on the branch. This will never be an ABORTED transaction."},
                             ],
@@ -188,7 +188,7 @@ SPEC = {
                             "http": "DELETE /v2/datasets/{datasetRid}/branches/{branchName}",
                             "destructive": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "branch_name", "in": "path", "api": "branchName", "type": "str", "schema": "BranchName", "required": True},
                             ],
                         },
@@ -199,7 +199,7 @@ SPEC = {
                             "help": "Get a Branch of a Dataset.\n\nRequired scopes: [api:datasets-read]",
                             "http": "GET /v2/datasets/{datasetRid}/branches/{branchName}",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "branch_name", "in": "path", "api": "branchName", "type": "str", "schema": "BranchName", "required": True},
                             ],
                         },
@@ -211,7 +211,7 @@ SPEC = {
                             "http": "GET /v2/datasets/{datasetRid}/branches",
                             "paged": "iterator",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                             ],
@@ -225,7 +225,7 @@ SPEC = {
                             "beta": True,
                             "paged": "iterator",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "branch_name", "in": "path", "api": "branchName", "type": "str", "schema": "BranchName", "required": True},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The default pageSize is 20 transactions and the maximum allowed pageSize is 50 transactions"},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str"},
@@ -247,7 +247,7 @@ SPEC = {
                             "http": "GET /v2/datasets/{datasetRid}/files/{filePath}/content",
                             "binary": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "file_path", "in": "path", "api": "filePath", "type": "str", "schema": "FilePath", "required": True},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch that contains the File. Defaults to `master` for most enrollments."},
                                 {"name": "end_transaction_rid", "in": "query", "api": "endTransactionRid", "type": "str", "help": "The Resource Identifier (RID) of the end Transaction."},
@@ -262,7 +262,7 @@ SPEC = {
                             "http": "DELETE /v2/datasets/{datasetRid}/files/{filePath}",
                             "destructive": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "file_path", "in": "path", "api": "filePath", "type": "str", "schema": "FilePath", "required": True},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch on which to delete the File. Defaults to `master` for most enrollments."},
                                 {"name": "transaction_rid", "in": "query", "api": "transactionRid", "type": "str", "help": "The Resource Identifier (RID) of the open delete Transaction on which to delete the File."},
@@ -275,7 +275,7 @@ SPEC = {
                             "help": "Gets metadata about a File contained in a Dataset. By default this retrieves the file's metadata from the latest\nview of the default branch - `master` for most enrollments.\n#### Advanced Usage\nSee [Datasets Core Concepts](https://palantir.com/docs/foundry/data-integration/datasets/) for details on using branches and transactions.\nTo **get a file's metadata from a specific Branch** specify the Branch's name as `branchName`. This will\nretrieve metadata for the most recent version of the file since the latest snapshot transaction, or the earliest\nancestor transaction of the branch if there are no snapshot transactions.\nTo **get a file's metadata from the resolved view of a transaction** specify the Transaction's resource identifier\nas `endTransactionRid`. This will retrieve metadata for the most recent version of the file since the latest snapshot\ntransaction, or the earliest ancestor transaction if there are no snapshot transactions.\nTo **get a file's metadata from the resolved view of a range of transactions** specify the the start transaction's\nresource identifier as `startTransactionRid` and the end transaction's resource identifier as `endTransactionRid`.\nThis will retrieve metadata for the most recent version of the file since the `startTransactionRid` up to the\n`endTransactionRid`. Behavior is undefined when the start and end transactions do not belong to the same root-to-leaf path.\nTo **get a file's metadata from a specific transaction** specify the Transaction's resource identifier as both the\n`startTransactionRid` and `endTransactionRid`.\n\nRequired scopes: [api:datasets-read]",
                             "http": "GET /v2/datasets/{datasetRid}/files/{filePath}",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "file_path", "in": "path", "api": "filePath", "type": "str", "schema": "FilePath", "required": True},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch that contains the File. Defaults to `master` for most enrollments."},
                                 {"name": "end_transaction_rid", "in": "query", "api": "endTransactionRid", "type": "str", "help": "The Resource Identifier (RID) of the end Transaction."},
@@ -290,7 +290,7 @@ SPEC = {
                             "http": "GET /v2/datasets/{datasetRid}/files",
                             "paged": "iterator",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch on which to list Files. Defaults to `master` for most enrollments."},
                                 {"name": "end_transaction_rid", "in": "query", "api": "endTransactionRid", "type": "str", "help": "The Resource Identifier (RID) of the end Transaction."},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
@@ -306,7 +306,7 @@ SPEC = {
                             "help": "Uploads a File to an existing Dataset.\nThe body of the request must contain the binary content of the file and the `Content-Type` header must be `application/octet-stream`.\nBy default the file is uploaded to a new transaction on the default branch - `master` for most enrollments.\nIf the file already exists only the most recent version will be visible in the updated view.\n#### Advanced Usage\nSee [Datasets Core Concepts](https://palantir.com/docs/foundry/data-integration/datasets/) for details on using branches and transactions.\nTo **upload a file to a specific Branch** specify the Branch's name as `branchName`. A new transaction will\nbe created and committed on this branch. By default the TransactionType will be `UPDATE`, to override this\ndefault specify `transactionType` in addition to `branchName`.\nSee [createBranch](https://palantir.com/docs/foundry/api/datasets-resources/branches/create-branch/) to create a custom branch.\nTo **upload a file on a manually opened transaction** specify the Transaction's resource identifier as\n`transactionRid`. This is useful for uploading multiple files in a single transaction.\nSee [createTransaction](https://palantir.com/docs/foundry/api/datasets-resources/transactions/create-transaction/) to open a transaction.\n\nRequired scopes: [api:datasets-write]",
                             "http": "POST /v2/datasets/{datasetRid}/files/{filePath}/upload",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "file_path", "in": "path", "api": "filePath", "type": "str", "schema": "FilePath", "required": True},
                                 {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "Body of the request"},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch on which to upload the File. Defaults to `master` for most enrollments."},
@@ -330,7 +330,7 @@ SPEC = {
                             "http": "POST /v2/datasets/{datasetRid}/transactions/{transactionRid}/abort",
                             "destructive": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_rid", "in": "path", "api": "transactionRid", "type": "str", "schema": "TransactionRid", "required": True},
                             ],
                         },
@@ -342,7 +342,7 @@ SPEC = {
                             "http": "GET /v2/datasets/{datasetRid}/transactions/{transactionRid}/build",
                             "beta": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_rid", "in": "path", "api": "transactionRid", "type": "str", "schema": "TransactionRid", "required": True},
                             ],
                         },
@@ -353,7 +353,7 @@ SPEC = {
                             "help": "Commits an open Transaction. File modifications made on this Transaction are preserved and the Branch is\nupdated to point to the Transaction.\n\nRequired scopes: [api:datasets-write]",
                             "http": "POST /v2/datasets/{datasetRid}/transactions/{transactionRid}/commit",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_rid", "in": "path", "api": "transactionRid", "type": "str", "schema": "TransactionRid", "required": True},
                             ],
                         },
@@ -364,7 +364,7 @@ SPEC = {
                             "help": "Creates a Transaction on a Branch of a Dataset.\n\nRequired scopes: [api:datasets-write]",
                             "http": "POST /v2/datasets/{datasetRid}/transactions",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_type", "in": "body", "type": "choice", "choices": ["APPEND", "UPDATE", "SNAPSHOT", "DELETE"], "required": True},
                                 {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The name of the Branch on which to create the Transaction. Defaults to `master` for most enrollments."},
                             ],
@@ -376,7 +376,7 @@ SPEC = {
                             "help": "Gets a Transaction of a Dataset.\n\nRequired scopes: [api:datasets-read]",
                             "http": "GET /v2/datasets/{datasetRid}/transactions/{transactionRid}",
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_rid", "in": "path", "api": "transactionRid", "type": "str", "schema": "TransactionRid", "required": True},
                             ],
                         },
@@ -388,7 +388,7 @@ SPEC = {
                             "http": "GET /v2/datasets/{datasetRid}/transactions/{transactionRid}/job",
                             "beta": True,
                             "params": [
-                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "required": True},
+                                {"name": "dataset_rid", "in": "path", "api": "datasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True},
                                 {"name": "transaction_rid", "in": "path", "api": "transactionRid", "type": "str", "schema": "TransactionRid", "required": True},
                             ],
                         },
@@ -409,7 +409,7 @@ SPEC = {
                     "help": "Adds one or more backing datasets to a View. Any duplicates with the same dataset RID and branch name are\nignored.\n\nRequired scopes: [api:datasets-write]",
                     "http": "POST /v2/datasets/views/{viewDatasetRid}/addBackingDatasets",
                     "params": [
-                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "required": True, "help": "The rid of the View."},
+                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True, "help": "The rid of the View."},
                         {"name": "backing_datasets", "in": "body", "type": "json", "schema": "List[ViewBackingDataset]", "required": True},
                         {"name": "branch", "in": "body", "type": "str"},
                     ],
@@ -421,7 +421,7 @@ SPEC = {
                     "help": "Adds a primary key to a View that does not already have one. Primary keys are treated as\nguarantees provided by the creator of the dataset.\n\nRequired scopes: [api:datasets-write]",
                     "http": "POST /v2/datasets/views/{viewDatasetRid}/addPrimaryKey",
                     "params": [
-                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "required": True, "help": "The rid of the View."},
+                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True, "help": "The rid of the View."},
                         {"name": "primary_key", "in": "body", "type": "json", "schema": "ViewPrimaryKey", "required": True},
                         {"name": "branch", "in": "body", "type": "str"},
                     ],
@@ -434,7 +434,7 @@ SPEC = {
                     "http": "POST /v2/datasets/views",
                     "params": [
                         {"name": "backing_datasets", "in": "body", "type": "json", "schema": "List[ViewBackingDataset]", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                         {"name": "view_name", "in": "body", "type": "str", "required": True},
                         {"name": "branch", "in": "body", "type": "str", "help": "The branch name of the View. If not specified, defaults to `master` for most enrollments."},
                         {"name": "primary_key", "in": "body", "type": "json", "schema": "ViewPrimaryKey"},
@@ -447,7 +447,7 @@ SPEC = {
                     "help": "Get metadata for a View.\n\nRequired scopes: []",
                     "http": "GET /v2/datasets/views/{viewDatasetRid}",
                     "params": [
-                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "required": True, "help": "The rid of the View."},
+                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True, "help": "The rid of the View."},
                         {"name": "branch", "in": "query", "api": "branch", "type": "str"},
                     ],
                 },
@@ -459,7 +459,7 @@ SPEC = {
                     "http": "POST /v2/datasets/views/{viewDatasetRid}/removeBackingDatasets",
                     "destructive": True,
                     "params": [
-                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "required": True, "help": "The rid of the View."},
+                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True, "help": "The rid of the View."},
                         {"name": "backing_datasets", "in": "body", "type": "json", "schema": "List[ViewBackingDataset]", "required": True},
                         {"name": "branch", "in": "body", "type": "str"},
                     ],
@@ -472,7 +472,7 @@ SPEC = {
                     "http": "PUT /v2/datasets/views/{viewDatasetRid}/replaceBackingDatasets",
                     "destructive": True,
                     "params": [
-                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "required": True, "help": "The rid of the View."},
+                        {"name": "view_dataset_rid", "in": "path", "api": "viewDatasetRid", "type": "str", "schema": "DatasetRid", "resource": "dataset", "required": True, "help": "The rid of the View."},
                         {"name": "backing_datasets", "in": "body", "type": "json", "schema": "List[ViewBackingDataset]", "required": True},
                         {"name": "branch", "in": "body", "type": "str"},
                     ],

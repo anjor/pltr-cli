@@ -41,9 +41,9 @@ client.models.LiveDeployment: create, disable, get, list, replace, start, transf
 
 [beta] Lists direct live deployments for the specified Model, optionally filtered by branch.
 
-`pltr api models live-deployment list --model-rid TEXT [OPTIONS]`
+`pltr api models live-deployment list --model-rid RID|PATH [OPTIONS]`
 
-- `--model-rid` TEXT (required): The Resource Identifier (RID) of the Model to list live deployments for.
+- `--model-rid` RID|PATH (required): The Resource Identifier (RID) of the Model to list live deployments for.
 - Options: `--branch` TEXT
 - beta · SDK: `models.LiveDeployment.list`
 
@@ -85,10 +85,10 @@ client.models.Model: create, experiment, function, get, promote-version, version
 
 [beta] Creates a new Model with no versions.
 
-`pltr api models model create --name TEXT --parent-folder-rid TEXT [OPTIONS]`
+`pltr api models model create --name TEXT --parent-folder-rid RID|PATH [OPTIONS]`
 
 - `--name` TEXT (required)
-- `--parent-folder-rid` TEXT (required)
+- `--parent-folder-rid` RID|PATH (required)
 - beta · SDK: `models.Model.create`
 
 ### pltr api models model get
@@ -97,7 +97,7 @@ client.models.Model: create, experiment, function, get, promote-version, version
 
 `pltr api models model get MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - beta · SDK: `models.Model.get`
 
 ### pltr api models model promote-version
@@ -106,7 +106,7 @@ client.models.Model: create, experiment, function, get, promote-version, version
 
 `pltr api models model promote-version MODEL_RID --source-model-version-rid TEXT [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `--source-model-version-rid` TEXT (required)
 - Options: `--branch` TEXT
 - beta · SDK: `models.Model.promote_version`
@@ -121,7 +121,7 @@ client.models.Model.Experiment: artifact-table, get, search, series
 
 `pltr api models model experiment get MODEL_RID EXPERIMENT_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `EXPERIMENT_RID`: ExperimentRid.
 - beta · SDK: `models.Model.Experiment.get`
 
@@ -131,7 +131,7 @@ client.models.Model.Experiment: artifact-table, get, search, series
 
 `pltr api models model experiment search MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - Options: `--order-by` JSON, `--where` JSON
 - beta · paged · SDK: `models.Model.Experiment.search`
 
@@ -145,7 +145,7 @@ client.models.Model.Experiment.ArtifactTable: json, parquet
 
 `pltr api models model experiment artifact-table json MODEL_RID EXPERIMENT_RID EXPERIMENT_ARTIFACT_TABLE_NAME [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `EXPERIMENT_RID`: ExperimentRid.
 - `EXPERIMENT_ARTIFACT_TABLE_NAME`: ExperimentArtifactName.
 - Options: `--offset` INTEGER
@@ -157,7 +157,7 @@ client.models.Model.Experiment.ArtifactTable: json, parquet
 
 `pltr api models model experiment artifact-table parquet MODEL_RID EXPERIMENT_RID EXPERIMENT_ARTIFACT_TABLE_NAME [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `EXPERIMENT_RID`: ExperimentRid.
 - `EXPERIMENT_ARTIFACT_TABLE_NAME`: ExperimentArtifactName.
 - beta · output: binary (to `--output FILE` or a pipe) · SDK: `models.Model.Experiment.ArtifactTable.parquet`
@@ -172,7 +172,7 @@ client.models.Model.Experiment.Series: json, parquet
 
 `pltr api models model experiment series json MODEL_RID EXPERIMENT_RID EXPERIMENT_SERIES_NAME [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `EXPERIMENT_RID`: ExperimentRid.
 - `EXPERIMENT_SERIES_NAME`: SeriesName.
 - Options: `--offset` INTEGER
@@ -184,7 +184,7 @@ client.models.Model.Experiment.Series: json, parquet
 
 `pltr api models model experiment series parquet MODEL_RID EXPERIMENT_RID EXPERIMENT_SERIES_NAME [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `EXPERIMENT_RID`: ExperimentRid.
 - `EXPERIMENT_SERIES_NAME`: SeriesName.
 - beta · output: binary (to `--output FILE` or a pipe) · SDK: `models.Model.Experiment.Series.parquet`
@@ -199,7 +199,7 @@ client.models.Model.Function: create, get, replace
 
 `pltr api models model function create MODEL_RID --api-name TEXT --display-name TEXT --is-row-wise [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `--api-name` TEXT (required)
 - `--display-name` TEXT (required)
 - `--is-row-wise`, `--no-is-row-wise` (required)
@@ -212,7 +212,7 @@ client.models.Model.Function: create, get, replace
 
 `pltr api models model function get MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - beta · SDK: `models.Model.Function.get`
 
 ### pltr api models model function replace
@@ -221,7 +221,7 @@ client.models.Model.Function: create, get, replace
 
 `pltr api models model function replace MODEL_RID --api-name TEXT --is-row-wise [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `--api-name` TEXT (required)
 - `--is-row-wise`, `--no-is-row-wise` (required)
 - Options: `--ontology-binding` TEXT
@@ -237,7 +237,7 @@ client.models.Model.Version: create, get, list
 
 `pltr api models model version create MODEL_RID --model-api JSON --model-files JSON [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `--model-api` JSON (required): ModelApi.
 - `--model-files` JSON (required): ModelFiles.
 - Options: `--backing-repositories` TEXT, `--conda-requirements` TEXT
@@ -249,7 +249,7 @@ client.models.Model.Version: create, get, list
 
 `pltr api models model version get MODEL_RID MODEL_VERSION_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - `MODEL_VERSION_RID`: ModelVersionRid.
 - beta · SDK: `models.Model.Version.get`
 
@@ -259,7 +259,7 @@ client.models.Model.Version: create, get, list
 
 `pltr api models model version list MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: ModelRid.
+- `MODEL_RID` (RID or path): ModelRid.
 - Options: `--branch` TEXT
 - beta · paged · SDK: `models.Model.Version.list`
 
@@ -271,10 +271,10 @@ client.models.ModelStudio: config-version, create, get, launch, run
 
 [beta] Creates a new Model Studio.
 
-`pltr api models model-studio create --name TEXT --parent-folder-rid TEXT [OPTIONS]`
+`pltr api models model-studio create --name TEXT --parent-folder-rid RID|PATH [OPTIONS]`
 
 - `--name` TEXT (required): The name of the Model Studio.
-- `--parent-folder-rid` TEXT (required): The RID of the parent folder where the studio will be created.
+- `--parent-folder-rid` RID|PATH (required): The RID of the parent folder where the studio will be created.
 - beta · SDK: `models.ModelStudio.create`
 
 ### pltr api models model-studio get

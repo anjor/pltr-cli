@@ -36,7 +36,7 @@ SPEC = {
                     "http": "GET /v2/aipAgents/agents/{agentRid}",
                     "beta": True,
                     "params": [
-                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                         {"name": "version", "in": "query", "api": "version", "type": "str", "help": "The version of the Chatbot Studio Agent to retrieve. If not specified, the latest published version will be returned."},
                     ],
                 },
@@ -56,7 +56,7 @@ SPEC = {
                             "http": "GET /v2/aipAgents/agents/{agentRid}/agentVersions/{agentVersionString}",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "agent_version_string", "in": "path", "api": "agentVersionString", "type": "str", "schema": "AgentVersionString", "required": True, "help": "The semantic version of the Chatbot Studio Agent, formatted as \"majorVersion.minorVersion\"."},
                             ],
                         },
@@ -69,7 +69,7 @@ SPEC = {
                             "beta": True,
                             "paged": "iterator",
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                             ],
@@ -90,7 +90,7 @@ SPEC = {
                             "http": "POST /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}/blockingContinue",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                 {"name": "parameter_inputs", "in": "body", "type": "json", "schema": "Dict[ParameterId, ParameterValue]", "required": True, "help": "Any supplied values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to pass to the Chatbot Studio Agent for the exchange."},
                                 {"name": "user_input", "in": "body", "type": "json", "schema": "UserTextInput", "required": True, "help": "The user message for the Chatbot Studio Agent to respond to."},
@@ -107,7 +107,7 @@ SPEC = {
                             "beta": True,
                             "destructive": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                 {"name": "message_id", "in": "body", "type": "str", "required": True, "help": "The identifier for the in-progress exchange to cancel. This should match the `messageId` which was provided when initiating the exchange with `streamingContinue`."},
                                 {"name": "response", "in": "body", "type": "str", "help": "When specified, the exchange is added to the session with the client-provided response as the result. When omitted, the exchange is not added to the session."},
@@ -121,7 +121,7 @@ SPEC = {
                             "http": "POST /v2/aipAgents/agents/{agentRid}/sessions",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "agent_version", "in": "body", "type": "str", "help": "The version of the Chatbot Studio Agent associated with the session. This can be set by clients on session creation. If not specified, defaults to use the latest published version of the Chatbot Studio Agent at session creation time."},
                             ],
                         },
@@ -134,7 +134,7 @@ SPEC = {
                             "beta": True,
                             "destructive": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                             ],
                         },
@@ -146,7 +146,7 @@ SPEC = {
                             "http": "GET /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                             ],
                         },
@@ -159,7 +159,7 @@ SPEC = {
                             "beta": True,
                             "paged": "iterator",
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                             ],
@@ -172,7 +172,7 @@ SPEC = {
                             "http": "PUT /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}/ragContext",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                 {"name": "parameter_inputs", "in": "body", "type": "json", "schema": "Dict[ParameterId, ParameterValue]", "required": True, "help": "Any values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to use for the context retrieval."},
                                 {"name": "user_input", "in": "body", "type": "json", "schema": "UserTextInput", "required": True, "help": "The user message to retrieve relevant context for from the configured Chatbot Studio Agent data sources."},
@@ -187,7 +187,7 @@ SPEC = {
                             "beta": True,
                             "binary": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                 {"name": "parameter_inputs", "in": "body", "type": "json", "schema": "Dict[ParameterId, ParameterValue]", "required": True, "help": "Any supplied values for [application variables](https://palantir.com/docs/foundry/chatbot-studio/application-state/) to pass to the Chatbot Studio Agent for the exchange."},
                                 {"name": "user_input", "in": "body", "type": "json", "schema": "UserTextInput", "required": True, "help": "The user message for the Chatbot Studio Agent to respond to."},
@@ -204,7 +204,7 @@ SPEC = {
                             "http": "PUT /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}/updateTitle",
                             "beta": True,
                             "params": [
-                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                 {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                 {"name": "title", "in": "body", "type": "str", "required": True, "help": "The new title for the session. The maximum title length is 200 characters. Titles are truncated if they exceed this length."},
                             ],
@@ -225,7 +225,7 @@ SPEC = {
                                     "http": "GET /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}/content",
                                     "beta": True,
                                     "params": [
-                                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                         {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                     ],
                                 },
@@ -245,7 +245,7 @@ SPEC = {
                                     "http": "GET /v2/aipAgents/agents/{agentRid}/sessions/{sessionRid}/sessionTraces/{sessionTraceId}",
                                     "beta": True,
                                     "params": [
-                                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
+                                        {"name": "agent_rid", "in": "path", "api": "agentRid", "type": "str", "schema": "AgentRid", "resource": "agent", "required": True, "help": "An RID identifying a Chatbot Studio Agent created in [AIP Chatbot Studio](https://palantir.com/docs/foundry/chatbot-studio/overview/)."},
                                         {"name": "session_rid", "in": "path", "api": "sessionRid", "type": "str", "schema": "SessionRid", "required": True, "help": "The Resource Identifier (RID) of the conversation session."},
                                         {"name": "session_trace_id", "in": "path", "api": "sessionTraceId", "type": "str", "schema": "SessionTraceId", "required": True, "help": "The unique identifier for the trace."},
                                     ],

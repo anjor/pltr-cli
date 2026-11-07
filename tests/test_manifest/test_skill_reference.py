@@ -280,3 +280,30 @@ def test_resource_parameters_say_they_take_a_path(generator):
     assert generator.render_option(option) == (
         "- `--parent` RID|PATH (required): Folder."
     )
+
+
+def test_generated_path_help_is_not_repeated(generator):
+    path_help = "A Compass path such as /Space/Project/name works too."
+    argument = {
+        "name": "dataset_rid",
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "help": f"Path parameter datasetRid. Type: DatasetRid. {path_help}",
+    }
+    assert generator.render_argument(argument) == (
+        "- `DATASET_RID` (RID or path): DatasetRid."
+    )
+    option = {
+        "name": "parent_folder_rid",
+        "flags": ["--parent-folder-rid"],
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "help": path_help,
+    }
+    assert generator.render_option(option) == (
+        "- `--parent-folder-rid` RID|PATH (required)"
+    )

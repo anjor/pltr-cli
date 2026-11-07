@@ -15,7 +15,7 @@ client.third_party_applications.ThirdPartyApplication: get, website
 
 `pltr api third-party-applications third-party-application get THIRD_PARTY_APPLICATION_RID [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - beta · SDK: `third_party_applications.ThirdPartyApplication.get`
 
 ## pltr api third-party-applications third-party-application website
@@ -28,7 +28,7 @@ Deploy a version of the Website.
 
 `pltr api third-party-applications third-party-application website deploy THIRD_PARTY_APPLICATION_RID --version TEXT [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - `--version` TEXT (required)
 - SDK: `third_party_applications.ThirdPartyApplication.Website.deploy`
 
@@ -38,7 +38,7 @@ Get the Website.
 
 `pltr api third-party-applications third-party-application website get THIRD_PARTY_APPLICATION_RID [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - SDK: `third_party_applications.ThirdPartyApplication.Website.get`
 
 ### pltr api third-party-applications third-party-application website undeploy
@@ -47,7 +47,7 @@ Remove the currently deployed version of the Website.
 
 `pltr api third-party-applications third-party-application website undeploy THIRD_PARTY_APPLICATION_RID [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - **destructive** (asks first; `--yes` skips) · SDK: `third_party_applications.ThirdPartyApplication.Website.undeploy`
 
 ## pltr api third-party-applications third-party-application website version
@@ -60,7 +60,7 @@ Delete the Version with the specified version.
 
 `pltr api third-party-applications third-party-application website version delete THIRD_PARTY_APPLICATION_RID VERSION_VERSION [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - `VERSION_VERSION`: The semantic version of the Website.
 - **destructive** (asks first; `--yes` skips) · SDK: `third_party_applications.ThirdPartyApplication.Website.Version.delete`
 
@@ -70,7 +70,7 @@ Get the Version with the specified version.
 
 `pltr api third-party-applications third-party-application website version get THIRD_PARTY_APPLICATION_RID VERSION_VERSION [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - `VERSION_VERSION`: The semantic version of the Website.
 - SDK: `third_party_applications.ThirdPartyApplication.Website.Version.get`
 
@@ -80,7 +80,7 @@ Lists all Versions.
 
 `pltr api third-party-applications third-party-application website version list THIRD_PARTY_APPLICATION_RID [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - paged · SDK: `third_party_applications.ThirdPartyApplication.Website.Version.list`
 
 ### pltr api third-party-applications third-party-application website version upload
@@ -89,7 +89,7 @@ Upload a new version of the Website.
 
 `pltr api third-party-applications third-party-application website version upload THIRD_PARTY_APPLICATION_RID --body PATH --version TEXT [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - `--body` PATH (required): The zip file that contains the contents of your application.
 - `--version` TEXT (required)
 - SDK: `third_party_applications.ThirdPartyApplication.Website.Version.upload`
@@ -100,7 +100,7 @@ Upload a new version of the Website.
 
 `pltr api third-party-applications third-party-application website version upload-snapshot THIRD_PARTY_APPLICATION_RID --body PATH --version TEXT [OPTIONS]`
 
-- `THIRD_PARTY_APPLICATION_RID`: An RID identifying a third-party application created in Developer Console.
+- `THIRD_PARTY_APPLICATION_RID` (RID or path): An RID identifying a third-party application created in Developer Console.
 - `--body` PATH (required): The zip file that contains the contents of your application.
 - `--version` TEXT (required)
 - Options: `--snapshot-identifier` TEXT
