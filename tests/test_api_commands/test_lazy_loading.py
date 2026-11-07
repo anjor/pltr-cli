@@ -64,6 +64,24 @@ def test_generated_tree_loads_lazily():
     assert steps["user_list_help"]["sdk"] == steps["import"]["sdk"]
 
 
+def test_every_generated_command_has_contract_metadata():
+    """`iter_commands` (what the manifest reads) sees the whole generated tree."""
+    from pltr.commands.api._runtime import ApiCommand
+    from pltr.contract import CommandMeta, iter_commands
+
+    entries = [e for e in iter_commands(app) if e.path.startswith("api ")]
+    assert len(entries) == 390
+    for entry in entries:
+        assert isinstance(entry.command, ApiCommand), entry.path
+        spec = entry.command.spec
+        assert entry.meta == CommandMeta(
+            sdk=(entry.command.sdk_method,),
+            beta=bool(spec.get("beta")),
+            destructive=bool(spec.get("destructive")),
+            paged=bool(spec.get("paged")),
+        ), entry.path
+
+
 def test_api_is_listed_in_root_help():
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0

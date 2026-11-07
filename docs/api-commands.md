@@ -1,9 +1,11 @@
 # `pltr api`: generated commands for the whole Foundry Platform API
 
 `pltr api` has one command for every public method of the Foundry Platform SDK
-(`foundry-platform-sdk`, V2 client): 392 commands in 18 namespaces for SDK 1.111.0.
-The commands are generated from the SDK, so they mirror it one to one and stay
-complete after an SDK upgrade with a regeneration instead of hand work.
+(`foundry-platform-sdk`, V2 client) that can be called: 390 commands in 18
+namespaces for SDK 1.111.0 (4 of its 394 methods have no command, see
+[below](#methods-without-a-command)). The commands are generated from the SDK, so
+they mirror it one to one and stay complete after an SDK upgrade with a
+regeneration instead of hand work.
 
 They complement the curated commands (`pltr dataset`, `pltr ontology`,
 `pltr orchestration`, ...). Curated commands remain the polished path for common
@@ -11,9 +13,11 @@ tasks, with friendlier arguments and tables. Reach for `pltr api` when you need
 an endpoint the curated commands don't cover, or when you want the API's exact
 request and response shapes, for example in scripts and agents.
 
-Every generated command uses pltr's authentication and profiles, prints the SDK's
-own JSON with `--format json`, returns documented exit codes, labels beta
-endpoints and asks before destructive operations.
+Every generated command uses pltr's authentication (profiles, or `FOUNDRY_*`
+environment variables) and follows the same output, error and exit-code contract
+as the curated commands (see the README's "Output, errors and exit codes"): JSON
+is the SDK's own serialization, beta endpoints are labeled and destructive
+operations ask first.
 
 ## The command tree
 
@@ -67,9 +71,11 @@ Everything else is an option named after the SDK parameter (`page_size` becomes
 | `preview`, `request_timeout` | not exposed (`preview` is automatic, see Beta) |
 
 Optional parameters you leave out are not sent, so the API's defaults apply.
-An SDK parameter whose name collides with one of pltr's own options gets an
+An SDK parameter whose name collides with one of pltr's shared options gets an
 `--api-` prefix: `pltr api datasets dataset read-table --api-format CSV` passes
-the API's `format` parameter (`--format` stays pltr's output format).
+the API's `format` parameter (`--format` stays pltr's output format). The paging
+parameters `page_size` and `page_token` of paged endpoints are the shared
+`--page-size` and `--page-token` options.
 
 For uploads whose API needs the content length (`ontologies attachment upload`),
 pltr fills in `--content-length` from the size of `--body` when you leave it out.
@@ -92,29 +98,35 @@ fail with exit code 2 and nothing is sent.
 
 ## Output
 
+Every generated command has the shared options of all pltr commands:
+
 | Option | Effect |
 |---|---|
-| `--format table` | default; a table of the result (one row per item for lists) |
+| `--format table` (`-f`) | default; a table of the result (one row per item for lists) |
 | `--format json` | the SDK's own serialization (see below) |
-| `--format csv` | CSV with one column per top-level field |
+| `--format csv` | CSV with one column per field |
 | `PLTR_FORMAT=json` | sets the default format, for agents and CI |
-| `--output FILE`, `-o FILE` | write the formatted output to a file instead of stdout |
-| `--profile NAME` | authentication profile (default: the active profile) |
+| `--output FILE`, `-o FILE` | write the output to a file instead of stdout |
+| `--profile NAME`, `-p NAME` | authentication profile (default: the active profile or `FOUNDRY_*` variables) |
 
 stdout carries only data. Messages (such as "more results are available") and
-errors go to stderr; in JSON mode stderr carries only the structured error, if any.
+errors go to stderr; in JSON mode stderr carries only JSON Lines (warnings and the
+structured error, if any).
 
 JSON output is the SDK's serialization of the response model,
 `model_dump(mode="json", by_alias=True, exclude_none=True)`: Foundry API field names
 (camelCase), null fields left out, datetimes as ISO-8601 strings, 64-bit integers
-(`Long`) as strings, exactly as the SDK sends them. A single object is printed as
-that object. An endpoint that returns no content prints `null`.
+(`Long`) inside models as strings, exactly as the SDK sends them. A single object is
+printed as that object. An endpoint that returns no content prints `null` (in table
+mode, a "Done" message on stderr).
 
 ### Pagination
 
 Paged endpoints (they return an SDK `ResourceIterator`, or a response with a
-`nextPageToken`, such as `admin user search`) print one page by default, in the
-API's own response shape:
+`nextPageToken`, such as `admin user search`) have the shared paging options
+`--page-size`, `--page-token`, `--max-pages` and `--all`. By default they print one
+page, exactly as the API returns it, including page-level fields such as
+`totalCount`:
 
 ```bash
 $ pltr api admin user list --page-size 2 --format json
@@ -127,26 +139,28 @@ $ pltr api admin user list --page-size 2 --format json
 }
 ```
 
-Pass the token back with `--page-token` to get the next page, or use `--all` to
-fetch every page and print `{"data": [...all items...]}`. Page-level fields such as
-`totalCount` appear in single-page output only. In table and CSV mode the next
-page token is printed on stderr.
+Pass the token back with `--page-token` to get the next page. `--max-pages N`
+fetches up to N pages and `--all` every page; both print the merged items in the
+paged shape, `{"data": [...], "nextPageToken": "..."}`, with `nextPageToken` only
+when more pages remain (page-level fields such as `totalCount` appear in
+single-page output only). Tables and CSV show one row per item; the next page
+token is printed on stderr.
 
 ### Binary responses
 
 Commands that return file content (`datasets dataset file content`,
 `media-sets media-set read`, `sql-queries sql-query get-results`, ...) stream the
-bytes to `--output-file FILE`, or to stdout when stdout is not a terminal:
+bytes to `--output FILE` (`-o`), or to stdout when stdout is not a terminal:
 
 ```bash
-pltr api datasets dataset file content "$DATASET_RID" data/flights.csv --output-file flights.csv
+pltr api datasets dataset file content "$DATASET_RID" data/flights.csv -o flights.csv
 pltr api datasets dataset file content "$DATASET_RID" data/flights.csv > flights.csv
 ```
 
-pltr refuses to write binary data to a terminal (exit code 2); a failed download
-leaves no partial file behind. Arrow and Parquet results
-(`datasets dataset read-table`, `sql-queries sql-query get-results`) are written as
-the raw bytes the API returns.
+pltr refuses to write binary data to a terminal (exit code 2; `-o -` forces
+stdout); a failed download leaves no partial file behind. Arrow and Parquet
+results (`datasets dataset read-table`, `sql-queries sql-query get-results`) are
+written as the raw bytes the API returns.
 
 ## Beta endpoints
 
@@ -163,9 +177,11 @@ nor fails.
 
 Commands that delete, remove, revoke, replace, reset, clear, cancel, abort,
 disable or undeploy something, or overwrite data, ask for confirmation on stderr
-before calling the API. `--yes` (`-y`) skips the question. When stdin is not a
-terminal pltr never prompts: without `--yes` the command fails with exit code 2
-and sends nothing.
+before calling the API, showing the endpoint (`Run DELETE /v2/admin/users/... ?`).
+`--yes` (`-y`) skips the question. When stdin is not a terminal pltr never
+prompts: without `--yes` the command fails with exit code 2
+(`confirmation_required`) and sends nothing. Answering anything but `y` exits with
+code 1 (`aborted`).
 
 ```bash
 pltr api admin user delete "$USER_ID"          # asks first
@@ -182,31 +198,41 @@ and `third-party-applications third-party-application website undeploy`.
 
 ## Errors and exit codes
 
-| Exit code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | unexpected error, "no" at a confirmation prompt, or an SDK method missing from the installed SDK |
-| 2 | usage error: bad or missing arguments, invalid JSON input, a value the SDK rejects, a destructive command without `--yes` and no terminal |
-| 3 | authentication: no usable profile or credentials, HTTP 401 |
-| 4 | permission denied (HTTP 403) |
-| 5 | not found (HTTP 404) |
-| 6 | the API rejected the request (HTTP 400, 422) |
-| 7 | other API or network errors (409, 413, 429, 5xx, timeouts, connection errors) |
+Generated commands use pltr's shared exit codes and error types (the full table is
+in the README):
+
+| Exit code | Meaning | Error `type` |
+|---|---|---|
+| 0 | success | |
+| 1 | unexpected error, "no" at a confirmation prompt, or an SDK method or parameter missing from the installed SDK | `unexpected_error`, `aborted` |
+| 2 | usage error: bad or missing arguments, invalid JSON input, a value the SDK rejects before sending (such as a malformed RID or user ID), binary output to a terminal, a destructive command without `--yes` and no terminal | `usage_error`, `confirmation_required` |
+| 3 | authentication: no usable profile or credentials, HTTP 401 | `auth_error` |
+| 4 | permission denied (HTTP 403) | `permission_denied` |
+| 5 | not found (HTTP 404) | `not_found`, `api_not_found` |
+| 6 | the API rejected the request (HTTP 400, 422) | `validation_error` |
+| 7 | other API or network errors (409, 413, 429, 5xx, timeouts, connection errors) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` |
 
 With `--format json` (or `PLTR_FORMAT=json`) a failure writes one compact JSON
-object to stderr, including the Foundry error name and parameters for API errors:
+object as the last stderr line, including the Foundry error name and parameters
+for API errors:
 
 ```json
-{"type":"not_found","message":"UserNotFound: The given User could not be found.","exitCode":5,"statusCode":404,"errorName":"UserNotFound","errorInstanceId":"...","parameters":{"userId":"..."}}
+{"type":"not_found","message":"UserNotFound: The given User could not be found. (userId=...)","exitCode":5,"statusCode":404,"errorCode":"NOT_FOUND","errorName":"UserNotFound","errorInstanceId":"...","parameters":{"userId":"..."}}
 ```
 
 ## Methods without a command
 
-Two SDK methods stream server-sent events, which a command printing one JSON
-document can't represent yet: `functions.Query.streaming_execute` and
-`functions.Query.streaming_execute_events`. Use `pltr api functions query execute`
-instead. `uv run python scripts/coverage.py` lists every method, its command and
-the exclusions with their reasons.
+Four SDK methods have no command; `uv run python scripts/coverage.py` lists them
+with their reasons:
+
+- `functions.Query.streaming_execute` and `functions.Query.streaming_execute_events`
+  stream server-sent events, which a command printing one JSON document can't
+  represent yet. Use `pltr api functions query execute` instead.
+- `media_sets.MediaSet.tile` and `models.ModelStudio.ConfigVersion.get` can't be
+  called through foundry-platform-sdk 1.111.0: the SDK URL-quotes path parameters
+  with `urllib.parse.quote`, which raises for their integer path parameters
+  (`z`/`x`/`y`, the config version number), so the SDK fails before sending a
+  request. They come back once the SDK handles integer path parameters.
 
 ## SDK versions
 
@@ -232,11 +258,16 @@ uv tool install pltr-cli    # or: pipx install pltr-cli
    - a method whose name looks destructive (`delete`, `remove*`, ...) must be added
      to `V2_DESTRUCTIVE`, or to `not_destructive` if it isn't;
    - a server-sent-events method must be added to `excluded` with a reason;
+   - a method with an integer path parameter must be excluded while the SDK can't
+     URL-quote it (try calling it first: if the new SDK handles it, relax the check
+     and drop the two `INT_PATH_REASON` exclusions);
    - a configured method that no longer exists must be removed from the config.
 3. Review the diff of `src/pltr/commands/api/_specs/`: new and removed commands,
    `beta` changes, new parameters. Read the names of new methods: if one destroys
    or overwrites data without saying so, add it to `V2_DESTRUCTIVE` and regenerate.
-4. Run `uv run python scripts/coverage.py` and `uv run pytest tests/test_api_commands`.
+4. Run `uv run python scripts/coverage.py`, `uv run pytest tests/test_api_commands`
+   and `uv run pytest tests/test_contract` (the CLI contract test runs every
+   generated command against 404 and 400 responses).
 
 `tests/test_api_commands/test_generator.py` regenerates the specs in memory and
 fails when the committed files differ, so CI catches a forgotten regeneration. The
@@ -257,8 +288,13 @@ output is byte-identical on Python 3.10 to 3.13 and on every OS.
   specs. Nothing is imported until it is needed: `pltr --help` doesn't load any
   spec, `pltr api --help` reads only the index, and `pltr api datasets ...` loads only
   the datasets spec.
-- `src/pltr/commands/api/_adapter.py` holds output formatting, error mapping, exit
-  codes and confirmation for the generated commands.
+- Output, errors, exit codes, confirmation and the shared options come from
+  `pltr.contract`, like for the curated commands
+  (`docs/development/command-contract.md`). Each command records its
+  `CommandMeta` (SDK method, beta, destructive, paged) through `@pltr_command`, so
+  `pltr.contract.iter_commands` lists the generated tree with complete metadata.
+- Commands get their SDK client the way the services do, from
+  `pltr.services.base.AuthManager`, so tests serve them with `stub_foundry_http`.
 
 A method spec looks like this (keys left out when they don't apply):
 
