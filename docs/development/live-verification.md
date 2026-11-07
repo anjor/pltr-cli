@@ -399,8 +399,11 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
   model's API name; RIDs may or may not work.** Smoke (API name):
   `language-models.anthropic-messages`, `language-models.openai-embeddings`.
   Manual: the same with a model RID.
-- **`openai embeddings --encoding base64`.** Manual: `pltr language-models
-  openai embeddings <model> -i 'text' --encoding base64 --format json`.
+- **Whether `encodingFormat: BASE64` embeddings decode with the SDK.** The
+  curated command refuses `--encoding base64` (the SDK's response model only
+  holds floats). Manual: `pltr api language-models open-ai-model embeddings
+  <model> --input x --encoding-format BASE64 --format json`; expected exit 7,
+  `invalid_response`. If it succeeds, the curated choice can come back.
 - **Data Connection source RIDs look like `ri.magritte..source.<id>` and show
   up in `pltr folder list` as `MAGRITTE_SOURCE` resources.** Partly:
   `connectivity.connection-get` with your `connectivity.connection_rid`.

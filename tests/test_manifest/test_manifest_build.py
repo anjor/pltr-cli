@@ -121,8 +121,8 @@ def test_groups(manifest):
     assert groups["pltr api"]["description"].startswith("Generated commands")
     assert "pltr api admin user" in groups
     assert "pltr commands" in groups
-    # Commands are not groups: `pltr verify` runs its own callback and has no
-    # subcommands; `pltr shell` is both.
+    # Commands are not groups: `pltr verify` is a plain command; `pltr shell`
+    # is both a group and runnable on its own.
     assert "pltr verify" not in groups
     assert "pltr shell" in groups
     for group in manifest["groups"]:

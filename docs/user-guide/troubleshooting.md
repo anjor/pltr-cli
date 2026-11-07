@@ -193,8 +193,10 @@ pltr completion show --shell bash >> ~/.bashrc
 ### `pltr shell`
 
 Type commands without the `pltr` prefix; `help [command]`, `exit` and
-`quit` work, and aliases are expanded. History is saved in
-`~/.config/pltr/repl_history`. With stdin from a file or a pipe, the shell
+`quit` work, and aliases are expanded. History is saved in `repl_history`
+in pltr's configuration directory (`~/.config/pltr`, or under
+`$XDG_CONFIG_HOME`); the file is private (0600) and lines that pass
+credentials are never saved. With stdin from a file or a pipe, the shell
 runs the commands line by line without a prompt.
 
 ## Getting Help

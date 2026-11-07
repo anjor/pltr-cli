@@ -312,8 +312,10 @@ can search. See Added.
   run, not at startup.
 - `pltr <group> --help` shows the group's own help, with RID formats and
   examples, for `dataset`, `folder`, `project`, `resource`, `resource-role`,
-  `space`, `ontology`, `orchestration`, `media-sets`, `connectivity` and
-  `verify`; a one-line description used to replace it. `pltr --help` keeps
+  `space`, `ontology`, `orchestration`, `media-sets` and `connectivity`; a
+  one-line description used to replace it. `pltr verify --help` shows the full
+  description too, and `verify` is now a plain command (`pltr verify foo` is a
+  usage error, not "No such command"). `pltr --help` keeps
   the one-line summaries. `admin`, `sql` and `shell` show their modules'
   descriptions, and `pltr cp --help` its full description.
 - pltr depends on prompt-toolkit instead of click-repl, and declares click,

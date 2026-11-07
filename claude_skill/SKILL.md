@@ -102,9 +102,9 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 ## 4. Safety rules
 
 - **Destructive commands** (`destructive: true`: delete, remove, revoke,
-  replace, reset, cancel, abort and similar) ask for confirmation. Without a
-  terminal they never prompt: they fail with exit code 2 and change nothing
-  unless you pass `--yes`.
+  replace, reset, cancel, abort and similar) ask for confirmation. With
+  `--format json`, or without a terminal, they never prompt: they fail with
+  exit code 2 and change nothing unless you pass `--yes`.
 - Pass `--yes` only for a change the user asked for, on resources they
   named. Show them the exact command first when you're unsure. Never loop a
   destructive command over a list you built yourself without confirming the

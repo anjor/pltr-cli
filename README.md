@@ -482,7 +482,8 @@ you. `--branch` defaults to the dataset's default branch.
   Credentials are stored in the system keyring, never in this file.
 - **Settings and aliases**: `settings.json` and `aliases.json` in the same
   directory.
-- **Shell history**: `~/.config/pltr/repl_history` (for `pltr shell`).
+- **Shell history**: `repl_history` in the configuration directory (for
+  `pltr shell`); private, and lines that pass credentials aren't saved.
 
 pltr only creates the configuration directory when it saves something (for
 example `pltr configure`); reading configuration never needs it.
