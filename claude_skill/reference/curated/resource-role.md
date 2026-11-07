@@ -27,7 +27,7 @@ Grant a role on a resource to a user, a group or everyone.
 
 `pltr resource-role grant RESOURCE_RID --role TEXT [OPTIONS]`
 
-- `RESOURCE_RID`: RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
+- `RESOURCE_RID` (RID or path): RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
 - `--role`, `-r` TEXT (required): Role ID, from the role set of the resource's space (for example compass:manage for Owner in the default role set).
 - `--principal-id`, `-p` TEXT: ID of the user or group (a UUID; usernames and group names are not accepted).
 - `--everyone`: Use the Everyone principal instead of an ID.
@@ -39,7 +39,7 @@ List the role grants on a resource.
 
 `pltr resource-role list RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
+- `RESOURCE_RID` (RID or path): RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
 - `--principal-type`, `-t` USER|GROUP|EVERYONE: Only show grants to users, groups or everyone.
 - `--include-inherited`: Also list the roles the resource inherits from its parents.
 - paged · SDK: `filesystem.Resource.Role.list`
@@ -50,7 +50,7 @@ Revoke a role on a resource from a user, a group or everyone.
 
 `pltr resource-role revoke RESOURCE_RID --role TEXT [OPTIONS]`
 
-- `RESOURCE_RID`: RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
+- `RESOURCE_RID` (RID or path): RID of the resource: a project, folder, dataset or any other filesystem resource (ri.<service>.<instance>.<type>.<id>).
 - `--role`, `-r` TEXT (required): Role ID, from the role set of the resource's space (for example compass:manage for Owner in the default role set).
 - `--principal-id`, `-p` TEXT: ID of the user or group (a UUID; usernames and group names are not accepted).
 - `--everyone`: Use the Everyone principal instead of an ID.

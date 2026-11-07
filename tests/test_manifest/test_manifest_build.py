@@ -150,7 +150,12 @@ def test_curated_entry(entries):
             "type": "string",
             "required": True,
             "multiple": False,
-            "help": "Folder RID (ri.compass.main.folder.<id>).",
+            "acceptsPath": True,
+            "resourceKind": "folder",
+            "help": (
+                "Folder RID (ri.compass.main.folder.<id>). "
+                "A Compass path such as /Space/Project/name works too."
+            ),
         }
     ]
     assert [o["flags"] for o in entry["options"]] == [

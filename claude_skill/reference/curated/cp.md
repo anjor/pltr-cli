@@ -9,8 +9,8 @@ Copy a dataset, or a folder with its contents, into another folder.
 
 `pltr cp SOURCE_RID TARGET_FOLDER_RID [OPTIONS]`
 
-- `SOURCE_RID`: RID of the dataset or folder to copy.
-- `TARGET_FOLDER_RID`: RID of the folder or project to copy into.
+- `SOURCE_RID` (RID or path): RID of the dataset or folder to copy.
+- `TARGET_FOLDER_RID` (RID or path): RID of the folder or project to copy into.
 - `--recursive`, `-r`: Copy a folder with its contents (required when SOURCE_RID is a folder).
 - `--branch`, `-b` TEXT (default: master): Branch whose files are copied, to the same branch of the copy (created there if it isn't the copy's default branch).
 - `--name-suffix` TEXT (default: -copy): Suffix appended to the names of the copies.

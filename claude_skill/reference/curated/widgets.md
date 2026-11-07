@@ -60,5 +60,5 @@ Repositories that store widget set releases.
 
 `pltr widgets repository get REPOSITORY_RID [OPTIONS]`
 
-- `REPOSITORY_RID`: Repository RID (ri.stemma.main.repository.<id>).
+- `REPOSITORY_RID` (RID or path): Repository RID (ri.stemma.main.repository.<id>).
 - beta · SDK: `widgets.Repository.get`

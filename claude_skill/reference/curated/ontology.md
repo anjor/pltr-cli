@@ -182,13 +182,13 @@ Search the objects of an object type with a typed query.
 
 Create an object type (direct HTTP: the SDK can't create object types).
 
-`pltr ontology object-type-create ONTOLOGY_RID --api-name TEXT --display-name TEXT --primary-key TEXT --backing-dataset TEXT [OPTIONS]`
+`pltr ontology object-type-create ONTOLOGY_RID --api-name TEXT --display-name TEXT --primary-key TEXT --backing-dataset RID|PATH [OPTIONS]`
 
 - `ONTOLOGY_RID`: Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
 - `--api-name` TEXT (required): Object type API name.
 - `--display-name` TEXT (required): Object type display name.
 - `--primary-key` TEXT (required): API name of the primary key property.
-- `--backing-dataset` TEXT (required): RID of the backing dataset (ri.foundry.main.dataset.<id>).
+- `--backing-dataset` RID|PATH (required): RID of the backing dataset (ri.foundry.main.dataset.<id>).
 - `--description` TEXT: Object type description.
 - HTTP (direct, labeled exception): `POST /v2/ontologies/{ontology}/objectTypes`, `POST /v1/ontologies/{ontology}/objectTypes`, `POST /ontology-manager/api/ontologies/{ontology}/objectTypes`
 

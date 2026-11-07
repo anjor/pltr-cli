@@ -29,6 +29,8 @@ from ..contract import (
     info,
     load_json_input,
     pltr_command,
+    resource_argument,
+    resource_option,
     spinner,
     success,
     table_rows,
@@ -175,14 +177,16 @@ BUILD_COLUMNS: Columns = {"Build RID": _identity}
 
 DatasetRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "dataset",
         help="Dataset RID (ri.foundry.main.dataset.<id>).",
         autocompletion=complete_rid,
     ),
 ]
 ViewRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "dataset",
         help="View RID (views are datasets: ri.foundry.main.dataset.<id>).",
         autocompletion=complete_rid,
     ),
@@ -234,8 +238,9 @@ EndTransactionOption = Annotated[
 ]
 ParentFolderOption = Annotated[
     str,
-    typer.Option(
+    resource_option(
         "--parent-folder",
+        kind="folder",
         help="RID of the project or folder to create it in "
         "(ri.compass.main.folder.<id>); find one with 'pltr project list' or "
         "'pltr folder list'.",

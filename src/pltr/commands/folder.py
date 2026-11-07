@@ -20,6 +20,8 @@ from ..contract import (
     emit,
     pltr_command,
     profile_option,
+    resource_argument,
+    resource_option,
     spinner,
     success,
 )
@@ -63,8 +65,10 @@ BATCH_COLUMNS: Columns = {
 
 FolderRid = Annotated[
     str,
-    typer.Argument(
-        help="Folder RID (ri.compass.main.folder.<id>).", autocompletion=complete_rid
+    resource_argument(
+        "folder",
+        help="Folder RID (ri.compass.main.folder.<id>).",
+        autocompletion=complete_rid,
     ),
 ]
 
@@ -75,9 +79,10 @@ def create_folder(
     name: Annotated[str, typer.Argument(help="Display name of the new folder.")],
     parent_folder: Annotated[
         str,
-        typer.Option(
+        resource_option(
             "--parent-folder",
             "-p",
+            kind="folder",
             help=(
                 "RID of the project or folder to create the folder in. Folders "
                 "can only be created inside a project; find one with "
@@ -128,7 +133,8 @@ def get_folder(
 def list_children(
     folder_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "folder",
             help=(
                 "RID of the folder, project or space to list (the API can't "
                 "list the root folder: find spaces with 'pltr space list')."
@@ -169,8 +175,9 @@ def list_children(
 def get_folders_batch(
     folder_rids: Annotated[
         List[str],
-        typer.Argument(
-            help=f"Folder RIDs, separated by spaces (at most {MAX_BATCH_SIZE})."
+        resource_argument(
+            "folder",
+            help=f"Folder RIDs, separated by spaces (at most {MAX_BATCH_SIZE}).",
         ),
     ],
     profile: ProfileOption = None,

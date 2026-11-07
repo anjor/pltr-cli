@@ -31,6 +31,7 @@ from ..contract import (
     info,
     load_json_input,
     pltr_command,
+    resource_option,
     spinner,
     success,
     warn,
@@ -659,8 +660,9 @@ def create_object_type(
     ],
     backing_dataset: Annotated[
         str,
-        typer.Option(
+        resource_option(
             "--backing-dataset",
+            kind="dataset",
             help="RID of the backing dataset (ri.foundry.main.dataset.<id>).",
             autocompletion=complete_rid,
         ),

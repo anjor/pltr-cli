@@ -13,10 +13,10 @@ Manage streaming datasets
 
 [beta] Create a streaming dataset with a stream on one branch.
 
-`pltr streams dataset create NAME --folder TEXT --schema TEXT [OPTIONS]`
+`pltr streams dataset create NAME --folder RID|PATH --schema TEXT [OPTIONS]`
 
 - `NAME`: Name of the new streaming dataset.
-- `--folder`, `-f` TEXT (required): RID of the folder or project to create the dataset in (ri.compass.main.folder.<id>; not a user folder).
+- `--folder`, `-f` RID|PATH (required): RID of the folder or project to create the dataset in (ri.compass.main.folder.<id>; not a user folder).
 - `--schema`, `-s` TEXT (required): Foundry stream schema as JSON, @file.json or @- (stdin): a "fields" list of {"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional "keyFieldNames", e.g. {"fields": [{"name"...
 - `--branch`, `-b` TEXT: Branch of the initial stream (default: the default branch, usually master).
 - `--compressed`, `--no-compressed`: Compress the stream (default: off for a new stream).
@@ -34,7 +34,7 @@ Manage streams and publish records
 
 `pltr streams stream create DATASET_RID --branch TEXT --schema TEXT [OPTIONS]`
 
-- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `DATASET_RID` (RID or path): RID of the streaming dataset (ri.foundry.main.dataset.<id>).
 - `--branch`, `-b` TEXT (required): Name of the new branch to create the stream on.
 - `--schema`, `-s` TEXT (required): Foundry stream schema as JSON, @file.json or @- (stdin): a "fields" list of {"name", "schema": {"nullable", "dataType": {"type"}}} objects and optional "keyFieldNames", e.g. {"fields": [{"name"...
 - `--compressed`, `--no-compressed`: Compress the stream (default: off for a new stream).
@@ -48,7 +48,7 @@ Get the stream on a branch: its schema, view RID and settings.
 
 `pltr streams stream get DATASET_RID --branch TEXT [OPTIONS]`
 
-- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `DATASET_RID` (RID or path): RID of the streaming dataset (ri.foundry.main.dataset.<id>).
 - `--branch`, `-b` TEXT (required): Branch of the stream.
 - SDK: `streams.Dataset.Stream.get`
 
@@ -58,7 +58,7 @@ Publish one record to a stream.
 
 `pltr streams stream publish DATASET_RID --branch TEXT --record TEXT [OPTIONS]`
 
-- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `DATASET_RID` (RID or path): RID of the streaming dataset (ri.foundry.main.dataset.<id>).
 - `--branch`, `-b` TEXT (required): Branch of the stream.
 - `--record`, `-r` TEXT (required): Record as a JSON object, @file.json or @- (stdin).
 - `--view` TEXT: Write only to the stream view with this RID (advanced; default: the branch's latest stream).
@@ -70,7 +70,7 @@ Publish a batch of records to a stream in one request.
 
 `pltr streams stream publish-batch DATASET_RID --branch TEXT --records TEXT [OPTIONS]`
 
-- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `DATASET_RID` (RID or path): RID of the streaming dataset (ri.foundry.main.dataset.<id>).
 - `--branch`, `-b` TEXT (required): Branch of the stream.
 - `--records`, `-r` TEXT (required): Records as a JSON array of objects, @file.json or @- (stdin).
 - `--view` TEXT: Write only to the stream view with this RID (advanced; default: the branch's latest stream).
@@ -82,7 +82,7 @@ Publish a batch of records to a stream in one request.
 
 `pltr streams stream reset DATASET_RID --branch TEXT [OPTIONS]`
 
-- `DATASET_RID`: RID of the streaming dataset (ri.foundry.main.dataset.<id>).
+- `DATASET_RID` (RID or path): RID of the streaming dataset (ri.foundry.main.dataset.<id>).
 - `--branch`, `-b` TEXT (required): Branch of the stream.
 - `--schema`, `-s` TEXT: New stream schema as JSON, @file.json or @-, in the format of 'pltr streams dataset create --schema' (default: keep the current schema).
 - `--compressed`, `--no-compressed`: Turn compression on or off (default: keep the current setting).

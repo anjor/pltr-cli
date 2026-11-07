@@ -11,5 +11,5 @@ Manage third-party applications
 
 `pltr third-party-apps get APPLICATION_RID [OPTIONS]`
 
-- `APPLICATION_RID`: Third-party application RID (ri.third-party-applications.main.application.<id>; shown in Developer Console).
+- `APPLICATION_RID` (RID or path): Third-party application RID (ri.third-party-applications.main.application.<id>; shown in Developer Console).
 - beta · SDK: `third_party_applications.ThirdPartyApplication.get`

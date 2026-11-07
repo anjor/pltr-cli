@@ -24,6 +24,7 @@ from ..contract import (
     collect_pages,
     emit,
     pltr_command,
+    resource_argument,
     spinner,
 )
 from ..services.aip_agents import AipAgentsService
@@ -88,7 +89,8 @@ VERSION_COLUMNS: Columns = {
 
 AgentRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "agent",
         help="Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).",
         autocompletion=complete_rid,
     ),

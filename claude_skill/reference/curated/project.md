@@ -30,7 +30,7 @@ Apply organizations to a project; they must also be on its space.
 
 `pltr project add-orgs PROJECT_RID --org TEXT [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - `--org`, `-o` TEXT (required; repeatable): Organization RID (repeat for several).
 - SDK: `filesystem.Project.add_organizations`
 
@@ -69,7 +69,7 @@ Move a project, and everything in it, to the trash.
 
 `pltr project delete PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Project.get`, `filesystem.Resource.delete`
 
 ### pltr project get
@@ -78,7 +78,7 @@ Get a project's metadata.
 
 `pltr project get PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - SDK: `filesystem.Project.get`
 
 ### pltr project list
@@ -96,7 +96,7 @@ List the RIDs of the organizations applied directly to a project.
 
 `pltr project list-orgs PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - paged · SDK: `filesystem.Project.organizations`
 
 ### pltr project remove-orgs
@@ -105,7 +105,7 @@ Remove organizations from a project.
 
 `pltr project remove-orgs PROJECT_RID --org TEXT [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - `--org`, `-o` TEXT (required; repeatable): Organization RID (repeat for several).
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Project.remove_organizations`
 
@@ -115,7 +115,7 @@ Remove organizations from a project.
 
 `pltr project update PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
+- `PROJECT_RID` (RID or path): Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').
 - `--name`, `-n` TEXT: New display name.
 - `--description`, `-d` TEXT: New description.
 - beta · SDK: `filesystem.Project.get`, `filesystem.Project.replace`

@@ -13,10 +13,10 @@ Create and inspect models
 
 [beta] Create a model (with no versions) in the model registry.
 
-`pltr models model create NAME --folder TEXT [OPTIONS]`
+`pltr models model create NAME --folder RID|PATH [OPTIONS]`
 
 - `NAME`: Name of the new model.
-- `--folder`, `-f` TEXT (required): RID of the folder or project to create the model in (ri.compass.main.folder.<id>).
+- `--folder`, `-f` RID|PATH (required): RID of the folder or project to create the model in (ri.compass.main.folder.<id>).
 - beta · SDK: `models.Model.create`
 
 ### pltr models model get
@@ -25,7 +25,7 @@ Create and inspect models
 
 `pltr models model get MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: Model RID (shown when the model is created).
+- `MODEL_RID` (RID or path): Model RID (shown when the model is created).
 - beta · SDK: `models.Model.get`
 
 ## pltr models version
@@ -38,7 +38,7 @@ Inspect model versions
 
 `pltr models version get MODEL_RID MODEL_VERSION_RID [OPTIONS]`
 
-- `MODEL_RID`: Model RID (shown when the model is created).
+- `MODEL_RID` (RID or path): Model RID (shown when the model is created).
 - `MODEL_VERSION_RID`: Model version RID (find it with 'pltr models version list <MODEL_RID>').
 - beta · SDK: `models.Model.Version.get`
 
@@ -48,6 +48,6 @@ Inspect model versions
 
 `pltr models version list MODEL_RID [OPTIONS]`
 
-- `MODEL_RID`: Model RID (shown when the model is created).
+- `MODEL_RID` (RID or path): Model RID (shown when the model is created).
 - `--branch` TEXT: Branch to list versions from (the API's default is usually master).
 - beta · paged · SDK: `models.Model.Version.list`

@@ -25,6 +25,7 @@ from ..contract import (
     emit,
     output_option,
     pltr_command,
+    resource_argument,
     spinner,
     success,
 )
@@ -63,7 +64,8 @@ ORGANIZATION_COLUMNS: Columns = {"Organization RID": lambda rid: rid}
 
 ProjectRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "project",
         help="Project RID (ri.compass.main.folder.<id>; find it with 'pltr project list').",
         autocompletion=complete_rid,
     ),

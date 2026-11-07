@@ -30,7 +30,7 @@ Create a connection with a direct-connection (Foundry worker) runtime.
 `pltr connectivity connection create DISPLAY_NAME PARENT_FOLDER_RID [CONFIGURATION] [WORKER] [OPTIONS]`
 
 - `DISPLAY_NAME`: Display name of the connection.
-- `PARENT_FOLDER_RID`: RID of the folder to create the connection in.
+- `PARENT_FOLDER_RID` (RID or path): RID of the folder to create the connection in.
 - `CONFIGURATION` (optional): Connection configuration as JSON (inline or @file.json), with its "type": s3, rest, snowflake, databricks, smb or jdbc.
 - `WORKER` (optional): Worker as JSON (inline or @file.json), e.g. {"type": "foundryWorker", "networkEgressPolicyRids": ["<RID>"]}.
 - `--config-file` TEXT: JSON file with the configuration.
@@ -43,7 +43,7 @@ Get a connection: its configuration type, worker and export settings.
 
 `pltr connectivity connection get CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - SDK: `connectivity.Connection.get`
 
 ### pltr connectivity connection get-config
@@ -52,7 +52,7 @@ Get a connection's configuration.
 
 `pltr connectivity connection get-config CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - SDK: `connectivity.Connection.get_configuration`
 
 ### pltr connectivity connection update-export-settings
@@ -61,7 +61,7 @@ Replace a connection's export settings.
 
 `pltr connectivity connection update-export-settings CONNECTION_RID [SETTINGS] [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `SETTINGS` (optional): Export settings as JSON (inline or @file.json): {"exportsEnabled": true, "exportEnabledWithoutMarkingsValidation": false}.
 - `--settings-file` TEXT: JSON file with the export settings.
 - **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.update_export_settings`
@@ -72,7 +72,7 @@ Overwrite secret values on a connection.
 
 `pltr connectivity connection update-secrets CONNECTION_RID --secrets-file PATH [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `--secrets-file`, `-s` PATH (required): JSON file mapping secret names to their new values.
 - **destructive** (asks first; `--yes` skips) · SDK: `connectivity.Connection.update_secrets`
 
@@ -82,7 +82,7 @@ Upload custom JDBC driver JARs to a JDBC connection.
 
 `pltr connectivity connection upload-jdbc-drivers CONNECTION_RID DRIVER_FILES... [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `DRIVER_FILES...`: JDBC driver JAR file(s) to upload.
 - SDK: `connectivity.Connection.upload_custom_jdbc_drivers`
 
@@ -96,7 +96,7 @@ Run a file import; prints the RID of the build that runs it.
 
 `pltr connectivity import execute-file CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `FILE_IMPORT_RID`: File import RID (find it with 'pltr connectivity import list-file').
 - SDK: `connectivity.Connection.FileImport.execute`
 
@@ -106,7 +106,7 @@ Run a table import; prints the RID of the build that runs it.
 
 `pltr connectivity import execute-table CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `TABLE_IMPORT_RID`: Table import RID (find it with 'pltr connectivity import list-table').
 - SDK: `connectivity.Connection.TableImport.execute`
 
@@ -116,8 +116,8 @@ Create a file import (batch sync) from a connection into a dataset.
 
 `pltr connectivity import file CONNECTION_RID DATASET_RID --name TEXT --mode SNAPSHOT|APPEND|UPDATE [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
-- `DATASET_RID`: RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `DATASET_RID` (RID or path): RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
 - `--name`, `-n` TEXT (required): Display name of the import.
 - `--mode` SNAPSHOT|APPEND|UPDATE (required): SNAPSHOT replaces the dataset's files on each run, APPEND adds new files, UPDATE replaces files by name.
 - `--subfolder` TEXT: Folder in the source system to import (default: its root).
@@ -131,7 +131,7 @@ Get a file import.
 
 `pltr connectivity import get-file CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `FILE_IMPORT_RID`: File import RID (find it with 'pltr connectivity import list-file').
 - SDK: `connectivity.Connection.FileImport.get`
 
@@ -141,7 +141,7 @@ Get a table import.
 
 `pltr connectivity import get-table CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `TABLE_IMPORT_RID`: Table import RID (find it with 'pltr connectivity import list-table').
 - SDK: `connectivity.Connection.TableImport.get`
 
@@ -151,7 +151,7 @@ List a connection's file imports (those you can see).
 
 `pltr connectivity import list-file CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - paged · SDK: `connectivity.Connection.FileImport.list`
 
 ### pltr connectivity import list-table
@@ -160,7 +160,7 @@ List a connection's table imports (those you can see).
 
 `pltr connectivity import list-table CONNECTION_RID [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - paged · SDK: `connectivity.Connection.TableImport.list`
 
 ### pltr connectivity import table
@@ -169,8 +169,8 @@ Create a table import (batch sync) from a connection into a dataset.
 
 `pltr connectivity import table CONNECTION_RID DATASET_RID --name TEXT --mode SNAPSHOT|APPEND --config TEXT [OPTIONS]`
 
-- `CONNECTION_RID`: Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
-- `DATASET_RID`: RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
+- `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
+- `DATASET_RID` (RID or path): RID of the dataset the import writes to (ri.foundry.main.dataset.<id>); it can't be changed later.
 - `--name`, `-n` TEXT (required): Display name of the import.
 - `--mode` SNAPSHOT|APPEND (required): SNAPSHOT replaces the dataset on each run, APPEND adds rows.
 - `--config`, `-c` TEXT (required): Import config as JSON (inline or @file.json): its "type" (jdbcImportConfig, postgreSqlImportConfig, snowflakeImportConfig, databricksImportConfig, microsoftSqlServerImportConfig...
