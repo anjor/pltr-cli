@@ -176,6 +176,11 @@ pltr configure configure \
   --client-secret "your-client-secret"
 ```
 
+Without a terminal, `pltr configure configure` never prompts: a missing value
+is a usage error (exit code 2) that names the option to pass, and replacing an
+existing profile needs `--yes`. `--auth-type` is `token` or `oauth`, and is
+inferred from `--token` or the client credentials when you leave it out.
+
 Profiles need a working system keyring. In CI and other headless environments,
 use environment variables instead of `pltr configure`.
 
@@ -307,13 +312,9 @@ pltr configure configure --profile development      # Development work
 pltr configure list-profiles
 ```
 
-Output example:
-```
-Configured profiles:
-  * production (default)
-    development
-    staging
-```
+It prints a table of profile names with a `Default` column (`true` for the
+default profile); `--format json` prints
+`{"data": [{"name": "production", "default": true}, ...]}`.
 
 ### Setting Default Profile
 
@@ -327,8 +328,8 @@ pltr configure set-default development
 # Interactive deletion (with confirmation)
 pltr configure delete old-profile
 
-# Force deletion (skip confirmation)
-pltr configure delete old-profile --force
+# Skip the confirmation (required when stdin is not a terminal)
+pltr configure delete old-profile --yes
 ```
 
 ### Profile Storage
