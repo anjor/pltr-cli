@@ -36,6 +36,7 @@ from pltr.commands import (
 )
 from pltr.commands.cp import cp_command
 from pltr.commands import api as api_commands
+from pltr.commands import manifest as manifest_commands
 from pltr.contract import PltrRootGroup
 
 app = typer.Typer(
@@ -125,6 +126,8 @@ app.command("cp", help="Copy datasets or folders into another Compass folder")(
 )
 # Generated commands for every SDK method, loaded lazily (see pltr.commands.api).
 app.add_typer(api_commands.app, name="api", help=api_commands.HELP)
+# The command manifest: list, search and show every command (see pltr.manifest).
+app.add_typer(manifest_commands.app, name="commands", help=manifest_commands.HELP)
 
 
 def version_callback(value: bool):
