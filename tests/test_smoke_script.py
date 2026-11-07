@@ -870,3 +870,24 @@ def test_live_verification_doc_names_real_checks_and_counts():
             1 for c in smoke.CHECKS if c.group == group and c.kind != "admin write"
         )
         assert int(count) == actual, f"the doc says {group} has {count} checks"
+
+
+def test_a_partial_write_selection_still_cleans_up():
+    checks, _ = smoke.select_checks(
+        ["write.cp"], allow_writes=True, include_admin=False, configured={}
+    )
+    assert [c.id for c in checks] == [
+        "write.folder-create",
+        "write.dataset-create",
+        "write.cp",
+        "write.trash-copy",
+        "write.trash-folder",
+    ]
+    checks, _ = smoke.select_checks(
+        ["write.project-trashed"], allow_writes=True, include_admin=False, configured={}
+    )
+    assert [c.id for c in checks] == [
+        "write.project-create",
+        "write.project-delete",
+        "write.project-trashed",
+    ]

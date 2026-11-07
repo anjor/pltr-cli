@@ -26,6 +26,7 @@
 # rid = "ri.foundry.main.dataset.<uuid>"
 # branch = "master"                  # found: the first branch
 # file_path = "spark/part-0.parquet" # found: the smallest file on the first page
+#                                    # (dataset.files-get downloads it: keep it small)
 
 [sql]
 # A dataset to query, by RID or path; the checks run

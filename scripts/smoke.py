@@ -2351,6 +2351,11 @@ def select_checks(
                 if provider.id not in chosen and allowed(provider):
                     chosen.add(provider.id)
                     queue.append(provider.id)
+    # Whatever creates a resource brings the check that moves it to the trash.
+    created = {key for cid in chosen for key in by_id[cid].capture}
+    for check in checks:
+        if check.cleanup and allowed(check) and set(check.trashes) & created:
+            chosen.add(check.id)
     return [c for c in checks if c.id in chosen], not_run
 
 
