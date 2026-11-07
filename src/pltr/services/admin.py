@@ -1,642 +1,409 @@
 """
-Admin service wrapper for Foundry SDK admin operations.
-Provides a high-level interface for user, group, role, and organization management.
+Admin service wrapper for the Foundry SDK admin API (``client.admin``):
+users, groups, roles, organizations and markings.
+
+Methods return SDK models, SDK iterators and SDK responses unchanged and let
+SDK exceptions propagate, so the error layer can classify them. GA endpoints
+are called without ``preview``; the beta ones (``Role.get``,
+``Role.get_batch`` and ``Organization.create``) always get ``preview=True``.
+
+Users and groups are identified by ID (a UUID), organizations by RID
+(``ri.multipass..organization.<uuid>``), and markings and roles by ID.
 """
 
-from typing import Any, Dict, List, Optional, Callable
-import json
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from .base import BaseService
-from ..utils.pagination import PaginationConfig, PaginationResult
-from ..config.settings import Settings
+
+if TYPE_CHECKING:
+    from foundry_sdk.v2.admin.models import MarkingRole
+
+# The SDK's admin request models are imported inside the methods that build
+# them: importing foundry_sdk.v2.admin.models at module level would slow down
+# every pltr invocation, not just admin commands.
+
+#: Maximum number of IDs one ``get_batch`` request accepts (users, groups,
+#: markings and roles).
+MAX_BATCH_SIZE = 500
+
+
+def _check_batch_size(ids: Sequence[str], kind: str) -> None:
+    if len(ids) > MAX_BATCH_SIZE:
+        raise ValueError(f"Maximum batch size is {MAX_BATCH_SIZE} {kind}")
 
 
 class AdminService(BaseService):
-    """Service wrapper for Foundry admin operations."""
+    """Service wrapper for Foundry admin operations (``client.admin``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry admin service."""
         return self.client.admin
 
-    # User Management Methods
+    # ------------------------------------------------------------------ users
+
     def list_users(
         self, page_size: Optional[int] = None, page_token: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        List all users in the organization.
-
-        DEPRECATED: Use list_users_paginated() instead for better pagination support.
-
-        Args:
-            page_size: Maximum number of users to return per page
-            page_token: Token for pagination (from previous response)
+    ) -> Any:
+        """List one page of users (``User.list``, GA).
 
         Returns:
-            Dictionary containing user list and pagination info
+            The SDK ``ResourceIterator[User]``; constructing it fetched one
+            page (``.data``, ``.next_page_token``).
         """
-        try:
-            response = self.service.User.list(
-                page_size=page_size, page_token=page_token
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to list users: {str(e)}")
+        return self.service.User.list(page_size=page_size, page_token=page_token)
 
-    def list_users_paginated(
-        self,
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> PaginationResult:
-        """
-        List users with full pagination control.
+    def get_user(self, user_id: str) -> Any:
+        """Get a user by ID (``User.get``, GA); returns a ``User`` model."""
+        return self.service.User.get(user_id)
 
-        Args:
-            config: Pagination configuration (page_size, max_pages, etc.)
-            progress_callback: Optional callback(page_num, items_count)
-
-        Returns:
-            PaginationResult with users and metadata
-
-        Example:
-            >>> config = PaginationConfig(page_size=50, max_pages=2)
-            >>> result = service.list_users_paginated(config)
-            >>> print(f"Fetched {result.metadata.items_fetched} users")
-        """
-        try:
-            settings = Settings()
-
-            def fetch_page(page_token: Optional[str]) -> Dict[str, Any]:
-                """Fetch a single page of users."""
-                iterator = self.service.User.list(
-                    page_size=config.page_size or settings.get("page_size", 20),
-                    page_token=page_token,
-                )
-                # ResourceIterator has .data and .next_page_token attributes
-                # Extract them properly for the pagination handler
-                return {
-                    "data": [self._serialize_response(user) for user in iterator.data],
-                    "next_page_token": iterator.next_page_token,
-                }
-
-            # Use response pagination handler
-            return self._paginate_response(fetch_page, config, progress_callback)
-        except Exception as e:
-            raise RuntimeError(f"Failed to list users: {str(e)}")
-
-    def get_user(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get a specific user by ID.
-
-        Args:
-            user_id: The user ID or RID
-
-        Returns:
-            Dictionary containing user information
-        """
-        try:
-            response = self.service.User.get(user_id)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get user {user_id}: {str(e)}")
+    def current_user(self) -> Any:
+        """Get the authenticated user (``User.get_current``, GA); returns a
+        ``User`` model."""
+        return self.service.User.get_current()
 
     def get_current_user(self) -> Dict[str, Any]:
-        """
-        Get information about the current authenticated user.
+        """The authenticated user as the SDK's dict serialization.
 
-        Returns:
-            Dictionary containing current user information
+        ``User.to_dict()``: API field names (``id``, ``username``,
+        ``givenName``, ...) with null fields left out. ``ProjectService``
+        reads the user's ``"id"`` from it; commands use :meth:`current_user`.
         """
-        try:
-            response = self.service.User.get_current()
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get current user: {str(e)}")
+        return self.current_user().to_dict()
 
     def search_users(
         self,
         query: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Search for users by query string.
+    ) -> Any:
+        """Search active users (``User.search``, GA).
 
-        Args:
-            query: Search query string
-            page_size: Maximum number of users to return per page
-            page_token: Token for pagination (from previous response)
+        The API does a case-insensitive prefix match of ``query`` against
+        usernames, given names and family names.
 
         Returns:
-            Dictionary containing search results and pagination info
+            One page: a ``SearchUsersResponse`` (``.data``,
+            ``.next_page_token``).
         """
-        try:
-            response = self.service.User.search(
-                query=query, page_size=page_size, page_token=page_token
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to search users: {str(e)}")
+        from foundry_sdk.v2.admin.models import UserSearchFilter
 
-    def get_user_markings(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get markings/permissions for a specific user.
+        return self.service.User.search(
+            where=UserSearchFilter(type="queryString", value=query),
+            page_size=page_size,
+            page_token=page_token,
+        )
 
-        Args:
-            user_id: The user ID or RID
+    def get_user_markings(self, user_id: str) -> Any:
+        """Get the markings a user can access (``User.get_markings``, GA).
 
         Returns:
-            Dictionary containing user markings information
+            ``GetUserMarkingsResponse``; ``view`` lists the marking IDs.
         """
-        try:
-            response = self.service.User.get_markings(user_id)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get user markings for {user_id}: {str(e)}")
+        return self.service.User.get_markings(user_id)
 
-    def revoke_user_tokens(self, user_id: str) -> Dict[str, Any]:
-        """
-        Revoke all tokens for a specific user.
+    def revoke_user_tokens(self, user_id: str) -> None:
+        """Invalidate all of a user's tokens and sessions
+        (``User.revoke_all_tokens``, GA)."""
+        self.service.User.revoke_all_tokens(user_id)
 
-        Args:
-            user_id: The user ID or RID
+    def delete_user(self, user_id: str) -> None:
+        """Delete a user (``User.delete``, GA)."""
+        self.service.User.delete(user_id)
+
+    def get_batch_users(self, user_ids: List[str]) -> Any:
+        """Get up to 500 users in one request (``User.get_batch``, GA).
 
         Returns:
-            Dictionary containing operation result
+            ``GetUsersBatchResponse``; its ``data`` maps user ID to ``User``.
         """
-        try:
-            self.service.User.revoke_all_tokens(user_id)
-            return {
-                "success": True,
-                "message": f"All tokens revoked for user {user_id}",
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to revoke tokens for user {user_id}: {str(e)}")
+        from foundry_sdk.v2.admin.models import GetUsersBatchRequestElement
 
-    def delete_user(self, user_id: str) -> Dict[str, Any]:
-        """
-        Delete a specific user.
+        _check_batch_size(user_ids, "users")
+        return self.service.User.get_batch(
+            body=[GetUsersBatchRequestElement(user_id=user_id) for user_id in user_ids]
+        )
 
-        Args:
-            user_id: The user ID or RID
+    # ----------------------------------------------------------------- groups
 
-        Returns:
-            Dictionary containing operation result
-        """
-        try:
-            self.service.User.delete(user_id)
-            return {
-                "success": True,
-                "message": f"User {user_id} deleted successfully",
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to delete user {user_id}: {str(e)}")
-
-    def get_batch_users(self, user_ids: List[str]) -> Dict[str, Any]:
-        """
-        Batch retrieve multiple users (up to 500).
-
-        Args:
-            user_ids: List of user IDs or RIDs
-
-        Returns:
-            Dictionary containing user information
-        """
-        if len(user_ids) > 500:
-            raise ValueError("Maximum batch size is 500 users")
-        try:
-            response = self.service.User.get_batch(body=user_ids)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get users batch: {str(e)}")
-
-    # Group Management Methods
     def list_groups(
         self, page_size: Optional[int] = None, page_token: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        List all groups in the organization.
-
-        Args:
-            page_size: Maximum number of groups to return per page
-            page_token: Token for pagination (from previous response)
+    ) -> Any:
+        """List one page of groups (``Group.list``, GA).
 
         Returns:
-            Dictionary containing group list and pagination info
+            The SDK ``ResourceIterator[Group]``; constructing it fetched one
+            page (``.data``, ``.next_page_token``).
         """
-        try:
-            iterator = self.service.Group.list(
-                page_size=page_size, page_token=page_token
-            )
-            # ResourceIterator has .data and .next_page_token attributes
-            # Return structure compatible with formatter.display()
-            groups = [self._serialize_response(group) for group in iterator.data]
-            return {
-                "data": groups,
-                "next_page_token": iterator.next_page_token,
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to list groups: {str(e)}")
+        return self.service.Group.list(page_size=page_size, page_token=page_token)
 
-    def get_group(self, group_id: str) -> Dict[str, Any]:
-        """
-        Get a specific group by ID.
-
-        Args:
-            group_id: The group ID or RID
-
-        Returns:
-            Dictionary containing group information
-        """
-        try:
-            response = self.service.Group.get(group_id)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get group {group_id}: {str(e)}")
+    def get_group(self, group_id: str) -> Any:
+        """Get a group by ID (``Group.get``, GA); returns a ``Group`` model."""
+        return self.service.Group.get(group_id)
 
     def search_groups(
         self,
         query: str,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Search for groups by query string.
+    ) -> Any:
+        """Search groups (``Group.search``, GA).
 
-        Args:
-            query: Search query string
-            page_size: Maximum number of groups to return per page
-            page_token: Token for pagination (from previous response)
+        The API does a case-insensitive prefix match of ``query`` against
+        group names.
 
         Returns:
-            Dictionary containing search results and pagination info
+            One page: a ``SearchGroupsResponse`` (``.data``,
+            ``.next_page_token``).
         """
-        try:
-            response = self.service.Group.search(
-                query=query, page_size=page_size, page_token=page_token
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to search groups: {str(e)}")
+        from foundry_sdk.v2.admin.models import GroupSearchFilter
+
+        return self.service.Group.search(
+            where=GroupSearchFilter(type="queryString", value=query),
+            page_size=page_size,
+            page_token=page_token,
+        )
 
     def create_group(
         self,
+        *,
         name: str,
+        organizations: List[str],
+        attributes: Dict[str, List[str]],
         description: Optional[str] = None,
-        organization_rid: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Create a new group.
+    ) -> Any:
+        """Create a group (``Group.create``, GA); returns a ``Group`` model.
 
         Args:
-            name: The group name
-            description: Optional group description
-            organization_rid: Optional organization RID
+            name: Group name.
+            organizations: RIDs of the organizations whose members can see the
+                group (at least one).
+            attributes: Group attributes (attribute name to values); may be
+                empty.
+            description: Optional description.
+        """
+        return self.service.Group.create(
+            name=name,
+            organizations=organizations,
+            attributes=attributes,
+            description=description,
+        )
+
+    def delete_group(self, group_id: str) -> None:
+        """Delete a group (``Group.delete``, GA)."""
+        self.service.Group.delete(group_id)
+
+    def get_batch_groups(self, group_ids: List[str]) -> Any:
+        """Get up to 500 groups in one request (``Group.get_batch``, GA).
 
         Returns:
-            Dictionary containing created group information
+            ``GetGroupsBatchResponse``; its ``data`` maps group ID to ``Group``.
         """
-        try:
-            # Build create request parameters
-            create_params = {"name": name}
-            if description:
-                create_params["description"] = description
-            if organization_rid:
-                create_params["organization_rid"] = organization_rid
+        from foundry_sdk.v2.admin.models import GetGroupsBatchRequestElement
 
-            response = self.service.Group.create(**create_params)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create group '{name}': {str(e)}")
+        _check_batch_size(group_ids, "groups")
+        return self.service.Group.get_batch(
+            body=[
+                GetGroupsBatchRequestElement(group_id=group_id)
+                for group_id in group_ids
+            ]
+        )
 
-    def delete_group(self, group_id: str) -> Dict[str, Any]:
-        """
-        Delete a specific group.
+    # --------------------------------------------------------------- markings
 
-        Args:
-            group_id: The group ID or RID
-
-        Returns:
-            Dictionary containing operation result
-        """
-        try:
-            self.service.Group.delete(group_id)
-            return {
-                "success": True,
-                "message": f"Group {group_id} deleted successfully",
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to delete group {group_id}: {str(e)}")
-
-    def get_batch_groups(self, group_ids: List[str]) -> Dict[str, Any]:
-        """
-        Batch retrieve multiple groups (up to 500).
-
-        Args:
-            group_ids: List of group IDs or RIDs
-
-        Returns:
-            Dictionary containing group information
-        """
-        if len(group_ids) > 500:
-            raise ValueError("Maximum batch size is 500 groups")
-        try:
-            response = self.service.Group.get_batch(body=group_ids)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get groups batch: {str(e)}")
-
-    # Marking Management Methods
     def list_markings(
-        self, page_size: Optional[int] = None, page_token: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        List all markings.
+        self,
+        *,
+        include_deleted: Optional[bool] = None,
+        marking_type: Optional[str] = None,
+        page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
+    ) -> Any:
+        """List one page of markings (``Marking.list``, GA).
 
         Args:
-            page_size: Maximum number of markings to return per page
-            page_token: Token for pagination (from previous response)
+            include_deleted: Include deleted markings (the API includes them
+                when this is left out).
+            marking_type: ``MANDATORY`` or ``CBAC`` (all types when left out).
 
         Returns:
-            Dictionary containing marking list and pagination info
+            The SDK ``ResourceIterator[Marking]``; constructing it fetched one
+            page (``.data``, ``.next_page_token``).
         """
-        try:
-            response = self.service.Marking.list(
-                page_size=page_size, page_token=page_token, preview=True
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to list markings: {str(e)}")
+        return self.service.Marking.list(
+            include_deleted=include_deleted,
+            marking_type=marking_type,
+            page_size=page_size,
+            page_token=page_token,
+        )
 
-    def get_marking(self, marking_id: str) -> Dict[str, Any]:
-        """
-        Get a specific marking by ID.
+    def get_marking(self, marking_id: str) -> Any:
+        """Get a marking by ID (``Marking.get``, GA); returns a ``Marking``."""
+        return self.service.Marking.get(marking_id)
 
-        Args:
-            marking_id: The marking ID
+    def get_batch_markings(self, marking_ids: List[str]) -> Any:
+        """Get up to 500 markings in one request (``Marking.get_batch``, GA).
 
         Returns:
-            Dictionary containing marking information
+            ``GetMarkingsBatchResponse``; its ``data`` maps marking ID to
+            ``Marking``.
         """
-        try:
-            response = self.service.Marking.get(marking_id, preview=True)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get marking {marking_id}: {str(e)}")
+        from foundry_sdk.v2.admin.models import GetMarkingsBatchRequestElement
 
-    def get_batch_markings(self, marking_ids: List[str]) -> Dict[str, Any]:
-        """
-        Batch retrieve multiple markings (up to 500).
-
-        Args:
-            marking_ids: List of marking IDs
-
-        Returns:
-            Dictionary containing marking information
-        """
-        if len(marking_ids) > 500:
-            raise ValueError("Maximum batch size is 500 markings")
-        try:
-            response = self.service.Marking.get_batch(body=marking_ids, preview=True)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get markings batch: {str(e)}")
+        _check_batch_size(marking_ids, "markings")
+        return self.service.Marking.get_batch(
+            body=[
+                GetMarkingsBatchRequestElement(marking_id=marking_id)
+                for marking_id in marking_ids
+            ]
+        )
 
     def create_marking(
         self,
+        *,
         name: str,
+        category_id: str,
+        initial_members: List[str],
+        initial_role_assignments: Sequence[Tuple["MarkingRole", str]],
         description: Optional[str] = None,
-        category_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Create a new marking.
+    ) -> Any:
+        """Create a marking (``Marking.create``, GA); returns a ``Marking``.
 
         Args:
-            name: The marking name
-            description: Optional marking description
-            category_id: Optional category ID for the marking
-
-        Returns:
-            Dictionary containing created marking information
+            name: Marking name (unique within its category).
+            category_id: ID of the marking category to create it in.
+            initial_members: IDs of the users and groups that can view
+                resources protected by the marking.
+            initial_role_assignments: ``(role, principal ID)`` pairs, with
+                role ``ADMINISTER``, ``DECLASSIFY`` or ``USE``. The API
+                requires at least one ``ADMINISTER``.
+            description: Optional description.
         """
-        try:
-            create_params: Dict[str, Any] = {"name": name, "preview": True}
-            if description:
-                create_params["description"] = description
-            if category_id:
-                create_params["category_id"] = category_id
+        from foundry_sdk.v2.admin.models import MarkingRoleUpdate
 
-            response = self.service.Marking.create(**create_params)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create marking '{name}': {str(e)}")
+        return self.service.Marking.create(
+            name=name,
+            category_id=category_id,
+            initial_members=initial_members,
+            initial_role_assignments=[
+                MarkingRoleUpdate(role=role, principal_id=principal_id)
+                for role, principal_id in initial_role_assignments
+            ],
+            description=description,
+        )
 
     def replace_marking(
         self,
         marking_id: str,
+        *,
         name: str,
         description: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Replace/update an existing marking.
+    ) -> Any:
+        """Set a marking's name, and its description if given.
 
-        Args:
-            marking_id: The marking ID
-            name: The new marking name
-            description: Optional new marking description
+        ``Marking.replace`` (GA) clears a description it isn't given, so when
+        ``description`` is ``None`` this reads the marking first
+        (``Marking.get``, GA) and sends its current description back.
 
         Returns:
-            Dictionary containing updated marking information
+            The updated ``Marking``.
         """
-        try:
-            replace_params: Dict[str, Any] = {"name": name, "preview": True}
-            if description:
-                replace_params["description"] = description
+        if description is None:
+            description = self.service.Marking.get(marking_id).description
+        return self.service.Marking.replace(
+            marking_id, name=name, description=description
+        )
 
-            response = self.service.Marking.replace(marking_id, **replace_params)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to replace marking {marking_id}: {str(e)}")
+    # ---------------------------------------------------------- organizations
 
-    # Organization Management Methods
-    def get_organization(self, organization_id: str) -> Dict[str, Any]:
-        """
-        Get organization information.
-
-        Args:
-            organization_id: The organization ID or RID
-
-        Returns:
-            Dictionary containing organization information
-        """
-        try:
-            response = self.service.Organization.get(organization_id)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to get organization {organization_id}: {str(e)}"
-            )
+    def get_organization(self, organization_rid: str) -> Any:
+        """Get an organization by RID (``Organization.get``, GA); returns an
+        ``Organization`` model."""
+        return self.service.Organization.get(organization_rid)
 
     def create_organization(
         self,
+        *,
         name: str,
         enrollment_rid: str,
-        admin_ids: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Create a new organization.
+        administrators: List[str],
+        description: Optional[str] = None,
+        host: Optional[str] = None,
+    ) -> Any:
+        """Create an organization (``Organization.create``, beta).
 
         Args:
-            name: The organization name
-            enrollment_rid: The enrollment RID
-            admin_ids: Optional list of admin user IDs
+            name: Organization name.
+            enrollment_rid: RID of the enrollment the organization belongs to.
+            administrators: IDs of the users or groups that administer the
+                organization (at least one).
+            description: Optional description.
+            host: Optional primary host name of the organization.
 
         Returns:
-            Dictionary containing created organization information
+            The created ``Organization``.
         """
-        try:
-            create_params: Dict[str, Any] = {
-                "name": name,
-                "enrollment_rid": enrollment_rid,
-                "preview": True,
-            }
-            if admin_ids:
-                create_params["admin_ids"] = admin_ids
-
-            response = self.service.Organization.create(**create_params)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create organization '{name}': {str(e)}")
+        return self.service.Organization.create(
+            name=name,
+            enrollment_rid=enrollment_rid,
+            administrators=administrators,
+            description=description,
+            host=host,
+            preview=True,
+        )
 
     def replace_organization(
         self,
         organization_rid: str,
+        *,
         name: str,
         description: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Replace/update an existing organization.
+        host: Optional[str] = None,
+    ) -> Any:
+        """Set an organization's name, and its description and host if given.
 
-        Args:
-            organization_rid: The organization RID
-            name: The new organization name
-            description: Optional new organization description
-
-        Returns:
-            Dictionary containing updated organization information
-        """
-        try:
-            replace_params: Dict[str, Any] = {"name": name, "preview": True}
-            if description:
-                replace_params["description"] = description
-
-            response = self.service.Organization.replace(
-                organization_rid, **replace_params
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to replace organization {organization_rid}: {str(e)}"
-            )
-
-    def list_available_roles(
-        self,
-        organization_rid: str,
-        page_size: Optional[int] = None,
-        page_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        List available roles for an organization.
-
-        Args:
-            organization_rid: The organization RID
-            page_size: Maximum number of roles to return per page
-            page_token: Token for pagination (from previous response)
+        ``Organization.replace`` (GA) clears the description and host it isn't
+        given, so when either is ``None`` this reads the organization first
+        (``Organization.get``, GA) and sends its current value back.
 
         Returns:
-            Dictionary containing role list and pagination info
+            The updated ``Organization``.
         """
-        try:
-            response = self.service.Organization.list_available_roles(
-                organization_rid,
-                page_size=page_size,
-                page_token=page_token,
-                preview=True,
-            )
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to list available roles for organization {organization_rid}: {str(e)}"
-            )
+        if description is None or host is None:
+            current = self.service.Organization.get(organization_rid)
+            if description is None:
+                description = current.description
+            if host is None:
+                host = current.host
+        return self.service.Organization.replace(
+            organization_rid, name=name, description=description, host=host
+        )
 
-    # Role Management Methods
-    def get_role(self, role_id: str) -> Dict[str, Any]:
-        """
-        Get role information.
-
-        Args:
-            role_id: The role ID or RID
+    def list_available_roles(self, organization_rid: str) -> Any:
+        """List the roles that can be assigned in an organization
+        (``Organization.list_available_roles``, GA).
 
         Returns:
-            Dictionary containing role information
+            ``ListAvailableOrganizationRolesResponse``; ``data`` lists every
+            role (the endpoint isn't paged).
         """
-        try:
-            response = self.service.Role.get(role_id)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get role {role_id}: {str(e)}")
+        return self.service.Organization.list_available_roles(organization_rid)
 
-    def get_batch_roles(self, role_ids: List[str]) -> Dict[str, Any]:
-        """
-        Batch retrieve multiple roles (up to 500).
+    # ------------------------------------------------------------------ roles
 
-        Args:
-            role_ids: List of role IDs or RIDs
+    def get_role(self, role_id: str) -> Any:
+        """Get a role by ID (``Role.get``, beta); returns a ``Role`` model."""
+        return self.service.Role.get(role_id, preview=True)
+
+    def get_batch_roles(self, role_ids: List[str]) -> Any:
+        """Get up to 500 roles in one request (``Role.get_batch``, beta).
 
         Returns:
-            Dictionary containing role information
+            ``GetRolesBatchResponse``; its ``data`` maps role ID to ``Role``.
         """
-        if len(role_ids) > 500:
-            raise ValueError("Maximum batch size is 500 roles")
-        try:
-            response = self.service.Role.get_batch(body=role_ids, preview=True)
-            return self._serialize_response(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to get roles batch: {str(e)}")
+        from foundry_sdk.v2.admin.models import GetRolesBatchRequestElement
 
-    def _serialize_response(self, response: Any) -> Dict[str, Any]:
-        """
-        Convert response object to serializable dictionary.
-
-        Args:
-            response: Response object from SDK
-
-        Returns:
-            Serializable dictionary representation
-        """
-        if response is None:
-            return {}
-
-        # Handle different response types
-        if hasattr(response, "dict"):
-            # Pydantic models
-            return response.dict()
-        elif hasattr(response, "__dict__"):
-            # Regular objects
-            result = {}
-            for key, value in response.__dict__.items():
-                if not key.startswith("_"):
-                    try:
-                        # Try to serialize the value
-                        json.dumps(value)
-                        result[key] = value
-                    except (TypeError, ValueError):
-                        # Convert non-serializable values to string
-                        result[key] = str(value)
-            return result
-        else:
-            # Primitive types or already serializable
-            try:
-                json.dumps(response)
-                return response
-            except (TypeError, ValueError):
-                return {"data": str(response)}
+        _check_batch_size(role_ids, "roles")
+        return self.service.Role.get_batch(
+            body=[GetRolesBatchRequestElement(role_id=role_id) for role_id in role_ids],
+            preview=True,
+        )
