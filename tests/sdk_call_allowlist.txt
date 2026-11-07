@@ -68,18 +68,6 @@ services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet
 services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/ontology.py
-services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
-services/ontology.py::ActionService.apply_action::ontologies.Action.apply::too-many-positional  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
-services/ontology.py::ActionService.apply_batch_actions::ontologies.Action.apply_batch::missing-required(requests)  # #182: unused apply_batch_actions passes requests positionally; Action.apply_batch(ontology, action, requests=...) or delete
-services/ontology.py::ActionService.apply_batch_actions::ontologies.Action.apply_batch::too-many-positional  # #182: unused apply_batch_actions passes requests positionally; Action.apply_batch(ontology, action, requests=...) or delete
-services/ontology.py::ActionService.validate_action::ontologies.Action.validate::missing-method  # #182 ontology action-validate: no Action.validate; Action.apply(..., options={'mode': 'VALIDATE_ONLY'})
-services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::missing-required(aggregation)  # #182 ontology object-aggregate: OntologyObject.aggregate requires aggregation= and group_by=
-services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(aggregations)  # #182 ontology object-aggregate: OntologyObject.aggregate takes aggregation= (typed), not aggregations=
-services/ontology.py::OntologyObjectService.aggregate_objects::ontologies.OntologyObject.aggregate::unknown-keyword(filter)  # #182 ontology object-aggregate: OntologyObject.aggregate filters with where=, not filter=
-services/ontology.py::OntologyObjectService.count_objects::ontologies.OntologyObject.count::beta-without-preview  # #182 ontology object-count: beta; pass preview=True (and read .count)
-services/ontology.py::OntologyObjectService.search_objects::ontologies.OntologyObject.search::unknown-keyword(query)  # #182 ontology object-search: OntologyObject.search filters with where=, not query=
-
 # src/pltr/services/project.py
 services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
 services/project.py::ProjectService.add_organizations::filesystem.Project.add_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
