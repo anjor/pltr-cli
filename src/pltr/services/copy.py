@@ -14,7 +14,7 @@ import tempfile
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from ..contract import ExitCode, PltrError, classify_error, info, success, warn
 from .dataset import DatasetService
@@ -119,6 +119,8 @@ class CopyService:
         self.resource_service = ResourceService(profile=profile)
 
         self.result = CopyResult()
+        #: RIDs of the folders and datasets this copy created.
+        self._created: Set[str] = set()
 
     # ------------------------------------------------------------------ public
     def copy_resource(
@@ -137,6 +139,7 @@ class CopyService:
             a failure before anything was created is raised.
         """
         self.result = CopyResult()
+        self._created = set()
         source = self.resource_service.get_resource(source_rid)
 
         if source.type == DATASET_TYPE:
@@ -153,6 +156,7 @@ class CopyService:
                     error_type="usage_error",
                     exit_code=ExitCode.USAGE,
                 )
+            self._check_target_outside(source, target_folder_rid)
             try:
                 self._copy_folder(source, target_folder_rid)
             except _StopCopy:
@@ -186,16 +190,19 @@ class CopyService:
             new_name, parent_folder_rid=target_folder_rid
         )
         new_dataset_rid = new_dataset.rid
+        self._created.add(new_dataset_rid)
         success(
             f"Created dataset '{new_name}' ({new_dataset_rid}) in {target_folder_rid}"
         )
 
         try:
+            self._create_branch_on_copy(new_dataset_rid)
             copied = self._copy_dataset_files(dataset_rid, new_dataset_rid)
             if self.copy_schema:
                 self._copy_dataset_schema(dataset_rid, new_dataset_rid, copied)
-        except Exception:
-            # Trash the partly copied dataset, then report the failure.
+        except BaseException:
+            # Trash the partly copied dataset, also on Ctrl-C (KeyboardInterrupt),
+            # then report the failure.
             warn(f"Removing the partly copied dataset {new_dataset_rid}")
             try:
                 self.resource_service.delete_resource(new_dataset_rid)
@@ -210,6 +217,28 @@ class CopyService:
         self.result.stats.datasets += 1
         self.result.items.append(new_dataset)
         success(f"Finished copying dataset to {new_dataset_rid}")
+
+    def _create_branch_on_copy(self, target_rid: str) -> None:
+        """Create ``self.branch`` on the new dataset unless it already has it.
+
+        ``Dataset.create`` creates only the default branch (master on most
+        enrollments), and the files are committed on ``self.branch``. The
+        branch is created without transactions.
+        """
+        try:
+            # Iterating the SDK iterator reads every page of the branches.
+            names = [b.name for b in self.dataset_service.list_branches(target_rid)]
+            if self.branch in names:
+                return
+            self.dataset_service.create_branch(target_rid, self.branch)
+        except Exception as exc:
+            if self.debug:
+                traceback.print_exc()
+            raise RuntimeError(
+                f"Failed to create branch '{self.branch}' on {target_rid}"
+            ) from exc
+        default = f" (its default branch is '{names[0]}')" if names else ""
+        info(f"  Created branch '{self.branch}' on the copy{default}")
 
     def _copy_dataset_files(
         self, source_rid: str, target_rid: str
@@ -238,8 +267,10 @@ class CopyService:
             paths: List[str] = []
             with tempfile.TemporaryDirectory(prefix="pltr-cp-") as tmpdir:
                 temp_dir = Path(tmpdir)
-                for file in files:
-                    download_path = temp_dir / self._sanitize_local_path(file.path)
+                for index, file in enumerate(files):
+                    # Named by a counter, not by the remote path: any remote
+                    # name works, and none can point outside temp_dir.
+                    download_path = temp_dir / f"file-{index}"
                     self.dataset_service.download_file(
                         source_rid, file.path, download_path, branch=self.branch
                     )
@@ -258,13 +289,15 @@ class CopyService:
                 target_rid, transaction_rid
             )
             info(f"  Committed transaction {committed.rid}")
-        except Exception as exc:
+        except BaseException as exc:
             if transaction_rid is not None:
                 try:
                     self.dataset_service.abort_transaction(target_rid, transaction_rid)
                     warn(f"Rolled back transaction {transaction_rid}")
                 except Exception:
                     warn(f"Failed to roll back transaction {transaction_rid}")
+            if not isinstance(exc, Exception):
+                raise  # Ctrl-C (KeyboardInterrupt): rolled back, not an error
 
             if self.debug:
                 traceback.print_exc()
@@ -313,6 +346,31 @@ class CopyService:
         info(f"  Copied dataset schema ({reader or 'PARQUET'} reader)")
 
     # ------------------------------------------------------------------ folders
+    def _check_target_outside(self, folder: Any, target_folder_rid: str) -> None:
+        """Refuse to copy a folder into itself or into a folder inside it.
+
+        The copy is created before the source's children are listed, so it
+        would be among them and be copied into itself without end. A
+        ``Resource.path`` is the display names from the root joined by ``/``
+        (names can't contain ``/``), so the target is inside the source when
+        its path starts with the source's path and a ``/``.
+        """
+        where = "is that folder"
+        if target_folder_rid != folder.rid:
+            target = self.resource_service.get_resource(target_folder_rid)
+            if target.path.startswith(folder.path.rstrip("/") + "/"):
+                where = f"is inside it ({target.path})"
+            elif target.rid != folder.rid:
+                return
+        raise PltrError(
+            f"Can't copy folder '{folder.display_name}' ({folder.rid}) into "
+            f"itself: the target {target_folder_rid} {where}.",
+            error_type="usage_error",
+            exit_code=ExitCode.USAGE,
+            hint="Copy it into a folder outside it, such as its parent folder "
+            f"{folder.parent_folder_rid}.",
+        )
+
     def _copy_folder(self, folder: Any, target_folder_rid: str) -> None:
         """Copy a folder and its children; records the failures of children."""
         new_name = self._derive_name(folder.display_name)
@@ -328,6 +386,7 @@ class CopyService:
             created = self.folder_service.create_folder(new_name, target_folder_rid)
             self.result.items.append(created)
             new_folder_rid = created.rid
+            self._created.add(new_folder_rid)
             success(
                 f"Created folder '{new_name}' ({new_folder_rid}) in {target_folder_rid}"
             )
@@ -345,6 +404,11 @@ class CopyService:
             return
 
         for child in children:
+            if child.rid in self._created:
+                # Never copy a copy (the target is inside the source after
+                # all): it would copy itself again and again.
+                self._skip(child.display_name, child.rid, "this copy created it")
+                continue
             try:
                 if child.type == FOLDER_TYPE:
                     self._copy_folder(child, new_folder_rid)
@@ -374,17 +438,6 @@ class CopyService:
             raise _StopCopy() from exc
 
     # ------------------------------------------------------------------ helpers
-    def _sanitize_local_path(self, original_path: str) -> str:
-        """Return a safe relative path for storing temporary files."""
-        # Check for path traversal BEFORE normalization to prevent attacks
-        if ".." in original_path:
-            raise ValueError(f"Path traversal detected: {original_path}")
-        clean = PurePosixPath(original_path.lstrip("/"))
-        # Verify no parent directory references remain after normalization
-        if ".." in clean.parts:
-            raise ValueError(f"Invalid path after normalization: {original_path}")
-        return clean.as_posix()
-
     def _derive_name(self, base_name: str) -> str:
         """Append the configured suffix if provided."""
         suffix = self.name_suffix or ""

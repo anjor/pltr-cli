@@ -21,7 +21,7 @@ from foundry_sdk.v2.datasets.models import (
 )
 
 from pltr.contract import PltrError
-from pltr.services.dataset import DatasetService, arrow_table
+from pltr.services.dataset import DatasetService, _infer_csv_type, arrow_table
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -214,6 +214,39 @@ def test_infer_schema_from_csv(tmp_path):
     ]
 
 
+def test_infer_schema_from_a_csv_excel_wrote(tmp_path):
+    """Excel's byte order mark ended up in the first field's name, integers
+    over 32 bits were INTEGER and 1/0 BOOLEAN (#181 review)."""
+    path = tmp_path / "excel.csv"
+    path.write_bytes("﻿id,big,flag\n1,3000000000,1\n2,4000000000,0\n".encode())
+
+    schema = DatasetService.__new__(DatasetService).infer_schema_from_csv(path)
+
+    assert [(f.name, f.type) for f in schema.field_schema_list] == [
+        ("id", "INTEGER"),
+        ("big", "LONG"),
+        ("flag", "INTEGER"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (["true", "False", "TRUE"], "BOOLEAN"),
+        (["1", "0"], "INTEGER"),  # not BOOLEAN
+        (["yes", "no"], "STRING"),  # not BOOLEAN
+        (["2147483647", "-2147483648"], "INTEGER"),
+        (["1", "2147483648"], "LONG"),
+        (["-2147483649"], "LONG"),
+        (["9223372036854775807", "-9223372036854775808"], "LONG"),
+        (["1", "9223372036854775808"], "STRING"),  # too large for LONG
+        (["1", "2.5"], "DOUBLE"),
+    ],
+)
+def test_infer_csv_column_types(values, expected):
+    assert _infer_csv_type(values) == (expected, False)
+
+
 def test_infer_schema_from_csv_without_header(tmp_path):
     path = tmp_path / "empty.csv"
     path.write_text("", encoding="utf-8")
@@ -314,6 +347,46 @@ def test_create_branch_without_transaction(stub_foundry_http):
     DatasetService().create_branch(DATASET, "empty")
 
     assert json.loads(only_request(stub_foundry_http).content) == {"name": "empty"}
+
+
+def test_create_branch_from_parent_starts_at_its_transaction(stub_foundry_http):
+    stub_foundry_http.respond(json=dj.branch("dev", dj.OTHER_TRANSACTION_RID))
+    stub_foundry_http.respond(json=dj.branch("feature", dj.OTHER_TRANSACTION_RID))
+
+    branch = DatasetService().create_branch_from_parent(DATASET, "feature", "dev")
+
+    assert isinstance(branch, Branch)
+    get, create = stub_foundry_http.requests
+    assert get.url.path == f"{API}/{DATASET}/branches/dev"
+    assert json.loads(create.content) == {
+        "name": "feature",
+        "transactionRid": dj.OTHER_TRANSACTION_RID,
+    }
+
+
+def test_create_branch_from_a_parent_whose_transaction_is_open(stub_foundry_http):
+    from foundry_sdk.v2.datasets.errors import TransactionNotCommitted
+
+    stub_foundry_http.respond(json=dj.branch("master", dj.TRANSACTION_RID))
+    stub_foundry_http.respond(
+        400,
+        json=fj.error(
+            "TransactionNotCommitted",
+            "INVALID_ARGUMENT",
+            {
+                "datasetRid": DATASET,
+                "transactionRid": dj.TRANSACTION_RID,
+                "transactionStatus": "OPEN",
+            },
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="is still open") as excinfo:
+        DatasetService().create_branch_from_parent(DATASET, "feature")
+
+    # The SDK error is the cause, so the error layer classifies it (exit 6).
+    assert isinstance(excinfo.value.__cause__, TransactionNotCommitted)
+    assert "--transaction-rid" in str(excinfo.value)
 
 
 def test_delete_branch(stub_foundry_http):

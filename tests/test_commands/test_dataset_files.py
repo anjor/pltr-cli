@@ -3,11 +3,15 @@
 import csv
 import io
 import json
+from pathlib import PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from pltr.cli import app
+from pltr.commands.dataset import _download_targets
+from pltr.contract import PltrError
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -149,8 +153,14 @@ def test_upload_a_file_to_a_dataset_path(stub, local_csv, path_option, expected)
     assert upload_path(stub.requests[0]) == expected
 
 
+def queue_upload_in_a_transaction(stub, path="sales.csv", transaction_type="APPEND"):
+    stub.respond(json=dj.transaction(transaction_type=transaction_type))
+    stub.respond(json=dj.file(path))
+    stub.respond(json=dj.transaction(status="COMMITTED", closed_time=dj.CLOSED_TIME))
+
+
 def test_upload_a_file_on_a_branch_as_a_snapshot(stub, local_csv):
-    stub.respond(json=dj.file("sales.csv"))
+    queue_upload_in_a_transaction(stub, transaction_type="SNAPSHOT")
 
     result = invoke(
         "dataset",
@@ -162,13 +172,147 @@ def test_upload_a_file_on_a_branch_as_a_snapshot(stub, local_csv):
         "dev",
         "--transaction-type",
         "snapshot",
+        "--yes",
+        "-f",
+        "json",
     )
 
     assert result.exit_code == 0, result.output
-    assert dict(stub.requests[0].url.params) == {
-        "branchName": "dev",
-        "transactionType": "SNAPSHOT",
-    }
+    assert json.loads(result.stdout) == dj.sdk_json(dj.file("sales.csv"))
+    start, upload, commit = stub.requests
+    assert dict(start.url.params) == {"branchName": "dev"}
+    assert json.loads(start.content) == {"transactionType": "SNAPSHOT"}
+    assert dict(upload.url.params) == {"transactionRid": TRANSACTION}
+    assert commit.url.path == f"{API}/{DATASET}/transactions/{TRANSACTION}/commit"
+
+
+def test_upload_a_file_with_a_transaction_type_and_no_branch(stub, local_csv):
+    """transactionType was sent without branchName, which the API documents
+    only with branchName (#181 review). pltr opens the transaction itself,
+    on the default branch, uploads into it and commits it."""
+    queue_upload_in_a_transaction(stub)
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        "APPEND",
+    )
+
+    assert result.exit_code == 0, result.output
+    start, upload, commit = stub.requests
+    assert (start.method, start.url.path) == ("POST", f"{API}/{DATASET}/transactions")
+    assert dict(start.url.params) == {}  # the default branch
+    assert json.loads(start.content) == {"transactionType": "APPEND"}
+    assert upload_path(upload) == "sales.csv"
+    assert dict(upload.url.params) == {"transactionRid": TRANSACTION}
+    assert upload.content == b"id,region\n1,EMEA\n"
+    assert commit.url.path.endswith(f"/transactions/{TRANSACTION}/commit")
+    assert "Uploaded 1 file and committed transaction" in result.stderr
+
+
+def test_failed_single_file_upload_aborts_its_transaction(stub, local_csv):
+    stub.respond(json=dj.transaction(transaction_type="UPDATE"))
+    stub.respond(500, json=fj.error("UploadFailed", "INTERNAL"))
+    stub.respond(json=dj.transaction(status="ABORTED", closed_time=dj.CLOSED_TIME))
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        "UPDATE",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 7
+    assert json_lines(result.stderr)[-1]["errorName"] == "UploadFailed"
+    assert stub.requests[-1].url.path.endswith(f"/transactions/{TRANSACTION}/abort")
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_snapshot_upload_needs_yes_when_not_interactive(
+    stub, local_csv, local_dir, directory
+):
+    path = local_dir if directory else local_csv
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(path),
+        DATASET,
+        "--transaction-type",
+        "SNAPSHOT",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "confirmation_required"
+    assert "Replace every file on the default branch" in error["message"]
+    assert stub.requests == []
+
+
+def test_snapshot_upload_prompts_when_interactive(stub, local_csv, interactive):
+    declined = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--branch",
+        "dev",
+        "--transaction-type",
+        "SNAPSHOT",
+        input="n\n",
+    )
+    assert declined.exit_code == 1
+    assert (
+        f"Replace every file on branch 'dev' of dataset {DATASET} with sales.csv "
+        "(a SNAPSHOT transaction)? [y/N]"
+    ) in declined.stderr
+    assert stub.requests == []
+
+    queue_upload_in_a_transaction(stub, transaction_type="SNAPSHOT")
+    accepted = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--branch",
+        "dev",
+        "--transaction-type",
+        "SNAPSHOT",
+        input="y\n",
+    )
+    assert accepted.exit_code == 0, accepted.output
+    assert len(stub.requests) == 3
+
+
+@pytest.mark.parametrize("transaction_type", ["APPEND", "UPDATE"])
+def test_other_transaction_types_do_not_ask(stub, local_csv, transaction_type):
+    queue_upload_in_a_transaction(stub, transaction_type=transaction_type)
+
+    result = invoke(
+        "dataset",
+        "files",
+        "upload",
+        str(local_csv),
+        DATASET,
+        "--transaction-type",
+        transaction_type,
+    )
+
+    assert result.exit_code == 0, result.output
 
 
 def test_upload_a_file_into_an_open_transaction(stub, local_csv):
@@ -299,6 +443,7 @@ def test_upload_a_directory_with_a_transaction_type(stub, local_dir):
         DATASET,
         "--transaction-type",
         "SNAPSHOT",
+        "--yes",
     )
 
     assert result.exit_code == 0, result.output
@@ -496,6 +641,79 @@ def test_recursive_get_refuses_paths_outside_the_target(stub, tmp_path):
     assert "Refusing to download" in result.stderr
     assert len(stub.requests) == 1  # nothing downloaded
     assert not (tmp_path / "escape.csv").exists()
+
+
+WINDOWS_OUT = PureWindowsPath(r"C:\work\out")
+POSIX_OUT = PurePosixPath("/work/out")
+
+
+def remote_files(*paths: str) -> list:
+    return [SimpleNamespace(path=path) for path in paths]
+
+
+@pytest.mark.parametrize(
+    "remote",
+    [
+        r"data\..\..\..\Users\me\evil.bat",  # "\" separates paths on Windows
+        "data/C:/Windows/evil.dll",  # a drive
+        "C:evil.dll",  # drive-relative
+        "data/evil.csv:stream",  # an alternate data stream
+        "data/.. /evil.csv",  # Windows drops the trailing space: ".."
+        "data/.../evil.csv",  # Windows drops trailing dots
+        "../evil.csv",
+        "/etc/evil.csv",
+    ],
+)
+def test_recursive_get_refuses_unsafe_names_on_windows(remote):
+    """Simulates Windows: only "/" separated parts were checked (#181 review)."""
+    with pytest.raises(PltrError, match="can't be written safely"):
+        _download_targets(remote_files(remote), None, WINDOWS_OUT)
+
+
+def test_recursive_get_keeps_safe_names_on_windows():
+    files = remote_files("data/ok.csv", "data/report..v2.csv", "data/2024/b.csv")
+
+    targets = _download_targets(files, "data/", WINDOWS_OUT)
+
+    assert [str(target) for _, target in targets] == [
+        r"C:\work\out\ok.csv",
+        r"C:\work\out\report..v2.csv",
+        r"C:\work\out\2024\b.csv",
+    ]
+
+
+def test_backslashes_and_colons_are_ordinary_characters_elsewhere():
+    files = remote_files(r"data\a.csv", "data/10:00.csv", "data/report..v2.csv")
+
+    targets = _download_targets(files, None, POSIX_OUT)
+
+    assert [str(target) for _, target in targets] == [
+        r"/work/out/data\a.csv",
+        "/work/out/data/10:00.csv",
+        "/work/out/data/report..v2.csv",
+    ]
+    with pytest.raises(PltrError):
+        _download_targets(remote_files("data/../../evil.csv"), None, POSIX_OUT)
+
+
+def test_recursive_get_refuses_a_symlink_out_of_the_target(stub, tmp_path):
+    """A target that resolves outside OUTPUT_PATH is refused before anything
+    is written, whatever made it point there."""
+    out = tmp_path / "out"
+    out.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (out / "link").symlink_to(elsewhere, target_is_directory=True)
+    stub.respond(json=dj.page([dj.file("data/ok.csv"), dj.file("data/link/x.csv")]))
+
+    result = invoke("dataset", "files", "get", DATASET, "data", str(out), "-r")
+
+    assert result.exit_code == 1
+    assert "Refusing to download 'data/link/x.csv'" in result.stderr
+    assert "Hint: Download that file on its own" in result.stderr
+    assert len(stub.requests) == 1  # the listing; nothing downloaded
+    assert list(elsewhere.iterdir()) == []
+    assert not (out / "ok.csv").exists()
 
 
 def test_recursive_get_to_stdout_is_rejected(stub):

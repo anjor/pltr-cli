@@ -24,10 +24,14 @@ SOURCE_FOLDER = fs.child_resource(
     "ri.compass.main.folder.source", "Source", "COMPASS_FOLDER"
 )
 TARGET = "ri.compass.main.folder.target"
+#: A folder copy reads the target to check that it isn't inside the source.
+TARGET_FOLDER = fs.child_resource(TARGET, "Target", "COMPASS_FOLDER")
 NEW_FOLDER = fj.folder(
     "ri.compass.main.folder.new", "Source-copy", parentFolderRid=TARGET
 )
 NEW_DATASET_RID = "ri.foundry.main.dataset.new"
+#: ``Branch.list`` of a new dataset: only its default branch, no transactions.
+COPY_BRANCHES = dj.page([dj.branch("master", None)])
 
 
 def invoke(*args: str, **kwargs):
@@ -48,6 +52,7 @@ def queue_dataset_copy(
     """
     stub.respond(json=SOURCE_DATASET)  # Resource.get
     stub.respond(json=fs.dataset(NEW_DATASET_RID, name, TARGET))  # Dataset.create
+    stub.respond(json=COPY_BRANCHES)  # Branch.list of the copy
     stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))  # File.list
     stub.respond(json=fs.transaction())  # Transaction.create
     stub.respond(content=b"data")  # File.content
@@ -87,6 +92,36 @@ def test_cp_dataset_table_reports_progress_on_stderr(stub_foundry_http):
     assert "Copying" not in result.stdout
 
 
+def test_cp_another_branch_creates_it_on_the_copy(stub_foundry_http):
+    """`--branch develop` could never succeed: the copy has only its default
+    branch, so the SNAPSHOT transaction on develop failed (#181 review)."""
+    stub = stub_foundry_http
+    stub.respond(json=SOURCE_DATASET)  # Resource.get
+    stub.respond(json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET))
+    stub.respond(json=COPY_BRANCHES)  # Branch.list of the copy: master only
+    stub.respond(json=dj.branch("develop", None))  # Branch.create
+    stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))  # File.list
+    stub.respond(json=fs.transaction())  # Transaction.create
+    stub.respond(content=b"data")  # File.content
+    stub.respond(json=fs.dataset_file("part-0.csv"))  # File.upload
+    stub.respond(json=fs.transaction(status="COMMITTED"))  # Transaction.commit
+
+    result = invoke(
+        "cp", fs.DATASET_RID, TARGET, "--branch", "develop", "--no-schema", "-f", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    calls = [(r.method, r.url.path, dict(r.url.params)) for r in stub.requests]
+    copy = f"/api/v2/datasets/{NEW_DATASET_RID}"
+    assert calls[2:6] == [
+        ("GET", f"{copy}/branches", {}),
+        ("POST", f"{copy}/branches", {}),
+        ("GET", f"/api/v2/datasets/{fs.DATASET_RID}/files", {"branchName": "develop"}),
+        ("POST", f"{copy}/transactions", {"branchName": "develop"}),
+    ]
+    assert json.loads(stub.requests[3].content) == {"name": "develop"}
+
+
 def test_cp_no_schema_copies_only_the_files(stub_foundry_http):
     queue_dataset_copy(stub_foundry_http)
 
@@ -99,6 +134,7 @@ def test_cp_no_schema_copies_only_the_files(stub_foundry_http):
 
 def test_cp_folder_recursive(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=NEW_FOLDER)
     stub_foundry_http.respond(json=fs.page([]))
 
@@ -129,6 +165,7 @@ def test_cp_folder_without_recursive_is_a_usage_error(stub_foundry_http):
 
 def test_cp_dry_run_lists_the_sources(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=fs.page([SOURCE_DATASET]))
 
     result = invoke("cp", SOURCE_FOLDER["rid"], TARGET, "-r", "--dry-run", "-f", "json")
@@ -137,7 +174,45 @@ def test_cp_dry_run_lists_the_sources(stub_foundry_http):
     assert json.loads(result.stdout) == {
         "data": [fj.sdk_json(SOURCE_FOLDER), fj.sdk_json(SOURCE_DATASET)]
     }
-    assert [request.method for request in stub_foundry_http.requests] == ["GET", "GET"]
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+        "GET",
+    ]
+
+
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
+def test_cp_folder_into_itself_is_a_usage_error(stub_foundry_http, dry_run):
+    """It used to copy the copy into itself without end (#181 review)."""
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+
+    result = invoke(
+        "cp", SOURCE_FOLDER["rid"], SOURCE_FOLDER["rid"], "-r", *dry_run, "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert "into itself" in error["message"]
+    assert len(stub_foundry_http.requests) == 1  # nothing created
+
+
+def test_cp_folder_into_a_subfolder_is_a_usage_error(stub_foundry_http):
+    inside = fs.child_resource(TARGET, "Sub", "COMPASS_FOLDER")
+    inside["path"] = SOURCE_FOLDER["path"] + "/Sub"
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=inside)
+
+    result = invoke("cp", SOURCE_FOLDER["rid"], TARGET, "-r")
+
+    assert result.exit_code == 2
+    assert "is inside it" in result.stderr
+    assert f"parent folder {SOURCE_FOLDER['parentFolderRid']}" in result.stderr
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+    ]
 
 
 def test_cp_dry_run_table_says_what_it_would_do(stub_foundry_http):
@@ -167,6 +242,7 @@ def test_cp_source_not_found(stub_foundry_http):
 def test_cp_partial_failure_prints_what_was_created_and_fails(stub_foundry_http):
     one = fs.child_resource("ri.compass.main.folder.one", "One", "COMPASS_FOLDER")
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=NEW_FOLDER)
     stub_foundry_http.respond(json=fs.page([one]))
     stub_foundry_http.respond(
@@ -196,6 +272,7 @@ def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http):
     stub_foundry_http.respond(
         json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET)
     )
+    stub_foundry_http.respond(json=COPY_BRANCHES)
     stub_foundry_http.respond(json=fs.page([fs.dataset_file("part-0.csv")]))
     stub_foundry_http.respond(json=fs.transaction())
     stub_foundry_http.respond(content=b"data")
@@ -225,6 +302,38 @@ def test_cp_failed_dataset_copy_is_cleaned_up(stub_foundry_http):
     assert error["errorName"] == "UploadFilePermissionDenied"
     assert error["message"].startswith("Failed to copy the files")
     trash = stub_foundry_http.requests[-1]
+    assert (trash.method, trash.url.path) == (
+        "DELETE",
+        f"/api/v2/filesystem/resources/{NEW_DATASET_RID}",
+    )
+
+
+def test_cp_ctrl_c_cleans_up_the_copy(stub_foundry_http, monkeypatch):
+    stub = stub_foundry_http
+    stub.respond(json=SOURCE_DATASET)
+    stub.respond(json=fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET))
+    stub.respond(json=COPY_BRANCHES)
+    stub.respond(json=fs.page([fs.dataset_file("part-0.csv")]))
+    stub.respond(json=fs.transaction())  # Transaction.create
+    stub.respond(json=fs.transaction(status="ABORTED"))  # abort
+    stub.respond(204)  # Resource.delete (to the trash)
+    queued = stub.next_response
+
+    def next_response(request):
+        if request.url.path.endswith("/content"):
+            raise KeyboardInterrupt  # Ctrl-C while downloading
+        return queued(request)
+
+    monkeypatch.setattr(stub, "next_response", next_response)
+
+    result = invoke("cp", fs.DATASET_RID, TARGET)
+
+    assert result.exit_code == 130  # Typer's exit code for Ctrl-C (128 + SIGINT)
+    assert result.stdout == ""
+    assert f"Rolled back transaction {fs.TRANSACTION_RID}" in result.stderr
+    assert "Removing the partly copied dataset" in result.stderr
+    abort, trash = stub.requests[-2:]
+    assert abort.url.path.endswith(f"/transactions/{fs.TRANSACTION_RID}/abort")
     assert (trash.method, trash.url.path) == (
         "DELETE",
         f"/api/v2/filesystem/resources/{NEW_DATASET_RID}",

@@ -426,9 +426,10 @@ can search. See Added.
   `schema set`, `views get` and `jobs list`. `schema apply` still defaults to
   `master`.
 - **Breaking:** `schema set`, `schema apply`, `views remove-datasets` and
-  `views replace-datasets` ask for confirmation. `branches delete`,
-  `files delete` and `transactions abort` don't prompt when stdin is not a
-  terminal.
+  `views replace-datasets` ask for confirmation, and so does
+  `files upload --transaction-type SNAPSHOT`, which replaces every file on the
+  branch (`files upload` has `--yes` now). `branches delete`, `files delete`
+  and `transactions abort` don't prompt when stdin is not a terminal.
 - **Breaking:** `transactions list` lists every branch's transactions unless
   you pass `--branch`.
 - **Breaking:** an invalid RID is a usage error (exit 2).
@@ -442,9 +443,19 @@ can search. See Added.
   `files get --recursive` print `{"data": [...]}` of files.
 - `schema get` no longer warns that it needs API preview access: the endpoint
   is GA.
+- `schema set` lists the schema's fields (name, type, nullable) in its
+  confirmation prompt, and in the error when `--yes` is needed; it showed only
+  their number.
 - `branches create --parent BRANCH` (default `master`) starts the new branch
   at the parent's latest transaction. `branches delete master` is refused
   (exit 2).
+- `branches create` says what to do when the parent's latest transaction is
+  still open. A branch can only start at a committed transaction, so the API
+  rejects it (`TransactionNotCommitted`, exit 6); the error now says to commit
+  or abort that transaction first, or to pass `--transaction-rid` with a
+  committed one (`branches transactions` lists them). pltr doesn't look one
+  up itself: the only listings are beta endpoints, and `branches create`
+  stays GA. Not verified against a live stack.
 - A leading `/` in a dataset file path is dropped (the API rejects it).
 - `preview` gives duplicate column names a `_2`, `_3` suffix with a warning,
   like `sql`, instead of letting the later column overwrite the earlier one.
@@ -754,8 +765,30 @@ from `--help`. They will be removed in the next release.
   `upload-temp` sent the file object instead of its bytes (#179).
 - `dataset files upload --transaction-rid` also sent `branchName=master`,
   which the API rejects.
+- `dataset files upload FILE DATASET --transaction-type TYPE` without
+  `--branch` sent `transactionType` without `branchName`, and the API
+  documents `transactionType` only together with `branchName` (what the API
+  did with it wasn't verified against a live stack). A single file with
+  `--transaction-type` now goes through the same flow as a directory: pltr
+  opens a transaction of that type on `--branch` or the default branch,
+  uploads into it and commits it, or aborts it if the upload fails.
 - `dataset schema set` checks the schema against the API's field types and
   reports problems as usage errors.
+- Security: `dataset files get --recursive` only refused `..` between `/`
+  separators, so on Windows a dataset file named like `data\..\..\x.bat`, or
+  with a drive (`C:`), was written outside the output directory. On Windows
+  it now also refuses names with `\` or `:` and names ending in `.` or a
+  space (Windows drops those), and on every platform it refuses a file whose
+  resolved path, symlinks included, isn't inside the output directory. The
+  check runs before any file is written. Elsewhere `\` and `:` stay ordinary
+  characters.
+- `dataset schema set --from-csv` inferred wrong schemas without a word: the
+  byte order mark Excel writes became part of the first field's name,
+  integers too large for 32 bits were `INTEGER`, and columns of `1`/`0` or
+  `yes`/`no` were `BOOLEAN`. The byte order mark is ignored now, such
+  integers are `LONG` (integers too large for `LONG` are `STRING`, which
+  `DOUBLE` would round), and only `true`/`false`, in any case, make a
+  `BOOLEAN` column.
 - `audit list` could page forever; `audit get` printed `[...]` in log content
   as terminal markup.
 - `pltr cp` never copied a dataset's schema: it passed the whole schema
@@ -767,6 +800,26 @@ from `--help`. They will be removed in the next release.
   including listing the source's files (the cleanup called a method that
   doesn't exist), and `--fail-fast` no longer counts a failure once per
   folder level.
+- `pltr cp --recursive` into the folder being copied, or into a folder inside
+  it, copied the copy into itself without end. It is now a usage error (exit
+  2) before anything is created, also with `--dry-run`: cp reads the target
+  and compares its `Resource.path` with the source's (not verified against a
+  live stack). As a second guard, a copy never copies a folder or dataset it
+  created itself.
+- `pltr cp --branch BRANCH` with a branch other than the copy's default
+  branch could never succeed: a new dataset has only its default branch
+  (`master` on most enrollments), so opening the SNAPSHOT transaction on
+  `BRANCH` failed with `BranchNotFound` and the copy was trashed. cp now lists
+  the copy's branches and creates `BRANCH` on it (without transactions)
+  before committing the files there. Not verified against a live stack.
+- `pltr cp` refused to copy a dataset with a file whose name contains `..`,
+  such as `data/report..v2.csv` ("Path traversal detected"), and trashed the
+  copy. cp no longer builds local paths from the source's file names: it
+  downloads each file to a numbered temporary file, so every name is copied
+  and none can point outside the temporary directory, on any platform.
+- Ctrl-C during a `pltr cp` dataset copy left the partial copy behind with
+  an open transaction. cp now aborts the transaction and moves the copy to
+  the trash on Ctrl-C too, then exits (code 130).
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No

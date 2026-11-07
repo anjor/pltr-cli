@@ -110,7 +110,7 @@ delete files in it, and commit it to make the changes visible (or abort it).
 | `dataset branches delete` | Delete a branch, but not master (asks first) |
 | `dataset branches transactions` | [beta] List a branch's transactions, newest first (paged) |
 | `dataset files list` | List the files in a dataset's current view of a branch (paged) |
-| `dataset files upload` | Upload a local file or directory to a dataset |
+| `dataset files upload` | Upload a local file or directory to a dataset (asks first for a SNAPSHOT) |
 | `dataset files get` | Download a file, or a folder with `--recursive`, from a dataset |
 | `dataset files delete` | Delete a file from a dataset's current view (asks first) |
 | `dataset files info` | Get a file's metadata: path, size, last update and transaction |
@@ -148,9 +148,10 @@ pltr dataset files get <dataset-rid> raw ./raw --recursive
 pltr dataset files get <dataset-rid> raw/sales.csv - | head
 
 # Upload one file (the API commits it at once), or a directory in one
-# transaction that pltr opens and commits
+# transaction that pltr opens and commits (SNAPSHOT replaces every file, so
+# it asks first; --yes skips the question)
 pltr dataset files upload sales.csv <dataset-rid> --path raw/sales.csv
-pltr dataset files upload ./exports <dataset-rid> --path raw --transaction-type SNAPSHOT
+pltr dataset files upload ./exports <dataset-rid> --path raw --transaction-type SNAPSHOT --yes
 
 # Several uploads in one transaction of your own
 TXN=$(pltr dataset transactions start <dataset-rid> --type APPEND --format json | jq -r .rid)
@@ -178,11 +179,21 @@ Notes:
 
 - `files get` streams to disk and never leaves a partial file. With `-` as
   the output path, the content goes to stdout and the metadata isn't printed.
+  `files get --recursive` refuses, before writing any file, a dataset path
+  that can't be written safely inside the output directory: a `..` part, a
+  symlink out of it, or on Windows a `\` or `:` in a name.
 - `schema set --json` takes the API's `{"fieldSchemaList": [...]}`, the JSON
   output of `schema get`, or the older `{"fields": [...]}` form, inline or as
-  `@file.json`. `--from-csv FILE` infers the column types from a local CSV.
+  `@file.json`. `--from-csv FILE` infers the column types from the header and
+  first 100 rows of a local CSV: `BOOLEAN` (only `true`/`false`), `INTEGER` or
+  `LONG` (by size), `DOUBLE`, `DATE`, `TIMESTAMP`, else `STRING`. The
+  confirmation prompt lists the fields it will set.
 - `schema apply` calls the endpoints Foundry's web interface uses for schema
   inference (direct HTTP, not the SDK). Its `--branch` defaults to `master`.
+- `branches create` starts the new branch at the parent's latest transaction,
+  which must be committed: if it is still open, commit or abort it first, or
+  pass `--transaction-rid` with a committed transaction (`branches
+  transactions <dataset-rid> <parent>` lists them, newest first).
 - `transactions list` lists every branch's transactions unless you pass
   `--branch`. `schedules list` prints RIDs only, as the API returns them.
 - JSON output: a transaction's RID is `.rid`; `preview` prints
@@ -201,7 +212,8 @@ pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
 ```
 
 - A dataset copy gets the files of `--branch`, committed in one SNAPSHOT
-  transaction on the same branch. Then, with `--schema` (the default), the
+  transaction on the same branch of the copy, which cp creates first when it
+  isn't the copy's default branch. Then, with `--schema` (the default), the
   source's schema on that branch is put on the committed copy; a source
   without a schema is copied without one. The API doesn't report the
   source's dataframe reader, so the copy's schema gets `CSV` when every file
@@ -214,7 +226,8 @@ pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
 - A folder copy recreates its subfolders and datasets; other resource types
   are skipped with a warning. When some items fail, the others are still
   copied (unless `--fail-fast`), and pltr exits with the first failure's
-  error.
+  error. The target can't be the folder itself or a folder inside it (exit
+  2).
 - It prints the resources it created (JSON: `{"data": [...]}`, the API's
   `Folder` and `Dataset` objects) and its progress on stderr. `--dry-run`
   creates nothing and prints the resources it would copy.

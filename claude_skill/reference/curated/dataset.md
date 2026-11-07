@@ -66,7 +66,7 @@ Create a branch, starting from a parent branch or a transaction.
 
 - `DATASET_RID`: Dataset RID (ri.foundry.main.dataset.<id>).
 - `BRANCH_NAME`: Name of the new branch.
-- `--parent` TEXT: Branch to start from: the new branch points at its latest transaction (default: master).
+- `--parent` TEXT: Branch to start from: the new branch points at its latest transaction, which must be committed (default: master).
 - `--transaction-rid` TEXT: Start the new branch at this committed transaction (RID) instead of a parent branch.
 - SDK: `datasets.Dataset.Branch.get`, `datasets.Dataset.Branch.create`
 
@@ -177,8 +177,8 @@ Upload a local file or directory to a dataset.
 - `--path` TEXT: Where to put it in the dataset: the file's path (default: the local file name; a path ending in / is a folder), or for a directory the folder to upload into (default: the dataset root).
 - `--branch` TEXT: Branch to upload to, in a new transaction that is committed (default: the dataset's default branch).
 - `--transaction-rid` TEXT: Upload into this open transaction and leave it open (commit it with 'pltr dataset transactions commit').
-- `--transaction-type` APPEND|UPDATE|SNAPSHOT: Type of the transaction the upload creates (default: UPDATE).
-- SDK: `datasets.Dataset.File.upload`, `datasets.Dataset.Transaction.create`, `datasets.Dataset.Transaction.commit`, `datasets.Dataset.Transaction.abort`
+- `--transaction-type` APPEND|UPDATE|SNAPSHOT: Type of the transaction pltr opens for the upload and commits (default: UPDATE).
+- **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.File.upload`, `datasets.Dataset.Transaction.create`, `datasets.Dataset.Transaction.commit`, `datasets.Dataset.Transaction.abort`
 
 ## pltr dataset jobs
 

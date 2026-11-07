@@ -2,8 +2,10 @@
 Dataset commands (Foundry datasets API).
 """
 
-from pathlib import Path, PurePosixPath
-from typing import Any, List, Optional, Tuple
+import ntpath
+import posixpath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from typing import Any, List, Optional, Tuple, TypeVar
 
 import click
 import typer
@@ -75,6 +77,17 @@ def _field_type(field: Any) -> str:
         )
         return f"STRUCT<{members}>"
     return str(kind)
+
+
+def _count_fields(schema: Any) -> str:
+    count = len(schema.field_schema_list)
+    return f"{count} field" if count == 1 else f"{count} fields"
+
+
+def _describe_field(field: Any) -> str:
+    """``name: TYPE``, plus ``(nullable)``, for a ``DatasetFieldSchema``."""
+    nullable = " (nullable)" if field.nullable else ""
+    return f"{field.name}: {_field_type(field)}{nullable}"
 
 
 def _backing_datasets(view: Any) -> str:
@@ -486,18 +499,22 @@ def set_schema(
             schema = service.infer_schema_from_csv(from_csv)
         except ValueError as exc:  # no header row, not UTF-8
             raise typer.BadParameter(str(exc), param_hint="'--from-csv'") from exc
-        info(f"Inferred {len(schema.field_schema_list)} fields from {from_csv}")
+        info(f"Inferred {_count_fields(schema)} from {from_csv}")
+        origin = f"Schema inferred from {from_csv}"
     elif json_schema is not None:
         document = load_json_input(json_schema, param_hint="'--json'")
         schema = _parse_schema(document, "'--json'")
+        origin = "Schema from --json"
     else:
         document = load_json_input(f"@{json_file}", param_hint="'--json-file'")
         schema = _parse_schema(document, "'--json-file'")
+        origin = f"Schema from {json_file}"
 
     where = f" on branch '{branch}'" if branch else ""
     confirm_destructive(
-        f"Replace the schema of dataset {dataset_rid}{where} "
-        f"({len(schema.field_schema_list)} fields)?",
+        f"{origin} ({_count_fields(schema)}):\n"
+        + "".join(f"  {_describe_field(f)}\n" for f in schema.field_schema_list)
+        + f"Replace the schema of dataset {dataset_rid}{where} with it?",
         yes=yes,
     )
     with spinner(f"Setting the schema of {dataset_rid}..."):
@@ -509,7 +526,7 @@ def set_schema(
             dataframe_reader=dataframe_reader,
         )
     cache_rid(dataset_rid)
-    success(f"Set the schema of {dataset_rid} ({len(schema.field_schema_list)} fields)")
+    success(f"Set the schema of {dataset_rid} ({_count_fields(schema)})")
     _emit_schema(response, dataset_rid, format, output)
 
 
@@ -594,7 +611,7 @@ def create_branch(
         typer.Option(
             "--parent",
             help="Branch to start from: the new branch points at its latest "
-            "transaction (default: master).",
+            "transaction, which must be committed (default: master).",
             show_default=False,
         ),
     ] = None,
@@ -611,17 +628,25 @@ def create_branch(
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Create a branch, starting from a parent branch or a transaction."""
+    """Create a branch, starting from a parent branch or a transaction.
+
+    A branch can only start at a committed transaction. If the parent's
+    latest transaction is still open, commit or abort it first, or pass
+    --transaction-rid with a committed transaction ('pltr dataset branches
+    transactions' lists a branch's transactions, newest first).
+    """
     if parent is not None and transaction_rid is not None:
         raise typer.BadParameter("pass --parent or --transaction-rid, not both")
     service = DatasetService(profile=profile)
     with spinner(f"Creating branch '{branch_name}' on {dataset_rid}..."):
         if transaction_rid is None:
-            parent_branch = service.get_branch(dataset_rid, parent or "master")
-            transaction_rid = parent_branch.transaction_rid
-        branch = service.create_branch(
-            dataset_rid, branch_name, transaction_rid=transaction_rid
-        )
+            branch = service.create_branch_from_parent(
+                dataset_rid, branch_name, parent or "master"
+            )
+        else:
+            branch = service.create_branch(
+                dataset_rid, branch_name, transaction_rid=transaction_rid
+            )
     cache_rid(dataset_rid)
     success(f"Created branch '{branch.name}' on {dataset_rid}")
     emit(branch, format=format, output=output, columns=BRANCH_COLUMNS, title="Branch")
@@ -792,7 +817,7 @@ def _abort_after_failure(
         warn(f"Aborted transaction {transaction_rid}; the dataset is unchanged.")
 
 
-def _upload_directory(
+def _upload_in_transaction(
     service: DatasetService,
     dataset_rid: str,
     plan: List[Tuple[Path, str]],
@@ -801,7 +826,9 @@ def _upload_directory(
     transaction_rid: Optional[str],
     transaction_type: Optional[str],
 ) -> List[Any]:
-    """Upload every file of ``plan`` in one transaction (see upload_file)."""
+    """Upload every file of ``plan`` in one transaction (see upload_file):
+    ``transaction_rid``, left open, or a new one that is committed, or
+    aborted if an upload fails."""
     if transaction_rid is not None:
         uploaded = []
         for local, remote in plan:
@@ -811,7 +838,7 @@ def _upload_directory(
                 )
             )
             info(f"Uploaded {remote}")
-        success(f"Uploaded {len(uploaded)} files into transaction {transaction_rid}")
+        success(f"Uploaded {_count_files(uploaded)} into transaction {transaction_rid}")
         info(
             "The transaction is still open. Commit it with: pltr dataset "
             f"transactions commit {dataset_rid} {transaction_rid}"
@@ -836,9 +863,13 @@ def _upload_directory(
         _abort_after_failure(service, dataset_rid, transaction.rid)
         raise
     success(
-        f"Uploaded {len(uploaded)} files and committed transaction {transaction.rid}"
+        f"Uploaded {_count_files(uploaded)} and committed transaction {transaction.rid}"
     )
     return uploaded
+
+
+def _count_files(files: List[Any]) -> str:
+    return "1 file" if len(files) == 1 else f"{len(files)} files"
 
 
 @files_app.command("upload")
@@ -848,7 +879,8 @@ def _upload_directory(
         "datasets.Dataset.Transaction.create",
         "datasets.Dataset.Transaction.commit",
         "datasets.Dataset.Transaction.abort",
-    )
+    ),
+    destructive=True,  # a SNAPSHOT upload replaces the branch's files
 )
 def upload_file(
     file_path: Annotated[
@@ -895,23 +927,28 @@ def upload_file(
             click_type=click.Choice(
                 ("APPEND", "UPDATE", "SNAPSHOT"), case_sensitive=False
             ),
-            help="Type of the transaction the upload creates (default: UPDATE). "
-            "SNAPSHOT replaces the dataset's files. Not with --transaction-rid.",
+            help="Type of the transaction pltr opens for the upload and commits "
+            "(default: UPDATE). SNAPSHOT replaces every file on the branch and "
+            "asks for confirmation. Not with --transaction-rid.",
             show_default=False,
         ),
     ] = None,
+    yes: YesOption = False,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
     """Upload a local file or directory to a dataset.
 
-    A file is uploaded in one request (read into memory: the API has no
-    chunked upload); the API opens and commits a transaction for it unless
-    you pass --transaction-rid. A directory is uploaded file by file in one
-    transaction that pltr opens and commits, or aborts if any upload fails,
-    so the dataset never shows a partial upload. JSON output is the uploaded
-    File, or {"data": [...]} of Files for a directory.
+    A file is read into memory and uploaded in one request (the API has no
+    chunked upload). By default the API opens and commits an UPDATE
+    transaction for it; with --transaction-rid it goes into that open
+    transaction. A directory, or a file with --transaction-type, is uploaded
+    in one transaction that pltr opens on the branch and commits, or aborts
+    if any upload fails, so the dataset never shows a partial upload.
+    --transaction-type SNAPSHOT replaces every file on the branch, so it asks
+    for confirmation; --yes skips it. JSON output is the uploaded File, or
+    {"data": [...]} of Files for a directory.
     """
     if transaction_rid is not None and branch is not None:
         raise typer.BadParameter("pass --branch or --transaction-rid, not both")
@@ -921,11 +958,25 @@ def upload_file(
             "can't be used with --transaction-rid"
         )
     plan = _upload_plan(file_path, dataset_path)
+    if transaction_type == "SNAPSHOT":
+        where = f"branch '{branch}'" if branch else "the default branch"
+        new = (
+            f"the {len(plan)} files of {file_path}"
+            if file_path.is_dir()
+            else plan[0][1]
+        )
+        confirm_destructive(
+            f"Replace every file on {where} of dataset {dataset_rid} with {new} "
+            "(a SNAPSHOT transaction)?",
+            yes=yes,
+        )
     service = DatasetService(profile=profile)
 
-    if file_path.is_dir():
-        # One progress line per file instead of a spinner.
-        uploaded = _upload_directory(
+    if file_path.is_dir() or transaction_type is not None:
+        # The API takes transactionType only with branchName, so a file with
+        # --transaction-type goes through a transaction pltr opens, like a
+        # directory. One progress line per step instead of a spinner.
+        uploaded = _upload_in_transaction(
             service,
             dataset_rid,
             plan,
@@ -934,9 +985,20 @@ def upload_file(
             transaction_type=transaction_type,
         )
         cache_rid(dataset_rid)
-        emit(uploaded, format=format, output=output, columns=FILE_COLUMNS)
+        if file_path.is_dir():
+            emit(uploaded, format=format, output=output, columns=FILE_COLUMNS)
+        else:
+            emit(
+                uploaded[0],
+                format=format,
+                output=output,
+                columns=FILE_COLUMNS,
+                title="File",
+            )
         return
 
+    # One file without --transaction-type: the API opens and commits an UPDATE
+    # transaction on the branch, or it goes into --transaction-rid.
     [(local, remote)] = plan
     with spinner(f"Uploading {local.name} to {dataset_rid}..."):
         uploaded_file = service.upload_file(
@@ -945,7 +1007,6 @@ def upload_file(
             remote,
             branch=branch,
             transaction_rid=transaction_rid,
-            transaction_type=transaction_type,
         )
     cache_rid(dataset_rid)
     success(f"Uploaded {local} to {dataset_rid} as {uploaded_file.path}")
@@ -959,19 +1020,59 @@ def upload_file(
     )
 
 
+#: A local path: a real ``Path``, or a pure one in tests.
+_P = TypeVar("_P", bound=PurePath)
+
+
+def _resolved(path: PurePath) -> PurePath:
+    """``path`` resolved (symlinks too), or normalized when it's a pure path
+    (tests simulate Windows with ``PureWindowsPath``)."""
+    if isinstance(path, Path):
+        return path.resolve()
+    flavour = ntpath if isinstance(path, PureWindowsPath) else posixpath
+    return type(path)(flavour.normpath(str(path)))
+
+
+def _unsafe_part(part: str, windows: bool) -> bool:
+    """Whether a part of a remote path can't be one local path component."""
+    if part == "..":
+        return True
+    # On Windows "\" separates paths too, ":" names a drive or a stream, and a
+    # trailing "." or " " is dropped ("..." or ".. " become ".."). Elsewhere
+    # they are ordinary characters.
+    return windows and ("\\" in part or ":" in part or part.endswith((".", " ")))
+
+
 def _download_targets(
-    files: List[Any], prefix: Optional[str], output_dir: Path
-) -> List[Tuple[Any, Path]]:
-    """Local paths under ``output_dir`` for files listed under ``prefix``."""
+    files: List[Any], prefix: Optional[str], output_dir: _P
+) -> List[Tuple[Any, _P]]:
+    """Local paths under ``output_dir`` for files listed under ``prefix``.
+
+    Each "/"-separated part of a remote path becomes one local path
+    component. A path that is absolute, has a part that isn't safe as a
+    component (see ``_unsafe_part``), or resolves outside ``output_dir`` (for
+    example through a symlink) stops the download before any file is written.
+    """
+    windows = isinstance(output_dir, PureWindowsPath)
+    root = _resolved(output_dir)
     targets = []
     for file in files:
         relative = PurePosixPath(file.path[len(prefix) :] if prefix else file.path)
-        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        parts = relative.parts
+        safe = (
+            bool(parts)
+            and not relative.is_absolute()
+            and not any(_unsafe_part(part, windows) for part in parts)
+        )
+        target = output_dir.joinpath(*parts)
+        if not safe or not _resolved(target).is_relative_to(root):
             raise PltrError(
-                f"Refusing to download {file.path!r}: it would be written outside "
-                f"{output_dir}.",
+                f"Refusing to download {file.path!r}: it can't be written safely "
+                f"inside {output_dir}. Nothing was downloaded.",
+                hint="Download that file on its own to a local path you choose: "
+                "pltr dataset files get DATASET_RID REMOTE_PATH LOCAL_FILE",
             )
-        targets.append((file, output_dir.joinpath(*relative.parts)))
+        targets.append((file, target))
     return targets
 
 
@@ -1022,7 +1123,10 @@ def get_file(
     a failed download leaves no partial file and keeps an existing one.
     stdout gets the downloaded files' metadata: the File (JSON), or
     {"data": [...]} with --recursive. With OUTPUT_PATH - the file's content
-    goes to stdout instead.
+    goes to stdout instead. With --recursive, a file whose path can't be
+    written safely inside OUTPUT_PATH (a .. part, a symlink out of it, or on
+    Windows a \\ or : in a name) stops the download before any file is
+    written.
     """
     service = DatasetService(profile=profile)
     if str(output_path) == "-":
