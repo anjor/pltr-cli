@@ -299,6 +299,17 @@ def test_load_json_input_errors_are_usage_errors(tmp_path):
         load_json_input(f"@{tmp_path / 'missing.json'}", param_hint="--where")
 
 
+def test_load_json_input_from_stdin():
+    @click.command()
+    @click.option("--where")
+    def show(where):
+        click.echo(json.dumps(load_json_input(where, param_hint="'--where'")))
+
+    result = ClickRunner().invoke(show, ["--where", "@-"], input='{"a": [1]}')
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"a": [1]}
+
+
 def test_invalid_json_input_in_a_command():
     app = typer.Typer(cls=PltrRootGroup)
 

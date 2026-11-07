@@ -406,7 +406,7 @@ SPEC = {
                 {
                     "name": "config-version",
                     "sdk": "ConfigVersion",
-                    "summary": "client.models.ModelStudio.ConfigVersion: create, get, latest, list",
+                    "summary": "client.models.ModelStudio.ConfigVersion: create, latest, list",
                     "help": "Commands for the ConfigVersion resource (SDK: client.models.ModelStudio.ConfigVersion), one per SDK method.",
                     "methods": [
                         {
@@ -423,18 +423,6 @@ SPEC = {
                                 {"name": "trainer_id", "in": "body", "type": "str", "required": True, "help": "The identifier of the trainer to use for this configuration."},
                                 {"name": "worker_config", "in": "body", "type": "json", "schema": "ModelStudioWorkerConfig", "required": True, "help": "The worker configuration including inputs, outputs, and custom settings."},
                                 {"name": "changelog", "in": "body", "type": "str", "help": "Changelog describing changes in this version."},
-                            ],
-                        },
-                        {
-                            "name": "get",
-                            "sdk": "get",
-                            "summary": "Gets a specific Model Studio configuration version.",
-                            "help": "Gets a specific Model Studio configuration version.\n\nRequired scopes: [api:models-read]",
-                            "http": "GET /v2/models/modelStudios/{modelStudioRid}/configVersions/{modelStudioConfigVersionVersion}",
-                            "beta": True,
-                            "params": [
-                                {"name": "model_studio_rid", "in": "path", "api": "modelStudioRid", "type": "str", "schema": "ModelStudioRid", "required": True},
-                                {"name": "model_studio_config_version_version", "in": "path", "api": "modelStudioConfigVersionVersion", "type": "int", "schema": "ModelStudioConfigVersionNumber", "required": True, "help": "The version number of this configuration."},
                             ],
                         },
                         {

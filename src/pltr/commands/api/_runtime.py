@@ -5,11 +5,16 @@ A namespace's spec module is imported only when that namespace is used, and
 resource groups and method commands are built only when they are reached, so
 `pltr --help` and the curated commands don't pay for the generated tree.
 
+Every command talks to the user through `pltr.contract` like the curated
+commands: the shared options (`--profile`, `--format`, `--output`, `--yes`,
+the paging options), `@pltr_command` metadata and error handling, `emit` and
+`confirm_destructive`.
+
 At call time every command resolves its SDK method by attribute path on the
-client returned by `AuthManager().get_client(profile)`, so it works against a newer
-installed SDK too: `preview=True` is passed only if the installed method still
-accepts `preview`, and a method or parameter that no longer exists fails with a
-clear error instead of a traceback.
+client the services use, so it works against a newer installed SDK too:
+`preview=True` is passed only if the installed method still accepts
+`preview`, and a method or parameter that no longer exists fails with a clear
+error instead of a traceback.
 """
 
 from __future__ import annotations
@@ -17,15 +22,35 @@ from __future__ import annotations
 import functools
 import importlib
 import inspect
-import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
 
-from . import _adapter as adapter
+from pltr.contract import (
+    BETA_LABEL,
+    PltrError,
+    check_binary_output,
+    click_format_option,
+    click_output_option,
+    click_page_options,
+    click_profile_option,
+    click_yes_option,
+    collect_pages,
+    confirm_destructive,
+    emit,
+    emit_bytes,
+    load_json_input,
+    pltr_command,
+    spinner,
+    success,
+)
 
 SPECS_PACKAGE = "pltr.commands.api._specs"
+
+#: SDK parameters that the shared paging options (`click_page_options`)
+#: provide for paged commands.
+PAGING_PARAMETERS = ("page_size", "page_token")
 
 
 def _index() -> Any:
@@ -48,51 +73,11 @@ def installed_sdk_version() -> str:
 
 
 # ---------------------------------------------------------------------------
-# JSON-mode usage errors
-# ---------------------------------------------------------------------------
-
-
-def json_requested(args: Sequence[str]) -> bool:
-    """Whether the invocation asks for JSON (`--format json` or PLTR_FORMAT)."""
-    args = list(args)
-    for position, arg in enumerate(args):
-        if arg == "--":
-            break
-        if arg == "--format" and position + 1 < len(args):
-            return adapter.is_json(args[position + 1])
-        if arg.startswith("--format="):
-            return adapter.is_json(arg.split("=", 1)[1])
-    return adapter.is_json(os.environ.get("PLTR_FORMAT"))
-
-
-class _JsonUsageErrorsMixin:
-    """Report click usage errors as JSON when JSON output was requested."""
-
-    def parse_args(self, ctx: click.Context, args: List[str]) -> List[str]:
-        original = list(args)  # click's parser consumes `args` in place
-        try:
-            return super().parse_args(ctx, args)  # type: ignore[misc]
-        except click.UsageError as exc:
-            if json_requested(original):
-                adapter.fail_usage(exc)
-            raise
-
-    def resolve_command(self, ctx: click.Context, args: List[str]) -> Any:
-        original = list(args)
-        try:
-            return super().resolve_command(ctx, args)  # type: ignore[misc]
-        except click.UsageError as exc:
-            if json_requested(original):
-                adapter.fail_usage(exc)
-            raise
-
-
-# ---------------------------------------------------------------------------
 # Groups
 # ---------------------------------------------------------------------------
 
 
-class SpecGroup(_JsonUsageErrorsMixin, click.Group):
+class SpecGroup(click.Group):
     """A namespace or resource group whose children are built on first use."""
 
     def __init__(
@@ -179,7 +164,7 @@ def namespace_group(
     )
 
 
-class IndexGroup(_JsonUsageErrorsMixin, click.Group):
+class IndexGroup(click.Group):
     """A group of namespaces read from the generated index (e.g. a future `v3`)."""
 
     def __init__(
@@ -252,6 +237,21 @@ def option_name(param: Dict[str, Any]) -> str:
     return str(param.get("option") or "--" + param["name"].replace("_", "-"))
 
 
+def param_dest(param: Dict[str, Any]) -> str:
+    """The click parameter name of an SDK parameter.
+
+    Its python name, unless the generator renamed its option because it
+    collides with a shared option (`format` -> `--api-format` / `api_format`).
+    """
+    if param.get("option"):
+        return str(param["option"])[2:].replace("-", "_")
+    return str(param["name"])
+
+
+def is_shared_paging_parameter(spec: Dict[str, Any], param: Dict[str, Any]) -> bool:
+    return bool(spec.get("paged")) and param["name"] in PAGING_PARAMETERS
+
+
 def _click_type(param: Dict[str, Any]) -> Any:
     kind = param["type"]
     if kind == "int":
@@ -298,9 +298,9 @@ def _argument_help(param: Dict[str, Any]) -> str:
 
 def sdk_parameter(param: Dict[str, Any]) -> click.Parameter:
     """The click argument/option for one SDK parameter."""
-    name = param["name"]
+    dest = param_dest(param)
     if param["in"] == "path":
-        return click.Argument([name], type=_click_type(param), required=True)
+        return click.Argument([dest], type=_click_type(param), required=True)
     # A repeatable option can't express an empty list, which many required list
     # parameters accept (e.g. `select`: all properties), so it is never required;
     # leaving it out sends [].
@@ -309,13 +309,13 @@ def sdk_parameter(param: Dict[str, Any]) -> click.Parameter:
     help_text = _option_help(param)
     if param["type"] == "bool":
         return click.Option(
-            [f"{declaration}/--no-{declaration[2:]}", name],
+            [f"{declaration}/--no-{declaration[2:]}", dest],
             default=None,
             required=required,
             help=help_text,
         )
     return click.Option(
-        [declaration, name],
+        [declaration, dest],
         type=_click_type(param),
         required=required,
         multiple=bool(param.get("multiple")),
@@ -324,66 +324,31 @@ def sdk_parameter(param: Dict[str, Any]) -> click.Parameter:
     )
 
 
-def pltr_options(spec: Dict[str, Any]) -> List[click.Option]:
-    """The options pltr adds to every generated command."""
-    options = [
-        click.Option(
-            ["--profile", "pltr_profile"],
-            help="Auth profile to use (default: the active profile).",
-        ),
-        click.Option(
-            ["--format", "pltr_format"],
-            type=click.Choice(adapter.FORMATS, case_sensitive=False),
-            default="table",
-            show_default=True,
-            envvar="PLTR_FORMAT",
-            help=(
-                "Output format; json is the SDK's own serialization. Can be set "
-                "with PLTR_FORMAT."
-            ),
-        ),
+def shared_options(spec: Dict[str, Any]) -> List[click.Parameter]:
+    """The shared `pltr.contract` options of a generated command, in help order.
+
+    `--profile`, `--format`, `--output`, plus `--yes` for destructive and the
+    paging options for paged commands. They come from the contract's click
+    decorators, applied to a placeholder to collect the options they declare.
+    """
+    decorators: List[Callable[[Any], Any]] = [
+        click_profile_option,
+        click_format_option,
+        click_output_option,
     ]
-    if spec.get("binary"):
-        options.append(
-            click.Option(
-                ["--output-file", "--output", "-o", "pltr_output"],
-                type=click.Path(dir_okay=False, allow_dash=True),
-                help=(
-                    "Write the binary response to FILE (- for stdout). Without it the "
-                    "response goes to stdout, unless stdout is a terminal."
-                ),
-            )
-        )
-    else:
-        options.append(
-            click.Option(
-                ["--output", "-o", "pltr_output"],
-                type=click.Path(dir_okay=False),
-                help="Write the output to FILE instead of stdout.",
-            )
-        )
-    if spec.get("paged"):
-        options.append(
-            click.Option(
-                ["--all", "pltr_all"],
-                is_flag=True,
-                help=(
-                    'Fetch every page and print them as one {"data": [...]} result. '
-                    "Without it one page is printed, with its nextPageToken."
-                ),
-            )
-        )
     if spec.get("destructive"):
-        options.append(
-            click.Option(
-                ["--yes", "-y", "pltr_yes"],
-                is_flag=True,
-                help=(
-                    "Don't ask for confirmation. Required when stdin is not a terminal."
-                ),
-            )
-        )
-    return options
+        decorators.append(click_yes_option)
+    if spec.get("paged"):
+        decorators.append(click_page_options)
+
+    def placeholder() -> None:
+        """Collects the options the decorators declare."""
+
+    target: Any = placeholder
+    for decorate in reversed(decorators):
+        target = decorate(target)
+    # click's decorators record their parameters in reverse declaration order.
+    return list(reversed(target.__click_params__))
 
 
 def _preformat(text: str) -> str:
@@ -412,19 +377,24 @@ def _epilog(spec: Dict[str, Any], context: Dict[str, Any]) -> str:
     if spec.get("beta"):
         lines.append("Beta: pltr passes preview=True for you.")
     if spec.get("paged"):
-        lines.append("Paged: prints one page by default; --all fetches every page.")
+        lines.append(
+            "Paged: prints one page (the API's response) by default; --max-pages "
+            "and --all fetch more."
+        )
     if spec.get("binary"):
-        lines.append("Binary response: written to --output-file or to stdout.")
+        lines.append("Binary response: written to --output FILE or to stdout.")
     if spec.get("destructive"):
         lines.append("Destructive: asks for confirmation; --yes skips it.")
     return "\b\n" + "\n".join(lines)
 
 
-class ApiCommand(_JsonUsageErrorsMixin, click.Command):
+class ApiCommand(click.Command):
     """A generated command; documents its positional arguments too.
 
     `spec` is the generated method spec and `sdk_method` the dotted SDK path
-    (e.g. "admin.User.list"), for coverage reports and the command manifest.
+    (e.g. "admin.User.list"). The command's `pltr.contract` CommandMeta (read
+    with `get_command_meta`) carries the same SDK path and the beta,
+    destructive and paged flags.
     """
 
     def __init__(
@@ -457,29 +427,42 @@ class ApiCommand(_JsonUsageErrorsMixin, click.Command):
 def build_method_command(
     spec: Dict[str, Any], context: Dict[str, Any]
 ) -> click.Command:
-    params: List[click.Parameter] = [sdk_parameter(p) for p in spec["params"]]
-    params.extend(pltr_options(spec))
-    beta = "[beta] " if spec.get("beta") else ""
-    description = spec.get("help") or (
-        f"Call FoundryClient.{'.'.join(context['sdk_path'])} ({spec['http']})."
-    )
+    sdk_method = ".".join(context["sdk_path"])
+    params: List[click.Parameter] = [
+        sdk_parameter(p)
+        for p in spec["params"]
+        if not is_shared_paging_parameter(spec, p)
+    ]
+    params.extend(shared_options(spec))
+    description = spec.get("help") or f"Calls FoundryClient.{sdk_method}."
+    summary = spec.get("summary") or description.splitlines()[0]
+    help_text = _preformat(description)
+    if spec.get("beta"):
+        help_text = f"{BETA_LABEL} {help_text}"
+        summary = f"{BETA_LABEL} {summary}"
     argument_help = {
-        p["name"]: _argument_help(p) for p in spec["params"] if p["in"] == "path"
+        param_dest(p): _argument_help(p) for p in spec["params"] if p["in"] == "path"
     }
 
-    def callback(**values: Any) -> None:
+    def run(**values: Any) -> None:
         run_method(spec, context, values)
 
+    callback = pltr_command(
+        sdk=sdk_method,
+        beta=bool(spec.get("beta")),
+        destructive=bool(spec.get("destructive")),
+        paged=bool(spec.get("paged")),
+    )(run)
     return ApiCommand(
         spec["name"],
         params=params,
         callback=callback,
-        help=beta + _preformat(description),
-        short_help=beta + (spec.get("summary") or description.splitlines()[0]),
+        help=help_text,
+        short_help=summary,
         epilog=_epilog(spec, context),
         argument_help=argument_help,
         spec=spec,
-        sdk_method=".".join(context["sdk_path"]),
+        sdk_method=sdk_method,
     )
 
 
@@ -489,14 +472,17 @@ def build_method_command(
 
 
 def get_client(client_key: str, profile: Optional[str]) -> Any:
-    """The authenticated SDK client for a generated command."""
-    if client_key != "v2":
-        raise adapter.unavailable(
-            f"pltr has no client factory for the {client_key} API yet."
-        )
-    from pltr.auth.manager import AuthManager
+    """The authenticated SDK client for a generated command.
 
-    return AuthManager().get_client(profile)
+    Generated commands get their client exactly like the curated services do,
+    through the AuthManager of `pltr.services.base` (env-var or profile auth;
+    `stub_foundry_http` replaces it in tests).
+    """
+    if client_key != "v2":
+        raise PltrError(f"pltr has no client for the {client_key} API yet.")
+    from pltr.services import base
+
+    return base.AuthManager().get_client(profile)
 
 
 @functools.lru_cache(maxsize=None)
@@ -519,6 +505,17 @@ def accepts_preview(method: Any) -> bool:
     return "preview" in method_signature(method).parameters
 
 
+def _sdk_mismatch(message: str) -> PltrError:
+    return PltrError(
+        f"{message} (the generated commands were built from foundry-platform-sdk "
+        f"{generated_sdk_version()}).",
+        hint=(
+            "Install pltr in its own environment (uv tool install pltr-cli or "
+            "pipx install pltr-cli) to get the SDK version it was tested with."
+        ),
+    )
+
+
 def resolve(client: Any, context: Dict[str, Any]) -> Tuple[Any, Any]:
     """Return (resource client, bound method) for the command's SDK path."""
     obj = client
@@ -528,38 +525,12 @@ def resolve(client: Any, context: Dict[str, Any]) -> Tuple[Any, Any]:
         try:
             obj = getattr(obj, attr)
         except AttributeError:
-            raise adapter.unavailable(
+            raise _sdk_mismatch(
                 f"`pltr {' '.join(context['cli_path'])}` calls "
                 f"FoundryClient.{'.'.join(context['sdk_path'])}, which is not "
-                f"available in foundry-platform-sdk {installed_sdk_version()} "
-                f"(the generated commands were built from {generated_sdk_version()}). "
-                "Install pltr in its own environment (uv tool install pltr-cli) to get "
-                "the SDK version it was tested with."
+                f"available in foundry-platform-sdk {installed_sdk_version()}"
             ) from None
     return parent, obj
-
-
-def _read_text_argument(value: str, label: str) -> str:
-    if not value.startswith("@"):
-        return value
-    path = value[1:]
-    try:
-        if path == "-":
-            return click.get_text_stream("stdin").read()
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
-    except OSError as exc:
-        raise adapter.usage_error(f"{label}: can't read {path}: {exc}") from exc
-
-
-def parse_json(value: str, label: str) -> Any:
-    import json
-
-    text = _read_text_argument(value, label)
-    try:
-        return json.loads(text)
-    except ValueError as exc:
-        raise adapter.usage_error(f"{label}: invalid JSON ({exc})") from exc
 
 
 def read_bytes(value: str, label: str) -> bytes:
@@ -569,7 +540,9 @@ def read_bytes(value: str, label: str) -> bytes:
         with open(value, "rb") as handle:
             return handle.read()
     except OSError as exc:
-        raise adapter.usage_error(f"{label}: can't read {value}: {exc}") from exc
+        raise click.BadParameter(
+            f"cannot read {value}: {exc.strerror or exc}", param_hint=f"'{label}'"
+        ) from exc
 
 
 def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]:
@@ -577,8 +550,10 @@ def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]
     kwargs: Dict[str, Any] = {}
     body_length: Optional[int] = None
     for param in spec["params"]:
+        if is_shared_paging_parameter(spec, param):
+            continue
         name = param["name"]
-        value = values.get(name)
+        value = values.get(param_dest(param))
         if param.get("multiple"):
             if value:
                 kwargs[name] = list(value)
@@ -589,7 +564,7 @@ def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]
             continue
         label = name.upper() if param["in"] == "path" else option_name(param)
         if param["type"] == "json":
-            kwargs[name] = parse_json(value, label)
+            kwargs[name] = load_json_input(value, param_hint=f"'{label}'")
         elif param["type"] == "bytes":
             kwargs[name] = read_bytes(value, label)
             body_length = len(kwargs[name])
@@ -611,71 +586,64 @@ def check_parameters(
     accepted = method_signature(method).parameters
     unknown = sorted(name for name in kwargs if name not in accepted)
     if unknown:
-        raise adapter.unavailable(
+        raise _sdk_mismatch(
             f"FoundryClient.{'.'.join(context['sdk_path'])} in foundry-platform-sdk "
-            f"{installed_sdk_version()} doesn't accept {', '.join(unknown)} (the "
-            f"generated commands were built from {generated_sdk_version()})."
+            f"{installed_sdk_version()} doesn't accept {', '.join(unknown)}"
         )
 
 
-def confirmation_message(
-    spec: Dict[str, Any], context: Dict[str, Any], kwargs: Dict[str, Any]
-) -> str:
+def request_label(spec: Dict[str, Any], kwargs: Dict[str, Any]) -> str:
+    """The endpoint with its path parameters filled in, e.g. `GET /v2/...`."""
     http_method, _, path = spec["http"].partition(" ")
     for param in spec["params"]:
         if param["in"] == "path" and param["name"] in kwargs:
             path = path.replace("{" + param["api"] + "}", str(kwargs[param["name"]]))
-    return (
-        f"{http_method} {path} (FoundryClient.{'.'.join(context['sdk_path'])}) is "
-        "destructive. Continue?"
-    )
+    return f"{http_method} {path}"
 
 
 def run_method(
     spec: Dict[str, Any], context: Dict[str, Any], values: Dict[str, Any]
 ) -> None:
-    fmt = str(values.pop("pltr_format", "table")).lower()
-    output = values.pop("pltr_output", None)
-    fetch_all = bool(values.pop("pltr_all", False))
-    yes = bool(values.pop("pltr_yes", False))
-    profile = values.pop("pltr_profile", None)
-    try:
-        kwargs = build_kwargs(spec, values)
-        destructive = bool(spec.get("destructive"))
-        if destructive and not yes and not adapter.stdin_is_terminal():
-            # Fail before authenticating: there is no way to ask.
-            raise adapter.confirmation_unavailable()
-        if spec.get("binary") and not output and adapter.stdout_is_terminal():
-            raise adapter.usage_error(
-                "This command returns binary data. Pass --output-file FILE, or "
-                "redirect stdout to a file or pipe."
+    """The body of every generated command (errors are handled by @pltr_command)."""
+    fmt = values.pop("format")
+    output = values.pop("output", None)
+    profile = values.pop("profile", None)
+    yes = bool(values.pop("yes", False))
+    paging = {
+        key: values.pop(key, None)
+        for key in ("page_size", "page_token", "max_pages", "all_pages")
+    }
+    kwargs = build_kwargs(spec, values)
+    if spec.get("paged") and paging["page_size"] is not None:
+        if not any(p["name"] == "page_size" for p in spec["params"]):
+            raise click.BadParameter(
+                "this endpoint doesn't take a page size", param_hint="'--page-size'"
             )
-        client = get_client(context.get("client", "v2"), profile)
-        resource, method = resolve(client, context)
-        check_parameters(method, kwargs, context)
-        if accepts_preview(method):
-            kwargs["preview"] = True
-        if destructive:
-            adapter.confirm(
-                confirmation_message(spec, context, kwargs), yes=yes, fmt=fmt
-            )
-        if spec.get("binary"):
-            run_binary(resource, method, context, kwargs, output, fmt)
-        elif spec.get("paged"):
-            run_paged(spec, resource, method, context, kwargs, fetch_all, output, fmt)
-        else:
+        kwargs["page_size"] = paging["page_size"]
+    if spec.get("binary"):
+        check_binary_output(output)  # before downloading anything
+
+    client = get_client(context.get("client", "v2"), profile)
+    resource, method = resolve(client, context)
+    check_parameters(method, kwargs, context)
+    if accepts_preview(method):
+        kwargs["preview"] = True
+    label = request_label(spec, kwargs)
+    if spec.get("destructive"):
+        confirm_destructive(
+            f"Run {label} (FoundryClient.{'.'.join(context['sdk_path'])})?", yes=yes
+        )
+
+    if spec.get("binary"):
+        run_binary(resource, method, context, kwargs, output, label)
+    elif spec.get("paged"):
+        run_paged(spec, resource, method, context, kwargs, paging, fmt, output, label)
+    else:
+        with spinner(label):
             result = method(**kwargs)
-            annotation = method_signature(method).return_annotation
-            if annotation is inspect.Signature.empty:
-                annotation = None
-            document = (
-                None if result is None else adapter.to_jsonable(result, annotation)
-            )
-            adapter.emit_result(document, fmt=fmt, output=output)
-    except click.exceptions.Exit:
-        raise
-    except Exception as exc:
-        adapter.fail(exc, fmt=fmt)
+        if result is None:
+            success("Done (the API returned no content).")
+        emit(result, format=fmt, output=output)
 
 
 def run_binary(
@@ -684,44 +652,18 @@ def run_binary(
     context: Dict[str, Any],
     kwargs: Dict[str, Any],
     output: Optional[str],
-    fmt: str,
+    label: str,
 ) -> None:
+    """Stream a binary response to --output or stdout (never held in memory)."""
     name = context["sdk_path"][-1]
     streaming = getattr(getattr(resource, "with_streaming_response", None), name, None)
     if streaming is not None:
-        with streaming(**kwargs) as response:
-            written = adapter.emit_binary(response.iter_bytes(), output_file=output)
+        with spinner(label), streaming(**kwargs) as response:
+            emit_bytes(response.iter_bytes(), output=output)
     else:
-        data = method(**kwargs)
-        written = adapter.emit_binary([bytes(data or b"")], output_file=output)
-    if output and output != "-":
-        adapter.info(f"Wrote {written} bytes to {output}", fmt=fmt)
-
-
-def _page_fetcher(
-    spec: Dict[str, Any], resource: Any, method: Any, name: str
-) -> Callable[..., Dict[str, Any]]:
-    """A function returning one page as a JSON-safe dict in the API's shape."""
-    raw = None
-    if spec.get("paged") == "iterator":
-        raw = getattr(getattr(resource, "with_raw_response", None), name, None)
-
-    def fetch(**kwargs: Any) -> Dict[str, Any]:
-        if raw is not None:
-            return adapter.to_jsonable(raw(**kwargs).decode())
-        result = method(**kwargs)
-        if (
-            hasattr(result, "next_page_token")
-            and hasattr(result, "data")
-            and not hasattr(result, "model_dump")
-        ):
-            page: Dict[str, Any] = {"data": adapter.to_jsonable(list(result.data))}
-            if result.next_page_token:
-                page["nextPageToken"] = result.next_page_token
-            return page
-        return adapter.to_jsonable(result)
-
-    return fetch
+        with spinner(label):
+            data = method(**kwargs)
+        emit_bytes(bytes(data or b""), output=output)
 
 
 def run_paged(
@@ -730,28 +672,41 @@ def run_paged(
     method: Any,
     context: Dict[str, Any],
     kwargs: Dict[str, Any],
-    fetch_all: bool,
-    output: Optional[str],
+    paging: Dict[str, Any],
     fmt: str,
+    output: Optional[str],
+    label: str,
 ) -> None:
-    fetch = _page_fetcher(spec, resource, method, context["sdk_path"][-1])
-    page = fetch(**kwargs)
-    if not fetch_all:
-        adapter.emit_result(page, fmt=fmt, output=output, paged=True)
-        return
-    data = list(page.get("data") or [])
-    seen = set()
-    token = page.get("nextPageToken")
-    while token:
-        if token in seen:
-            raise adapter.ApiCommandError(
-                f"The API returned the page token {token!r} twice; stopping.",
-                exit_code=7,
-                error_type="api_error",
-            )
-        seen.add(token)
-        kwargs["page_token"] = token
-        page = fetch(**kwargs)
-        data.extend(page.get("data") or [])
-        token = page.get("nextPageToken")
-    adapter.emit_result({"data": data}, fmt=fmt, output=output, paged=True)
+    """One page as the API returns it, or several merged by `collect_pages`.
+
+    Methods that return an SDK ResourceIterator are called through the SDK's
+    `with_raw_response`, which decodes the API's own page response (with
+    fields such as `totalCount`); methods that return a paged response model
+    already give it.
+    """
+    raw = None
+    if spec.get("paged") == "iterator":
+        raw = getattr(
+            getattr(resource, "with_raw_response", None), context["sdk_path"][-1], None
+        )
+
+    def fetch_page(token: Optional[str]) -> Any:
+        call = dict(kwargs)
+        if token is not None:
+            call["page_token"] = token
+        with spinner(label):
+            if raw is not None:
+                return raw(**call).decode()
+            return method(**call)
+
+    max_pages = paging["max_pages"] or 1
+    if paging["all_pages"] or max_pages > 1:
+        page = collect_pages(
+            fetch_page,
+            page_token=paging["page_token"],
+            max_pages=max_pages,
+            all_pages=bool(paging["all_pages"]),
+        )
+        emit(page, format=fmt, output=output)
+    else:
+        emit(fetch_page(paging["page_token"]), format=fmt, output=output)

@@ -8,7 +8,7 @@ from foundry_sdk._core import utils as sdk_utils
 from foundry_sdk.v2.admin.cbac_banner import CbacBannerClient
 from foundry_sdk.v2.admin.user import UserClient
 
-from pltr.commands.api import _adapter
+from pltr.services import base as services_base
 
 USER_ID = "f05f8da4-b84c-4fca-9c77-8af0b13d11de"
 OTHER_USER_ID = "0d4b1b8e-5e43-4d1f-9a7f-6b8c2f3e1a90"
@@ -46,14 +46,16 @@ def stderr_json(result) -> Any:
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_paged_command_prints_one_page_with_next_page_token(api_stub, pltr_api):
+def test_paged_command_prints_one_page_with_next_page_token(
+    stub_foundry_http, pltr_api
+):
     page = {"data": [user(USER_ID, "jdoe")], "nextPageToken": "page-2"}
-    api_stub.respond(200, json=page)
+    stub_foundry_http.respond(200, json=page)
 
     result = pltr_api("admin", "user", "list", "--page-size", "1", "--format", "json")
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == "GET"
     assert request.url.path == "/api/v2/admin/users"
     assert dict(request.url.params) == {"pageSize": "1"}
@@ -63,29 +65,31 @@ def test_paged_command_prints_one_page_with_next_page_token(api_stub, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_paged_command_resumes_from_page_token(api_stub, pltr_api):
-    api_stub.respond(200, json={"data": [user(OTHER_USER_ID, "asmith")]})
+def test_paged_command_resumes_from_page_token(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json={"data": [user(OTHER_USER_ID, "asmith")]})
 
     result = pltr_api(
         "admin", "user", "list", "--page-token", "page-2", "--format", "json"
     )
 
     assert result.exit_code == 0, result.output
-    assert dict(api_stub.requests[0].url.params) == {"pageToken": "page-2"}
+    assert dict(stub_foundry_http.requests[0].url.params) == {"pageToken": "page-2"}
     assert json.loads(result.stdout) == {"data": [user(OTHER_USER_ID, "asmith")]}
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_paged_command_all_fetches_every_page(api_stub, pltr_api):
-    api_stub.respond(200, json={"data": [user(USER_ID, "jdoe")], "nextPageToken": "p2"})
-    api_stub.respond(200, json={"data": [user(OTHER_USER_ID, "asmith")]})
+def test_paged_command_all_fetches_every_page(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
+        200, json={"data": [user(USER_ID, "jdoe")], "nextPageToken": "p2"}
+    )
+    stub_foundry_http.respond(200, json={"data": [user(OTHER_USER_ID, "asmith")]})
 
     result = pltr_api(
         "admin", "user", "list", "--all", "--page-size", "1", "--format", "json"
     )
 
     assert result.exit_code == 0, result.output
-    first, second = api_stub.requests
+    first, second = stub_foundry_http.requests
     assert dict(first.url.params) == {"pageSize": "1"}
     assert dict(second.url.params) == {"pageSize": "1", "pageToken": "p2"}
     assert json.loads(result.stdout) == {
@@ -94,11 +98,13 @@ def test_paged_command_all_fetches_every_page(api_stub, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_response_paged_command_keeps_extra_fields_and_pages_body(api_stub, pltr_api):
+def test_response_paged_command_keeps_extra_fields_and_pages_body(
+    stub_foundry_http, pltr_api
+):
     """User.search returns a response model (not an iterator) and pages in the body."""
     page = {"data": [user(USER_ID, "jdoe")], "nextPageToken": "next"}
-    api_stub.respond(200, json=page)
-    api_stub.respond(200, json={"data": []})
+    stub_foundry_http.respond(200, json=page)
+    stub_foundry_http.respond(200, json={"data": []})
 
     where = '{"type": "queryString", "value": "jd"}'
     result = pltr_api(
@@ -106,7 +112,7 @@ def test_response_paged_command_keeps_extra_fields_and_pages_body(api_stub, pltr
     )
 
     assert result.exit_code == 0, result.output
-    first, second = api_stub.requests
+    first, second = stub_foundry_http.requests
     assert first.url.path == "/api/v2/admin/users/search"
     assert json.loads(first.content) == {
         "where": {"type": "queryString", "value": "jd"}
@@ -118,8 +124,8 @@ def test_response_paged_command_keeps_extra_fields_and_pages_body(api_stub, pltr
     assert json.loads(result.stdout) == {"data": [user(USER_ID, "jdoe")]}
 
 
-def test_paged_table_output_lists_rows_and_hints_next_page(api_stub, pltr_api):
-    api_stub.respond(
+def test_paged_table_output_lists_rows_and_hints_next_page(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
         200,
         json={
             "data": [user(USER_ID, "jdoe"), user(OTHER_USER_ID, "asmith")],
@@ -136,8 +142,8 @@ def test_paged_table_output_lists_rows_and_hints_next_page(api_stub, pltr_api):
     assert "page-2" not in result.stdout
 
 
-def test_csv_output(api_stub, pltr_api):
-    api_stub.respond(200, json={"data": [user(USER_ID, "jdoe")]})
+def test_csv_output(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json={"data": [user(USER_ID, "jdoe")]})
 
     result = pltr_api("admin", "user", "list", "--format", "csv")
 
@@ -147,8 +153,8 @@ def test_csv_output(api_stub, pltr_api):
     assert row == f"{USER_ID},jdoe,palantir-internal-realm,ACTIVE,{{}}"
 
 
-def test_pltr_format_environment_variable_selects_json(api_stub, pltr_api):
-    api_stub.respond(200, json=user(USER_ID, "jdoe"))
+def test_pltr_format_environment_variable_selects_json(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json=user(USER_ID, "jdoe"))
 
     result = pltr_api("admin", "user", "get", USER_ID, env={"PLTR_FORMAT": "json"})
 
@@ -156,8 +162,8 @@ def test_pltr_format_environment_variable_selects_json(api_stub, pltr_api):
     assert json.loads(result.stdout) == user(USER_ID, "jdoe")
 
 
-def test_output_option_writes_file(api_stub, pltr_api, tmp_path):
-    api_stub.respond(200, json=user(USER_ID, "jdoe"))
+def test_output_option_writes_file(stub_foundry_http, pltr_api, tmp_path):
+    stub_foundry_http.respond(200, json=user(USER_ID, "jdoe"))
     target = tmp_path / "user.json"
 
     result = pltr_api(
@@ -169,17 +175,19 @@ def test_output_option_writes_file(api_stub, pltr_api, tmp_path):
     assert json.loads(target.read_text()) == user(USER_ID, "jdoe")
 
 
-def test_profile_is_passed_to_auth_manager(api_stub, pltr_api):
-    api_stub.respond(200, json=user(USER_ID, "jdoe"))
+def test_profile_is_passed_to_auth_manager(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json=user(USER_ID, "jdoe"))
 
     result = pltr_api("admin", "user", "get", USER_ID, "--profile", "prod")
 
     assert result.exit_code == 0, result.output
-    api_stub.auth_manager.return_value.get_client.assert_called_once_with("prod")
+    # The same AuthManager seam as the services (stub_foundry_http replaces it).
+    get_client = services_base.AuthManager.return_value.get_client
+    get_client.assert_called_once_with("prod")
 
 
-def test_single_object_table_output(api_stub, pltr_api):
-    api_stub.respond(200, json=user(USER_ID, "jdoe"))
+def test_single_object_table_output(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json=user(USER_ID, "jdoe"))
 
     result = pltr_api("admin", "user", "get", USER_ID)
 
@@ -189,8 +197,10 @@ def test_single_object_table_output(api_stub, pltr_api):
     assert any("status" in row and "ACTIVE" in row for row in rows)
 
 
-def test_non_paged_result_with_a_data_field_shows_every_field(api_stub, pltr_api):
-    api_stub.respond(
+def test_non_paged_result_with_a_data_field_shows_every_field(
+    stub_foundry_http, pltr_api
+):
+    stub_foundry_http.respond(
         200,
         json={
             "data": [[0.25, 0.5]],
@@ -210,10 +220,10 @@ def test_non_paged_result_with_a_data_field_shows_every_field(api_stub, pltr_api
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_non_model_results_use_the_sdk_serialization(api_stub, pltr_api):
-    """dict[str, Long] serializes Longs as strings, as the SDK's models do."""
+def test_non_model_results_are_plain_json(stub_foundry_http, pltr_api):
+    """A dict[str, Long] result prints its decoded values (numbers)."""
     stream_args = (DATASET_RID, "master", "subscriber-1")
-    api_stub.respond(200, json={"0": 42, "1": "7"})
+    stub_foundry_http.respond(200, json={"0": 42, "1": "7"})
 
     result = pltr_api(
         "streams",
@@ -227,14 +237,14 @@ def test_non_model_results_use_the_sdk_serialization(api_stub, pltr_api):
     )
 
     assert result.exit_code == 0, result.output
-    assert dict(api_stub.requests[0].url.params) == {"preview": "true"}
-    assert json.loads(result.stdout) == {"0": "42", "1": "7"}
+    assert dict(stub_foundry_http.requests[0].url.params) == {"preview": "true"}
+    assert json.loads(result.stdout) == {"0": 42, "1": 7}
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_string_result(api_stub, pltr_api):
+def test_string_result(stub_foundry_http, pltr_api):
     media_set_rid = "ri.mio.main.media-set.6a5b4c3d-2e1f-4a0b-9c8d-7e6f5a4b3c2d"
-    api_stub.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
+    stub_foundry_http.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
 
     as_json = pltr_api(
         "media-sets", "media-set", "create", media_set_rid, "--format", "json"
@@ -242,19 +252,32 @@ def test_string_result(api_stub, pltr_api):
     assert as_json.exit_code == 0, as_json.output
     assert json.loads(as_json.stdout) == "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e"
 
-    api_stub.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
+    stub_foundry_http.respond(200, json="5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e")
     as_table = pltr_api("media-sets", "media-set", "create", media_set_rid)
-    assert as_table.stdout.strip() == "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e"
+    assert as_table.exit_code == 0, as_table.output
+    assert "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e" in as_table.stdout
 
 
-def test_group_without_subcommand_in_json_mode_lists_commands(pltr_api):
-    result = pltr_api("admin", "user", env={"PLTR_FORMAT": "json"})
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_no_content_prints_null_in_json_and_a_message_otherwise(
+    stub_foundry_http, pltr_api
+):
+    group_id = "0d4b1b8e-5e43-4d1f-9a7f-6b8c2f3e1a90"
+    add_member = ("admin", "group", "group-member", "add", group_id)
+    stub_foundry_http.respond(204)
+    stub_foundry_http.respond(204)
 
-    assert result.exit_code == 2
-    error = json.loads(result.stderr.strip().splitlines()[-1])
-    assert error["type"] == "usage_error"
-    assert "Missing command for 'pltr api admin user'" in error["message"]
-    assert "get-markings" in error["message"]
+    as_json = pltr_api(*add_member, "--principal-ids", USER_ID, "--format", "json")
+    as_text = pltr_api(*add_member, "--principal-ids", USER_ID)
+
+    assert as_json.exit_code == 0 and as_text.exit_code == 0, as_text.output
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "principalIds": [USER_ID]
+    }
+    assert json.loads(as_json.stdout) is None
+    assert as_json.stderr == ""
+    assert as_text.stdout == ""
+    assert "no content" in as_text.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -278,8 +301,8 @@ def test_ga_command_is_not_labeled_beta(pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_beta_command_sends_preview(api_stub, pltr_api):
-    api_stub.respond(200, json=BANNER)
+def test_beta_command_sends_preview(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(200, json=BANNER)
 
     result = pltr_api(
         "admin",
@@ -292,7 +315,7 @@ def test_beta_command_sends_preview(api_stub, pltr_api):
     )
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == "POST"
     assert request.url.path == "/api/v2/admin/cbacBanner/getForResources"
     assert dict(request.url.params) == {"preview": "true"}
@@ -301,7 +324,9 @@ def test_beta_command_sends_preview(api_stub, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_beta_command_against_sdk_where_method_is_ga(api_stub, pltr_api, monkeypatch):
+def test_beta_command_against_sdk_where_method_is_ga(
+    stub_foundry_http, pltr_api, monkeypatch
+):
     """A newer SDK may promote a beta method to GA (no `preview` parameter).
 
     The generated command must then not pass `preview`, which would make the SDK
@@ -327,7 +352,7 @@ def test_beta_command_against_sdk_where_method_is_ga(api_stub, pltr_api, monkeyp
 
     ga_method = sdk_utils.maybe_ignore_preview(get_for_resources)
     monkeypatch.setattr(CbacBannerClient, "get_for_resources", ga_method)
-    api_stub.respond(200, json=BANNER)
+    stub_foundry_http.respond(200, json=BANNER)
 
     result = pltr_api(
         "admin",
@@ -340,32 +365,35 @@ def test_beta_command_against_sdk_where_method_is_ga(api_stub, pltr_api, monkeyp
     )
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert "preview" not in request.url.params
     assert json.loads(result.stdout) == BANNER
 
 
-def test_missing_sdk_method_fails_clearly(api_stub, pltr_api, monkeypatch):
+def test_missing_sdk_method_fails_clearly(stub_foundry_http, pltr_api, monkeypatch):
     monkeypatch.delattr(UserClient, "get_markings")
 
     result = pltr_api("admin", "user", "get-markings", USER_ID, "--format", "json")
 
     assert result.exit_code == 1
-    assert api_stub.requests == []
+    assert stub_foundry_http.requests == []
     error = stderr_json(result)
-    assert error["type"] == "sdk_unavailable"
+    assert error["type"] == "unexpected_error"
     assert error["exitCode"] == 1
     assert "FoundryClient.admin.User.get_markings" in error["message"]
     assert "not available in foundry-platform-sdk" in error["message"]
 
 
-def test_missing_sdk_method_message_in_table_mode(api_stub, pltr_api, monkeypatch):
+def test_missing_sdk_method_message_in_table_mode(
+    stub_foundry_http, pltr_api, monkeypatch
+):
     monkeypatch.delattr(UserClient, "get_markings")
 
     result = pltr_api("admin", "user", "get-markings", USER_ID)
 
     assert result.exit_code == 1
     assert "not available in foundry-platform-sdk" in result.stderr
+    assert "uv tool install pltr-cli" in result.stderr  # the hint
     assert result.stdout == ""
 
 
@@ -375,57 +403,59 @@ def test_missing_sdk_method_message_in_table_mode(api_stub, pltr_api, monkeypatc
 
 
 def test_destructive_command_without_yes_fails_when_stdin_is_not_a_terminal(
-    api_stub, pltr_api
+    stub_foundry_http, pltr_api
 ):
     result = pltr_api("admin", "user", "delete", USER_ID, "--format", "json")
 
     assert result.exit_code == 2
-    assert api_stub.requests == []
+    assert stub_foundry_http.requests == []
     error = stderr_json(result)
-    assert error["type"] == "usage_error"
+    assert error["type"] == "confirmation_required"
     assert "--yes" in error["message"]
+    assert f"DELETE /v2/admin/users/{USER_ID}" in error["message"]
     assert result.stdout == ""
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_destructive_command_with_yes(api_stub, pltr_api):
-    api_stub.respond(204)
+def test_destructive_command_with_yes(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(204)
 
     result = pltr_api("admin", "user", "delete", USER_ID, "-y", "--format", "json")
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == "DELETE"
     assert request.url.path == f"/api/v2/admin/users/{USER_ID}"
     assert dict(request.url.params) == {}
     assert json.loads(result.stdout) is None
 
 
-def test_destructive_command_prompts_on_a_terminal(api_stub, pltr_api, monkeypatch):
-    monkeypatch.setattr(_adapter, "stdin_is_terminal", lambda: True)
+def test_destructive_command_prompts_on_a_terminal(
+    stub_foundry_http, pltr_api, monkeypatch
+):
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
 
     declined = pltr_api("admin", "user", "delete", USER_ID, input="n\n")
 
     assert declined.exit_code == 1
-    assert api_stub.requests == []
-    assert f"DELETE /v2/admin/users/{USER_ID}" in declined.stderr
-    # CliRunner echoes the typed answer to stdout, as a terminal would show it.
-    assert declined.stdout.strip() == "n"
+    assert stub_foundry_http.requests == []
+    assert f"Run DELETE /v2/admin/users/{USER_ID}" in declined.stderr
+    assert declined.stdout == ""
 
-    api_stub.respond(204)
+    stub_foundry_http.respond(204)
     accepted = pltr_api("admin", "user", "delete", USER_ID, input="y\n")
 
     assert accepted.exit_code == 0, accepted.output
-    assert [r.method for r in api_stub.requests] == ["DELETE"]
-    assert accepted.stdout.strip() == "y"
+    assert [r.method for r in stub_foundry_http.requests] == ["DELETE"]
+    assert accepted.stdout == ""
 
 
-def test_reviewed_destructive_methods_need_yes(api_stub, pltr_api):
+def test_reviewed_destructive_methods_need_yes(stub_foundry_http, pltr_api):
     """Methods whose names don't say so are still confirmed (e.g. Stream.reset)."""
     result = pltr_api("streams", "dataset", "stream", "reset", DATASET_RID, "master")
 
     assert result.exit_code == 2
-    assert api_stub.requests == []
+    assert stub_foundry_http.requests == []
     assert "--yes" in result.stderr
 
 
@@ -435,14 +465,16 @@ def test_reviewed_destructive_methods_need_yes(api_stub, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_binary_response_goes_to_stdout_when_not_a_terminal(api_stub, pltr_api):
+def test_binary_response_goes_to_stdout_when_not_a_terminal(
+    stub_foundry_http, pltr_api
+):
     payload = b"\x89PNG\r\n\x1a\n\x00binary"
-    api_stub.respond(200, content=payload)
+    stub_foundry_http.respond(200, content=payload)
 
     result = pltr_api("datasets", "dataset", "file", "content", DATASET_RID, "a/b.png")
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == "GET"
     assert request.url.path == f"/api/v2/datasets/{DATASET_RID}/files/a/b.png/content"
     assert request.headers["accept"] == "application/octet-stream"
@@ -450,9 +482,9 @@ def test_binary_response_goes_to_stdout_when_not_a_terminal(api_stub, pltr_api):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_binary_response_to_output_file(api_stub, pltr_api, tmp_path):
+def test_binary_response_to_output_file(stub_foundry_http, pltr_api, tmp_path):
     payload = bytes(range(256)) * 10
-    api_stub.respond(200, content=payload)
+    stub_foundry_http.respond(200, content=payload)
     target = tmp_path / "out.bin"
 
     result = pltr_api(
@@ -464,29 +496,29 @@ def test_binary_response_to_output_file(api_stub, pltr_api, tmp_path):
         "data.bin",
         "--branch-name",
         "dev",
-        "--output-file",
+        "--output",
         str(target),
     )
 
     assert result.exit_code == 0, result.output
-    assert dict(api_stub.requests[0].url.params) == {"branchName": "dev"}
+    assert dict(stub_foundry_http.requests[0].url.params) == {"branchName": "dev"}
     assert target.read_bytes() == payload
     assert result.stdout == ""
     assert f"Wrote {len(payload)} bytes" in result.stderr
 
 
-def test_binary_response_refuses_a_terminal(api_stub, pltr_api, monkeypatch):
-    monkeypatch.setattr(_adapter, "stdout_is_terminal", lambda: True)
+def test_binary_response_refuses_a_terminal(stub_foundry_http, pltr_api, monkeypatch):
+    monkeypatch.setattr("pltr.contract.output._stdout_is_terminal", lambda: True)
 
     result = pltr_api("datasets", "dataset", "file", "content", DATASET_RID, "x.bin")
 
     assert result.exit_code == 2
-    assert api_stub.requests == []
-    assert "--output-file" in result.stderr
+    assert stub_foundry_http.requests == []
+    assert "--output FILE" in result.stderr
 
 
-def test_binary_error_leaves_no_file(api_stub, pltr_api, tmp_path):
-    api_stub.respond(
+def test_binary_error_leaves_no_file(stub_foundry_http, pltr_api, tmp_path):
+    stub_foundry_http.respond(
         404,
         json={
             "errorCode": "NOT_FOUND",
@@ -516,7 +548,7 @@ def test_binary_error_leaves_no_file(api_stub, pltr_api, tmp_path):
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_bytes_body_is_read_from_a_file(api_stub, pltr_api, tmp_path):
+def test_bytes_body_is_read_from_a_file(stub_foundry_http, pltr_api, tmp_path):
     source = tmp_path / "flights.csv"
     source.write_bytes(b"id,origin\n1,SFO\n")
     file_json = {
@@ -525,7 +557,7 @@ def test_bytes_body_is_read_from_a_file(api_stub, pltr_api, tmp_path):
         "sizeBytes": "16",
         "updatedTime": "2026-01-01T10:00:00+00:00",
     }
-    api_stub.respond(200, json=file_json)
+    stub_foundry_http.respond(200, json=file_json)
 
     result = pltr_api(
         "datasets",
@@ -543,7 +575,7 @@ def test_bytes_body_is_read_from_a_file(api_stub, pltr_api, tmp_path):
     )
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.method == "POST"
     assert (
         request.url.path
@@ -557,7 +589,7 @@ def test_bytes_body_is_read_from_a_file(api_stub, pltr_api, tmp_path):
 
 @pytest.mark.filterwarnings("error::UserWarning")
 def test_bytes_body_from_stdin_and_content_length_defaults_to_its_size(
-    api_stub, pltr_api
+    stub_foundry_http, pltr_api
 ):
     attachment = {
         "rid": ATTACHMENT_RID,
@@ -565,7 +597,7 @@ def test_bytes_body_from_stdin_and_content_length_defaults_to_its_size(
         "sizeBytes": "5",
         "mediaType": "text/plain",
     }
-    api_stub.respond(200, json=attachment)
+    stub_foundry_http.respond(200, json=attachment)
 
     result = pltr_api(
         "ontologies",
@@ -583,7 +615,7 @@ def test_bytes_body_from_stdin_and_content_length_defaults_to_its_size(
     )
 
     assert result.exit_code == 0, result.output
-    (request,) = api_stub.requests
+    (request,) = stub_foundry_http.requests
     assert request.url.path == "/api/v2/ontologies/attachments/upload"
     assert dict(request.url.params) == {"filename": "notes.txt"}
     assert request.headers["content-length"] == "5"
@@ -597,22 +629,22 @@ def test_bytes_body_from_stdin_and_content_length_defaults_to_its_size(
 # ---------------------------------------------------------------------------
 
 
-def test_json_option_accepts_a_file(api_stub, pltr_api, tmp_path):
+def test_json_option_accepts_a_file(stub_foundry_http, pltr_api, tmp_path):
     where = tmp_path / "where.json"
     where.write_text('{"type": "queryString", "value": "jd"}')
-    api_stub.respond(200, json={"data": []})
+    stub_foundry_http.respond(200, json={"data": []})
 
     result = pltr_api(
         "admin", "user", "search", "--where", f"@{where}", "--format", "json"
     )
 
     assert result.exit_code == 0, result.output
-    body = json.loads(api_stub.requests[0].content)
+    body = json.loads(stub_foundry_http.requests[0].content)
     assert body == {"where": {"type": "queryString", "value": "jd"}}
 
 
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_required_list_parameters_default_to_empty(api_stub, pltr_api):
+def test_required_list_parameters_default_to_empty(stub_foundry_http, pltr_api):
     """`select` is required by the SDK, and [] means every property."""
     objects = {
         "data": [
@@ -620,8 +652,8 @@ def test_required_list_parameters_default_to_empty(api_stub, pltr_api):
         ],
         "totalCount": "1",
     }
-    api_stub.respond(200, json=objects)
-    api_stub.respond(200, json=objects)
+    stub_foundry_http.respond(200, json=objects)
+    stub_foundry_http.respond(200, json=objects)
     where = '{"type": "eq", "field": "tailNumber", "value": "N123"}'
     search = ("ontologies", "ontology-object", "search", "flights", "Aircraft")
 
@@ -632,7 +664,7 @@ def test_required_list_parameters_default_to_empty(api_stub, pltr_api):
 
     assert everything.exit_code == 0, everything.output
     assert some.exit_code == 0, some.output
-    first, second = (json.loads(r.content) for r in api_stub.requests)
+    first, second = (json.loads(r.content) for r in stub_foundry_http.requests)
     assert first == {
         "select": [],
         "where": {"type": "eq", "field": "tailNumber", "value": "N123"},
@@ -641,28 +673,28 @@ def test_required_list_parameters_default_to_empty(api_stub, pltr_api):
     assert json.loads(everything.stdout) == objects
 
 
-def test_invalid_json_input_is_a_usage_error(api_stub, pltr_api):
+def test_invalid_json_input_is_a_usage_error(stub_foundry_http, pltr_api):
     result = pltr_api(
         "admin", "user", "search", "--where", "{not json", "--format", "json"
     )
 
     assert result.exit_code == 2
-    assert api_stub.requests == []
+    assert stub_foundry_http.requests == []
     error = stderr_json(result)
     assert error["type"] == "usage_error"
     assert "--where" in error["message"]
 
 
-def test_sdk_validation_of_arguments_is_a_usage_error(api_stub, pltr_api):
+def test_sdk_validation_of_arguments_is_a_usage_error(stub_foundry_http, pltr_api):
     """The SDK validates IDs before sending anything (a user id is a UUID)."""
     result = pltr_api("admin", "user", "get", "not-a-uuid", "--format", "json")
 
     assert result.exit_code == 2
-    assert api_stub.requests == []
+    assert stub_foundry_http.requests == []
     assert stderr_json(result)["type"] == "usage_error"
 
 
-def test_click_usage_error_in_json_mode_is_structured(api_stub, pltr_api):
+def test_click_usage_error_in_json_mode_is_structured(stub_foundry_http, pltr_api):
     result = pltr_api("admin", "user", "get", "--format", "json")
 
     assert result.exit_code == 2
@@ -686,18 +718,18 @@ def test_unknown_command_in_json_mode_is_structured(pltr_api):
     "status, error_code, error_name, exit_code, error_type",
     [
         (400, "INVALID_ARGUMENT", "InvalidUserStatus", 6, "validation_error"),
-        (401, "UNAUTHORIZED", "MissingCredentials", 3, "authentication_error"),
+        (401, "UNAUTHORIZED", "MissingCredentials", 3, "auth_error"),
         (403, "PERMISSION_DENIED", "GetUserPermissionDenied", 4, "permission_denied"),
         (404, "NOT_FOUND", "UserNotFound", 5, "not_found"),
-        (409, "CONFLICT", "SomethingConflicted", 7, "api_error"),
+        (409, "CONFLICT", "SomethingConflicted", 7, "conflict"),
         (422, "INVALID_ARGUMENT", "Unprocessable", 6, "validation_error"),
-        (500, "INTERNAL", "Default:Internal", 7, "api_error"),
+        (500, "INTERNAL", "Default:Internal", 7, "server_error"),
     ],
 )
 def test_api_errors_map_to_exit_codes(
-    api_stub, pltr_api, status, error_code, error_name, exit_code, error_type
+    stub_foundry_http, pltr_api, status, error_code, error_name, exit_code, error_type
 ):
-    api_stub.respond(
+    stub_foundry_http.respond(
         status,
         json={
             "errorCode": error_code,
@@ -721,39 +753,11 @@ def test_api_errors_map_to_exit_codes(
         assert error["statusCode"] == status
 
 
-def test_rate_limit_and_network_errors_map_to_exit_code_7():
-    # The SDK retries 429/503 itself, so check the mapping of what it finally raises.
-    from foundry_sdk import ConnectionError, RateLimitError, ReadTimeout
-
-    rate_limited = _adapter.describe_error(
-        RateLimitError("slow down", reason="client-qos-response")
-    )
-    assert rate_limited["exitCode"] == 7
-    assert rate_limited["statusCode"] == 429
-    assert _adapter.describe_error(ReadTimeout("timed out"))["exitCode"] == 7
-    assert _adapter.describe_error(ConnectionError("refused"))["exitCode"] == 7
-
-
-def test_wrapped_errors_are_classified_by_their_cause():
-    from foundry_sdk import PermissionDeniedError
-
-    try:
-        try:
-            raise PermissionDeniedError({"errorName": "Denied", "parameters": {}})
-        except PermissionDeniedError as exc:
-            raise RuntimeError("service failed") from exc
-    except RuntimeError as wrapped:
-        details = _adapter.describe_error(wrapped)
-    assert details["exitCode"] == 4
-    assert details["errorName"] == "Denied"
-
-
-def test_auth_errors_exit_3(api_stub, pltr_api):
+def test_auth_errors_exit_3(stub_foundry_http, pltr_api):
     from pltr.auth.base import ProfileNotFoundError
 
-    api_stub.auth_manager.return_value.get_client.side_effect = ProfileNotFoundError(
-        "Profile 'nope' not found."
-    )
+    get_client = services_base.AuthManager.return_value.get_client
+    get_client.side_effect = ProfileNotFoundError("Profile 'nope' not found.")
 
     result = pltr_api("admin", "user", "get", USER_ID, "--profile", "nope")
 
@@ -761,8 +765,8 @@ def test_auth_errors_exit_3(api_stub, pltr_api):
     assert "Profile 'nope' not found." in result.stderr
 
 
-def test_error_in_table_mode_is_readable(api_stub, pltr_api):
-    api_stub.respond(
+def test_error_in_table_mode_is_readable(stub_foundry_http, pltr_api):
+    stub_foundry_http.respond(
         404,
         json={
             "errorCode": "NOT_FOUND",
