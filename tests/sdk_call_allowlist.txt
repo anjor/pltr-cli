@@ -86,12 +86,6 @@ services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet
 services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 
-# src/pltr/services/models.py
-services/models.py::ModelsService.create_model::models.Model.create::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model::models.Model.get::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-services/models.py::ModelsService.get_model_version::models.ModelVersion.get::missing-method  # #182 models version get: use models.Model.Version.get(model_rid, model_version_rid, preview=True) (beta)
-services/models.py::ModelsService.list_model_versions::models.ModelVersion.list::missing-method  # #182 models version list: use models.Model.Version.list(model_rid, preview=True) (beta)
-
 # src/pltr/services/ontology.py
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::missing-required(parameters)  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)
 services/ontology.py::ActionService.apply_action::ontologies.Action.apply::too-many-positional  # #182 ontology action-apply: parameters is keyword-only; Action.apply(ontology, action, parameters=...)

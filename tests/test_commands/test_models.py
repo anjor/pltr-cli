@@ -1,404 +1,279 @@
-"""Tests for Models commands."""
+"""Tests for `pltr models` against a real FoundryClient (only HTTP is faked)."""
+
+import csv
+import io
+import json
 
 import pytest
-from unittest.mock import Mock, patch
 from typer.testing import CliRunner
+
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_models as fm
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+API = "/api/v2/models"
 
 
-class TestModelsCommands:
-    """Test Models CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, ["models", *args], **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock ModelsService."""
-        with patch("pltr.commands.models.ModelsService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
-    # ===== Model Create Tests =====
 
-    def test_model_create_success(self, runner, mock_service):
-        """Test successful model creation."""
-        # Setup
-        name = "fraud-detector"
-        folder_rid = "ri.compass.main.folder.123"
-        response = {
-            "rid": "ri.foundry.main.model.abc123",
-            "name": name,
-            "parentFolderRid": folder_rid,
-        }
-        mock_service.create_model.return_value = response
+# ------------------------------------------------------------------- help
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "create",
-                name,
-                "--folder",
-                folder_rid,
-                "--format",
-                "json",
-            ],
+
+@pytest.mark.parametrize(
+    "group, commands", [("model", ("create", "get")), ("version", ("get", "list"))]
+)
+def test_every_command_is_labeled_beta(group, commands):
+    result = invoke(group, "--help")
+
+    lines = result.stdout.splitlines()
+    for command in commands:
+        line = next(
+            line for line in lines if line.lstrip("│ ").startswith(f"{command} ")
         )
+        assert "[beta]" in line, line
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.create_model.assert_called_once_with(
-            name=name,
-            parent_folder_rid=folder_rid,
-            preview=False,
-        )
-        assert "Created model" in result.output
 
-    def test_model_create_with_preview(self, runner, mock_service):
-        """Test model creation with preview mode."""
-        # Setup
-        name = "test-model"
-        folder_rid = "ri.compass.main.folder.123"
-        response = {
-            "rid": "ri.foundry.main.model.abc123",
-            "name": name,
-        }
-        mock_service.create_model.return_value = response
+# ----------------------------------------------------------- model create
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "create",
-                name,
-                "--folder",
-                folder_rid,
-                "--preview",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.create_model.assert_called_once_with(
-            name=name,
-            parent_folder_rid=folder_rid,
-            preview=True,
-        )
+def test_create_model(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model())
 
-    def test_model_create_error(self, runner, mock_service):
-        """Test model creation error handling."""
-        # Setup
-        mock_service.create_model.side_effect = Exception("Permission denied")
+    result = invoke("model", "create", "fraud-detector", "--folder", fm.FOLDER_RID)
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "create",
-                "test-model",
-                "--folder",
-                "ri.compass.main.folder.123",
-            ],
-        )
+    assert result.exit_code == 0, result.output
+    assert f"Created model 'fraud-detector' ({fm.MODEL_RID})" in result.stderr
+    assert fm.MODEL_RID in result.stdout
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", API)
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {
+        "name": "fraud-detector",
+        "parentFolderRid": fm.FOLDER_RID,
+    }
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
 
-    # ===== Model Get Tests =====
+def test_create_model_short_folder_flag_and_json(stub_foundry_http):
+    """-f stays --folder here, so --format has no short flag."""
+    stub_foundry_http.respond(json=fm.model())
 
-    def test_model_get_success(self, runner, mock_service):
-        """Test successful model get."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        response = {
-            "rid": model_rid,
-            "name": "fraud-detector",
-            "parentFolderRid": "ri.compass.main.folder.123",
-        }
-        mock_service.get_model.return_value = response
+    result = invoke(
+        "model", "create", "fraud-detector", "-f", fm.FOLDER_RID, "--format", "json"
+    )
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "get",
-                model_rid,
-                "--format",
-                "json",
-            ],
-        )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == fm.model()
+    assert result.stderr == ""
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_model.assert_called_once_with(
-            model_rid=model_rid,
-            preview=False,
-        )
 
-    def test_model_get_with_preview(self, runner, mock_service):
-        """Test model get with preview mode."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        response = {"rid": model_rid}
-        mock_service.get_model.return_value = response
+def test_create_model_requires_a_folder(stub_foundry_http):
+    result = invoke("model", "create", "fraud-detector", "--format", "json")
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "get",
-                model_rid,
-                "--preview",
-            ],
-        )
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_model.assert_called_once_with(
-            model_rid=model_rid,
-            preview=True,
-        )
 
-    def test_model_get_error(self, runner, mock_service):
-        """Test model get error handling."""
-        # Setup
-        mock_service.get_model.side_effect = Exception("Model not found")
+def test_create_model_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model())
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "model",
-                "get",
-                "ri.foundry.main.model.abc123",
-            ],
-        )
+    result = invoke(
+        "model", "create", "m", "-f", fm.FOLDER_RID, "--preview", "--format", "json"
+    )
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
+    assert result.exit_code == 0, result.output
+    [warning] = json_lines(result.stderr)
+    assert "--preview is deprecated" in warning["message"]
 
-    # ===== Version Get Tests =====
 
-    def test_version_get_success(self, runner, mock_service):
-        """Test successful version get."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        version_rid = "v1.0.0"
-        response = {
-            "modelRid": model_rid,
-            "versionRid": version_rid,
-            "createdTime": "2024-01-01T00:00:00Z",
-        }
-        mock_service.get_model_version.return_value = response
+def test_create_model_permission_denied(stub_foundry_http):
+    stub_foundry_http.respond(
+        403, json=fj.error("CreateModelPermissionDenied", "PERMISSION_DENIED")
+    )
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "get",
-                model_rid,
-                version_rid,
-                "--format",
-                "json",
-            ],
-        )
+    result = invoke(
+        "model", "create", "m", "--folder", fm.FOLDER_RID, "--format", "json"
+    )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_model_version.assert_called_once_with(
-            model_rid=model_rid,
-            model_version_rid=version_rid,
-            preview=False,
-        )
+    assert result.exit_code == 4
+    assert json_lines(result.stderr)[-1]["errorName"] == "CreateModelPermissionDenied"
 
-    def test_version_get_with_preview(self, runner, mock_service):
-        """Test version get with preview mode."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        version_rid = "v1.0.0"
-        response = {"versionRid": version_rid}
-        mock_service.get_model_version.return_value = response
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "get",
-                model_rid,
-                version_rid,
-                "--preview",
-            ],
-        )
+# -------------------------------------------------------------- model get
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_model_version.assert_called_once_with(
-            model_rid=model_rid,
-            model_version_rid=version_rid,
-            preview=True,
-        )
 
-    def test_version_get_error(self, runner, mock_service):
-        """Test version get error handling."""
-        # Setup
-        mock_service.get_model_version.side_effect = Exception("Version not found")
+def test_get_model(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model())
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "get",
-                "ri.foundry.main.model.abc123",
-                "v1.0.0",
-            ],
-        )
+    result = invoke("model", "get", fm.MODEL_RID)
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
+    assert result.exit_code == 0, result.output
+    assert fm.MODEL_RID in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fm.MODEL_RID}"
+    assert dict(request.url.params) == {"preview": "true"}
 
-    # ===== Version List Tests =====
 
-    def test_version_list_success(self, runner, mock_service):
-        """Test successful version list."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        response = {
+def test_get_model_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model())
+
+    result = invoke("model", "get", fm.MODEL_RID, "-f", "csv")
+
+    assert list(csv.DictReader(io.StringIO(result.stdout))) == [{"RID": fm.MODEL_RID}]
+
+
+def test_get_model_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("ModelNotFound", parameters={"modelRid": fm.MODEL_RID})
+    )
+
+    result = invoke("model", "get", fm.MODEL_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "ModelNotFound")
+
+
+# ------------------------------------------------------------ version get
+
+
+def test_get_version_table(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model_version())
+
+    result = invoke("version", "get", fm.MODEL_RID, fm.VERSION_RID)
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        fm.VERSION_RID,
+        "codeRepository",
+        fm.EXPERIMENT_RID,
+        "transactions (tabular)",
+        "score (parameter)",
+        "scikit-learn=1.3.0, pandas=2.1.0",
+        fm.REPOSITORY_RID,
+        "2024-01-05T00:00:00+00:00",
+    ):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fm.MODEL_RID}/versions/{fm.VERSION_RID}"
+    assert dict(request.url.params) == {"preview": "true"}
+
+
+def test_get_version_json(stub_foundry_http):
+    stub_foundry_http.respond(json=fm.model_version())
+
+    result = invoke("version", "get", fm.MODEL_RID, fm.VERSION_RID, "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == fm.sdk_json(fm.model_version())
+    assert result.stderr == ""
+
+
+def test_get_version_needs_a_version_rid(stub_foundry_http):
+    """The old help suggested version names such as v1.0.0; the API takes RIDs."""
+    result = invoke("version", "get", fm.MODEL_RID, "v1.0.0", "-f", "json")
+
+    assert result.exit_code == 2
+    assert "not a valid RID" in json_lines(result.stderr)[-1]["message"]
+    assert stub_foundry_http.requests == []
+
+
+# ----------------------------------------------------------- version list
+
+
+def test_list_versions_csv(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
             "data": [
-                {"versionRid": "v1.0.0"},
-                {"versionRid": "v1.1.0"},
-            ],
-            "nextPageToken": None,
+                fm.model_version(),
+                fm.model_version(fm.VERSION_RID_2, source={"type": "sdk"}),
+            ]
         }
-        mock_service.list_model_versions.return_value = response
+    )
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "list",
-                model_rid,
-                "--format",
-                "json",
-            ],
-        )
+    result = invoke("version", "list", fm.MODEL_RID, "--format", "csv")
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_model_versions.assert_called_once_with(
-            model_rid=model_rid,
-            page_size=None,
-            page_token=None,
-            preview=False,
-        )
+    assert result.exit_code == 0, result.output
+    rows = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert [(row["RID"], row["Source"]) for row in rows] == [
+        (fm.VERSION_RID, "codeRepository"),
+        (fm.VERSION_RID_2, "sdk"),
+    ]
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/{fm.MODEL_RID}/versions"
+    assert dict(request.url.params) == {"preview": "true"}
 
-    def test_version_list_with_pagination(self, runner, mock_service):
-        """Test version list with pagination."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        response = {
-            "data": [{"versionRid": "v1.0.0"}],
-            "nextPageToken": "token456",
-        }
-        mock_service.list_model_versions.return_value = response
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "list",
-                model_rid,
-                "--page-size",
-                "50",
-                "--page-token",
-                "token123",
-            ],
-        )
+def test_list_versions_json_has_the_paged_shape(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [fm.model_version()], "nextPageToken": "next"}
+    )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_model_versions.assert_called_once_with(
-            model_rid=model_rid,
-            page_size=50,
-            page_token="token123",
-            preview=False,
-        )
-        assert "Next page available" in result.output
+    result = invoke(
+        "version", "list", fm.MODEL_RID, "--branch", "develop", "--format", "json"
+    )
 
-    def test_version_list_with_preview(self, runner, mock_service):
-        """Test version list with preview mode."""
-        # Setup
-        model_rid = "ri.foundry.main.model.abc123"
-        response = {
-            "data": [],
-            "nextPageToken": None,
-        }
-        mock_service.list_model_versions.return_value = response
+    assert json.loads(result.stdout) == {
+        "data": [fm.sdk_json(fm.model_version())],
+        "nextPageToken": "next",
+    }
+    assert dict(stub_foundry_http.requests[0].url.params) == {
+        "branch": "develop",
+        "preview": "true",
+    }
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "list",
-                model_rid,
-                "--preview",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.list_model_versions.assert_called_once_with(
-            model_rid=model_rid,
-            page_size=None,
-            page_token=None,
-            preview=True,
-        )
+def test_list_versions_all_pages(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [fm.model_version()], "nextPageToken": "t2"}
+    )
+    stub_foundry_http.respond(json={"data": [fm.model_version(fm.VERSION_RID_2)]})
 
-    def test_version_list_error(self, runner, mock_service):
-        """Test version list error handling."""
-        # Setup
-        mock_service.list_model_versions.side_effect = Exception("List failed")
+    result = invoke(
+        "version", "list", fm.MODEL_RID, "--all", "--page-size", "1", "-f", "json"
+    )
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "models",
-                "version",
-                "list",
-                "ri.foundry.main.model.abc123",
-            ],
-        )
+    assert result.exit_code == 0, result.output
+    assert [v["rid"] for v in json.loads(result.stdout)["data"]] == [
+        fm.VERSION_RID,
+        fm.VERSION_RID_2,
+    ]
+    assert [dict(r.url.params) for r in stub_foundry_http.requests] == [
+        {"pageSize": "1", "preview": "true"},
+        {"pageSize": "1", "pageToken": "t2", "preview": "true"},
+    ]
 
-        # Assert
-        assert result.exit_code == 1
-        assert "Error" in result.output
+
+def test_list_versions_table_hints_at_the_next_page(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={"data": [fm.model_version()], "nextPageToken": "next"}
+    )
+
+    result = invoke("version", "list", fm.MODEL_RID)
+
+    assert result.exit_code == 0, result.output
+    assert fm.VERSION_RID in result.stdout
+    assert "--page-token next" in result.stderr
+
+
+def test_list_versions_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": []})
+
+    result = invoke("version", "list", fm.MODEL_RID, "--preview")
+
+    assert result.exit_code == 0, result.output
+    assert "--preview is deprecated" in result.stderr
+    assert "No results." in result.stderr

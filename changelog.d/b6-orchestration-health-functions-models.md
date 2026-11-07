@@ -18,12 +18,17 @@
   null fields left out) instead of snake_case keys with nulls. `query
   execute` and `query execute-by-rid` print the API response,
   `{"value": <result>}`.
-- **`orchestration`, `data-health` and `functions`: status messages go to
-  stderr and errors are structured**, with the documented exit codes (2 usage,
-  3 authentication, 4 permission denied, 5 not found, 6 validation, 7 other
-  API or network error). Every error used to exit with 1. `data-health
-  report get` no longer prints a colored status line to stdout; the status
-  and message are columns of its table.
+- **`models`: `--format json` prints the SDK's own serialization** (camelCase
+  API field names such as `modelApi`, `condaRequirements`, `createdTime`;
+  null fields left out). `model create` and `model get` print `{"rid": ...}`
+  (a model has no other fields in the API); `version list` prints
+  `{"data": [...], "nextPageToken": "..."}`.
+- **`orchestration`, `data-health`, `functions` and `models`: status
+  messages go to stderr and errors are structured**, with the documented
+  exit codes (2 usage, 3 authentication, 4 permission denied, 5 not found,
+  6 validation, 7 other API or network error). Every error used to exit
+  with 1. `data-health report get` no longer prints a colored status line
+  to stdout; the status and message are columns of its table.
 - **`orchestration builds cancel` and `orchestration schedules replace` ask
   for confirmation.** `--yes`/`-y` skips it. When stdin is not a terminal
   they (and `schedules delete`) fail with exit code 2 unless `--yes` is
@@ -59,9 +64,17 @@
   types, output type; value type: RID, API name, display name, description,
   version, version ID, base type, constraints). `query execute` shows one
   row per item when the result is a list.
-- **`orchestration`, `data-health` and `functions` validate
+- **`models version get` takes a model version RID** as its second
+  argument. Its help suggested version names such as `v1.0.0`, which the API
+  rejects; find version RIDs with `pltr models version list <MODEL_RID>`.
+- **`models` table and CSV output use curated columns** (version: RID,
+  created, source, linked experiment, inputs, outputs, conda requirements,
+  backing repositories).
+- **`orchestration`, `data-health`, `functions` and `models` validate
   `--format`/`-f`:** only table, json and csv are accepted
-  (case-insensitive). `-f` is new on `data-health` commands.
+  (case-insensitive). `-f` is new on `data-health` commands and on
+  `models model get`, `version get` and `version list`; `models model
+  create` keeps `-f` for `--folder`.
 
 ### Added
 
@@ -95,8 +108,12 @@
   `query get-by-rid` and `query execute-by-rid`: `--include-prerelease`.
 - `[beta]` label in the help of every `functions` command (every Functions
   endpoint pltr calls is beta; they are always called with `preview=true`).
+- `models version list --branch`, `--max-pages` and `--all` (it still
+  fetches one page by default).
+- `[beta]` label in the help of every `models` command (every model registry
+  endpoint pltr calls is beta; they are always called with `preview=true`).
 - `PLTR_FORMAT` sets the default `--format` of every `orchestration`,
-  `data-health` and `functions` command.
+  `data-health`, `functions` and `models` command.
 
 ### Changed
 
@@ -109,9 +126,9 @@
 
 - `--preview` on `orchestration schedules get`, `create` and `replace` and
   on `data-health check get`, `create`, `replace`, `delete` and
-  `report get`, and on every `functions` command, is a hidden no-op that prints a deprecation warning; it will
-  be removed in a future release. The beta endpoints are always called with
-  `preview=true`.
+  `report get`, and on every `functions` and `models` command, is a hidden
+  no-op that prints a deprecation warning; it will be removed in a future
+  release. The beta endpoints are always called with `preview=true`.
 - `data-health check delete --force` is a hidden, deprecated alias of
   `--yes`.
 
@@ -140,6 +157,12 @@
   `Query.execute_by_rid`, which doesn't exist (see Changed).
 - `functions query get`, `query execute` and `value-type get` only worked
   with `--preview`; they now always send `preview=true`.
+- `models version get` and `models version list` could never succeed: they
+  called `models.ModelVersion`, which doesn't exist. They now call the beta
+  `models.Model.Version.get` / `list` with `preview=true`.
+- `models model create` and `model get` only worked with `--preview`; they
+  now always send `preview=true`. `model create` printed `None` as the name
+  of the new model (the API returns only its RID).
 
 ### Docs to update
 
@@ -163,6 +186,12 @@
   above, and that `execute-by-rid` resolves the RID first. Point readers to
   `pltr functions query get <API name>` to find a query's RID (the example
   RID format `ri.functions.main.query.<id>` used there is unverified).
+- README.md ("Model Version Operations") and
+  claude_skill/reference/models-commands.md: `models version get` takes a
+  model version RID, not `v1.0.0`; drop "Preview mode (`--preview`)" from
+  "All Models commands support" and `--preview` from the option lists;
+  mention `version list --branch/--all`. The example RIDs there
+  (`ri.foundry.main.model.abc123`) are unverified.
 - The orchestration formatters in `src/pltr/utils/formatting.py`
   (`format_build_detail`, `format_builds_list`, `format_job_detail`,
   `format_jobs_list`, `format_schedule_detail`, `format_schedules_list`,
@@ -177,5 +206,8 @@
 - `orchestration schedules replace` is documented as a full replacement
   (fields you don't pass aren't kept), based on it being an HTTP PUT whose
   optional fields the SDK leaves out when unset.
+- `functions query execute-by-rid` assumes that executing, by API name,
+  the version `Query.get_by_rid` resolved runs the query the RID names.
 - The RID formats shown in help (`ri.foundry.main.build.<id>`,
-  `ri.foundry.main.job.<id>`, `ri.scheduler.main.schedule.<id>`).
+  `ri.foundry.main.job.<id>`, `ri.scheduler.main.schedule.<id>`,
+  `ri.data-health.main.check.<id>`).
