@@ -21,7 +21,7 @@ from foundry_sdk.v2.datasets.models import (
 )
 
 from pltr.contract import PltrError
-from pltr.services.dataset import DatasetService, arrow_table
+from pltr.services.dataset import DatasetService, _infer_csv_type, arrow_table
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 
@@ -212,6 +212,39 @@ def test_infer_schema_from_csv(tmp_path):
         ("name", "STRING", True),
         ("empty", "STRING", True),
     ]
+
+
+def test_infer_schema_from_a_csv_excel_wrote(tmp_path):
+    """Excel's byte order mark ended up in the first field's name, integers
+    over 32 bits were INTEGER and 1/0 BOOLEAN (#181 review)."""
+    path = tmp_path / "excel.csv"
+    path.write_bytes("﻿id,big,flag\n1,3000000000,1\n2,4000000000,0\n".encode())
+
+    schema = DatasetService.__new__(DatasetService).infer_schema_from_csv(path)
+
+    assert [(f.name, f.type) for f in schema.field_schema_list] == [
+        ("id", "INTEGER"),
+        ("big", "LONG"),
+        ("flag", "INTEGER"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (["true", "False", "TRUE"], "BOOLEAN"),
+        (["1", "0"], "INTEGER"),  # not BOOLEAN
+        (["yes", "no"], "STRING"),  # not BOOLEAN
+        (["2147483647", "-2147483648"], "INTEGER"),
+        (["1", "2147483648"], "LONG"),
+        (["-2147483649"], "LONG"),
+        (["9223372036854775807", "-9223372036854775808"], "LONG"),
+        (["1", "9223372036854775808"], "STRING"),  # too large for LONG
+        (["1", "2.5"], "DOUBLE"),
+    ],
+)
+def test_infer_csv_column_types(values, expected):
+    assert _infer_csv_type(values) == (expected, False)
 
 
 def test_infer_schema_from_csv_without_header(tmp_path):

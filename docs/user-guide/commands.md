@@ -183,7 +183,10 @@ Notes:
   symlink out of it, or on Windows a `\` or `:` in a name.
 - `schema set --json` takes the API's `{"fieldSchemaList": [...]}`, the JSON
   output of `schema get`, or the older `{"fields": [...]}` form, inline or as
-  `@file.json`. `--from-csv FILE` infers the column types from a local CSV.
+  `@file.json`. `--from-csv FILE` infers the column types from the header and
+  first 100 rows of a local CSV: `BOOLEAN` (only `true`/`false`), `INTEGER` or
+  `LONG` (by size), `DOUBLE`, `DATE`, `TIMESTAMP`, else `STRING`. The
+  confirmation prompt lists the fields it will set.
 - `schema apply` calls the endpoints Foundry's web interface uses for schema
   inference (direct HTTP, not the SDK). Its `--branch` defaults to `master`.
 - `transactions list` lists every branch's transactions unless you pass

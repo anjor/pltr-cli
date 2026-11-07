@@ -456,6 +456,43 @@ def test_schema_set_from_csv(stub, tmp_path):
     }
 
 
+def test_schema_set_prompt_lists_the_inferred_fields(stub, interactive, tmp_path):
+    """The prompt showed only the number of fields (#181 review)."""
+    path = tmp_path / "excel.csv"
+    path.write_bytes("﻿id,big,note\n1,3000000000,a\n2,4000000000,\n".encode())
+    stub.respond(json=dj.schema_response())
+
+    result = invoke(
+        "dataset", "schema", "set", DATASET, "--from-csv", str(path), input="y\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        f"Schema inferred from {path} (3 fields):\n"
+        "  id: INTEGER\n"
+        "  big: LONG\n"
+        "  note: STRING (nullable)\n"
+        f"Replace the schema of dataset {DATASET} with it? [y/N]:"
+    ) in result.stderr
+    assert "id: INTEGER" not in result.stdout  # the prompt is on stderr
+    assert json.loads(stub.requests[0].content)["schema"]["fieldSchemaList"] == [
+        {"name": "id", "type": "INTEGER", "nullable": False},
+        {"name": "big", "type": "LONG", "nullable": False},
+        {"name": "note", "type": "STRING", "nullable": True},
+    ]
+
+
+def test_schema_set_without_yes_shows_the_fields_in_the_error(stub):
+    result = invoke(
+        "dataset", "schema", "set", DATASET, "--json", json.dumps(SCHEMA), "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    message = json_lines(result.stderr)[-1]["message"]
+    assert message.startswith("Schema from --json (1 field):\n  id: LONG\n")
+    assert stub.requests == []
+
+
 @pytest.mark.parametrize(
     "args",
     [

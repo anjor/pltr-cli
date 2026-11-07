@@ -79,6 +79,17 @@ def _field_type(field: Any) -> str:
     return str(kind)
 
 
+def _count_fields(schema: Any) -> str:
+    count = len(schema.field_schema_list)
+    return f"{count} field" if count == 1 else f"{count} fields"
+
+
+def _describe_field(field: Any) -> str:
+    """``name: TYPE``, plus ``(nullable)``, for a ``DatasetFieldSchema``."""
+    nullable = " (nullable)" if field.nullable else ""
+    return f"{field.name}: {_field_type(field)}{nullable}"
+
+
 def _backing_datasets(view: Any) -> str:
     return ", ".join(
         f"{backing.dataset_rid}@{backing.branch}"
@@ -488,18 +499,22 @@ def set_schema(
             schema = service.infer_schema_from_csv(from_csv)
         except ValueError as exc:  # no header row, not UTF-8
             raise typer.BadParameter(str(exc), param_hint="'--from-csv'") from exc
-        info(f"Inferred {len(schema.field_schema_list)} fields from {from_csv}")
+        info(f"Inferred {_count_fields(schema)} from {from_csv}")
+        origin = f"Schema inferred from {from_csv}"
     elif json_schema is not None:
         document = load_json_input(json_schema, param_hint="'--json'")
         schema = _parse_schema(document, "'--json'")
+        origin = "Schema from --json"
     else:
         document = load_json_input(f"@{json_file}", param_hint="'--json-file'")
         schema = _parse_schema(document, "'--json-file'")
+        origin = f"Schema from {json_file}"
 
     where = f" on branch '{branch}'" if branch else ""
     confirm_destructive(
-        f"Replace the schema of dataset {dataset_rid}{where} "
-        f"({len(schema.field_schema_list)} fields)?",
+        f"{origin} ({_count_fields(schema)}):\n"
+        + "".join(f"  {_describe_field(f)}\n" for f in schema.field_schema_list)
+        + f"Replace the schema of dataset {dataset_rid}{where} with it?",
         yes=yes,
     )
     with spinner(f"Setting the schema of {dataset_rid}..."):
@@ -511,7 +526,7 @@ def set_schema(
             dataframe_reader=dataframe_reader,
         )
     cache_rid(dataset_rid)
-    success(f"Set the schema of {dataset_rid} ({len(schema.field_schema_list)} fields)")
+    success(f"Set the schema of {dataset_rid} ({_count_fields(schema)})")
     _emit_schema(response, dataset_rid, format, output)
 
 

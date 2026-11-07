@@ -442,6 +442,9 @@ can search. See Added.
   `files get --recursive` print `{"data": [...]}` of files.
 - `schema get` no longer warns that it needs API preview access: the endpoint
   is GA.
+- `schema set` lists the schema's fields (name, type, nullable) in its
+  confirmation prompt, and in the error when `--yes` is needed; it showed only
+  their number.
 - `branches create --parent BRANCH` (default `master`) starts the new branch
   at the parent's latest transaction. `branches delete master` is refused
   (exit 2).
@@ -764,6 +767,13 @@ from `--help`. They will be removed in the next release.
   resolved path, symlinks included, isn't inside the output directory. The
   check runs before any file is written. Elsewhere `\` and `:` stay ordinary
   characters.
+- `dataset schema set --from-csv` inferred wrong schemas without a word: the
+  byte order mark Excel writes became part of the first field's name,
+  integers too large for 32 bits were `INTEGER`, and columns of `1`/`0` or
+  `yes`/`no` were `BOOLEAN`. The byte order mark is ignored now, such
+  integers are `LONG` (integers too large for `LONG` are `STRING`, which
+  `DOUBLE` would round), and only `true`/`false`, in any case, make a
+  `BOOLEAN` column.
 - `audit list` could page forever; `audit get` printed `[...]` in log content
   as terminal markup.
 - `pltr cp` never copied a dataset's schema: it passed the whole schema

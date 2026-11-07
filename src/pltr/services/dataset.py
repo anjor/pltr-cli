@@ -717,14 +717,17 @@ class DatasetService(BaseService):
         """Infer a ``DatasetSchema`` from a local CSV file.
 
         Reads the header and the first ``sample_rows`` rows and picks the
-        narrowest type that fits every non-empty value (BOOLEAN, INTEGER,
-        DOUBLE, DATE, TIMESTAMP, else STRING). Column names have spaces and
-        hyphens replaced by underscores. No API call is made.
+        narrowest type that fits every non-empty value: BOOLEAN (only
+        ``true``/``false``, any case), INTEGER (32-bit), LONG (64-bit),
+        DOUBLE, DATE, TIMESTAMP, else STRING (also for integers too large
+        for LONG, which DOUBLE would round). Column names have spaces and
+        hyphens replaced by underscores. A UTF-8 byte order mark (as Excel
+        writes) is ignored. No API call is made.
         """
         from foundry_sdk.v2.core.models import DatasetFieldSchema, DatasetSchema
 
         csv_path = Path(csv_path)
-        with open(csv_path, "r", encoding="utf-8", newline="") as handle:
+        with open(csv_path, "r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             headers = reader.fieldnames
             if not headers:
@@ -785,7 +788,12 @@ _DATE_PATTERNS = (
     re.compile(r"^\d{2}/\d{2}/\d{4}$"),  # MM/DD/YYYY
     re.compile(r"^\d{2}-\d{2}-\d{4}$"),  # DD-MM-YYYY
 )
-_BOOLEAN_VALUES = {"true", "false", "yes", "no", "1", "0"}
+#: The values a BOOLEAN column holds (compared case-insensitively). Not 1/0 or
+#: yes/no: Foundry wouldn't read those as booleans.
+_BOOLEAN_VALUES = {"true", "false"}
+#: Ranges of the INTEGER (32-bit) and LONG (64-bit) field types.
+_INTEGER_RANGE = (-(2**31), 2**31 - 1)
+_LONG_RANGE = (-(2**63), 2**63 - 1)
 
 
 def _infer_csv_type(values: List[str]) -> Tuple[str, bool]:
@@ -796,9 +804,16 @@ def _infer_csv_type(values: List[str]) -> Tuple[str, bool]:
         return "STRING", True
     if all(value.lower() in _BOOLEAN_VALUES for value in non_empty):
         return "BOOLEAN", nullable
-    if _all_parse(non_empty, int):
-        return "INTEGER", nullable
-    if _all_parse(non_empty, float):
+    integers = _parse_all(non_empty, int)
+    if integers is not None:
+        for field_type, (low, high) in (
+            ("INTEGER", _INTEGER_RANGE),
+            ("LONG", _LONG_RANGE),
+        ):
+            if all(low <= number <= high for number in integers):
+                return field_type, nullable
+        return "STRING", nullable  # too large for LONG; DOUBLE would round
+    if _parse_all(non_empty, float) is not None:
         return "DOUBLE", nullable
     sample = non_empty[:10]
     for pattern in _DATE_PATTERNS:
@@ -809,10 +824,9 @@ def _infer_csv_type(values: List[str]) -> Tuple[str, bool]:
     return "STRING", nullable
 
 
-def _all_parse(values: List[str], kind: Any) -> bool:
+def _parse_all(values: List[str], kind: Any) -> Optional[List[Any]]:
+    """Every value converted with ``kind``, or None if one doesn't convert."""
     try:
-        for value in values:
-            kind(value)
+        return [kind(value) for value in values]
     except ValueError:
-        return False
-    return True
+        return None
