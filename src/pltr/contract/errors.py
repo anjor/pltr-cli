@@ -57,10 +57,12 @@ class PltrError(Exception):
         exit_code: Optional[int] = None,
         hint: Optional[str] = None,
         parameters: Optional[Dict[str, Any]] = None,
+        suggested_command: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.parameters = parameters
+        self.suggested_command = suggested_command
         if error_type is not None:
             self.error_type = error_type
         if exit_code is not None:
@@ -94,7 +96,12 @@ class ErrorInfo:
     error_name: Optional[str] = None
     error_instance_id: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
-    hint: Optional[str] = None  # text mode only
+    #: What to do about it. In JSON only when specific (``generic_hint`` false):
+    #: a hint that only restates the error type stays in text mode.
+    hint: Optional[str] = None
+    #: A command that fixes or diagnoses the failure (#197).
+    suggested_command: Optional[str] = None
+    generic_hint: bool = False
 
     def to_json(self) -> Dict[str, Any]:
         """The JSON error object (camelCase keys; inapplicable keys omitted)."""
@@ -109,6 +116,8 @@ class ErrorInfo:
             ("errorName", self.error_name),
             ("errorInstanceId", self.error_instance_id),
             ("parameters", self.parameters or None),
+            ("hint", None if self.generic_hint else self.hint),
+            ("suggestedCommand", self.suggested_command),
         )
         for key, value in optional:
             if value is not None:
@@ -511,6 +520,7 @@ def _classify_one(exc: BaseException) -> Optional[ErrorInfo]:
             exc.exit_code,
             hint=exc.hint,
             parameters=exc.parameters,
+            suggested_command=exc.suggested_command,
         )
     if isinstance(exc, click.UsageError):
         return ErrorInfo("usage_error", exc.format_message(), ExitCode.USAGE)
@@ -669,8 +679,9 @@ def classify_error(exc: BaseException) -> ErrorInfo:
         if text and type(exc) not in (RuntimeError, Exception):
             message = f"{type(exc).__name__}: {message}"
         info = ErrorInfo("unexpected_error", message, ExitCode.UNEXPECTED)
-    if info.hint is None:
-        info.hint = _HINTS.get(info.type)
+    if info.hint is None and info.type in _HINTS:
+        info.hint = _HINTS[info.type]
+        info.generic_hint = True
     info.message = redact_secrets(info.message)
     return info
 
@@ -691,6 +702,11 @@ def render_error(info: ErrorInfo, *, as_json: Optional[bool] = None) -> None:
         info,
         message=redact_secrets(info.message),
         hint=redact_secrets(info.hint) if info.hint else info.hint,
+        suggested_command=(
+            redact_secrets(info.suggested_command)
+            if info.suggested_command
+            else info.suggested_command
+        ),
     )
     if is_json() if as_json is None else as_json:
         write_json_line(info.to_json())
@@ -710,6 +726,8 @@ def render_error(info: ErrorInfo, *, as_json: Optional[bool] = None) -> None:
         console.print(f"  {line}", markup=False)
     if info.hint:
         console.print(f"Hint: {info.hint}", markup=False, style="dim")
+    if info.suggested_command:
+        console.print(f"Try: {info.suggested_command}", markup=False, style="dim")
 
 
 def _escape(text: str) -> str:
@@ -730,7 +748,10 @@ def fail(exc: BaseException) -> NoReturn:
     With ``$PLTR_DEBUG`` set, the original exception is re-raised after
     rendering so the traceback is shown.
     """
+    from .hints import add_recovery
+
     info = classify_error(exc)
+    add_recovery(info, exc)
     render_error(info)
     if debug_enabled():
         raise exc
