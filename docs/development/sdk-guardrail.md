@@ -62,8 +62,7 @@ doesn't grow:
 | `services/language_models.py::LanguageModelsService.enroll_model` | `language-models enroll` |
 | `services/base.py::BaseService._make_request` | the shared helper they use |
 
-`verify` still calls `/multipass/api/me` with `requests`; it is moving to
-`admin.User.get_current()` (#190), so for now it is in the allowlist rather than this list.
+`pltr verify` calls `admin.User.get_current()` through the SDK (#190).
 
 ### What it can't see
 
@@ -112,9 +111,10 @@ uv run python -c "import inspect; from foundry_sdk.v2.filesystem.folder import F
 
 ## Fix, don't allowlist
 
-`tests/sdk_call_allowlist.txt` lists the violations that existed when the check landed, each
-with a reason (usually the issue that fixes it). The test fails on any violation that isn't
-listed **and** on any listed entry that no longer occurs, so the list can only shrink:
+`tests/sdk_call_allowlist.txt` listed the violations that existed when the check landed, each
+with a reason; they have all been fixed, so it holds no entries. The test fails on any
+violation that isn't listed **and** on any listed entry that no longer occurs, so the list can
+only shrink:
 
 - **When you fix a call, delete its line(s).** The stale-entry test tells you which.
 - **When you rename or move a method that still has listed violations**, the keys change. Run

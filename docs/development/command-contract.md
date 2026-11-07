@@ -1,10 +1,11 @@
-# The command contract: converting a command module
+# The command contract: writing a command
 
 Every curated command and every generated `pltr api` command talks to the user
 through one shared layer, `pltr.contract`. This guide is the checklist for
-converting a command module to it. `pltr folder` and `pltr space`
-(`src/pltr/commands/{folder,space}.py`, `src/pltr/services/{folder,space}.py`
-and their tests) are the reference implementations: copy their shape.
+adding a command or a command module, and for changing one. Every module
+follows it; `pltr folder` and `pltr space` (`src/pltr/commands/{folder,space}.py`,
+`src/pltr/services/{folder,space}.py` and their tests) are the reference
+implementations: copy their shape.
 
 Import everything from `pltr.contract` and nothing from its submodules.
 
@@ -33,7 +34,7 @@ Import everything from `pltr.contract` and nothing from its submodules.
    the command's help starts with `[beta]`. GA endpoints never get `preview`.
 8. The default format is `table`. `PLTR_FORMAT=json|csv|table` changes it.
 
-## Checklist for converting a module
+## Checklist for a command module
 
 1. **Service** (`src/pltr/services/<module>.py`):
    - Return SDK models, SDK iterators or responses unchanged. Delete the
@@ -488,9 +489,6 @@ fails on examples that name a command or option that doesn't exist.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page
   of: iterating it fetches every page.
-- The legacy `OutputFormatter` still works for unconverted modules. Its
-  `print_*` methods now write to stderr; in JSON mode `print_info` and
-  `print_success` are suppressed and `print_warning`/`print_error` become
-  `{"type": "warning"|"error"}` lines. Don't use it in converted code, and
-  don't use `BaseService._serialize_response` (deprecated: snake_case with
-  nulls).
+- Don't use the legacy `OutputFormatter` (`pltr.utils.formatting`) or
+  `BaseService._serialize_response` (snake_case with nulls) in command code:
+  every command prints through `pltr.contract`.
