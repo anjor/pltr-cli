@@ -156,7 +156,8 @@ def cp_command(
     with the error; use --no-schema to copy only the files.
 
     A folder copy (--recursive) recreates its subfolders and datasets; other
-    resource types are skipped with a warning.
+    resource types are skipped with a warning. The target can't be the folder
+    itself or a folder inside it.
 
     Prints the resources created: {"data": [...]} in JSON, with the API's
     Folder and Dataset fields. With --dry-run nothing is created and it

@@ -24,6 +24,8 @@ SOURCE_FOLDER = fs.child_resource(
     "ri.compass.main.folder.source", "Source", "COMPASS_FOLDER"
 )
 TARGET = "ri.compass.main.folder.target"
+#: A folder copy reads the target to check that it isn't inside the source.
+TARGET_FOLDER = fs.child_resource(TARGET, "Target", "COMPASS_FOLDER")
 NEW_FOLDER = fj.folder(
     "ri.compass.main.folder.new", "Source-copy", parentFolderRid=TARGET
 )
@@ -99,6 +101,7 @@ def test_cp_no_schema_copies_only_the_files(stub_foundry_http):
 
 def test_cp_folder_recursive(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=NEW_FOLDER)
     stub_foundry_http.respond(json=fs.page([]))
 
@@ -129,6 +132,7 @@ def test_cp_folder_without_recursive_is_a_usage_error(stub_foundry_http):
 
 def test_cp_dry_run_lists_the_sources(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=fs.page([SOURCE_DATASET]))
 
     result = invoke("cp", SOURCE_FOLDER["rid"], TARGET, "-r", "--dry-run", "-f", "json")
@@ -137,7 +141,45 @@ def test_cp_dry_run_lists_the_sources(stub_foundry_http):
     assert json.loads(result.stdout) == {
         "data": [fj.sdk_json(SOURCE_FOLDER), fj.sdk_json(SOURCE_DATASET)]
     }
-    assert [request.method for request in stub_foundry_http.requests] == ["GET", "GET"]
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+        "GET",
+    ]
+
+
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
+def test_cp_folder_into_itself_is_a_usage_error(stub_foundry_http, dry_run):
+    """It used to copy the copy into itself without end (#181 review)."""
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+
+    result = invoke(
+        "cp", SOURCE_FOLDER["rid"], SOURCE_FOLDER["rid"], "-r", *dry_run, "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert "into itself" in error["message"]
+    assert len(stub_foundry_http.requests) == 1  # nothing created
+
+
+def test_cp_folder_into_a_subfolder_is_a_usage_error(stub_foundry_http):
+    inside = fs.child_resource(TARGET, "Sub", "COMPASS_FOLDER")
+    inside["path"] = SOURCE_FOLDER["path"] + "/Sub"
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=inside)
+
+    result = invoke("cp", SOURCE_FOLDER["rid"], TARGET, "-r")
+
+    assert result.exit_code == 2
+    assert "is inside it" in result.stderr
+    assert f"parent folder {SOURCE_FOLDER['parentFolderRid']}" in result.stderr
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+    ]
 
 
 def test_cp_dry_run_table_says_what_it_would_do(stub_foundry_http):
@@ -167,6 +209,7 @@ def test_cp_source_not_found(stub_foundry_http):
 def test_cp_partial_failure_prints_what_was_created_and_fails(stub_foundry_http):
     one = fs.child_resource("ri.compass.main.folder.one", "One", "COMPASS_FOLDER")
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=NEW_FOLDER)
     stub_foundry_http.respond(json=fs.page([one]))
     stub_foundry_http.respond(

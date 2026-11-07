@@ -767,6 +767,12 @@ from `--help`. They will be removed in the next release.
   including listing the source's files (the cleanup called a method that
   doesn't exist), and `--fail-fast` no longer counts a failure once per
   folder level.
+- `pltr cp --recursive` into the folder being copied, or into a folder inside
+  it, copied the copy into itself without end. It is now a usage error (exit
+  2) before anything is created, also with `--dry-run`: cp reads the target
+  and compares its `Resource.path` with the source's (not verified against a
+  live stack). As a second guard, a copy never copies a folder or dataset it
+  created itself.
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No

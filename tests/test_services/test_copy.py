@@ -8,6 +8,7 @@ Every step goes through the SDK: the resource and folder side
 """
 
 import json
+import re
 
 import pytest
 from foundry_sdk import PermissionDeniedError
@@ -28,6 +29,9 @@ SOURCE_FOLDER = fs.child_resource(
     "ri.compass.main.folder.source", "Source", "COMPASS_FOLDER"
 )
 TARGET = "ri.compass.main.folder.target"
+#: The target folder, a sibling of SOURCE_FOLDER (a folder copy reads it to
+#: check that it isn't inside the source).
+TARGET_FOLDER = fs.child_resource(TARGET, "Target", "COMPASS_FOLDER")
 NEW_DATASET_RID = "ri.foundry.main.dataset.new"
 NEW_DATASET = fs.dataset(NEW_DATASET_RID, "Source Dataset-copy", TARGET)
 SCHEMA = dj.schema_response()
@@ -363,6 +367,7 @@ def test_copy_rejects_other_resource_types(stub_foundry_http):
 def test_copy_folder_recursively_reads_every_page(stub_foundry_http):
     sub = fs.child_resource("ri.compass.main.folder.sub", "Sub", "COMPASS_FOLDER")
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(
         json=fj.folder("ri.compass.main.folder.new", "Source-copy")
     )
@@ -383,21 +388,23 @@ def test_copy_folder_recursively_reads_every_page(stub_foundry_http):
     assert result.stats.folders == 2
     assert requests_summary(stub_foundry_http) == [
         ("GET", f"/api/v2/filesystem/resources/{SOURCE_FOLDER['rid']}", None),
+        ("GET", f"/api/v2/filesystem/resources/{TARGET}", None),
         ("POST", "/api/v2/filesystem/folders", None),
         ("GET", children_path(SOURCE_FOLDER["rid"]), None),
         ("GET", children_path(SOURCE_FOLDER["rid"]), "p2"),
         ("POST", "/api/v2/filesystem/folders", None),
         ("GET", children_path(sub["rid"]), None),
     ]
-    first_create = json.loads(stub_foundry_http.requests[1].content)
+    first_create = json.loads(stub_foundry_http.requests[2].content)
     assert first_create == {"displayName": "Source-copy", "parentFolderRid": TARGET}
-    nested_create = json.loads(stub_foundry_http.requests[4].content)
+    nested_create = json.loads(stub_foundry_http.requests[5].content)
     assert nested_create["parentFolderRid"] == "ri.compass.main.folder.new"
 
 
 def test_copy_folder_skips_unsupported_children(stub_foundry_http, capsys):
     analysis = fs.child_resource("ri.contour.main.analysis.a", "A", "CONTOUR_ANALYSIS")
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(
         json=fj.folder("ri.compass.main.folder.new", "Source-copy")
     )
@@ -413,6 +420,7 @@ def _two_subfolders(stub):
     first = fs.child_resource("ri.compass.main.folder.one", "One", "COMPASS_FOLDER")
     second = fs.child_resource("ri.compass.main.folder.two", "Two", "COMPASS_FOLDER")
     stub.respond(json=SOURCE_FOLDER)
+    stub.respond(json=TARGET_FOLDER)
     stub.respond(json=fj.folder("ri.compass.main.folder.new", "Source-copy"))
     stub.respond(json=fs.page([first, second]))
     stub.respond(
@@ -454,11 +462,12 @@ def test_fail_fast_stops_at_the_first_failure(stub_foundry_http):
     assert [item.rid for item in result.items] == ["ri.compass.main.folder.new"]
     assert result.stats.errors == 1  # counted once, not once per level
     assert len(result.failures) == 1
-    assert len(stub_foundry_http.requests) == 4  # nothing after the failure
+    assert len(stub_foundry_http.requests) == 5  # nothing after the failure
 
 
 def test_listing_failure_after_creating_the_folder_is_recorded(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(
         json=fj.folder("ri.compass.main.folder.new", "Source-copy")
     )
@@ -475,6 +484,7 @@ def test_listing_failure_after_creating_the_folder_is_recorded(stub_foundry_http
 
 def test_copy_folder_dry_run_lists_the_sources(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(json=fs.page([SOURCE_DATASET]))
 
     result = CopyService(dry_run=True).copy_resource(
@@ -486,12 +496,17 @@ def test_copy_folder_dry_run_lists_the_sources(stub_foundry_http):
         fs.DATASET_RID,
     ]
     assert all(isinstance(item, Resource) for item in result.items)
-    # Nothing is created: only the source and its children are read.
-    assert [request.method for request in stub_foundry_http.requests] == ["GET", "GET"]
+    # Nothing is created: only the source, the target and the children are read.
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+        "GET",
+    ]
 
 
 def test_copy_folder_with_a_dataset(stub_foundry_http):
     stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=TARGET_FOLDER)
     stub_foundry_http.respond(
         json=fj.folder("ri.compass.main.folder.new", "Source-copy")
     )
@@ -518,12 +533,165 @@ def test_copy_folder_with_a_dataset(stub_foundry_http):
         "skipped": 0,
         "errors": 0,
     }
-    create_dataset = stub_foundry_http.requests[3]
+    create_dataset = stub_foundry_http.requests[4]
     assert json.loads(create_dataset.content) == {
         "name": "Source Dataset-copy",
         "parentFolderRid": "ri.compass.main.folder.new",
     }
     assert calls(stub_foundry_http)[-1] == SCHEMA_COPY_CALLS[-1]
+
+
+# --------------------------------------------------- a folder into itself
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_copy_folder_into_itself_is_refused(stub_foundry_http, dry_run):
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+
+    with pytest.raises(PltrError, match="into itself") as excinfo:
+        CopyService(dry_run=dry_run).copy_resource(
+            SOURCE_FOLDER["rid"], SOURCE_FOLDER["rid"], recursive=True
+        )
+
+    assert excinfo.value.error_type == "usage_error"
+    assert excinfo.value.exit_code == 2
+    assert SOURCE_FOLDER["parentFolderRid"] in excinfo.value.hint
+    assert len(stub_foundry_http.requests) == 1  # nothing created
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_copy_folder_into_a_folder_inside_it_is_refused(stub_foundry_http, dry_run):
+    inside = fs.child_resource(TARGET, "Deeper", "COMPASS_FOLDER")
+    inside["path"] = SOURCE_FOLDER["path"] + "/Sub/Deeper"
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=inside)
+
+    with pytest.raises(PltrError, match="is inside it") as excinfo:
+        CopyService(dry_run=dry_run).copy_resource(
+            SOURCE_FOLDER["rid"], TARGET, recursive=True
+        )
+
+    assert excinfo.value.error_type == "usage_error"
+    assert inside["path"] in excinfo.value.message
+    assert [request.method for request in stub_foundry_http.requests] == [
+        "GET",
+        "GET",
+    ]
+
+
+def test_copy_folder_next_to_a_similar_name_is_allowed(stub_foundry_http):
+    """'/.../Source-old' starts with '/.../Source' but isn't inside it."""
+    sibling = fs.child_resource(TARGET, "Source-old", "COMPASS_FOLDER")
+    stub_foundry_http.respond(json=SOURCE_FOLDER)
+    stub_foundry_http.respond(json=sibling)
+    stub_foundry_http.respond(json=fj.folder("ri.compass.main.folder.new", "Copy"))
+    stub_foundry_http.respond(json=fs.page([]))
+
+    result = CopyService().copy_resource(SOURCE_FOLDER["rid"], TARGET, recursive=True)
+
+    assert [item.rid for item in result.items] == ["ri.compass.main.folder.new"]
+
+
+class FakeCompass:
+    """Folders only, with real paths: ``Resource.get``, ``Folder.create`` and
+    ``Folder.children`` (a replacement for ``stub.next_response``)."""
+
+    ROOT = "/Test Space/Test Project"
+
+    def __init__(self) -> None:
+        self.folders: dict = {}
+        self.created: list = []
+
+    def add(self, rid: str, name: str, parent: str = fs.PROJECT_RID) -> None:
+        parent_path = self.folders[parent]["path"] if parent in self.folders else None
+        self.folders[rid] = {
+            "name": name,
+            "parent": parent,
+            "path": f"{parent_path or self.ROOT}/{name}",
+            "children": [],
+        }
+        if parent in self.folders:
+            self.folders[parent]["children"].append(rid)
+
+    def resource(self, rid: str) -> dict:
+        folder = self.folders[rid]
+        body = fs.child_resource(
+            rid, folder["name"], "COMPASS_FOLDER", parent=folder["parent"]
+        )
+        body["path"] = folder["path"]
+        return body
+
+    def __call__(self, request):
+        path = request.url.path
+        if request.method == "GET" and path.startswith("/api/v2/filesystem/resources/"):
+            return 200, {"json": self.resource(path.rsplit("/", 1)[1])}
+        if request.method == "POST" and path == "/api/v2/filesystem/folders":
+            assert len(self.created) < 10, "runaway copy"
+            body = json.loads(request.content)
+            rid = f"ri.compass.main.folder.copy-{len(self.created)}"
+            self.add(rid, body["displayName"], body["parentFolderRid"])
+            self.created.append(rid)
+            folder = fj.folder(
+                rid, body["displayName"], parentFolderRid=body["parentFolderRid"]
+            )
+            return 200, {"json": folder}
+        match = re.fullmatch(r"/api/v2/filesystem/folders/([^/]+)/children", path)
+        if request.method == "GET" and match:
+            children = self.folders[match.group(1)]["children"]
+            return 200, {"json": fs.page([self.resource(c) for c in children])}
+        raise AssertionError(f"unexpected {request.method} {request.url}")
+
+
+def test_a_copy_never_copies_what_it_created(stub_foundry_http, monkeypatch, capsys):
+    """Without the up-front check, copying a folder into itself used to create
+    folders without end (the review's repro); now it stops at one level."""
+    compass = FakeCompass()
+    compass.add(SOURCE_FOLDER["rid"], "Source")
+    monkeypatch.setattr(stub_foundry_http, "next_response", compass)
+    monkeypatch.setattr(CopyService, "_check_target_outside", lambda *args: None)
+
+    result = CopyService().copy_resource(
+        SOURCE_FOLDER["rid"], SOURCE_FOLDER["rid"], recursive=True
+    )
+
+    assert compass.created == ["ri.compass.main.folder.copy-0"]
+    assert result.stats.as_dict() == {
+        "folders_copied": 1,
+        "datasets_copied": 0,
+        "skipped": 1,
+        "errors": 0,
+    }
+    assert "this copy created it" in capsys.readouterr().err
+
+
+def test_a_subfolder_target_missed_by_the_check_is_bounded(
+    stub_foundry_http, monkeypatch
+):
+    compass = FakeCompass()
+    compass.add(SOURCE_FOLDER["rid"], "Source")
+    compass.add(TARGET, "Sub", parent=SOURCE_FOLDER["rid"])
+    monkeypatch.setattr(stub_foundry_http, "next_response", compass)
+    monkeypatch.setattr(CopyService, "_check_target_outside", lambda *args: None)
+
+    result = CopyService().copy_resource(SOURCE_FOLDER["rid"], TARGET, recursive=True)
+
+    # Source-copy in Sub, then Sub-copy in Source-copy; Sub's listing then
+    # holds Source-copy, which is skipped.
+    assert len(compass.created) == 2
+    assert (result.stats.folders, result.stats.skipped) == (2, 1)
+
+
+def test_the_check_reads_real_paths(stub_foundry_http, monkeypatch):
+    compass = FakeCompass()
+    compass.add(SOURCE_FOLDER["rid"], "Source")
+    compass.add("ri.compass.main.folder.sub", "Sub", parent=SOURCE_FOLDER["rid"])
+    compass.add(TARGET, "Deeper", parent="ri.compass.main.folder.sub")
+    monkeypatch.setattr(stub_foundry_http, "next_response", compass)
+
+    with pytest.raises(PltrError, match="Source/Sub/Deeper"):
+        CopyService().copy_resource(SOURCE_FOLDER["rid"], TARGET, recursive=True)
+
+    assert compass.created == []
 
 
 def test_source_errors_propagate(stub_foundry_http):

@@ -214,7 +214,8 @@ pltr cp <folder-rid> <target-folder-rid> --recursive --dry-run
 - A folder copy recreates its subfolders and datasets; other resource types
   are skipped with a warning. When some items fail, the others are still
   copied (unless `--fail-fast`), and pltr exits with the first failure's
-  error.
+  error. The target can't be the folder itself or a folder inside it (exit
+  2).
 - It prints the resources it created (JSON: `{"data": [...]}`, the API's
   `Folder` and `Dataset` objects) and its progress on stderr. `--dry-run`
   creates nothing and prints the resources it would copy.

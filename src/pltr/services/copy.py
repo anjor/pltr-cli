@@ -14,7 +14,7 @@ import tempfile
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from ..contract import ExitCode, PltrError, classify_error, info, success, warn
 from .dataset import DatasetService
@@ -119,6 +119,8 @@ class CopyService:
         self.resource_service = ResourceService(profile=profile)
 
         self.result = CopyResult()
+        #: RIDs of the folders and datasets this copy created.
+        self._created: Set[str] = set()
 
     # ------------------------------------------------------------------ public
     def copy_resource(
@@ -137,6 +139,7 @@ class CopyService:
             a failure before anything was created is raised.
         """
         self.result = CopyResult()
+        self._created = set()
         source = self.resource_service.get_resource(source_rid)
 
         if source.type == DATASET_TYPE:
@@ -153,6 +156,7 @@ class CopyService:
                     error_type="usage_error",
                     exit_code=ExitCode.USAGE,
                 )
+            self._check_target_outside(source, target_folder_rid)
             try:
                 self._copy_folder(source, target_folder_rid)
             except _StopCopy:
@@ -186,6 +190,7 @@ class CopyService:
             new_name, parent_folder_rid=target_folder_rid
         )
         new_dataset_rid = new_dataset.rid
+        self._created.add(new_dataset_rid)
         success(
             f"Created dataset '{new_name}' ({new_dataset_rid}) in {target_folder_rid}"
         )
@@ -313,6 +318,33 @@ class CopyService:
         info(f"  Copied dataset schema ({reader or 'PARQUET'} reader)")
 
     # ------------------------------------------------------------------ folders
+    def _check_target_outside(self, folder: Any, target_folder_rid: str) -> None:
+        """Refuse to copy a folder into itself or into a folder inside it.
+
+        The copy is created before the source's children are listed, so it
+        would be among them and be copied into itself without end. A
+        ``Resource.path`` is the display names from the root joined by ``/``
+        (names can't contain ``/``), so the target is inside the source when
+        its path starts with the source's path and a ``/``.
+        """
+        if target_folder_rid == folder.rid:
+            where = "is that folder"
+        else:
+            target = self.resource_service.get_resource(target_folder_rid)
+            if target.rid != folder.rid and not target.path.startswith(
+                folder.path.rstrip("/") + "/"
+            ):
+                return
+            where = f"is inside it ({target.path})"
+        raise PltrError(
+            f"Can't copy folder '{folder.display_name}' ({folder.rid}) into "
+            f"itself: the target {target_folder_rid} {where}.",
+            error_type="usage_error",
+            exit_code=ExitCode.USAGE,
+            hint="Copy it into a folder outside it, such as its parent folder "
+            f"{folder.parent_folder_rid}.",
+        )
+
     def _copy_folder(self, folder: Any, target_folder_rid: str) -> None:
         """Copy a folder and its children; records the failures of children."""
         new_name = self._derive_name(folder.display_name)
@@ -328,6 +360,7 @@ class CopyService:
             created = self.folder_service.create_folder(new_name, target_folder_rid)
             self.result.items.append(created)
             new_folder_rid = created.rid
+            self._created.add(new_folder_rid)
             success(
                 f"Created folder '{new_name}' ({new_folder_rid}) in {target_folder_rid}"
             )
@@ -345,6 +378,11 @@ class CopyService:
             return
 
         for child in children:
+            if child.rid in self._created:
+                # Never copy a copy (the target is inside the source after
+                # all): it would copy itself again and again.
+                self._skip(child.display_name, child.rid, "this copy created it")
+                continue
             try:
                 if child.type == FOLDER_TYPE:
                     self._copy_folder(child, new_folder_rid)
