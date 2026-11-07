@@ -71,8 +71,10 @@ class TestSimpleDataWorkflows:
         result = runner.invoke(
             app, ["dataset", "get", "ri.foundry.main.dataset.example"]
         )
-        # Just ensure it doesn't crash with a Python error
-        assert result.exit_code in [0, 1]  # Either success or expected failure
+        # The keyring is mocked out, so there are no credentials: a documented
+        # authentication error (exit code 3), not a crash.
+        assert result.exit_code == 3, result.output
+        assert isinstance(result.exception, SystemExit)
 
     def test_sql_execute_basic_functionality(
         self, runner, stub_foundry_http, isolated_home
