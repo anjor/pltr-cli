@@ -153,3 +153,7 @@ credentials.json
 
 # ruff
 .ruff_cache/
+
+# Inputs of the live smoke test (scripts/smoke.py); they name real RIDs
+/smoke.toml
+/smoke.json
