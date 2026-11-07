@@ -564,11 +564,13 @@ FIELD_WEIGHTS: Dict[str, float] = {
     "help": 1.0,
 }
 
-#: Curated commands are the polished path, so they rank above generated
-#: commands that match equally well.
+#: Curated commands are the polished path, so their word matches count more
+#: than a generated command's: they rank first when both match as well.
 CURATED_BOOST = 1.25
 #: The query names the command's path (in any order: `list dataset branches`).
 EXACT_PATH_BONUS = 30.0
+#: The query names the end of the path (`dataset get` for `api datasets dataset get`).
+PATH_END_BONUS = 12.0
 #: Every query word is a word of the command's path.
 PATH_BONUS = 6.0
 #: The query is the command's SDK method (`datasets.Dataset.Branch.list`) ...
@@ -629,9 +631,9 @@ class _Field:
         return 0.0
 
 
-def _key_words(items: Sequence[str]) -> Set[str]:
+def _key_words(items: Sequence[str]) -> List[str]:
     """Stems of the words that aren't stop words (for path matching)."""
-    return {_stem(word) for word in items if word not in STOP_WORDS}
+    return [_stem(word) for word in items if word not in STOP_WORDS]
 
 
 class _Indexed:
@@ -660,18 +662,22 @@ class _Indexed:
         }
 
 
+_CLIENT_PREFIX = re.compile(r"^\s*foundryclient\.", re.IGNORECASE)
+
+
 def query_terms(query: str) -> List[str]:
-    """The query's words without stop words (all words if only stop words)."""
-    all_words = words(query)
+    """The query's words without stop words (all words if only stop words).
+
+    A leading ``FoundryClient.`` (an SDK method path) is dropped.
+    """
+    all_words = words(_CLIENT_PREFIX.sub("", query))
     terms = [word for word in all_words if word not in STOP_WORDS]
     return terms or [word for word in all_words if word != PROGRAM]
 
 
 def _sdk_query(raw: str) -> Optional[str]:
     """The query as an SDK method path (`Dataset.Branch.list`), if it is one."""
-    text = raw.strip().lower()
-    if text.startswith("foundryclient."):
-        text = text[len("foundryclient.") :]
+    text = _CLIENT_PREFIX.sub("", raw).strip().lower()
     return text if re.fullmatch(r"[a-z_]\w*(\.[a-z_]\w*)+", text) else None
 
 
@@ -693,10 +699,17 @@ def _score(item: _Indexed, terms: Sequence[_Term], raw: str) -> float:
             total += best
     if not matched:
         return 0.0
-    key = _key_words([term.word for term in terms])
-    if key and key == item.path_key:
+    # Words the command doesn't match at all lower its score.
+    total *= 0.5 + 0.5 * matched / len(terms)
+    if not item.entry.get("generated"):
+        total *= CURATED_BOOST
+    key = set(_key_words([term.word for term in terms]))
+    path = item.path_key
+    if key and key == set(path):
         total += EXACT_PATH_BONUS
-    elif len(key) > 1 and key <= item.path_key:
+    elif len(key) > 1 and key == set(path[-len(key) :]):
+        total += PATH_END_BONUS
+    elif len(key) > 1 and key <= set(path):
         total += PATH_BONUS
     sdk_query = _sdk_query(raw)
     if sdk_query:
@@ -704,10 +717,6 @@ def _score(item: _Indexed, terms: Sequence[_Term], raw: str) -> float:
             total += EXACT_SDK_BONUS
         elif any(sdk_query in path for path in item.sdk_paths):
             total += SDK_SUBSTRING_BONUS
-    # Words the command doesn't match at all lower its score.
-    total *= 0.5 + 0.5 * matched / len(terms)
-    if not item.entry.get("generated"):
-        total *= CURATED_BOOST
     return total
 
 
@@ -723,11 +732,11 @@ def search(
     direct-HTTP endpoints, description, parameter names and help, in
     decreasing weight, allowing plurals, a few verb synonyms (`run` finds
     `execute`) and prefixes. A command scores the sum of its best match per
-    word, less for words it doesn't match at all. The query naming the
-    command's path (in any order) or its SDK method (`Dataset.Branch.list`)
-    adds a large bonus, and curated commands rank above generated `pltr api`
-    commands that match as well. Ties go to the shorter path. Hidden commands
-    are left out unless ``include_hidden``.
+    word, less for words it doesn't match at all, and more for curated
+    commands than for generated `pltr api` ones. The query naming the
+    command's path, the end of its path (in any order) or its SDK method
+    (`Dataset.Branch.list`) adds a bonus. Ties go to curated commands, then
+    the shorter path. Hidden commands are left out unless ``include_hidden``.
     """
     terms = [_Term(word) for word in query_terms(query)]
     if not terms:

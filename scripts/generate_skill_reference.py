@@ -488,6 +488,7 @@ _SHELL_STOP = {"|", "||", "&&", ";", "&", ">", ">>", "<", "2>", "2>&1", ")", "`"
 #: Where a `pltr` invocation starts: line start, or after a space, `(`, `|`, ...
 _COMMAND = re.compile(r"(?:^|(?<=[\s(|;&`]))pltr\s+")
 _PLACEHOLDER = re.compile(r"^(<.*>|\.\.\.|\[.*\])$")
+_ANGLE_PLACEHOLDER = re.compile(r"<[A-Za-z][\w.:-]*>")
 
 
 def _strip_comment(line: str) -> str:
@@ -539,7 +540,11 @@ def find_invocations(text: str) -> List[Tuple[int, List[str]]]:
     for number, snippet in _markdown_snippets(text):
         snippet = snippet.lstrip("$ ")
         for match in _COMMAND.finditer(snippet):
-            rest = snippet[match.end() :]
+            # Quote placeholders (`<words>`, `ri.foundry.main.dataset.<id>`) so
+            # the shell lexer doesn't read them as redirections.
+            rest = _ANGLE_PLACEHOLDER.sub(
+                lambda m: shlex.quote(m.group(0)), snippet[match.end() :]
+            )
             try:
                 lexer = shlex.shlex(rest, posix=True, punctuation_chars="|&;<>()")
                 lexer.whitespace_split = True
