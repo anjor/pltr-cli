@@ -193,8 +193,32 @@ def _substitutions(code: str) -> Tuple[str, List[str]]:
     return "".join(out), inner
 
 
+def _quote_placeholders(code: str) -> str:
+    """Quote `<placeholder>`s outside quotes, so that the shell lexer doesn't
+    read their `<` and `>` as redirections (inside quotes they are text)."""
+    out = []
+    quote = ""
+    index = 0
+    while index < len(code):
+        char = code[index]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        else:
+            match = _ANGLE_PLACEHOLDER.match(code, index)
+            if match:
+                out.append(shlex.quote(match.group(0)))
+                index = match.end()
+                continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
 def _lex(code: str) -> Optional[List[str]]:
-    code = _ANGLE_PLACEHOLDER.sub(lambda m: shlex.quote(m.group(0)), code)
+    code = _quote_placeholders(code)
     lexer = shlex.shlex(code, posix=True, punctuation_chars="|&;<>()")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -529,6 +553,14 @@ def test_doc_examples_use_real_commands_and_options(tree: CommandTree) -> None:
         (
             "```\npltr> dataset get ri.x\npltr (prod)> exit\npltr> help folder\n```",
             [("dataset", "get", "ri.x")],
+        ),
+        (
+            "```bash\npltr sql execute 'SELECT * FROM `<rid>` LIMIT 1' > <out.csv>\n```",
+            [("sql", "execute", "SELECT * FROM `<rid>` LIMIT 1")],
+        ),
+        (
+            "```bash\npltr dataset get ri.foundry.main.dataset.<id> <extra arg>\n```",
+            [("dataset", "get", "ri.foundry.main.dataset.<id>", "<extra arg>")],
         ),
     ],
 )
