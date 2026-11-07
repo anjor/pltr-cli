@@ -1,7 +1,10 @@
-"""Fixtures for the generated `pltr api` commands (on top of `stub_foundry_http`)."""
+"""Fixtures for the generated `pltr api` commands.
+
+The commands get their client from `pltr.services.base.AuthManager`, like the
+services, so `stub_foundry_http` (tests/conftest.py) serves them directly.
+"""
 
 from typing import Any, Optional
-from unittest.mock import Mock
 
 import pytest
 from typer.testing import CliRunner
@@ -9,15 +12,10 @@ from typer.testing import CliRunner
 from pltr.cli import app
 
 
-@pytest.fixture
-def api_stub(stub_foundry_http, monkeypatch):
-    """`stub_foundry_http`, also served to `pltr api` via AuthManager().get_client()."""
-    auth_manager = Mock()
-    auth_manager.return_value.get_client.return_value = stub_foundry_http.client
-    monkeypatch.setattr("pltr.auth.manager.AuthManager", auth_manager)
-    monkeypatch.delenv("PLTR_FORMAT", raising=False)
-    stub_foundry_http.auth_manager = auth_manager
-    return stub_foundry_http
+@pytest.fixture(autouse=True)
+def _isolated(isolated_home):
+    """No real home directory; wide tables (COLUMNS=200)."""
+    return isolated_home
 
 
 class Invoker:
