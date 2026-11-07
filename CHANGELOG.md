@@ -805,6 +805,16 @@ from `--help`. They will be removed in the next release.
   missing home directory in a container or agent sandbox; a retry repeated
   the write. The cache is best-effort now, and a corrupted cache file is
   replaced.
+- `configure` stored `--token`, `--client-id` and `--client-secret` exactly
+  as given, so `--token "$(cat token.txt)"` on a file with Windows line
+  endings kept a trailing CR, and every command then failed with an
+  unexpected error whose message contained the token. Surrounding whitespace
+  is dropped from credentials wherever pltr reads them (options, prompts,
+  stored profiles, `FOUNDRY_*` variables), so profiles stored that way work
+  again. Whitespace or control characters inside a credential are an error
+  that names the option, variable or profile and never shows the value: a
+  usage error (exit code 2) in `configure`, an auth error (exit code 3) in
+  other commands.
 
 ## [0.16.0] - 2026-06-25
 

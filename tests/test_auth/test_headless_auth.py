@@ -10,11 +10,14 @@ Headless authentication (#190, #144).
   OAuth and environment-variable auth all send the right bearer token.
 - A missing, broken or hanging keyring gives a clear error that points to the
   environment variables.
+- Credentials lose surrounding whitespace (a trailing CR/LF); whitespace or
+  control characters inside one are an auth error that never shows the value.
 
 Only the network and the keyring are faked: AuthManager, FoundryClient and the
 foundry_sdk auth objects (including the OAuth token request) are real.
 """
 
+import json
 import threading
 import time
 from typing import Any, Dict
@@ -641,3 +644,132 @@ class TestKeyringFailures:
             monkeypatch.setenv("PLTR_KEYRING_TIMEOUT", value)
 
         assert keyring_timeout() == expected
+
+
+# ---------------------------------------------------------------------------
+# Credentials with whitespace or control characters
+# ---------------------------------------------------------------------------
+
+#: A secret that must never appear in an error message.
+SECRET = "PltrTestSecret123"
+
+
+class TestCredentialWhitespace:
+    """`--token "$(cat token.txt)"` on a file with Windows line endings stores
+    the token with a trailing CR. Surrounding whitespace is stripped wherever
+    credentials are read; whitespace or control characters inside one are an
+    auth error that says where the credential came from, never its value."""
+
+    @pytest.mark.filterwarnings("error::UserWarning")
+    def test_stored_token_with_a_trailing_line_break_works(
+        self, config_dir, fake_keyring, fake_http
+    ):
+        add_profiles(fake_keyring, {"p": token_profile(" profile-token\r\n")}, "p")
+        fake_http.route("GET", GET_CURRENT_USER_PATH, body=USER_JSON)
+
+        result = CliRunner().invoke(app, ["verify", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        request = fake_http.sdk_request(GET_CURRENT_USER_PATH)
+        assert request.headers["Authorization"] == "Bearer profile-token"
+
+    @pytest.mark.filterwarnings("error::UserWarning")
+    def test_stored_oauth_credentials_with_line_breaks_work(
+        self, config_dir, fake_keyring, fake_http
+    ):
+        profile = {
+            **oauth_profile(),
+            "client_id": "profile-client-id\r",
+            "client_secret": "profile-client-secret\r\n",
+        }
+        add_profiles(fake_keyring, {"p": profile}, default="p")
+        fake_http.route_oauth_token()
+        fake_http.route("GET", "/api/v2/llm/x", body={})
+
+        DirectHttpService()._make_request("GET", "/api/v2/llm/x")
+
+        form = parse_qs(fake_http.sdk_request(OAUTH_TOKEN_PATH).content.decode())
+        assert form["client_id"] == ["profile-client-id"]
+        assert form["client_secret"] == ["profile-client-secret"]
+
+    @pytest.mark.parametrize(
+        "field, label",
+        [
+            ("token", "token"),
+            ("client_id", "OAuth client ID"),
+            ("client_secret", "OAuth client secret"),
+        ],
+    )
+    @pytest.mark.parametrize("inner", ["\r\n", " ", "\t", "\x1b"])
+    def test_stored_credential_with_inner_whitespace_is_rejected(
+        self, config_dir, fake_keyring, field, label, inner
+    ):
+        profile = token_profile("t") if field == "token" else oauth_profile()
+        profile[field] = f"{SECRET}{inner}{SECRET}"
+        add_profiles(fake_keyring, {"work": profile}, default="work")
+
+        with pytest.raises(InvalidCredentialsError) as excinfo:
+            AuthManager().get_client()
+
+        message = str(excinfo.value)
+        assert f"The {label} stored in profile 'work'" in message
+        assert "whitespace or control characters" in message
+        assert "pltr configure configure --profile work" in message
+        assert SECRET not in message
+
+    @pytest.mark.filterwarnings("error::UserWarning")
+    def test_env_token_with_a_trailing_line_break_works(
+        self, config_dir, no_keyring, fake_http, monkeypatch
+    ):
+        set_env_token(monkeypatch, token="env-token\r\n")
+        fake_http.route("GET", GET_CURRENT_USER_PATH, body=USER_JSON)
+
+        result = CliRunner().invoke(app, ["verify", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        request = fake_http.sdk_request(GET_CURRENT_USER_PATH)
+        assert request.headers["Authorization"] == "Bearer env-token"
+
+    @pytest.mark.parametrize(
+        "variable", ["FOUNDRY_TOKEN", "FOUNDRY_CLIENT_ID", "FOUNDRY_CLIENT_SECRET"]
+    )
+    @pytest.mark.parametrize("inner", ["\r\n", " ", "\x1b"])
+    def test_env_credential_with_inner_whitespace_is_rejected(
+        self, config_dir, no_keyring, monkeypatch, variable, inner
+    ):
+        if variable == "FOUNDRY_TOKEN":
+            set_env_token(monkeypatch)
+        else:
+            set_env_oauth(monkeypatch)
+        monkeypatch.setenv(variable, f"{SECRET}{inner}{SECRET}")
+
+        with pytest.raises(InvalidCredentialsError) as excinfo:
+            AuthManager().get_client()
+
+        message = str(excinfo.value)
+        assert f"{variable} contains whitespace or control characters" in message
+        assert SECRET not in message
+
+    def test_an_unused_variable_is_not_checked(self, config_dir, monkeypatch):
+        # FOUNDRY_TOKEN wins over client credentials, which are then ignored.
+        set_env_token(monkeypatch)
+        monkeypatch.setenv("FOUNDRY_CLIENT_SECRET", "not used\n at all")
+
+        assert AuthManager().get_auth_context().source.auth_type == "token"
+
+    def test_a_command_fails_with_an_auth_error_without_the_value(
+        self, config_dir, fake_keyring, fake_http
+    ):
+        add_profiles(fake_keyring, {"p": token_profile(f"{SECRET}\n{SECRET}")}, "p")
+
+        result = CliRunner().invoke(
+            app, ["folder", "get", "ri.compass.main.folder.x", "--format", "json"]
+        )
+
+        assert result.exit_code == 3, result.output
+        assert result.stdout == ""
+        error = json.loads(result.stderr.strip().splitlines()[-1])
+        assert error["type"] == "auth_error"
+        assert "The token stored in profile 'p'" in error["message"]
+        assert SECRET not in result.stderr
+        assert fake_http.sdk_requests == []
