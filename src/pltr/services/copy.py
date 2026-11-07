@@ -266,8 +266,10 @@ class CopyService:
             paths: List[str] = []
             with tempfile.TemporaryDirectory(prefix="pltr-cp-") as tmpdir:
                 temp_dir = Path(tmpdir)
-                for file in files:
-                    download_path = temp_dir / self._sanitize_local_path(file.path)
+                for index, file in enumerate(files):
+                    # Named by a counter, not by the remote path: any remote
+                    # name works, and none can point outside temp_dir.
+                    download_path = temp_dir / f"file-{index}"
                     self.dataset_service.download_file(
                         source_rid, file.path, download_path, branch=self.branch
                     )
@@ -435,17 +437,6 @@ class CopyService:
             raise _StopCopy() from exc
 
     # ------------------------------------------------------------------ helpers
-    def _sanitize_local_path(self, original_path: str) -> str:
-        """Return a safe relative path for storing temporary files."""
-        # Check for path traversal BEFORE normalization to prevent attacks
-        if ".." in original_path:
-            raise ValueError(f"Path traversal detected: {original_path}")
-        clean = PurePosixPath(original_path.lstrip("/"))
-        # Verify no parent directory references remain after normalization
-        if ".." in clean.parts:
-            raise ValueError(f"Invalid path after normalization: {original_path}")
-        return clean.as_posix()
-
     def _derive_name(self, base_name: str) -> str:
         """Append the configured suffix if provided."""
         suffix = self.name_suffix or ""

@@ -779,6 +779,11 @@ from `--help`. They will be removed in the next release.
   `BRANCH` failed with `BranchNotFound` and the copy was trashed. cp now lists
   the copy's branches and creates `BRANCH` on it (without transactions)
   before committing the files there. Not verified against a live stack.
+- `pltr cp` refused to copy a dataset with a file whose name contains `..`,
+  such as `data/report..v2.csv` ("Path traversal detected"), and trashed the
+  copy. cp no longer builds local paths from the source's file names: it
+  downloads each file to a numbered temporary file, so every name is copied
+  and none can point outside the temporary directory, on any platform.
 - The `data-health check create` help example used the severity `WARNING`;
   severities are `MODERATE` and `CRITICAL`.
 - `FOUNDRY_HOST` with `FOUNDRY_TOKEN` (or client credentials) failed with "No

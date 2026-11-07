@@ -17,6 +17,7 @@ from foundry_sdk.v2.filesystem.models import Folder, Resource
 
 from pltr.contract import PltrError
 from pltr.services.copy import CopyService, dataframe_reader_for
+from pltr.services.dataset import DatasetService
 from tests import foundry_json as fj
 from tests import foundry_json_dataset as dj
 from tests import foundry_json_filesystem as fs
@@ -398,10 +399,35 @@ def test_dataframe_reader_for(paths, reader):
     assert dataframe_reader_for(paths) == reader
 
 
-@pytest.mark.parametrize("path", ["../escape.csv", "/a/../../b.csv"])
-def test_sanitize_local_path_rejects_traversal(stub_foundry_http, path):
-    with pytest.raises(ValueError):
-        CopyService()._sanitize_local_path(path)
+def test_file_names_with_dots_are_copied(stub_foundry_http, monkeypatch):
+    """`report..v2.csv` was refused as "path traversal" (#181 review). Remote
+    names never become local paths: each file is downloaded to a numbered
+    file directly in one temporary directory."""
+    paths = ("data/report..v2.csv", "2024..2025/summary...csv")
+    queue_files_copy(stub_foundry_http, paths=paths)
+    downloads = []
+    real_download = DatasetService.download_file
+
+    def spy(self, dataset_rid, file_path, output_path, **kwargs):
+        downloads.append(output_path)
+        return real_download(self, dataset_rid, file_path, output_path, **kwargs)
+
+    monkeypatch.setattr(DatasetService, "download_file", spy)
+
+    result = CopyService(copy_schema=False).copy_resource(fs.DATASET_RID, TARGET)
+
+    assert result.failures == []
+    uploads = [
+        request.url.path
+        for request in stub_foundry_http.requests
+        if request.url.path.endswith("/upload")
+    ]
+    assert uploads == [
+        f"{API}/{NEW_DATASET_RID}/files/data/report..v2.csv/upload",
+        f"{API}/{NEW_DATASET_RID}/files/2024..2025/summary...csv/upload",
+    ]
+    assert [path.name for path in downloads] == ["file-0", "file-1"]
+    assert downloads[0].parent == downloads[1].parent
 
 
 def test_derive_name_does_not_repeat_the_suffix(stub_foundry_http):
