@@ -8,7 +8,22 @@ The release script (`scripts/release.py`) supports both interactive and non-inte
 - **Interactive mode**: For human developers who want to review and confirm each step
 - **Non-interactive mode**: For AI agents and automated systems that need to create releases programmatically
 
-## Before You Release: the Changelog
+## Before You Release
+
+### Run the live smoke test
+
+The test suite runs against stubbed HTTP only. Run the smoke test against a
+real stack and paste its table into the release pull request:
+
+```bash
+uv run python scripts/smoke.py --markdown
+```
+
+Add `--allow-writes --scratch-folder <folder-rid>` for the write checks. See
+[docs/development/live-verification.md](docs/development/live-verification.md)
+for its inputs and for the assumptions that only a live stack can confirm.
+
+### Update the changelog
 
 Changes are recorded as they are made, under `## [Unreleased]` in
 `CHANGELOG.md`. The release script doesn't touch the changelog, so before
@@ -205,5 +220,8 @@ is the real changelog for those calls. When you bump the SDK:
 6. **Run the full test suite:** `uv run pytest`. The service tests built on the
    `stub_foundry_http` fixture run against the new SDK's real client and models, so changes
    to response models show up there.
-7. **Record it:** add a changelog entry with the new SDK version and every user-visible change
+7. **Run the smoke test against a real stack:** `uv run python scripts/smoke.py --markdown`,
+   and paste the table into the pull request. It catches what stubbed HTTP can't, such as
+   response shapes that changed on the server.
+8. **Record it:** add a changelog entry with the new SDK version and every user-visible change
    (commands added, removed or changed, beta labels).

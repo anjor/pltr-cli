@@ -210,7 +210,7 @@ in the README):
 | 4 | permission denied (HTTP 403) | `permission_denied` |
 | 5 | not found (HTTP 404) | `not_found`, `api_not_found` |
 | 6 | the API rejected the request (HTTP 400, 422) | `validation_error` |
-| 7 | other API or network errors (409, 413, 429, 5xx, timeouts, connection errors) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` |
+| 7 | other API or network errors (409, 413, 429, 5xx, timeouts, connection errors), or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
 
 With `--format json` (or `PLTR_FORMAT=json`) a failure writes one compact JSON
 object as the last stderr line, including the Foundry error name and parameters

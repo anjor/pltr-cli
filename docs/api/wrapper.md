@@ -93,6 +93,10 @@ class FolderService(BaseService):
   `inspect.signature` against the installed SDK.
 - **Pass arguments by keyword, explicitly**, never through `**kwargs` or a
   dict, so the SDK call check can bind them to the real signature.
+- **Import SDK models inside the methods that use them**, not at module
+  level: `pltr --help` and shell completion import every command module, and
+  the SDK's model packages are slow to import. `tests/test_startup.py` fails
+  if startup imports `foundry_sdk`.
 - `self._make_request(method, endpoint, ...)` calls a Foundry endpoint
   directly with the client's host and token. It is only for the labeled
   direct-HTTP exceptions (`dataset schema apply`, the

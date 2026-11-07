@@ -26,7 +26,8 @@ names; find them in Foundry's web interface, or with commands such as
 - **Datasets**: branches, files (upload and download, including whole
   directories), transactions, schemas, views and previews.
 - **Filesystem**: folders, projects, spaces and resources, including the
-  trash, markings and role grants; `pltr cp` copies datasets and folders.
+  trash, markings and role grants; `pltr cp` copies datasets (their files and
+  schema) and folders.
 - **Ontology**: object types, objects (list, search, aggregate, count, linked
   objects), actions and queries.
 - **Orchestration**: builds, jobs and schedules.
@@ -202,7 +203,7 @@ pltr is built to be scripted, by people and by agents.
 | 4 | Permission denied (HTTP 403) | `permission_denied` |
 | 5 | Not found (HTTP 404) | `not_found`, `api_not_found` |
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
-| 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `network_error`, `timeout` |
+| 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
 
 **Destructive commands ask first.** Commands that delete, remove, revoke,
 reset, cancel, abort or replace something ask for confirmation, and
@@ -347,6 +348,7 @@ pltr folder create "Reports" --parent-folder <project-or-folder-rid>
 pltr project create "New Project" --space-rid <space-rid>
 pltr resource search "sales" --folder-rid <folder-rid>
 pltr resource-role grant <resource-rid> --principal-id <user-or-group-id> --role <role-id>
+pltr cp <dataset-rid> <target-folder-rid>   # files and schema; --no-schema for files only
 
 # Orchestration
 pltr orchestration builds search --status FAILED --branch master
@@ -586,7 +588,10 @@ the README, `docs/` and `claude_skill/` must name real commands and options.
   keyring access and environment-variable credentials.
 
 Service and command tests run against a real `FoundryClient` with only HTTP
-faked (the `stub_foundry_http` fixture in `tests/conftest.py`). See
+faked (the `stub_foundry_http` fixture in `tests/conftest.py`). Behaviour on
+a real stack is checked with a smoke test, `uv run python scripts/smoke.py`;
+**[live verification](docs/development/live-verification.md)** explains how
+to run it and lists the assumptions only a live stack can confirm. See also
 **[the command contract](docs/development/command-contract.md)**,
 **[the SDK call check](docs/development/sdk-guardrail.md)** and
 **[the service layer guide](docs/api/wrapper.md)**.
@@ -610,7 +615,9 @@ Contributions are welcome: bug fixes, new commands and documentation.
 3. Add tests that use `stub_foundry_http`.
 4. Record user-visible changes under `## [Unreleased]` in
    [CHANGELOG.md](CHANGELOG.md), and update the README and `docs/`.
-5. Run the checks above and open a pull request.
+5. Run the checks above and open a pull request. Say in it what you verified
+   on a live stack (paste the smoke test's table if you ran it) and which
+   assumptions you couldn't check.
 
 ## License
 

@@ -23,7 +23,7 @@ failure it was:
 | 4 | Permission denied (HTTP 403) | Your access to the resource, or the OAuth client's scopes |
 | 5 | Not found (HTTP 404) | The RID, and that you can see the resource |
 | 6 | Validation error (HTTP 400, 422) | The values you sent; the message has Foundry's error name |
-| 7 | Other API or network errors | Connectivity, rate limits (429), server errors |
+| 7 | Other API or network errors, or a response pltr can't read | Connectivity, rate limits (429), server errors. For `invalid_response` (the API's response doesn't match the SDK's model or isn't JSON), upgrade pltr: a retry won't help |
 
 In text mode the error is printed as `Error: ...` on stderr, with Foundry's
 error name and parameters. With `--format json` (or `PLTR_FORMAT=json`), the

@@ -27,7 +27,8 @@ pltr folder list <folder-rid> --format json --all
 
 Without `--page-size`, commands use the API's default page size; they used
 to send pltr's `page_size` setting (20 by default). Pass `--page-size`
-where you depend on a size.
+where you depend on a size. The `page_size` setting is deprecated: a
+`page_size` in an existing `settings.json` is accepted and ignored.
 
 ### JSON lists have the API's paged shape
 
