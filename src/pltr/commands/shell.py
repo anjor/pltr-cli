@@ -262,7 +262,7 @@ def start(
 
         # In the shell, run commands without 'pltr' prefix:
         pltr> dataset get ri.foundry.main.dataset.123
-        pltr> folder list ri.compass.main.folder.0 --format json
+        pltr> space list --format json
         pltr> help folder
 
         # Exit the shell:

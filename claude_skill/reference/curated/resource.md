@@ -93,9 +93,9 @@ Get a resource's metadata by its path.
 
 List the resources directly inside a folder (not its subfolders).
 
-`pltr resource list [OPTIONS]`
+`pltr resource list --folder-rid TEXT [OPTIONS]`
 
-- `--folder-rid`, `-f` TEXT: RID of the folder, project or space (default: the root folder, ri.compass.main.folder.0).
+- `--folder-rid`, `-f` TEXT (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
 - `--type`, `-t` TEXT: Only show resources of this type: an API type name such as FOUNDRY_DATASET or COMPASS_FOLDER (case-insensitive; 'dataset' and 'folder' work too).
 - paged · SDK: `filesystem.Folder.children`
 
@@ -140,11 +140,11 @@ Restore a resource, and its directly trashed ancestors, from the trash.
 
 Find resources below a folder by name, path, description, RID or type.
 
-`pltr resource search QUERY [OPTIONS]`
+`pltr resource search QUERY --folder-rid TEXT [OPTIONS]`
 
 - `QUERY`: Text to look for (case-insensitive) in display names, paths, descriptions, RIDs and types.
+- `--folder-rid`, `-f` TEXT (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
 - `--type`, `-t` TEXT: Only show resources of this type: an API type name such as FOUNDRY_DATASET or COMPASS_FOLDER (case-insensitive; 'dataset' and 'folder' work too).
-- `--folder-rid`, `-f` TEXT: RID of the folder, project or space (default: the root folder, ri.compass.main.folder.0).
 - `--limit` INTEGER: Stop after this many matches.
 - `--max-folders` INTEGER (default: 1000): Stop after listing this many folders (one request per page each).
 - SDK: `filesystem.Folder.children`

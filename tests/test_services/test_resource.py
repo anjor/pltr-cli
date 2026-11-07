@@ -21,7 +21,6 @@ from foundry_sdk.v2.filesystem.models import (
 )
 
 from pltr.services.resource import (
-    ROOT_FOLDER_RID,
     ResourceService,
     normalize_resource_type,
     resource_matches,
@@ -232,13 +231,14 @@ def test_search_scans_folders_breadth_first(stub_foundry_http):
     assert third.url.path == children_path(SUBFOLDER["rid"])
 
 
-def test_search_starts_at_the_root_folder(stub_foundry_http):
+def test_search_starts_at_the_given_folder(stub_foundry_http):
     stub_foundry_http.respond(json=fs.page([]))
 
-    result = ResourceService().search_resources("anything")
+    result = ResourceService().search_resources("anything", fj.PROJECT_RID)
 
     assert result.matches == []
-    assert stub_foundry_http.requests[0].url.path == children_path(ROOT_FOLDER_RID)
+    [request] = stub_foundry_http.requests
+    assert request.url.path == children_path(fj.PROJECT_RID)
 
 
 def test_search_type_filter_still_descends_into_folders(stub_foundry_http):
@@ -278,7 +278,7 @@ def test_search_stops_at_max_folders(stub_foundry_http):
 
 def test_search_rejects_an_empty_query(stub_foundry_http):
     with pytest.raises(ValueError, match="empty"):
-        ResourceService().search_resources("  ")
+        ResourceService().search_resources("  ", fj.PROJECT_RID)
     assert stub_foundry_http.requests == []
 
 

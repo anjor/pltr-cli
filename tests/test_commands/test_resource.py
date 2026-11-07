@@ -172,16 +172,32 @@ def test_get_by_path_not_found(stub_foundry_http):
 # -------------------------------------------------------------------- list
 
 
-def test_list_defaults_to_the_root_folder(stub_foundry_http):
-    stub_foundry_http.respond(json=fs.page([DATA, SUBFOLDER]))
+@pytest.mark.parametrize("command", ["list", "search"])
+def test_folder_rid_is_required(stub_foundry_http, command):
+    # The API can't list the root folder, so there is no default folder.
+    args = ["resource", command] + (["sales"] if command == "search" else [])
 
-    result = invoke("resource", "list")
+    result = invoke(*args, "--format", "json")
 
-    assert result.exit_code == 0, result.output
-    for expected in ("Sales Data", "FOUNDRY_DATASET", "Archive", "COMPASS_FOLDER"):
-        assert expected in result.stdout
-    [request] = stub_foundry_http.requests
-    assert request.url.path == children_path("ri.compass.main.folder.0")
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert "--folder-rid" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+@pytest.mark.parametrize("command", ["list", "search"])
+def test_root_folder_is_refused_before_any_request(stub_foundry_http, command):
+    args = ["resource", command] + (["sales"] if command == "search" else [])
+
+    result = invoke(*args, "-f", "ri.compass.main.folder.0", "--format", "json")
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert "can't get or list the root folder" in error["message"]
+    assert "pltr space list" in error["message"]
+    assert stub_foundry_http.requests == []
 
 
 def test_list_json_is_the_paged_shape(stub_foundry_http):
@@ -224,7 +240,9 @@ def test_list_type_filter(stub_foundry_http, type_value):
 
 
 def test_list_unknown_type_is_a_usage_error(stub_foundry_http):
-    result = invoke("resource", "list", "--type", "datset", "--format", "json")
+    result = invoke(
+        "resource", "list", "-f", fj.PROJECT_RID, "--type", "datset", "--format", "json"
+    )
 
     assert result.exit_code == 2
     error = json_lines(result.stderr)[-1]
@@ -250,7 +268,7 @@ def test_list_all_pages(stub_foundry_http):
 
 def test_list_old_short_format_flag_is_rejected(stub_foundry_http):
     # -o used to mean --format here; it must not silently become --output.
-    result = invoke("resource", "list", "-o", "json")
+    result = invoke("resource", "list", "-f", fj.PROJECT_RID, "-o", "json")
 
     assert result.exit_code == 2
     assert stub_foundry_http.requests == []
@@ -342,7 +360,7 @@ def test_search_limit_and_deprecated_page_size(stub_foundry_http):
 
 
 def test_search_empty_query_is_a_usage_error(stub_foundry_http):
-    result = invoke("resource", "search", " ", "--format", "json")
+    result = invoke("resource", "search", " ", "-f", fj.PROJECT_RID, "--format", "json")
 
     assert result.exit_code == 2
     assert stub_foundry_http.requests == []

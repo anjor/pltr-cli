@@ -122,8 +122,9 @@ Foundry's API addresses almost everything by RID (Resource Identifier), not by
 name: `ri.<service>.<instance>.<type>.<id>`. For example:
 
 - dataset: `ri.foundry.main.dataset.<uuid>`;
-- folder or project: `ri.compass.main.folder.<uuid>`; the root folder is
-  `ri.compass.main.folder.0`.
+- space, project or folder: `ri.compass.main.folder.<uuid>`. The API can't
+  list the root folder (`ri.compass.main.folder.0`); start from
+  `pltr space list`.
 
 Users and groups are identified by UUIDs, ontologies by RID or API name, and
 object types by API name. Don't construct RIDs; get them from the user or
@@ -131,10 +132,10 @@ from command output:
 
 ```bash
 pltr resource get-by-path "/My Space/My Project/flights" --format json   # path -> RID
-pltr resource search flights --folder-rid ri.compass.main.folder.0 --format json
+pltr resource search flights --folder-rid ri.compass.main.folder.<uuid> --format json
 pltr space list --format json
 pltr project list --format json
-pltr folder list ri.compass.main.folder.0 --format json
+pltr folder list ri.compass.main.folder.<uuid> --format json               # a space, project or folder
 pltr ontology list --format json
 pltr admin user search jane --format json                                  # user IDs
 ```

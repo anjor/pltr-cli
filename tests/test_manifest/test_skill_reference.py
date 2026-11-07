@@ -135,7 +135,7 @@ def test_entries(rendered):
 
         `pltr folder list FOLDER_RID [OPTIONS]`
 
-        - `FOLDER_RID`: RID of the folder, project or space to list (ri.compass.main.folder.0 is the root folder).
+        - `FOLDER_RID`: RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
         - paged · SDK: `filesystem.Folder.children`
         """
         )

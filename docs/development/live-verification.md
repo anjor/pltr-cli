@@ -108,9 +108,9 @@ Besides the check's own expectations it checks the output contract
 | `ontology` | 11 | nothing (found), but see Inputs |
 | `action` | 1 | `action.name`, `action.parameters`; validated, never applied |
 | `orchestration` | 9 | nothing (a build in the last 30 days), or `orchestration.build_rid` |
-| `filesystem` | 11 | nothing for the root folder and spaces; a folder for the rest (`filesystem.folder_rid` or `--scratch-folder`) |
+| `filesystem` | 11 | nothing for spaces and the two root-folder checks (they expect a usage error); a folder for the rest (`filesystem.folder_rid` or `--scratch-folder`) |
 | `api` | 17 | one generated command per namespace: five need nothing, the others reuse the inputs above (checkpoints and language-models have none: see the checklist) |
-| `functions`, `media-sets`, `aip-agents`, `widgets`, `third-party-apps`, `connectivity`, `data-health`, `models`, `streams`, `language-models` | 1 to 4 each | their inputs in `smoke.example.toml` (only `language-models` list/status need nothing) |
+| `functions`, `media-sets`, `aip-agents`, `widgets`, `third-party-apps`, `connectivity`, `data-health`, `models`, `streams`, `language-models` | 1 to 4 each | their inputs in `smoke.example.toml` |
 | `admin`, `audit` | 8 | `--include-admin` |
 | `write` | 39 | `--allow-writes --scratch-folder RID` |
 | `admin` (no-op replaces) | 9 | `--include-admin --allow-writes` and `admin.replace_*` |
@@ -215,8 +215,13 @@ to try by hand. "Partly" means the smoke check covers the common case only.
   second half. Manual for the first: on a test space, `pltr api filesystem
   space replace <space> --display-name <name>` without the other fields, then
   `pltr space get <space>`.
-- **`folder list ri.compass.main.folder.0` lists the root folder.** Smoke:
-  `filesystem.root-folder-list`.
+- **The root folder can't be listed.** Checked on a live stack (November
+  2026): `Folder.children` and `Folder.get` on `ri.compass.main.folder.0`
+  fail with `GetRootFolderNotSupported` (HTTP 400), an error the SDK
+  documents. Since 0.17.0, `folder get`/`list` refuse the root folder before
+  any request, and `resource list`/`search` require `--folder-rid`. Smoke:
+  `filesystem.root-folder-list`, `filesystem.resource-list-root` (both expect
+  exit 2).
 - **A failed OAuth token request (`SDKInternalError` caused by an HTTP error
   from `.../oauth2/token`) exits 3.** Smoke: `auth.invalid-oauth-client`.
 - **Typed SDK errors drop `errorCode`; pltr derives it from the HTTP status.**
@@ -230,8 +235,9 @@ to try by hand. "Partly" means the smoke check covers the common case only.
   `api:admin-read`: exit 4, `permission_denied`.
 - **Direct-HTTP calls get their OAuth token through the SDK's
   `ConfidentialClientAuth`.** Manual: run the smoke test with an OAuth profile
-  or OAuth environment variables; `language-models.list` and
-  `write.schema-apply` are direct-HTTP commands.
+  or OAuth environment variables; `write.schema-apply` runs a direct-HTTP
+  command. Manual: `pltr language-models enroll <model>` with OAuth
+  credentials, on a model you mean to enroll.
 - **A client-credentials token request without scopes gets every scope granted
   to the client.** Manual: an OAuth profile without scopes; run the smoke test
   with it.
@@ -391,10 +397,12 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 
 ### Connectivity, language models and audit (b7)
 
-- **`language-models list`, `status` and `enroll` call endpoints outside the
-  SDK, with assumed response shapes.** Smoke: `language-models.list`,
-  `language-models.status`. Manual for `enroll` (it changes the enrollment):
+- **`language-models enroll` calls endpoints outside the SDK, with an assumed
+  response shape.** Manual (it changes the enrollment):
   `pltr language-models enroll <model>` on a model you mean to enroll.
+  `language-models list` and `status` used the same family of endpoints;
+  both returned 404 on a live stack (November 2026), so they were removed in
+  0.17.0. That makes the enroll endpoints doubtful too.
 - **The model argument of `anthropic messages` and `openai embeddings` is the
   model's API name; RIDs may or may not work.** Smoke (API name):
   `language-models.anthropic-messages`, `language-models.openai-embeddings`.

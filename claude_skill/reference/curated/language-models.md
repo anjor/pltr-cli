@@ -3,7 +3,7 @@
 
 Interact with language models (Claude, OpenAI embeddings)
 
-6 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+4 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ## pltr language-models
 
@@ -15,23 +15,6 @@ Enroll (enable) a language model for API use.
 
 - `MODEL_ID`: Model RID (ri.language-model-service..language-model.<name>) or API name.
 - HTTP (direct, labeled exception): `POST /api/v2/languageModels/{model_id}/enroll`, `POST /api/v2/llm/models/{model_id}/enroll`
-
-### pltr language-models list
-
-List the language models available to you.
-
-`pltr language-models list [OPTIONS]`
-
-- HTTP (direct, labeled exception): `GET /api/v2/languageModels`, `GET /api/v2/llm/proxy/openai/v1/models`
-
-### pltr language-models status
-
-Show a language model's enrollment status.
-
-`pltr language-models status MODEL_ID [OPTIONS]`
-
-- `MODEL_ID`: Model RID (ri.language-model-service..language-model.<name>) or API name.
-- HTTP (direct, labeled exception): `GET /api/v2/languageModels/{model_id}`, `GET /api/v2/llm/models/{model_id}`, `GET /api/v2/llm/proxy/openai/v1/models`
 
 ## pltr language-models anthropic
 

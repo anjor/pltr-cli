@@ -57,8 +57,6 @@ doesn't grow:
 |---|---|
 | `services/dataset.py::DatasetService.apply_schema` | `dataset schema apply` |
 | `services/ontology.py::ObjectTypeService._create_schema_entity` | `ontology object-type-create` / `link-type-create` fallback |
-| `services/language_models.py::LanguageModelsService.list_available_models` | `language-models list` |
-| `services/language_models.py::LanguageModelsService.get_model_enrollment_status` | `language-models status` |
 | `services/language_models.py::LanguageModelsService.enroll_model` | `language-models enroll` |
 | `services/base.py::BaseService._make_request` | the shared helper they use |
 

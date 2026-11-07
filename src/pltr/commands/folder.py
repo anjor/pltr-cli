@@ -24,6 +24,7 @@ from ..contract import (
     success,
 )
 from ..services.folder import MAX_BATCH_SIZE, FolderService
+from ..services.resource import ROOT_FOLDER_RID, ROOT_FOLDER_UNSUPPORTED
 from ..utils.completion import cache_rid, complete_rid
 
 app = typer.Typer()
@@ -100,6 +101,12 @@ def create_folder(
     emit(folder, format=format, output=output, columns=FOLDER_COLUMNS, title="Folder")
 
 
+def _check_not_root(folder_rid: str) -> None:
+    """Fail fast on the root folder, which the API can't get or list."""
+    if folder_rid == ROOT_FOLDER_RID:
+        raise typer.BadParameter(ROOT_FOLDER_UNSUPPORTED, param_hint="'FOLDER_RID'")
+
+
 @app.command("get")
 @pltr_command(sdk="filesystem.Folder.get")
 def get_folder(
@@ -109,6 +116,7 @@ def get_folder(
     output: OutputOption = None,
 ):
     """Get a folder's metadata."""
+    _check_not_root(folder_rid)
     with spinner(f"Fetching folder {folder_rid}..."):
         folder = FolderService(profile=profile).get_folder(folder_rid)
     cache_rid(folder_rid)
@@ -122,8 +130,8 @@ def list_children(
         str,
         typer.Argument(
             help=(
-                "RID of the folder, project or space to list "
-                "(ri.compass.main.folder.0 is the root folder)."
+                "RID of the folder, project or space to list (the API can't "
+                "list the root folder: find spaces with 'pltr space list')."
             ),
             autocompletion=complete_rid,
         ),
@@ -141,6 +149,7 @@ def list_children(
     Fetches one page by default; use --all for every page, or --page-token
     with the nextPageToken of an earlier response to continue.
     """
+    _check_not_root(folder_rid)
     service = FolderService(profile=profile)
     with spinner(f"Listing children of folder {folder_rid}..."):
         page = collect_pages(
@@ -195,9 +204,10 @@ def main():
     """
     Folder operations using foundry-platform-sdk.
 
-    Folders are addressed by RID (ri.compass.main.folder.<id>). The root
-    folder is ri.compass.main.folder.0. Folders live inside projects; find a
-    project with 'pltr project list'.
+    Folders are addressed by RID (ri.compass.main.folder.<id>). Folders live
+    inside projects, and projects inside spaces: find a space with
+    'pltr space list' and a project with 'pltr project list'. The API can't
+    get or list the root folder (ri.compass.main.folder.0).
 
     Examples:
 

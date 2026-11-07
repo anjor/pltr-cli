@@ -5,10 +5,9 @@ shapes (``AnthropicMessagesResponse``, ``OpenAiEmbeddingsResponse``), so the
 SDK decodes them into its real models; they contain no timestamps, so pltr's
 JSON output equals the body.
 
-The model objects of ``language-models list/status/enroll`` come from
-endpoints outside the SDK (labeled direct-HTTP exceptions) whose response
-shapes aren't documented; ``language_model`` and ``proxy_model`` are the
-shapes pltr reads.
+``language-models enroll`` calls endpoints outside the SDK (a labeled
+direct-HTTP exception) whose response shapes aren't documented; its tests use
+small literal bodies.
 """
 
 from typing import Any, Dict, List, Sequence
@@ -62,28 +61,3 @@ def embeddings_response(
         "model": EMBEDDING_MODEL,
         "usage": {"promptTokens": prompt_tokens},
     }
-
-
-def language_model(
-    rid: str = MODEL_RID,
-    name: str = "Claude 3.5 Sonnet",
-    status: str = "ENROLLED",
-    provider: str = "ANTHROPIC",
-) -> Dict[str, Any]:
-    """A model object as the language-model endpoints return it."""
-    return {"rid": rid, "displayName": name, "status": status, "provider": provider}
-
-
-def proxy_model(model_id: str = "gpt-4o", owned_by: str = "openai") -> Dict[str, Any]:
-    """A model of the OpenAI-compatible proxy's model list."""
-    return {
-        "id": model_id,
-        "object": "model",
-        "created": 1715367049,
-        "owned_by": owned_by,
-    }
-
-
-def proxy_models(*models: Dict[str, Any]) -> Dict[str, Any]:
-    """The OpenAI-compatible proxy's ``GET .../v1/models`` response."""
-    return {"object": "list", "data": list(models)}

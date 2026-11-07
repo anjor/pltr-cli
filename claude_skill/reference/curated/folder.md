@@ -3,7 +3,7 @@
 
 Folder operations using foundry-platform-sdk.
 
-Folders are addressed by RID (ri.compass.main.folder.<id>). The root folder is ri.compass.main.folder.0. Folders live inside projects; find a project with 'pltr project list'.
+Folders are addressed by RID (ri.compass.main.folder.<id>). Folders live inside projects, and projects inside spaces: find a space with 'pltr space list' and a project with 'pltr project list'. The API can't get or list the root folder (ri.compass.main.folder.0).
 
 Examples:
 
@@ -50,5 +50,5 @@ List the resources directly inside a folder.
 
 `pltr folder list FOLDER_RID [OPTIONS]`
 
-- `FOLDER_RID`: RID of the folder, project or space to list (ri.compass.main.folder.0 is the root folder).
+- `FOLDER_RID`: RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
 - paged · SDK: `filesystem.Folder.children`
