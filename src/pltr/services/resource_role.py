@@ -9,12 +9,6 @@ the error layer can classify them.
 
 from typing import Any, Optional
 
-from foundry_sdk.v2.filesystem.models import (
-    Everyone,
-    PrincipalIdOnly,
-    ResourceRoleIdentifier,
-)
-
 from .base import BaseService
 
 
@@ -24,6 +18,12 @@ def role_identifier(role_id: str, principal_id: Optional[str]) -> Any:
     ``principal_id`` is a user or group ID (a UUID); ``None`` means the
     ``Everyone`` principal. Add/remove calls don't take the principal type.
     """
+    from foundry_sdk.v2.filesystem.models import (
+        Everyone,
+        PrincipalIdOnly,
+        ResourceRoleIdentifier,
+    )
+
     principal: Any = (
         Everyone()
         if principal_id is None

@@ -13,11 +13,6 @@ from typing import Any, Dict, List, Optional
 import click
 import typer
 from click.core import ParameterSource
-from foundry_sdk.v2.sql_queries.models import (
-    CanceledQueryStatus,
-    FailedQueryStatus,
-    RunningQueryStatus,
-)
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -139,6 +134,8 @@ def _status_columns(status: Any, query_id: Optional[str] = None) -> Columns:
     Failed and canceled statuses don't carry the query ID; ``query_id`` (the
     one the user passed) fills the column then.
     """
+    from foundry_sdk.v2.sql_queries.models import FailedQueryStatus
+
     columns: Dict[str, Any] = {
         "Query ID": lambda item: query_id_of(item) or query_id,
         "Status": "type",
@@ -207,6 +204,8 @@ def submit_query(
     In a script: QUERY_ID=$(pltr sql submit "..." --format json | jq -r .queryId)
     Fails if the query fails or is canceled right away.
     """
+    from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
+
     with spinner("Submitting SQL query..."):
         status = SqlService(profile=profile).submit_query(
             query, fallback_branch_ids=_branches(fallback_branches)
@@ -283,6 +282,8 @@ def cancel_query(
 
     Canceling a query that has already finished changes nothing.
     """
+    from foundry_sdk.v2.sql_queries.models import CanceledQueryStatus
+
     confirm_destructive(f"Cancel SQL query {query_id}?", yes=yes)
     service = SqlService(profile=profile)
     with spinner(f"Canceling query {query_id}..."):

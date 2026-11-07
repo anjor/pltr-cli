@@ -8,8 +8,6 @@ import os
 from typing import Any
 
 import typer
-from foundry_sdk.v2.datasets.models import Dataset
-from foundry_sdk.v2.filesystem.models import Folder
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -30,6 +28,9 @@ class CopyIncomplete(RuntimeError):
 
 
 def _item_type(item: Any) -> str:
+    from foundry_sdk.v2.datasets.models import Dataset
+    from foundry_sdk.v2.filesystem.models import Folder
+
     if isinstance(item, Dataset):
         return DATASET_TYPE
     if isinstance(item, Folder):
@@ -38,6 +39,8 @@ def _item_type(item: Any) -> str:
 
 
 def _item_name(item: Any) -> str:
+    from foundry_sdk.v2.datasets.models import Dataset
+
     return item.name if isinstance(item, Dataset) else item.display_name
 
 

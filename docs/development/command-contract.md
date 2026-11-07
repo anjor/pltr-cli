@@ -520,6 +520,11 @@ End with `### Docs to update` and `### Not verified live`.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page
   of: iterating it fetches every page.
+- Import foundry-platform-sdk (models, errors) inside the functions that use
+  it, not at module level: `pltr --help` and every shell completion import
+  every command module, and the SDK's model packages take about half a
+  second to import. `tests/test_startup.py` fails if startup imports
+  `foundry_sdk`. Under `if TYPE_CHECKING:` is fine.
 - Every command is converted, so the legacy helpers are gone:
   `pltr.utils.formatting.OutputFormatter`, `pltr.utils.progress`
   (`SpinnerProgressTracker`, ...), `pltr.utils.pagination` and

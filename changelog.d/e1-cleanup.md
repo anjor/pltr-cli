@@ -36,6 +36,12 @@
 - `DatasetService.preview_rows()` is now `preview_table()` and returns the
   `pyarrow.Table`; `decode_arrow_rows()` is now `arrow_table()` (library
   API).
+- `pltr` starts about three times faster: `pltr --help` took a median of
+  1017 ms and now 370 ms (15 runs each, same machine), and shell completion
+  speeds up the same way. Command and service modules import the SDK's model
+  packages when a command runs, not at startup.
+- `pltr.services.resource.RESOURCE_TYPES` is now the function
+  `resource_types()` (library API), so the SDK isn't imported at startup.
 
 ### Deprecated
 

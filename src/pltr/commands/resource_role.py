@@ -7,7 +7,6 @@ from typing import Any, Optional
 
 import click
 import typer
-from foundry_sdk.v2.filesystem.models import Everyone, PrincipalWithId
 from typing_extensions import Annotated
 
 from ..contract import (
@@ -39,6 +38,8 @@ app = typer.Typer()
 
 def principal_type(role: Any) -> str:
     """USER, GROUP or EVERYONE for a ``ResourceRole`` (table/CSV only)."""
+    from foundry_sdk.v2.filesystem.models import Everyone, PrincipalWithId
+
     principal = role.resource_role_principal
     if isinstance(principal, PrincipalWithId):
         return principal.principal_type
@@ -49,6 +50,8 @@ def principal_type(role: Any) -> str:
 
 def principal_id(role: Any) -> Optional[str]:
     """The user or group ID of a ``ResourceRole`` (none for everyone)."""
+    from foundry_sdk.v2.filesystem.models import PrincipalWithId
+
     principal = role.resource_role_principal
     if isinstance(principal, PrincipalWithId):
         return principal.principal_id
