@@ -297,7 +297,17 @@ can search. See Added.
   `verify`; a one-line description used to replace it. `pltr --help` keeps
   the one-line summaries. `admin`, `sql` and `shell` show their modules'
   descriptions, and `pltr cp --help` its full description.
-- pltr depends on prompt-toolkit instead of click-repl.
+- pltr depends on prompt-toolkit instead of click-repl, and declares click,
+  which it imports (click-repl used to bring it in). It also declares httpx,
+  pydantic, pydantic-core and typing-extensions, which it imports too.
+- typer and click are capped at the versions pltr is tested with
+  (`typer>=0.16.0,<0.17`, `click>=8.2.0,<8.2.2`). typer 0.26 and later no
+  longer install click and don't handle pltr's exit codes, typer 0.21 to 0.25
+  hide the `[beta]` label, and click 8.2.2 lets destructive commands run
+  without `--yes` when stdin isn't a terminal. If another tool needs newer
+  versions, install pltr in its own environment (`pipx install pltr-cli` or
+  `uv tool install pltr-cli`). CI installs the built wheel without the lock
+  file on Linux and Windows and runs it.
 - **The Claude Code skill in `claude_skill/` was rewritten** (#188).
   `SKILL.md` is a short guide: headless authentication, the JSON, stdout and
   stderr rules and exit codes, safety rules for destructive commands, beta

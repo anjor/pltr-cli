@@ -869,15 +869,20 @@ name = "pltr-cli"
 version = "0.16.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "foundry-platform-sdk" },
+    { name = "httpx" },
     { name = "keyring" },
     { name = "pandas" },
     { name = "prompt-toolkit" },
     { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "rich" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
 
 [package.dev-dependencies]
@@ -895,15 +900,20 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.2.0,<8.2.2" },
     { name = "foundry-platform-sdk", specifier = ">=1.111.0,<2.0.0" },
+    { name = "httpx", specifier = ">=0.25.0" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.36" },
     { name = "pyarrow", specifier = ">=15.0.0" },
+    { name = "pydantic", specifier = ">=2.6.0" },
+    { name = "pydantic-core", specifier = ">=2.16.1" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "requests", specifier = ">=2.32.4" },
     { name = "rich", specifier = ">=14.1.0" },
-    { name = "typer", specifier = ">=0.16.0" },
+    { name = "typer", specifier = ">=0.16.0,<0.17" },
+    { name = "typing-extensions", specifier = ">=4.7.1" },
 ]
 
 [package.metadata.requires-dev]
