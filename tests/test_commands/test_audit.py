@@ -125,6 +125,38 @@ def test_list_all_pages(stub_foundry_http):
     assert dict(second.url.params) == {"startDate": "2024-01-01", "pageToken": "t2"}
 
 
+def test_list_all_stops_at_an_empty_page_and_keeps_its_token(stub_foundry_http):
+    """Without an end date the API always returns a token, for polling."""
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
+    stub_foundry_http.respond(json=aj.log_files(token="t3"))
+    stub_foundry_http.respond_always(json=aj.log_files(token="t3"))
+
+    result = invoke("audit", "list", aj.ORG_RID, "2024-01-01", "--all", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}],
+        "nextPageToken": "t3",
+    }
+    assert len(stub_foundry_http.requests) == 2
+
+
+def test_list_max_pages_stops_at_an_empty_page(stub_foundry_http):
+    stub_foundry_http.respond(json=aj.log_files("a.json.gz", token="t2"))
+    stub_foundry_http.respond(json=aj.log_files(token="t2"))
+    stub_foundry_http.respond_always(json=aj.log_files("never.json.gz", token="t9"))
+
+    result = invoke(
+        "audit", "list", aj.ORG_RID, "2024-01-01", "--max-pages", "5", "-f", "json"
+    )
+
+    assert json.loads(result.stdout) == {
+        "data": [{"id": "a.json.gz"}],
+        "nextPageToken": "t2",
+    }
+    assert len(stub_foundry_http.requests) == 2
+
+
 def test_list_resumes_from_a_page_token(stub_foundry_http):
     stub_foundry_http.respond(json=aj.log_files("b.json.gz"))
 

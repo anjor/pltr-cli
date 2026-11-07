@@ -4,7 +4,7 @@ monitoring.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Callable, List, Optional
 
 import typer
 from typing_extensions import Annotated
@@ -15,11 +15,11 @@ from ..contract import (
     FormatOption,
     MaxPagesOption,
     OutputOption,
+    Page,
     PageSizeOption,
     PageTokenOption,
     ProfileOption,
     check_binary_output,
-    collect_pages,
     emit,
     emit_bytes,
     pltr_command,
@@ -85,14 +85,15 @@ def list_log_files(
 
     Fetches one page by default; use --all for every page, or --page-token
     with the nextPageToken of an earlier response to continue. Without
-    --end-date the listing has no end: page on with the last nextPageToken
-    to pick up new log files. Download one with 'pltr audit get'.
+    --end-date the listing has no end: paging stops at the first empty page,
+    and its nextPageToken picks up new log files later. Download a file with
+    'pltr audit get'.
     """
     service = AuditService(profile=profile)
     start = start_date.date()
     end = end_date.date() if end_date else None
     with spinner("Fetching audit log files..."):
-        page = collect_pages(
+        page = _collect_until_caught_up(
             lambda token: service.list_log_files(
                 organization_rid,
                 start_date=start,
@@ -106,6 +107,32 @@ def list_log_files(
         )
     cache_rid(organization_rid)
     emit(page, format=format, output=output, columns=LOG_FILE_COLUMNS)
+
+
+def _collect_until_caught_up(
+    fetch_page: Callable[[Optional[str]], Any],
+    *,
+    page_token: Optional[str],
+    max_pages: int,
+    all_pages: bool,
+) -> Page:
+    """``collect_pages``, but stop at an empty page and keep its token.
+
+    Without an end date, ``LogFile.list`` returns a ``nextPageToken`` on
+    every page so that clients can poll for new log files, so paging until
+    there is no token (``collect_pages`` with ``--all``) would never end.
+    """
+    items: List[Any] = []
+    token = page_token
+    pages = 0
+    while True:
+        page = fetch_page(token)
+        items.extend(page.data or [])
+        token = page.next_page_token
+        pages += 1
+        if not token or not page.data or (not all_pages and pages >= max_pages):
+            break
+    return Page(data=items, next_page_token=token or None)
 
 
 @app.command("get")
