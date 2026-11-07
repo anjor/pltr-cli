@@ -31,9 +31,6 @@ services/connectivity.py::ConnectivityService.list_file_imports::file_imports.Fi
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
 services/connectivity.py::ConnectivityService.list_table_imports::table_imports.TableImport.list::missing-method[2]  # not in #182: client.table_imports doesn't exist; use connectivity.Connection.TableImport.list(connection_rid, ...) (different arguments)
 
-# src/pltr/services/copy.py
-services/copy.py::CopyService._upload_dataset_file::datasets.Dataset.File.upload::unchecked-kwargs  # #185: dict-built (keys match Dataset.File.upload); pass explicit keywords
-
 # src/pltr/services/dataset.py
 services/dataset.py::DatasetService.add_backing_datasets::datasets.Dataset.View.add_backing_datasets::missing-method  # #182 dataset views add-datasets: use datasets.View.add_backing_datasets(view_dataset_rid, backing_datasets=)
 services/dataset.py::DatasetService.add_primary_key::datasets.Dataset.View.add_primary_key::missing-method  # #182 dataset views add-primary-key: use datasets.View.add_primary_key(view_dataset_rid, primary_key=)
@@ -67,55 +64,6 @@ services/mediasets.py::MediaSetsService.get_media_item_by_path::media_sets.Media
 services/mediasets.py::MediaSetsService.get_media_reference::media_sets.MediaSet.reference::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.retrieve_thumbnail::media_sets.MediaSet.retrieve::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
 services/mediasets.py::MediaSetsService.upload_media::media_sets.MediaSet.upload::beta-preview-not-literal  # #184: beta endpoint gets the --preview flag (off by default); pass the literal preview=True
-
-# src/pltr/services/project.py
-services/project.py::ProjectService._list_projects_in_parent::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/project.py::ProjectService.add_organizations::filesystem.Project.add_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(default_roles)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(display_name)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(organization_rids)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(role_grants)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::missing-required(space_rid)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[2]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[3]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::preview-on-ga[4]  # not in #184: create_fn alias of GA Project.create gets preview=True
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[2]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unchecked-kwargs[3]  # #185: create_params dict (keys match Project.create); pass explicit keywords
-services/project.py::ProjectService.create_project::filesystem.Project.create::unknown-keyword(body)  # dead `elif 'body' in params` branch: Project.create has no body parameter; drop the signature sniffing
-services/project.py::ProjectService.create_project_from_template::filesystem.Project.create_from_template::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.create_from_template
-services/project.py::ProjectService.delete_project::filesystem.Project.delete::missing-method  # #182 project delete: no Project.delete; Resource.delete(project_rid) if it accepts project RIDs (verify), else remove
-services/project.py::ProjectService.get_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.list_organizations::filesystem.Project.organizations::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Project.organizations
-services/project.py::ProjectService.list_projects::filesystem.Space.list::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.remove_organizations::filesystem.Project.remove_organizations::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/project.py::ProjectService.update_project::filesystem.Project.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/resource.py
-services/resource.py::ResourceService.add_markings::filesystem.Resource.add_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.delete_resource::filesystem.Resource.delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_access_requirements::filesystem.Resource.get_access_requirements::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource::filesystem.Resource.get::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_by_path::filesystem.Resource.get_by_path::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resource_metadata::filesystem.Resource.get_metadata::missing-method  # #182 resource get-metadata: no SDK equivalent; remove
-services/resource.py::ResourceService.get_resources_batch::filesystem.Resource.get_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.get_resources_by_path_batch::filesystem.Resource.get_by_path_batch::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.list_markings::filesystem.Resource.markings::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Resource.markings
-services/resource.py::ResourceService.list_resources::filesystem.Folder.children::unchecked-kwargs  # #185/#184: dict-built; the dict carries preview=True to GA Folder.children
-services/resource.py::ResourceService.permanently_delete_resource::filesystem.Resource.permanently_delete::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.remove_markings::filesystem.Resource.remove_markings::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.restore_resource::filesystem.Resource.restore::preview-on-ga  # #184: GA endpoint; stop passing preview=
-services/resource.py::ResourceService.search_resources::filesystem.Folder.children::preview-on-ga  # #184: GA endpoint; stop passing preview=
-
-# src/pltr/services/resource_role.py
-services/resource_role.py::ResourceRoleService.bulk_grant_roles::filesystem.ResourceRole.bulk_grant::missing-method  # #182: unused bulk_grant_roles; delete
-services/resource_role.py::ResourceRoleService.bulk_revoke_roles::filesystem.ResourceRole.bulk_revoke::missing-method  # #182: unused bulk_revoke_roles; delete
-services/resource_role.py::ResourceRoleService.get_available_roles::filesystem.ResourceRole.get_available_roles::missing-method  # #182 resource-role get-available-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.get_principal_roles::filesystem.ResourceRole.get_principal_roles::missing-method  # #182 resource-role get-principal-roles: no SDK equivalent; remove
-services/resource_role.py::ResourceRoleService.grant_role::filesystem.ResourceRole.grant::missing-method  # #182 resource-role grant: use filesystem.Resource.Role.add(resource_rid, roles=[...])
-services/resource_role.py::ResourceRoleService.list_resource_roles::filesystem.ResourceRole.list::missing-method  # #182 resource-role list: use filesystem.Resource.Role.list(resource_rid, include_inherited=...)
-services/resource_role.py::ResourceRoleService.revoke_role::filesystem.ResourceRole.revoke::missing-method  # #182 resource-role revoke: use filesystem.Resource.Role.remove(resource_rid, roles=[...])
 
 # src/pltr/services/sql.py
 services/sql.py::SqlService._format_completed_query::sql_queries.SqlQuery.get_results::preview-on-ga  # #184: GA endpoint; stop passing preview=
