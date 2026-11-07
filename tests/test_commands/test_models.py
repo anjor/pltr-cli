@@ -40,7 +40,7 @@ def test_every_command_is_labeled_beta(group, commands):
     lines = result.stdout.splitlines()
     for command in commands:
         line = next(
-            line for line in lines if line.lstrip("│ ").startswith(f"{command} ")
+            line for line in lines if line.lstrip("│| ").startswith(f"{command} ")
         )
         assert "[beta]" in line, line
 

@@ -59,7 +59,7 @@ def test_beta_commands_are_labeled_in_help(group, beta, ga):
     lines = result.stdout.splitlines()
     for command in beta | ga:
         line = next(
-            line for line in lines if line.lstrip("│ ").startswith(f"{command} ")
+            line for line in lines if line.lstrip("│| ").startswith(f"{command} ")
         )
         assert ("[beta]" in line) == (command in beta), line
 
