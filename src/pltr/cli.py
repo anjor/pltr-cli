@@ -48,25 +48,31 @@ app = typer.Typer(
 
 # Add subcommands
 app.add_typer(configure.app, name="configure", help="Manage authentication profiles")
-app.add_typer(verify.app, name="verify", help="Verify authentication")
-app.add_typer(dataset.app, name="dataset", help="Manage datasets")
-app.add_typer(folder.app, name="folder", help="Manage folders")
-app.add_typer(project.app, name="project", help="Manage projects")
-app.add_typer(resource.app, name="resource", help="Manage resources")
+app.add_typer(verify.app, name="verify", short_help="Verify authentication")
+app.add_typer(dataset.app, name="dataset", short_help="Manage datasets")
+app.add_typer(folder.app, name="folder", short_help="Manage folders")
+app.add_typer(project.app, name="project", short_help="Manage projects")
+app.add_typer(resource.app, name="resource", short_help="Manage resources")
 app.add_typer(
-    resource_role.app, name="resource-role", help="Manage resource permissions"
+    resource_role.app, name="resource-role", short_help="Manage resource permissions"
 )
-app.add_typer(space.app, name="space", help="Manage spaces")
-app.add_typer(ontology.app, name="ontology", help="Ontology operations")
+app.add_typer(space.app, name="space", short_help="Manage spaces")
+app.add_typer(ontology.app, name="ontology", short_help="Ontology operations")
 app.add_typer(
-    orchestration.app, name="orchestration", help="Manage builds, jobs, and schedules"
+    orchestration.app,
+    name="orchestration",
+    short_help="Manage builds, jobs, and schedules",
 )
-app.add_typer(sql.app, name="sql", help="Execute SQL queries")
+app.add_typer(sql.app, name="sql")
 app.add_typer(
-    mediasets.app, name="media-sets", help="Manage media sets and media content"
+    mediasets.app,
+    name="media-sets",
+    short_help="Manage media sets and media content",
 )
 app.add_typer(
-    connectivity.app, name="connectivity", help="Manage connections and data imports"
+    connectivity.app,
+    name="connectivity",
+    short_help="Manage connections and data imports",
 )
 app.add_typer(
     third_party_applications.app,
@@ -113,17 +119,11 @@ app.add_typer(
     name="widgets",
     help="Manage widget sets, releases, and repositories",
 )
-app.add_typer(
-    admin.app,
-    name="admin",
-    help="Admin operations for user, group, and organization management",
-)
-app.add_typer(shell.shell_app, name="shell", help="Interactive shell mode")
+app.add_typer(admin.app, name="admin")
+app.add_typer(shell.shell_app, name="shell")
 app.add_typer(completion.app, name="completion", help="Manage shell completions")
 app.add_typer(alias.app, name="alias", help="Manage command aliases")
-app.command("cp", help="Copy datasets or folders into another Compass folder")(
-    cp_command
-)
+app.command("cp")(cp_command)
 # Generated commands for every SDK method, loaded lazily (see pltr.commands.api).
 app.add_typer(api_commands.app, name="api", help=api_commands.HELP)
 # The command manifest: list, search and show every command (see pltr.manifest).

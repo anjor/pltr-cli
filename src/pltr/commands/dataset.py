@@ -1701,14 +1701,16 @@ def main():
     Foundry endpoints.
 
     Examples:
+
+    \b
         # Show a dataset and read its first rows
         pltr dataset get ri.foundry.main.dataset.abc123
         pltr dataset preview ri.foundry.main.dataset.abc123 --limit 20
-
+    \b
         # Upload a directory in one transaction, then list the files
         pltr dataset files upload ./exports ri.foundry.main.dataset.abc123
         pltr dataset files list ri.foundry.main.dataset.abc123 --all
-
+    \b
         # Several uploads in one transaction you commit yourself
         pltr dataset transactions start ri.foundry.main.dataset.abc123 --type SNAPSHOT
         pltr dataset files upload a.csv ri.foundry.main.dataset.abc123 \\

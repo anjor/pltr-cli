@@ -23,6 +23,12 @@
   with no schema (a schema needs a committed transaction), and says so.
 - `pltr cp --help` explains the RID arguments and how datasets, schemas and
   failures are handled.
+- `pltr <group> --help` shows the group's own help, with RID formats and
+  examples, for `dataset`, `folder`, `project`, `resource`, `resource-role`,
+  `space`, `ontology`, `orchestration`, `media-sets`, `connectivity` and
+  `verify` (a one-line description used to replace it); `pltr --help` keeps
+  the one-line summaries. `admin`, `sql` and `shell` show their modules'
+  descriptions, and `pltr cp --help` its full description.
 - `dataset preview` turns Arrow rows into output with the same shared code
   as `sql` (`pltr.contract.table_rows`): duplicate column names get a `_2`,
   `_3` suffix with a warning instead of the later column overwriting the

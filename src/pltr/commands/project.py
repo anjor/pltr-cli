@@ -494,22 +494,24 @@ def main():
     Updating a project uses a beta Foundry endpoint (labeled [beta]).
 
     Examples:
+
+    \b
         # Create a project in a space (you become its owner)
         pltr project create "My Project" --space-rid ri.compass.main.folder.space123
-
+    \b
         # List the projects in a space, or in every space
         pltr project list --space-rid ri.compass.main.folder.space123
         pltr project list --format json
-
+    \b
         # Get, rename, and move a project to the trash
         pltr project get ri.compass.main.folder.proj456
         pltr project update ri.compass.main.folder.proj456 --name "New Name"
         pltr project delete ri.compass.main.folder.proj456
-
+    \b
         # Organizations
         pltr project add-orgs ri.compass.main.folder.proj456 -o <ORGANIZATION_RID>
         pltr project list-orgs ri.compass.main.folder.proj456
-
+    \b
         # Create a project from a template
         pltr project create-from-template -t <TEMPLATE_RID> -v "name=My Project"
     """
