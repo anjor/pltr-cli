@@ -145,6 +145,10 @@ def pltr_command(
                     return func(*args, **kwargs)
                 except (click.exceptions.Exit, click.Abort):
                     raise
+                except BrokenPipeError:
+                    # stdout was closed early (e.g. `| head`): click's main()
+                    # exits quietly on EPIPE; don't report it as an error.
+                    raise
                 except click.ClickException as exc:
                     if not is_json():
                         raise
@@ -280,7 +284,9 @@ class PltrRootGroup(TyperGroup):
     def invoke(self, ctx: click.Context) -> Any:
         try:
             return super().invoke(ctx)
-        except (click.exceptions.Exit, click.Abort):
+        except (click.exceptions.Exit, click.Abort, BrokenPipeError):
+            # BrokenPipeError: stdout was closed early (e.g. `| head`); click's
+            # main() exits quietly on EPIPE.
             raise
         except click.ClickException as exc:
             _usage_error_as_json(exc)

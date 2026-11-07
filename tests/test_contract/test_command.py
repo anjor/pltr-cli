@@ -266,3 +266,26 @@ def test_real_cli_root_uses_the_root_group():
     from pltr.cli import app
 
     assert isinstance(typer.main.get_command(app), PltrRootGroup)
+
+
+def test_broken_pipe_exits_quietly_in_standalone_mode(capsys):
+    """A closed stdout (``| head``) must not be reported as a pltr error.
+
+    The contract layer re-raises BrokenPipeError so click's main() can exit
+    quietly on EPIPE (exit 1, no message), as for any click CLI.
+    """
+    app = typer.Typer(cls=PltrRootGroup)
+
+    @app.command("pipe")
+    @pltr_command(sdk="filesystem.Folder.get")
+    def pipe():
+        raise BrokenPipeError(32, "Broken pipe")
+
+    @app.command("other")
+    def other():
+        pass
+
+    with pytest.raises(SystemExit) as excinfo:
+        typer.main.get_command(app).main(args=["pipe"], standalone_mode=True)
+    assert excinfo.value.code == 1
+    assert "BrokenPipeError" not in capsys.readouterr().err
