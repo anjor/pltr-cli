@@ -308,6 +308,37 @@ def test_load_json_input_from_stdin():
     result = ClickRunner().invoke(show, ["--where", "@-"], input='{"a": [1]}')
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == {"a": [1]}
+    with_bom = ClickRunner().invoke(
+        show, ["--where", "@-"], input=b'\xef\xbb\xbf{"a": [2]}'
+    )
+    assert with_bom.exit_code == 0, with_bom.output
+    assert json.loads(with_bom.stdout) == {"a": [2]}
+
+
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        "utf-8-sig",  # PowerShell 5: Out-File -Encoding utf8, Set-Content -Encoding utf8
+        "utf-16",  # PowerShell 5: `>` and Out-File (UTF-16 LE with a BOM)
+        "utf-16-le",
+        "utf-32",
+    ],
+)
+def test_load_json_input_reads_what_windows_tools_write(tmp_path, encoding):
+    path = tmp_path / "where.json"
+    path.write_bytes('{"name": "Zoë"}\r\n'.encode(encoding))
+    assert load_json_input(f"@{path}", param_hint="--where") == {"name": "Zoë"}
+
+
+def test_load_json_input_inline_byte_order_mark():
+    assert load_json_input('\ufeff{"a": 1}', param_hint="--where") == {"a": 1}
+
+
+def test_load_json_input_text_in_another_encoding_is_a_usage_error(tmp_path):
+    path = tmp_path / "where.json"
+    path.write_bytes('{"name": "Zoë"}'.encode("cp1252"))
+    with pytest.raises(click.BadParameter, match="isn't UTF-8, UTF-16 or UTF-32"):
+        load_json_input(f"@{path}", param_hint="--where")
 
 
 def test_invalid_json_input_in_a_command():

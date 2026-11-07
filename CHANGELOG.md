@@ -293,6 +293,11 @@ can search. See Added.
 - `--output -` writes to stdout in every format, as it does for binary
   output; for tables, JSON and CSV it wrote a file named `-`. This includes
   `sql export QUERY -`.
+- JSON inputs (`@file.json` and `@-`) are decoded as JSON specifies: UTF-8
+  with or without a byte order mark, UTF-16 or UTF-32. Files written by
+  Windows PowerShell 5 (a BOM with `-Encoding utf8`, UTF-16 with `>`) were
+  rejected as invalid JSON. Text in another encoding is a usage error that
+  says so.
 - Usage errors found while parsing arguments (a missing argument, an unknown
   option) are JSON errors when the command was asked for JSON (`--format json`
   or `PLTR_FORMAT=json`).

@@ -93,7 +93,9 @@ pltr api ontologies ontology-object search my-ontology Aircraft --where @query.j
 cat filter.json | pltr api orchestration build search --where @-
 ```
 
-The value is inline JSON, `@path/to/file.json`, or `@-` for stdin. pltr parses the
+The value is inline JSON, `@path/to/file.json`, or `@-` for stdin (files and stdin
+in UTF-8, with or without a byte order mark, UTF-16 or UTF-32, so files written by
+Windows PowerShell work). pltr parses the
 JSON and the SDK validates it (unions are resolved by their `type` field). Invalid
 JSON, or values the SDK rejects before sending (for example a malformed user ID),
 fail with exit code 2 and nothing is sent.

@@ -850,6 +850,24 @@ def test_json_option_accepts_a_file(stub_foundry_http, pltr_api, tmp_path):
     assert body == {"where": {"type": "queryString", "value": "jd"}}
 
 
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16"])
+def test_json_file_written_by_windows_powershell(
+    stub_foundry_http, pltr_api, tmp_path, encoding
+):
+    """PowerShell 5 writes a byte order mark (utf8) or UTF-16 (`>`)."""
+    where = tmp_path / "where.json"
+    where.write_bytes('{"type": "queryString", "value": "jd"}'.encode(encoding))
+    stub_foundry_http.respond(200, json={"data": []})
+
+    result = pltr_api(
+        "admin", "user", "search", "--where", f"@{where}", "--format", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    body = json.loads(stub_foundry_http.requests[0].content)
+    assert body == {"where": {"type": "queryString", "value": "jd"}}
+
+
 @pytest.mark.filterwarnings("error::UserWarning")
 def test_required_list_parameters_default_to_empty(stub_foundry_http, pltr_api):
     """`select` is required by the SDK, and [] means every property."""

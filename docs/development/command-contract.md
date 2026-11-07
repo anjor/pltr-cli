@@ -354,7 +354,8 @@ Text mode prints `Error: <message>`, then the details and a hint.
 - **Usage errors.** Raise `typer.BadParameter("...", param_hint="'--x'")`. In
   text mode click renders it as usual; in JSON mode it becomes a
   `usage_error`. For JSON inputs (inline, `@file.json` or `@-` for stdin) use
-  `load_json_input(value, param_hint="'--where'")`.
+  `load_json_input(value, param_hint="'--where'")`; it reads files and stdin
+  as UTF-8 (with or without a byte order mark), UTF-16 or UTF-32.
 - **pltr's own failures.** For a failure that isn't an API error, raise
   `PltrError(message, error_type=..., exit_code=..., hint=...)`.
 - **Passed through:** `typer.Exit` and `click.Abort`.
