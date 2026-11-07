@@ -1,653 +1,394 @@
-"""Tests for Functions commands."""
+"""Tests for `pltr functions` against a real FoundryClient (only HTTP is faked)."""
 
+import csv
+import io
 import json
 
 import pytest
-from unittest.mock import Mock, patch, mock_open
 from typer.testing import CliRunner
+
 from pltr.cli import app
+from tests import foundry_json as fj
+from tests import foundry_json_functions as ff
+
+pytestmark = [
+    pytest.mark.filterwarnings("error::UserWarning"),
+    pytest.mark.usefixtures("isolated_home"),
+]
+
+runner = CliRunner()
+API = "/api/v2/functions"
 
 
-class TestFunctionsCommands:
-    """Test Functions CLI commands."""
+def invoke(*args: str, **kwargs):
+    return runner.invoke(app, ["functions", *args], **kwargs)
 
-    @pytest.fixture
-    def runner(self):
-        """Create CLI test runner."""
-        return CliRunner()
 
-    @pytest.fixture
-    def mock_service(self):
-        """Create mock FunctionsService."""
-        with patch("pltr.commands.functions.FunctionsService") as MockService:
-            mock_svc = Mock()
-            MockService.return_value = mock_svc
-            yield mock_svc
+def json_lines(stderr: str) -> list:
+    return [json.loads(line) for line in stderr.splitlines() if line.strip()]
 
-    # ===== Query Get Tests =====
 
-    def test_query_get_success(self, runner, mock_service):
-        """Test successful get query command."""
-        # Setup
-        query_result = {
-            "rid": "ri.functions.main.query.abc123",
-            "apiName": "myQuery",
-            "version": "1.0.0",
-            "parameters": {"limit": "integer"},
-        }
-        mock_service.get_query.return_value = query_result
+# ------------------------------------------------------------------- help
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--format",
-                "json",
-            ],
+
+@pytest.mark.parametrize(
+    "group, commands",
+    [
+        ("query", ("get", "get-by-rid", "execute", "execute-by-rid")),
+        ("value-type", ("get",)),
+    ],
+)
+def test_every_command_is_labeled_beta(group, commands):
+    result = invoke(group, "--help")
+
+    lines = result.stdout.splitlines()
+    for command in commands:
+        line = next(
+            line for line in lines if line.lstrip("│| ").startswith(f"{command} ")
         )
+        assert "[beta]" in line, line
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_query.assert_called_once_with(
-            "myQuery", preview=False, version=None
-        )
 
-    def test_query_get_with_version(self, runner, mock_service):
-        """Test get query with specific version."""
-        # Setup
-        query_result = {
-            "rid": "ri.functions.main.query.abc123",
-            "apiName": "myQuery",
-            "version": "2.0.0",
-        }
-        mock_service.get_query.return_value = query_result
+# -------------------------------------------------------------- query get
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--version",
-                "2.0.0",
-            ],
-        )
 
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_query.assert_called_once_with(
-            "myQuery", preview=False, version="2.0.0"
-        )
+def test_get_query_table(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query())
 
-    def test_query_get_with_preview(self, runner, mock_service):
-        """Test get query with preview mode."""
-        # Setup
-        query_result = {"rid": "ri.functions.main.query.abc123", "apiName": "myQuery"}
-        mock_service.get_query.return_value = query_result
+    result = invoke("query", "get", ff.QUERY_API_NAME)
 
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_query.assert_called_once_with(
-            "myQuery", preview=True, version=None
-        )
-
-    def test_query_get_with_profile(self, runner, mock_service):
-        """Test get query with profile option."""
-        # Setup
-        query_result = {"rid": "ri.functions.main.query.abc123", "apiName": "myQuery"}
-        mock_service.get_query.return_value = query_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--profile",
-                "test-profile",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        # Verify service was initialized with profile
-        from pltr.commands.functions import FunctionsService
-
-        FunctionsService.assert_called_with(profile="test-profile")
-
-    def test_query_get_error(self, runner, mock_service):
-        """Test get query command with service error."""
-        # Setup
-        mock_service.get_query.side_effect = RuntimeError("Query not found")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "invalidQuery",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get query" in result.stderr
-
-    # ===== Query Get-By-RID Tests =====
-
-    def test_query_get_by_rid_success(self, runner, mock_service):
-        """Test successful get query by RID command."""
-        # Setup
-        query_result = {
-            "rid": "ri.functions.main.query.abc123",
-            "apiName": "myQuery",
-            "version": "1.0.0",
-        }
-        mock_service.get_query_by_rid.return_value = query_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get-by-rid",
-                "ri.functions.main.query.abc123",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_query_by_rid.assert_called_once_with(
-            "ri.functions.main.query.abc123", preview=False, version=None
-        )
-
-    def test_query_get_by_rid_permission_denied(self, runner, mock_service):
-        """Test get query by RID with permission denied error."""
-        # Setup
-        mock_service.get_query_by_rid.side_effect = RuntimeError("Permission denied")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get-by-rid",
-                "ri.functions.main.query.abc123",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get query" in result.stderr
-
-    # ===== Query Execute Tests =====
-
-    def test_query_execute_success(self, runner, mock_service):
-        """Test successful execute query command."""
-        # Setup
-        execute_result = {"result": [{"id": 1, "name": "Test"}]}
-        mock_service.execute_query.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--parameters",
-                '{"limit": 10}',
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query.assert_called_once_with(
-            "myQuery",
-            parameters={"limit": 10},
-            preview=False,
-            version=None,
-        )
-
-    def test_query_execute_with_file_parameters(self, runner, mock_service):
-        """Test execute query with parameters from file."""
-        # Setup
-        execute_result = {"result": [{"id": 1}]}
-        mock_service.execute_query.return_value = execute_result
-
-        params_content = '{"limit": 100, "filter": "active"}'
-
-        # Execute with file mock
-        with patch("builtins.open", mock_open(read_data=params_content)):
-            with patch("pathlib.Path.exists", return_value=True):
-                result = runner.invoke(
-                    app,
-                    [
-                        "functions",
-                        "query",
-                        "execute",
-                        "myQuery",
-                        "--parameters",
-                        "@params.json",
-                    ],
-                )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query.assert_called_once_with(
-            "myQuery",
-            parameters={"limit": 100, "filter": "active"},
-            preview=False,
-            version=None,
-        )
-
-    def test_query_execute_with_version(self, runner, mock_service):
-        """Test execute query with specific version."""
-        # Setup
-        execute_result = {"result": []}
-        mock_service.execute_query.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--version",
-                "1.5.0",
-                "--parameters",
-                "{}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query.assert_called_once_with(
-            "myQuery",
-            parameters={},
-            preview=False,
-            version="1.5.0",
-        )
-
-    def test_query_execute_with_preview(self, runner, mock_service):
-        """Test execute query with preview mode."""
-        # Setup
-        execute_result = {"result": []}
-        mock_service.execute_query.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--preview",
-                "--parameters",
-                "{}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query.assert_called_once_with(
-            "myQuery",
-            parameters={},
-            preview=True,
-            version=None,
-        )
-
-    def test_query_execute_invalid_json(self, runner, mock_service):
-        """Test execute query with invalid JSON parameters."""
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--parameters",
-                "{invalid json}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Invalid JSON in parameters" in result.stderr
-
-    def test_query_execute_file_not_found(self, runner, mock_service):
-        """Test execute query with non-existent parameter file."""
-        # Execute with file not found
-        with patch("pathlib.Path.exists", return_value=False):
-            result = runner.invoke(
-                app,
-                [
-                    "functions",
-                    "query",
-                    "execute",
-                    "myQuery",
-                    "--parameters",
-                    "@missing.json",
-                ],
-            )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Parameter file not found" in result.stderr
-
-    def test_query_execute_permission_denied(self, runner, mock_service):
-        """Test execute query with permission denied error."""
-        # Setup
-        mock_service.execute_query.side_effect = RuntimeError(
-            "ExecuteQueryPermissionDenied"
-        )
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--parameters",
-                "{}",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to execute query" in result.stderr
-
-    def test_query_execute_no_parameters(self, runner, mock_service):
-        """Test execute query without parameters."""
-        # Setup
-        execute_result = {"result": []}
-        mock_service.execute_query.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query.assert_called_once_with(
-            "myQuery",
-            parameters=None,
-            preview=False,
-            version=None,
-        )
-
-    # ===== Query Execute-By-RID Tests =====
-
-    def test_query_execute_by_rid_success(self, runner, mock_service):
-        """Test successful execute query by RID command."""
-        # Setup
-        execute_result = {"result": [{"id": 1}]}
-        mock_service.execute_query_by_rid.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute-by-rid",
-                "ri.functions.main.query.abc123",
-                "--parameters",
-                '{"limit": 10}',
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.execute_query_by_rid.assert_called_once_with(
-            "ri.functions.main.query.abc123",
-            parameters={"limit": 10},
-            preview=False,
-            version=None,
-        )
-
-    # ===== Value Type Tests =====
-
-    def test_value_type_get_success(self, runner, mock_service):
-        """Test successful get value type command."""
-        # Setup
-        value_type_result = {
-            "rid": "ri.functions.main.value-type.xyz",
-            "apiName": "MyValueType",
-            "definition": {"type": "struct"},
-        }
-        mock_service.get_value_type.return_value = value_type_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "value-type",
-                "get",
-                "ri.functions.main.value-type.xyz",
-                "--format",
-                "json",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_value_type.assert_called_once_with(
-            "ri.functions.main.value-type.xyz", preview=False
-        )
-
-    def test_value_type_get_with_preview(self, runner, mock_service):
-        """Test get value type with preview mode."""
-        # Setup
-        value_type_result = {
-            "rid": "ri.functions.main.value-type.xyz",
-            "apiName": "MyValueType",
-        }
-        mock_service.get_value_type.return_value = value_type_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "value-type",
-                "get",
-                "ri.functions.main.value-type.xyz",
-                "--preview",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        mock_service.get_value_type.assert_called_once_with(
-            "ri.functions.main.value-type.xyz", preview=True
-        )
-
-    def test_value_type_get_not_found(self, runner, mock_service):
-        """Test get value type with not found error."""
-        # Setup
-        mock_service.get_value_type.side_effect = RuntimeError("ValueTypeNotFound")
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "value-type",
-                "get",
-                "ri.functions.main.value-type.invalid",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 1
-        assert "Failed to get value type" in result.stderr
-
-    def test_value_type_get_with_profile(self, runner, mock_service):
-        """Test get value type with profile option."""
-        # Setup
-        value_type_result = {
-            "rid": "ri.functions.main.value-type.xyz",
-            "apiName": "MyValueType",
-        }
-        mock_service.get_value_type.return_value = value_type_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "value-type",
-                "get",
-                "ri.functions.main.value-type.xyz",
-                "--profile",
-                "test-profile",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-        # Verify service was initialized with profile
-        from pltr.commands.functions import FunctionsService
-
-        FunctionsService.assert_called_with(profile="test-profile")
-
-    # ===== Output Format Tests =====
-
-    def test_query_get_output_csv(self, runner, mock_service):
-        """Test query get with CSV output format."""
-        # Setup
-        query_result = {"rid": "ri.functions.main.query.abc123", "apiName": "myQuery"}
-        mock_service.get_query.return_value = query_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "get",
-                "myQuery",
-                "--format",
-                "csv",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-
-    def test_query_execute_output_table(self, runner, mock_service):
-        """Test query execute with table output format."""
-        # Setup
-        execute_result = {"result": [{"id": 1, "name": "Test"}]}
-        mock_service.execute_query.return_value = execute_result
-
-        # Execute
-        result = runner.invoke(
-            app,
-            [
-                "functions",
-                "query",
-                "execute",
-                "myQuery",
-                "--parameters",
-                "{}",
-                "--format",
-                "table",
-            ],
-        )
-
-        # Assert
-        assert result.exit_code == 0
-
-    # ===== File Output Tests =====
-
-    def test_query_get_with_output_file(self, runner, mock_service):
-        """Test query get with output file."""
-        # Setup
-        query_result = {"rid": "ri.functions.main.query.abc123", "apiName": "myQuery"}
-        mock_service.get_query.return_value = query_result
-
-        # Execute (in a temporary directory: the command writes output.json)
-        with runner.isolated_filesystem():
-            result = runner.invoke(
-                app,
-                [
-                    "functions",
-                    "query",
-                    "get",
-                    "myQuery",
-                    "--output",
-                    "output.json",
-                    "--format",
-                    "json",
-                ],
-            )
-
-            # Assert
-            assert result.exit_code == 0
-            with open("output.json") as saved:
-                assert json.load(saved) == query_result
-        # The data went to the file. In JSON mode informational messages such
-        # as "saved to output.json" are suppressed: both streams stay empty.
-        assert result.stdout == ""
-        assert result.stderr == ""
-
-    def test_query_get_with_output_file_reports_path_in_table_mode(
-        self, runner, mock_service
+    assert result.exit_code == 0, result.output
+    for expected in (
+        ff.QUERY_API_NAME,
+        "Get top customers",
+        ff.QUERY_RID,
+        "1.2.0",
+        "limit (integer), region (string, optional)",
+        "array",
     ):
-        """Outside JSON mode the saved-to message goes to stderr."""
-        mock_service.get_query.return_value = {"rid": "ri.functions.main.query.abc123"}
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/queries/{ff.QUERY_API_NAME}"
+    assert dict(request.url.params) == {"preview": "true"}
 
-        with runner.isolated_filesystem():
-            result = runner.invoke(
-                app,
-                ["functions", "query", "get", "myQuery", "--output", "output.txt"],
-            )
 
-        assert result.exit_code == 0
-        assert "saved to output.txt" in result.stderr
-        assert result.stdout == ""
+def test_get_query_json(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query())
+
+    result = invoke("query", "get", ff.QUERY_API_NAME, "--format", "json")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == ff.query()
+    assert result.stderr == ""
+
+
+def test_get_query_csv(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query(description=None))
+
+    result = invoke("query", "get", ff.QUERY_API_NAME, "-f", "csv")
+
+    [row] = list(csv.DictReader(io.StringIO(result.stdout)))
+    assert (row["API Name"], row["Description"], row["Output Type"]) == (
+        ff.QUERY_API_NAME,
+        "",
+        "array",
+    )
+
+
+def test_get_query_version_options(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query())
+
+    result = invoke(
+        "query",
+        "get",
+        ff.QUERY_API_NAME,
+        "-v",
+        "1.0.0",
+        "--include-prerelease",
+        "--latest-version-resolution",
+        "publish_time",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert dict(stub_foundry_http.requests[0].url.params) == {
+        "version": "1.0.0",
+        "includePrerelease": "true",
+        "latestVersionResolution": "PUBLISH_TIME",
+        "preview": "true",
+    }
+
+
+def test_get_query_bad_resolution_is_a_usage_error(stub_foundry_http):
+    result = invoke(
+        "query",
+        "get",
+        ff.QUERY_API_NAME,
+        "--latest-version-resolution",
+        "NEWEST",
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert json_lines(result.stderr)[-1]["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+def test_get_query_preview_flag_is_a_deprecated_no_op(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query())
+
+    result = invoke("query", "get", ff.QUERY_API_NAME, "--preview", "-f", "json")
+
+    assert result.exit_code == 0, result.output
+    [warning] = json_lines(result.stderr)
+    assert "--preview is deprecated" in warning["message"]
+    assert stub_foundry_http.requests[0].url.params["preview"] == "true"
+
+
+def test_get_query_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json=fj.error("QueryNotFound", parameters={"queryApiName": ff.QUERY_API_NAME}),
+    )
+
+    result = invoke("query", "get", ff.QUERY_API_NAME, "--format", "json")
+
+    assert result.exit_code == 5
+    assert result.stdout == ""
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == ("not_found", "QueryNotFound")
+
+
+# ------------------------------------------------------- query get-by-rid
+
+
+def test_get_query_by_rid(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query())
+
+    result = invoke(
+        "query", "get-by-rid", ff.QUERY_RID, "--include-prerelease", "-f", "json"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == ff.query()
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/queries/getByRid"
+    assert dict(request.url.params) == {
+        "rid": ff.QUERY_RID,
+        "includePrerelease": "true",
+        "preview": "true",
+    }
+
+
+def test_get_query_by_rid_invalid_rid(stub_foundry_http):
+    result = invoke("query", "get-by-rid", "myQuery", "-f", "json")
+
+    assert result.exit_code == 2
+    assert "not a valid RID" in json_lines(result.stderr)[-1]["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_get_query_by_rid_permission_denied(stub_foundry_http):
+    stub_foundry_http.respond(
+        403, json=fj.error("GetByRidPermissionDenied", "PERMISSION_DENIED")
+    )
+
+    result = invoke("query", "get-by-rid", ff.QUERY_RID, "-f", "json")
+
+    assert result.exit_code == 4
+    error = json_lines(result.stderr)[-1]
+    assert (error["type"], error["errorName"]) == (
+        "permission_denied",
+        "GetByRidPermissionDenied",
+    )
+
+
+# ---------------------------------------------------------- query execute
+
+
+def test_execute_query_list_result_table(stub_foundry_http):
+    stub_foundry_http.respond(
+        json={
+            "value": [
+                {"name": "Acme", "revenue": 1200.5},
+                {"name": "Globex", "revenue": 900},
+            ]
+        }
+    )
+
+    result = invoke(
+        "query", "execute", ff.QUERY_API_NAME, "--parameters", '{"limit": 2}'
+    )
+
+    assert result.exit_code == 0, result.output
+    for expected in ("name", "revenue", "Acme", "1200.5", "Globex"):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        f"{API}/queries/{ff.QUERY_API_NAME}/execute",
+    )
+    assert dict(request.url.params) == {"preview": "true"}
+    assert json.loads(request.content) == {"parameters": {"limit": 2}}
+
+
+def test_execute_query_json_is_the_api_response(stub_foundry_http, tmp_path):
+    stub_foundry_http.respond(json={"value": {"count": 3, "ok": True}})
+    params = tmp_path / "params.json"
+    params.write_text(json.dumps({"limit": 3, "since": "2024-01-01"}))
+
+    result = invoke(
+        "query",
+        "execute",
+        ff.QUERY_API_NAME,
+        "-params",
+        f"@{params}",
+        "--version",
+        "1.2.0",
+        "--latest-version-resolution",
+        "SEMANTIC_VERSION",
+        "--include-prerelease",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"value": {"count": 3, "ok": True}}
+    assert result.stderr == ""
+    assert json.loads(stub_foundry_http.requests[0].content) == {
+        "parameters": {"limit": 3, "since": "2024-01-01"},
+        "version": "1.2.0",
+        "includePrerelease": True,
+        "latestVersionResolution": "SEMANTIC_VERSION",
+    }
+
+
+def test_execute_query_scalar_result_csv(stub_foundry_http):
+    stub_foundry_http.respond(json={"value": 42})
+
+    result = invoke("query", "execute", ff.QUERY_API_NAME, "-f", "csv")
+
+    assert result.exit_code == 0, result.output
+    assert list(csv.reader(io.StringIO(result.stdout))) == [["Value"], ["42"]]
+    assert json.loads(stub_foundry_http.requests[0].content) == {"parameters": {}}
+
+
+@pytest.mark.parametrize(
+    "parameters, message",
+    [
+        ("{bad", "invalid JSON"),
+        ("@/nonexistent/params.json", "cannot read"),
+        ("[1, 2]", "Invalid argument"),
+    ],
+)
+def test_execute_query_bad_parameters_are_a_usage_error(
+    stub_foundry_http, parameters, message
+):
+    result = invoke(
+        "query", "execute", ff.QUERY_API_NAME, "--parameters", parameters, "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    error = json_lines(result.stderr)[-1]
+    assert error["type"] == "usage_error"
+    assert message in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_execute_query_validation_error_from_the_api(stub_foundry_http):
+    stub_foundry_http.respond(
+        400, json=fj.error("InvalidParameterValue", "INVALID_ARGUMENT")
+    )
+
+    result = invoke("query", "execute", ff.QUERY_API_NAME, "-f", "json")
+
+    assert result.exit_code == 6
+    assert json_lines(result.stderr)[-1]["errorName"] == "InvalidParameterValue"
+
+
+# --------------------------------------------------- query execute-by-rid
+
+
+def test_execute_query_by_rid_resolves_then_executes(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.query(version="2.0.0"))
+    stub_foundry_http.respond(json={"value": ["Acme"]})
+
+    result = invoke(
+        "query",
+        "execute-by-rid",
+        ff.QUERY_RID,
+        "--parameters",
+        '{"limit": 1}',
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"value": ["Acme"]}
+    get_request, execute_request = stub_foundry_http.requests
+    assert get_request.url.path == f"{API}/queries/getByRid"
+    assert get_request.url.params["rid"] == ff.QUERY_RID
+    assert execute_request.url.path == f"{API}/queries/{ff.QUERY_API_NAME}/execute"
+    assert execute_request.url.params["preview"] == "true"
+    assert json.loads(execute_request.content) == {
+        "parameters": {"limit": 1},
+        "version": "2.0.0",
+    }
+
+
+def test_execute_query_by_rid_unknown_query(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("QueryNotFound", parameters={"rid": ff.QUERY_RID})
+    )
+
+    result = invoke("query", "execute-by-rid", ff.QUERY_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    assert len(stub_foundry_http.requests) == 1  # nothing executed
+
+
+# ------------------------------------------------------- value-type get
+
+
+def test_get_value_type_table(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.value_type())
+
+    result = invoke("value-type", "get", ff.VALUE_TYPE_RID)
+
+    assert result.exit_code == 0, result.output
+    for expected in (
+        ff.VALUE_TYPE_RID,
+        "emailAddress",
+        "Email address",
+        ff.VALUE_TYPE_VERSION_ID,
+        "string",
+        '"pattern":"^[^@]+@[^@]+$"',
+    ):
+        assert expected in result.stdout
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{API}/valueTypes/{ff.VALUE_TYPE_RID}"
+    assert dict(request.url.params) == {"preview": "true"}
+
+
+def test_get_value_type_json(stub_foundry_http):
+    stub_foundry_http.respond(json=ff.value_type(description=None))
+
+    result = invoke("value-type", "get", ff.VALUE_TYPE_RID, "-f", "json")
+
+    expected = ff.value_type()
+    del expected["description"]
+    assert json.loads(result.stdout) == expected
+
+
+def test_get_value_type_not_found(stub_foundry_http):
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "ValueTypeNotFound", parameters={"valueTypeRid": ff.VALUE_TYPE_RID}
+        ),
+    )
+
+    result = invoke("value-type", "get", ff.VALUE_TYPE_RID, "-f", "json")
+
+    assert result.exit_code == 5
+    assert json_lines(result.stderr)[-1]["type"] == "not_found"

@@ -1,503 +1,308 @@
 """
-Functions management commands for Foundry.
-Provides commands for query execution and value type inspection.
+Functions commands: queries and value types (Foundry Functions API).
+
+Every Functions endpoint pltr uses is beta, so every command is labeled
+[beta].
 """
 
+from typing import Any, List, Optional
+
+import click
 import typer
-import json
-from typing import Optional
-from pathlib import Path
-from rich.console import Console
+from typing_extensions import Annotated
 
-from ..services.functions import FunctionsService
-from ..utils.formatting import OutputFormatter
-from ..utils.progress import SpinnerProgressTracker
-from ..auth.base import ProfileNotFoundError, MissingCredentialsError
-from ..utils.completion import (
-    complete_rid,
-    complete_profile,
-    complete_output_format,
-    cache_rid,
+from ..contract import (
+    Columns,
+    FormatOption,
+    OutputOption,
+    PreviewNoopOption,
+    ProfileOption,
+    emit,
+    load_json_input,
+    pltr_command,
+    spinner,
 )
+from ..services.functions import FunctionsService
+from ..utils.completion import cache_rid, complete_rid
 
-# Create main app and sub-apps
 app = typer.Typer(help="Manage Functions queries and value types")
-query_app = typer.Typer(help="Manage and execute queries")
-value_type_app = typer.Typer(help="Manage value types")
-
-# Add sub-apps
+query_app = typer.Typer(help="Inspect and execute queries")
+value_type_app = typer.Typer(help="Inspect value types")
 app.add_typer(query_app, name="query")
 app.add_typer(value_type_app, name="value-type")
 
-console = Console()
-formatter = OutputFormatter(console)
+
+def _query_parameters(query: Any) -> str:
+    """``name (type)`` for each parameter, marking the optional ones."""
+    return ", ".join(
+        f"{name} ({parameter.data_type.type}"
+        + ("" if parameter.required else ", optional")
+        + ")"
+        for name, parameter in query.parameters.items()
+    )
 
 
-def parse_parameters(parameters_str: Optional[str]) -> Optional[dict]:
-    """
-    Parse parameters from string or file.
+#: Table/CSV columns for a ``Query``.
+QUERY_COLUMNS: Columns = {
+    "API Name": "api_name",
+    "Display Name": "display_name",
+    "Description": "description",
+    "RID": "rid",
+    "Version": "version",
+    "Parameters": _query_parameters,
+    "Output Type": "output.type",
+}
 
-    Supports:
-    - Inline JSON: '{"key": "value"}'
-    - File reference: @params.json
+#: Table/CSV columns for a ``ValueType``.
+VALUE_TYPE_COLUMNS: Columns = {
+    "RID": "rid",
+    "API Name": "api_name",
+    "Display Name": "display_name",
+    "Description": "description",
+    "Version": "version",
+    "Version ID": "version_id",
+    "Base Type": "base_type.type",
+    "Constraints": "constraints",
+}
 
-    Args:
-        parameters_str: Parameter string or file reference
 
-    Returns:
-        Parsed parameters dictionary or None
+def _result_rows(response: Any) -> List[Any]:
+    """Table/CSV rows of a query result: one per item of a list result."""
+    value = response.value
+    return list(value) if isinstance(value, list) else [value]
 
-    Raises:
-        FileNotFoundError: If file reference doesn't exist
-        json.JSONDecodeError: If JSON is invalid
-    """
-    if not parameters_str:
-        return None
 
-    # Handle file reference
-    if parameters_str.startswith("@"):
-        file_path = Path(parameters_str[1:])
-        if not file_path.exists():
-            raise FileNotFoundError(f"Parameter file not found: {file_path}")
+QueryApiName = Annotated[
+    str,
+    typer.Argument(help="Query API name (e.g. myQuery)."),
+]
+QueryRid = Annotated[
+    str,
+    typer.Argument(help="Query RID.", autocompletion=complete_rid),
+]
+VersionOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--version",
+        "-v",
+        help="Query version (e.g. 1.0.0). Default: the latest version.",
+    ),
+]
+IncludePrereleaseOption = Annotated[
+    bool,
+    typer.Option(
+        "--include-prerelease",
+        help=(
+            "Without --version, let the latest version be a pre-release "
+            "(e.g. 1.2.3-beta)."
+        ),
+    ),
+]
+LatestVersionResolutionOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--latest-version-resolution",
+        help=(
+            "Without --version, how the latest version is picked: "
+            "SEMANTIC_VERSION (the highest version, the API's default) or "
+            "PUBLISH_TIME (the most recently published, pre-releases "
+            "included)."
+        ),
+        click_type=click.Choice(
+            ("SEMANTIC_VERSION", "PUBLISH_TIME"), case_sensitive=False
+        ),
+        show_default=False,
+    ),
+]
+ParametersOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--parameters",
+        "-params",
+        help=(
+            "Query parameters as a JSON object or @file.json, keyed by "
+            "parameter name (default: no parameters)."
+        ),
+    ),
+]
 
-        with open(file_path, "r") as f:
-            return json.load(f)
 
-    # Handle inline JSON
-    return json.loads(parameters_str)
+def _flag(value: bool) -> Optional[bool]:
+    """Send a flag only when it is set, so the API's default applies otherwise."""
+    return True if value else None
+
+
+def _upper(value: Optional[str]) -> Optional[str]:
+    return value.upper() if value else None
+
+
+def _parameters(value: Optional[str]) -> Any:
+    if value is None:
+        return {}
+    return load_json_input(value, param_hint="'--parameters'")
 
 
 @query_app.command("get")
+@pltr_command(sdk="functions.Query.get", beta=True)
 def get_query(
-    query_api_name: str = typer.Argument(
-        ...,
-        help="Query API name (e.g., myQuery)",
-    ),
-    version: Optional[str] = typer.Option(
-        None,
-        "--version",
-        "-v",
-        help="Query version to retrieve (e.g., '1.0.0'). Defaults to latest.",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    query_api_name: QueryApiName,
+    version: VersionOption = None,
+    include_prerelease: IncludePrereleaseOption = False,
+    latest_version_resolution: LatestVersionResolutionOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get query metadata by API name.
-
-    Retrieves query configuration including parameters, output structure,
-    and version information.
+    """Get a query's definition (parameters, output type, version) by API name.
 
     Examples:
 
-        # Get latest version of query
+    \b
         pltr functions query get myQuery
-
-        # Get specific version
-        pltr functions query get myQuery --version 1.0.0
-
-        # Output as JSON
-        pltr functions query get myQuery --format json
-
-        # Enable preview mode
-        pltr functions query get myQuery --preview
+        pltr functions query get myQuery --version 1.0.0 --format json
+        pltr functions query get myQuery --latest-version-resolution PUBLISH_TIME
     """
-    try:
-        service = FunctionsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching query '{query_api_name}'..."
-        ):
-            query = service.get_query(query_api_name, preview=preview, version=version)
-
-        if output:
-            formatter.save_to_file(query, output, format)
-            formatter.print_success(f"Query information saved to {output}")
-        else:
-            formatter.display(query, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get query: {e}")
-        raise typer.Exit(1)
+    with spinner(f"Fetching query '{query_api_name}'..."):
+        query = FunctionsService(profile=profile).get_query(
+            query_api_name,
+            version=version,
+            include_prerelease=_flag(include_prerelease),
+            latest_version_resolution=_upper(latest_version_resolution),
+        )
+    cache_rid(query.rid)
+    emit(query, format=format, output=output, columns=QUERY_COLUMNS, title="Query")
 
 
 @query_app.command("get-by-rid")
+@pltr_command(sdk="functions.Query.get_by_rid", beta=True)
 def get_query_by_rid(
-    query_rid: str = typer.Argument(
-        ...,
-        help="Query Resource Identifier (e.g., ri.functions.main.query.abc123)",
-        autocompletion=complete_rid,
-    ),
-    version: Optional[str] = typer.Option(
-        None,
-        "--version",
-        "-v",
-        help="Query version to retrieve (e.g., '1.0.0'). Defaults to latest.",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    query_rid: QueryRid,
+    version: VersionOption = None,
+    include_prerelease: IncludePrereleaseOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get query metadata by RID.
-
-    Retrieves query configuration including parameters, output structure,
-    and version information.
+    """Get a query's definition by RID.
 
     Examples:
 
-        # Get query by RID
-        pltr functions query get-by-rid ri.functions.main.query.abc123
-
-        # Get specific version
-        pltr functions query get-by-rid ri.functions.main.query.abc123 --version 1.0.0
-
-        # Output as JSON
-        pltr functions query get-by-rid ri.functions.main.query.abc123 --format json
+    \b
+        pltr functions query get-by-rid <QUERY_RID>
+        pltr functions query get-by-rid <QUERY_RID> --version 1.0.0 --format json
     """
-    try:
-        cache_rid(query_rid)
-
-        service = FunctionsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Fetching query {query_rid}..."):
-            query = service.get_query_by_rid(
-                query_rid, preview=preview, version=version
-            )
-
-        if output:
-            formatter.save_to_file(query, output, format)
-            formatter.print_success(f"Query information saved to {output}")
-        else:
-            formatter.display(query, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get query: {e}")
-        raise typer.Exit(1)
+    with spinner(f"Fetching query {query_rid}..."):
+        query = FunctionsService(profile=profile).get_query_by_rid(
+            query_rid,
+            version=version,
+            include_prerelease=_flag(include_prerelease),
+        )
+    cache_rid(query_rid)
+    emit(query, format=format, output=output, columns=QUERY_COLUMNS, title="Query")
 
 
 @query_app.command("execute")
+@pltr_command(sdk="functions.Query.execute", beta=True)
 def execute_query(
-    query_api_name: str = typer.Argument(
-        ...,
-        help="Query API name (e.g., myQuery)",
-    ),
-    parameters: Optional[str] = typer.Option(
-        None,
-        "--parameters",
-        "-params",
-        help="Query parameters as JSON string or @file.json",
-    ),
-    version: Optional[str] = typer.Option(
-        None,
-        "--version",
-        "-v",
-        help="Query version to execute (e.g., '1.0.0'). Defaults to latest.",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    query_api_name: QueryApiName,
+    parameters: ParametersOption = None,
+    version: VersionOption = None,
+    include_prerelease: IncludePrereleaseOption = False,
+    latest_version_resolution: LatestVersionResolutionOption = None,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Execute a query by API name with parameters.
+    """Execute a query by API name.
 
-    Parameters can be provided as inline JSON or loaded from a file.
-    Supports complex data types including primitives, arrays, structs,
-    dates, and timestamps.
+    Parameter values are JSON: strings, numbers, booleans, lists and objects;
+    dates and timestamps as ISO-8601 strings. JSON output is the API's
+    response, {"value": <result>}. Table and CSV output show one row per item
+    when the result is a list.
 
     Examples:
 
-        # Execute with inline parameters
+    \b
         pltr functions query execute myQuery --parameters '{"limit": 10}'
-
-        # Execute with parameters from file
         pltr functions query execute myQuery --parameters @params.json
-
-        # Execute with complex parameters
-        pltr functions query execute myQuery --parameters '{
-            "limit": 100,
-            "filter": "active",
-            "config": {"enabled": true}
-        }'
-
-        # Execute specific version
-        pltr functions query execute myQuery --version 1.0.0 --parameters '{}'
-
-        # Execute with preview mode
-        pltr functions query execute myQuery --preview --parameters '{}'
+        pltr functions query execute myQuery --version 1.0.0 --format json
     """
-    try:
-        # Parse parameters
-        try:
-            params = parse_parameters(parameters)
-        except FileNotFoundError as e:
-            formatter.print_error(str(e))
-            raise typer.Exit(1)
-        except json.JSONDecodeError as e:
-            formatter.print_error(f"Invalid JSON in parameters: {e}")
-            raise typer.Exit(1)
-
-        service = FunctionsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Executing query '{query_api_name}'..."
-        ):
-            result = service.execute_query(
-                query_api_name, parameters=params, preview=preview, version=version
-            )
-
-        if output:
-            formatter.save_to_file(result, output, format)
-            formatter.print_success(f"Query result saved to {output}")
-        else:
-            formatter.display(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to execute query: {e}")
-        raise typer.Exit(1)
+    params = _parameters(parameters)
+    with spinner(f"Executing query '{query_api_name}'..."):
+        result = FunctionsService(profile=profile).execute_query(
+            query_api_name,
+            parameters=params,
+            version=version,
+            include_prerelease=_flag(include_prerelease),
+            latest_version_resolution=_upper(latest_version_resolution),
+        )
+    emit(result, format=format, output=output, rows=_result_rows)
 
 
 @query_app.command("execute-by-rid")
+@pltr_command(sdk=("functions.Query.get_by_rid", "functions.Query.execute"), beta=True)
 def execute_query_by_rid(
-    query_rid: str = typer.Argument(
-        ...,
-        help="Query Resource Identifier (e.g., ri.functions.main.query.abc123)",
-        autocompletion=complete_rid,
-    ),
-    parameters: Optional[str] = typer.Option(
-        None,
-        "--parameters",
-        "-params",
-        help="Query parameters as JSON string or @file.json",
-    ),
-    version: Optional[str] = typer.Option(
-        None,
-        "--version",
-        "-v",
-        help="Query version to execute (e.g., '1.0.0'). Defaults to latest.",
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    query_rid: QueryRid,
+    parameters: ParametersOption = None,
+    version: VersionOption = None,
+    include_prerelease: IncludePrereleaseOption = False,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Execute a query by RID with parameters.
+    """Execute a query given its RID.
 
-    Parameters can be provided as inline JSON or loaded from a file.
-    Supports complex data types including primitives, arrays, structs,
-    dates, and timestamps.
+    The API executes queries by API name, so pltr first looks the query up by
+    RID and then executes the version it found (--version, or the latest).
+    JSON output is the API's response, {"value": <result>}.
 
     Examples:
 
-        # Execute with inline parameters
-        pltr functions query execute-by-rid ri.functions.main.query.abc123 --parameters '{"limit": 10}'
-
-        # Execute with parameters from file
-        pltr functions query execute-by-rid ri.functions.main.query.abc123 --parameters @params.json
-
-        # Execute specific version
-        pltr functions query execute-by-rid ri.functions.main.query.abc123 --version 1.0.0 --parameters '{}'
+    \b
+        pltr functions query execute-by-rid <QUERY_RID> --parameters '{"limit": 10}'
     """
-    try:
-        cache_rid(query_rid)
-
-        # Parse parameters
-        try:
-            params = parse_parameters(parameters)
-        except FileNotFoundError as e:
-            formatter.print_error(str(e))
-            raise typer.Exit(1)
-        except json.JSONDecodeError as e:
-            formatter.print_error(f"Invalid JSON in parameters: {e}")
-            raise typer.Exit(1)
-
-        service = FunctionsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(f"Executing query {query_rid}..."):
-            result = service.execute_query_by_rid(
-                query_rid, parameters=params, preview=preview, version=version
-            )
-
-        if output:
-            formatter.save_to_file(result, output, format)
-            formatter.print_success(f"Query result saved to {output}")
-        else:
-            formatter.display(result, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to execute query: {e}")
-        raise typer.Exit(1)
+    params = _parameters(parameters)
+    with spinner(f"Executing query {query_rid}..."):
+        result = FunctionsService(profile=profile).execute_query_by_rid(
+            query_rid,
+            parameters=params,
+            version=version,
+            include_prerelease=_flag(include_prerelease),
+        )
+    cache_rid(query_rid)
+    emit(result, format=format, output=output, rows=_result_rows)
 
 
 @value_type_app.command("get")
+@pltr_command(sdk="functions.ValueType.get", beta=True)
 def get_value_type(
-    value_type_rid: str = typer.Argument(
-        ...,
-        help="Value Type Resource Identifier (e.g., ri.functions.main.value-type.xyz)",
-        autocompletion=complete_rid,
-    ),
-    profile: Optional[str] = typer.Option(
-        None,
-        "--profile",
-        "-p",
-        help="Profile name",
-        autocompletion=complete_profile,
-    ),
-    format: str = typer.Option(
-        "table",
-        "--format",
-        "-f",
-        help="Output format (table, json, csv)",
-        autocompletion=complete_output_format,
-    ),
-    output: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Output file path"
-    ),
-    preview: bool = typer.Option(
-        False,
-        "--preview",
-        help="Enable preview mode",
-    ),
+    value_type_rid: Annotated[
+        str, typer.Argument(help="Value type RID.", autocompletion=complete_rid)
+    ],
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+    preview: PreviewNoopOption = False,
 ):
-    """
-    Get value type details by RID.
-
-    Retrieves value type definition and structure information.
+    """Get a value type: its base type, constraints and version.
 
     Examples:
 
-        # Get value type details
-        pltr functions value-type get ri.functions.main.value-type.xyz
-
-        # Output as JSON
-        pltr functions value-type get ri.functions.main.value-type.xyz --format json
-
-        # Enable preview mode
-        pltr functions value-type get ri.functions.main.value-type.xyz --preview
+    \b
+        pltr functions value-type get <VALUE_TYPE_RID>
+        pltr functions value-type get <VALUE_TYPE_RID> --format json
     """
-    try:
-        cache_rid(value_type_rid)
-
-        service = FunctionsService(profile=profile)
-
-        with SpinnerProgressTracker().track_spinner(
-            f"Fetching value type {value_type_rid}..."
-        ):
-            value_type = service.get_value_type(value_type_rid, preview=preview)
-
-        if output:
-            formatter.save_to_file(value_type, output, format)
-            formatter.print_success(f"Value type information saved to {output}")
-        else:
-            formatter.display(value_type, format)
-
-    except (ProfileNotFoundError, MissingCredentialsError) as e:
-        formatter.print_error(f"Authentication error: {e}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        formatter.print_error(f"Invalid request: {e}")
-        raise typer.Exit(1)
-    except Exception as e:
-        formatter.print_error(f"Failed to get value type: {e}")
-        raise typer.Exit(1)
+    with spinner(f"Fetching value type {value_type_rid}..."):
+        value_type = FunctionsService(profile=profile).get_value_type(value_type_rid)
+    cache_rid(value_type_rid)
+    emit(
+        value_type,
+        format=format,
+        output=output,
+        columns=VALUE_TYPE_COLUMNS,
+        title="Value Type",
+    )

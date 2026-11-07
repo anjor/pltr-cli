@@ -1,30 +1,36 @@
 """
 High-level service that copies Foundry resources between Compass folders.
+
+``pltr cp`` copies a dataset (its schema and the files of one branch) or,
+recursively, a folder with its datasets and subfolders into a target folder.
+Progress messages go to stderr through :mod:`pltr.contract`; the resources
+created (or, in a dry run, the ones that would be copied) are returned to the
+command, which prints them.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional
 import tempfile
 import traceback
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional
 
-from rich.console import Console
+from foundry_sdk.v2.datasets.models import Dataset
 
+from ..contract import ExitCode, PltrError, classify_error, info, success, warn
 from .dataset import DatasetService
 from .folder import FolderService
 from .resource import ResourceService
 
-
-# Known resource types for exact matching (avoids false positives with substring matching)
-DATASET_TYPES = frozenset({"foundry_dataset", "dataset"})
-FOLDER_TYPES = frozenset({"folder", "compass_folder"})
+#: ``Resource.type`` of the resources cp copies.
+DATASET_TYPE = "FOUNDRY_DATASET"
+FOLDER_TYPE = "COMPASS_FOLDER"
 
 
 @dataclass
 class CopyStats:
-    """Summary of a copy operation."""
+    """Summary counts of a copy operation."""
 
     folders: int = 0
     datasets: int = 0
@@ -32,13 +38,33 @@ class CopyStats:
     errors: int = 0
 
     def as_dict(self) -> Dict[str, int]:
-        """Return summary as a dictionary."""
+        """Return the counts as a dictionary."""
         return {
             "folders_copied": self.folders,
             "datasets_copied": self.datasets,
             "skipped": self.skipped,
             "errors": self.errors,
         }
+
+
+@dataclass
+class CopyResult:
+    """What a copy did.
+
+    ``items`` are the SDK models of the resources created, in creation order
+    (``Folder`` for folders, ``Dataset`` for datasets). In a dry run nothing
+    is created and ``items`` are the source ``Resource`` models that would be
+    copied. ``failures`` holds the exception of every item that couldn't be
+    copied while copying a folder recursively.
+    """
+
+    items: List[Any] = field(default_factory=list)
+    stats: CopyStats = field(default_factory=CopyStats)
+    failures: List[BaseException] = field(default_factory=list)
+
+
+class _StopCopy(Exception):
+    """Raised after the first failure when ``fail_fast`` is set."""
 
 
 class CopyService:
@@ -54,7 +80,6 @@ class CopyService:
         dry_run: bool = False,
         debug: bool = False,
         fail_fast: bool = False,
-        console: Optional[Console] = None,
     ):
         self.profile = profile
         self.branch = branch
@@ -63,83 +88,78 @@ class CopyService:
         self.dry_run = dry_run
         self.debug = debug
         self.fail_fast = fail_fast
-        self.console = console or Console()
 
         self.dataset_service = DatasetService(profile=profile)
         self.folder_service = FolderService(profile=profile)
         self.resource_service = ResourceService(profile=profile)
 
-        self.stats = CopyStats()
-        self._skipped_messages: List[str] = []
+        self.result = CopyResult()
 
     # ------------------------------------------------------------------ public
     def copy_resource(
         self, source_rid: str, target_folder_rid: str, recursive: bool = False
-    ) -> Dict[str, int]:
-        """
-        Copy a resource by RID into a destination folder.
+    ) -> CopyResult:
+        """Copy a dataset or folder by RID into a destination folder.
 
         Args:
-            source_rid: Resource Identifier to copy.
-            target_folder_rid: Destination Compass folder RID.
-            recursive: Required when copying folders. Recursively copies contents.
+            source_rid: RID of the dataset or folder to copy.
+            target_folder_rid: RID of the folder (or project) to copy into.
+            recursive: required when copying a folder; copies its contents.
 
         Returns:
-            Dictionary summary of copied items.
+            A :class:`CopyResult`. Failures of individual items in a recursive
+            copy are recorded in it (the copy goes on unless ``fail_fast``);
+            a failure before anything was created is raised.
         """
-        self._reset_stats()
+        self.result = CopyResult()
+        source = self.resource_service.get_resource(source_rid)
 
-        resource = self.resource_service.get_resource(source_rid)
-        resource_type = (resource.get("type") or "").lower()
-
-        if resource_type in DATASET_TYPES:
-            self._log_info(
-                f"Copying dataset '{self._get_resource_name(resource)}' "
-                f"({source_rid}) → folder {target_folder_rid}"
+        if source.type == DATASET_TYPE:
+            info(
+                f"Copying dataset '{source.display_name}' ({source_rid}) to folder "
+                f"{target_folder_rid}"
             )
-            try:
-                self._copy_dataset(resource, target_folder_rid)
-            except Exception:
-                self.stats.errors += 1
-                raise
-        elif resource_type in FOLDER_TYPES:
+            self._copy_dataset(source, target_folder_rid)
+        elif source.type == FOLDER_TYPE:
             if not recursive:
-                raise RuntimeError(
-                    "Source resource is a folder. Pass --recursive to copy folder contents."
+                raise PltrError(
+                    f"{source_rid} is a folder: pass --recursive to copy it with "
+                    "its contents.",
+                    error_type="usage_error",
+                    exit_code=ExitCode.USAGE,
                 )
             try:
-                self._copy_folder(resource, target_folder_rid)
-            except Exception:
-                self.stats.errors += 1
-                raise
+                self._copy_folder(source, target_folder_rid)
+            except _StopCopy:
+                warn("Stopped at the first failure (--fail-fast).")
         else:
-            raise RuntimeError(
-                f"Copy is only supported for datasets and folders. Resource "
-                f"{source_rid} is of type '{resource.get('type')}'."
+            raise PltrError(
+                f"cp copies datasets and folders; {source_rid} is a {source.type}.",
+                error_type="usage_error",
+                exit_code=ExitCode.USAGE,
             )
 
         self._print_summary()
-        return self.stats.as_dict()
+        return self.result
 
     # ----------------------------------------------------------------- datasets
-    def _copy_dataset(
-        self, dataset_info: Dict[str, str], target_folder_rid: str
-    ) -> None:
-        dataset_rid = dataset_info["rid"]
-        dataset_name = self._get_resource_name(dataset_info)
-        new_name = self._derive_name(dataset_name)
+    def _copy_dataset(self, source: Any, target_folder_rid: str) -> None:
+        """Copy one dataset; raises on failure after cleaning up the copy."""
+        dataset_rid = source.rid
+        new_name = self._derive_name(source.display_name)
 
         if self.dry_run:
-            self._log_warning(
-                f"[DRY-RUN] Would copy dataset '{dataset_name}' ({dataset_rid}) "
-                f"→ '{new_name}' in folder {target_folder_rid}"
+            info(
+                f"[DRY-RUN] Would copy dataset '{source.display_name}' "
+                f"({dataset_rid}) to '{new_name}' in folder {target_folder_rid}"
             )
-            self.stats.datasets += 1
+            self.result.stats.datasets += 1
+            self.result.items.append(source)
             return
 
         new_dataset = self.dataset_service.create_dataset(new_name, target_folder_rid)
         new_dataset_rid = new_dataset["rid"]
-        self._log_success(
+        success(
             f"Created dataset '{new_name}' ({new_dataset_rid}) in {target_folder_rid}"
         )
 
@@ -148,21 +168,26 @@ class CopyService:
                 self._copy_dataset_schema(dataset_rid, new_dataset_rid)
 
             self._copy_dataset_files(dataset_rid, new_dataset_rid)
-            self.stats.datasets += 1
-            self._log_success(f"Finished copying dataset to {new_dataset_rid}")
-        except Exception as exc:
-            # Clean up partially created dataset on failure
-            self._log_warning(
-                f"  Deleting partially created dataset {new_dataset_rid} due to error"
-            )
+        except Exception:
+            # Clean up the partly created dataset, then report the failure.
+            warn(f"Removing the partly copied dataset {new_dataset_rid}")
             try:
                 self.dataset_service.delete_dataset(new_dataset_rid)
-                self._log_info(f"  Deleted dataset {new_dataset_rid}")
+                info(f"  Removed dataset {new_dataset_rid}")
             except Exception as delete_exc:
-                self._log_error(
-                    f"  Failed to delete dataset {new_dataset_rid}: {delete_exc}"
+                warn(
+                    f"Could not remove dataset {new_dataset_rid}: "
+                    f"{classify_error(delete_exc).message}"
                 )
-            raise exc
+            raise
+
+        self.result.stats.datasets += 1
+        self.result.items.append(
+            Dataset(
+                rid=new_dataset_rid, name=new_name, parent_folder_rid=target_folder_rid
+            )
+        )
+        success(f"Finished copying dataset to {new_dataset_rid}")
 
     def _copy_dataset_schema(self, source_rid: str, target_rid: str) -> None:
         """Copy schema metadata, warning if not available."""
@@ -171,11 +196,14 @@ class CopyService:
             schema = schema_info.get("schema")
             if schema:
                 self.dataset_service.put_schema(target_rid, schema)
-                self._log_info("  Copied dataset schema")
+                info("  Copied dataset schema")
             else:
-                self._log_info("  Source dataset has no schema to copy")
+                info("  Source dataset has no schema to copy")
         except Exception as exc:
-            self._log_warning(f"  Could not copy schema for {source_rid}: {exc}")
+            warn(
+                f"Could not copy the schema of {source_rid}: "
+                f"{classify_error(exc).message}"
+            )
             if self.debug:
                 traceback.print_exc()
 
@@ -183,9 +211,7 @@ class CopyService:
         """Download files from source and upload them into the target dataset."""
         files = self.dataset_service.list_files(source_rid, branch=self.branch)
         if not files:
-            self._log_info(
-                "  Source dataset does not expose any files on the requested branch"
-            )
+            info("  Source dataset has no files on the requested branch")
             return
 
         # Wrap transaction creation in try block to ensure cleanup on any failure
@@ -210,12 +236,8 @@ class CopyService:
                 for file_info in files:
                     dataset_path = file_info.get("path")
                     if not dataset_path:
-                        self._report_skip(
-                            {
-                                "rid": source_rid,
-                                "display_name": dataset_path or "unknown file",
-                            },
-                            "File path missing; skipping file.",
+                        self._skip(
+                            "a file", source_rid, "File path missing; skipping file."
                         )
                         continue
 
@@ -229,26 +251,24 @@ class CopyService:
                     self._upload_dataset_file(
                         target_rid, dataset_path, download_path, transaction_rid
                     )
-                    self._log_info(f"  Copied dataset file: {dataset_path}")
+                    info(f"  Copied dataset file: {dataset_path}")
 
             self.dataset_service.commit_transaction(target_rid, transaction_rid)
-            self._log_info(f"  Committed transaction {transaction_rid}")
+            info(f"  Committed transaction {transaction_rid}")
         except Exception as exc:
             # Only attempt rollback if we successfully created a transaction
             if transaction_created and transaction_rid:
                 try:
                     self.dataset_service.abort_transaction(target_rid, transaction_rid)
-                    self._log_warning(f"  Rolled back transaction {transaction_rid}")
+                    warn(f"Rolled back transaction {transaction_rid}")
                 except Exception:
-                    self._log_warning(
-                        f"  Failed to roll back transaction {transaction_rid}"
-                    )
+                    warn(f"Failed to roll back transaction {transaction_rid}")
 
             if self.debug:
                 traceback.print_exc()
 
             raise RuntimeError(
-                f"{type(exc).__name__} while copying files from {source_rid} to {target_rid}: {exc}"
+                f"Failed to copy the files of {source_rid} to {target_rid}"
             ) from exc
 
     def _upload_dataset_file(
@@ -256,89 +276,83 @@ class CopyService:
         dataset_rid: str,
         dataset_path: str,
         local_file: Path,
-        transaction_rid: str,
+        transaction_rid: Optional[str],
     ) -> None:
-        """Upload the downloaded file bytes back into a dataset."""
-        with open(local_file, "rb") as handle:
-            body = handle.read()
-
+        """Upload the downloaded file bytes into a dataset (``Dataset.File.upload``, GA)."""
+        body = Path(local_file).read_bytes()
         remote_path = PurePosixPath(dataset_path.lstrip("/")).as_posix()
-        upload_kwargs = {
-            "dataset_rid": dataset_rid,
-            "file_path": remote_path,
-            "body": body,
-            "transaction_rid": transaction_rid,
-        }
-        # API only allows either branchName or transactionRid. When using a transaction
-        # we must omit branchName to avoid InvalidParameterCombination.
-        if not transaction_rid:
-            upload_kwargs["branch_name"] = self.branch
-
-        self.dataset_service.service.Dataset.File.upload(**upload_kwargs)
+        # The API takes either a transaction or a branch, not both
+        # (InvalidParameterCombination): send the branch only without one.
+        self.dataset_service.service.Dataset.File.upload(
+            dataset_rid,
+            remote_path,
+            body,
+            transaction_rid=transaction_rid,
+            branch_name=None if transaction_rid else self.branch,
+        )
 
     # ------------------------------------------------------------------ folders
-    def _copy_folder(self, folder_info: Dict[str, str], target_folder_rid: str) -> None:
-        folder_rid = folder_info["rid"]
-        folder_name = self._get_resource_name(folder_info)
-        new_name = self._derive_name(folder_name)
+    def _copy_folder(self, folder: Any, target_folder_rid: str) -> None:
+        """Copy a folder and its children; records the failures of children."""
+        new_name = self._derive_name(folder.display_name)
 
         if self.dry_run:
-            self._log_warning(
-                f"[DRY-RUN] Would copy folder '{folder_name}' ({folder_rid}) "
-                f"→ '{new_name}' in folder {target_folder_rid}"
+            info(
+                f"[DRY-RUN] Would copy folder '{folder.display_name}' ({folder.rid}) "
+                f"to '{new_name}' in folder {target_folder_rid}"
             )
-            new_folder_rid = "<dry-run>"
+            self.result.items.append(folder)
+            new_folder_rid = f"<new folder '{new_name}'>"
         else:
             created = self.folder_service.create_folder(new_name, target_folder_rid)
+            self.result.items.append(created)
             new_folder_rid = created.rid
-            self._log_success(
+            success(
                 f"Created folder '{new_name}' ({new_folder_rid}) in {target_folder_rid}"
             )
 
-        self.stats.folders += 1
+        self.result.stats.folders += 1
 
-        # FolderService returns SDK models; iterating the SDK iterator walks
-        # every page. Children are handled as dicts below.
-        children = [
-            {"rid": child.rid, "display_name": child.display_name, "type": child.type}
-            for child in self.folder_service.list_children(folder_rid)
-        ]
+        try:
+            # Iterating the SDK iterator reads every page of the children.
+            children = list(self.folder_service.list_children(folder.rid))
+        except Exception as exc:
+            self._record_failure(folder, exc)
+            return
         if not children:
-            self._log_info("  Folder has no children to copy.")
+            info(f"  Folder '{folder.display_name}' has no children to copy.")
             return
 
         for child in children:
-            resource_type_raw = child.get("type") or ""
-            resource_type = resource_type_raw.lower()
-
             try:
-                if resource_type in FOLDER_TYPES:
+                if child.type == FOLDER_TYPE:
                     self._copy_folder(child, new_folder_rid)
-                elif resource_type in DATASET_TYPES:
+                elif child.type == DATASET_TYPE:
                     self._copy_dataset(child, new_folder_rid)
                 else:
-                    self._report_skip(
-                        child, f"Unsupported child type '{resource_type_raw}'"
+                    self._skip(
+                        child.display_name,
+                        child.rid,
+                        f"cp doesn't copy {child.type} resources",
                     )
+            except _StopCopy:
+                raise
             except Exception as exc:
-                self.stats.errors += 1
-                self._log_error(
-                    f"Failed to copy child {child.get('rid', 'unknown RID')}: {exc}"
-                )
-                if self.debug:
-                    traceback.print_exc()
-                if self.fail_fast:
-                    raise RuntimeError(f"Stopping due to --fail-fast: {exc}") from exc
+                self._record_failure(child, exc)
+
+    def _record_failure(self, resource: Any, exc: BaseException) -> None:
+        self.result.stats.errors += 1
+        self.result.failures.append(exc)
+        warn(
+            f"Failed to copy '{resource.display_name}' ({resource.rid}): "
+            f"{classify_error(exc).message}"
+        )
+        if self.debug:
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
+        if self.fail_fast:
+            raise _StopCopy() from exc
 
     # ------------------------------------------------------------------ helpers
-    def _get_resource_name(self, resource: Dict[str, str]) -> str:
-        """Extract display name from a resource, with fallbacks."""
-        return (
-            resource.get("display_name")
-            or resource.get("name")
-            or resource.get("rid", "unknown")
-        )
-
     def _sanitize_local_path(self, original_path: str) -> str:
         """Return a safe relative path for storing temporary files."""
         # Check for path traversal BEFORE normalization to prevent attacks
@@ -359,38 +373,16 @@ class CopyService:
             return base_name
         return f"{base_name}{suffix}"
 
-    def _report_skip(self, resource: Dict[str, str], reason: str) -> None:
-        """Track skipped resources."""
-        rid = resource.get("rid", "unknown RID")
-        display_name = resource.get("display_name") or resource.get("name") or rid
-        message = f"[SKIP] {display_name} ({rid}): {reason}"
-        self.console.print(message)
-        self.stats.skipped += 1
-        self._skipped_messages.append(message)
-
-    def _reset_stats(self) -> None:
-        self.stats = CopyStats()
-        self._skipped_messages = []
+    def _skip(self, name: str, rid: str, reason: str) -> None:
+        """Track a skipped resource."""
+        self.result.stats.skipped += 1
+        warn(f"Skipped {name} ({rid}): {reason}")
 
     def _print_summary(self) -> None:
-        """Print summary after an operation."""
-        self.console.print(
-            "\nSummary: "
-            f"{self.stats.folders} folders copied, "
-            f"{self.stats.datasets} datasets copied, "
-            f"{self.stats.skipped} resources skipped, "
-            f"{self.stats.errors} errors"
+        """Print a one-line summary (stderr; suppressed in JSON mode)."""
+        stats = self.result.stats
+        verb = "Would copy" if self.dry_run else "Copied"
+        success(
+            f"{verb} {stats.folders} folder(s) and {stats.datasets} dataset(s); "
+            f"{stats.skipped} skipped, {stats.errors} failed"
         )
-
-    # ------------------------------------------------------------------ logging
-    def _log_info(self, message: str) -> None:
-        self.console.print(message)
-
-    def _log_warning(self, message: str) -> None:
-        self.console.print(f"[yellow]{message}[/yellow]")
-
-    def _log_error(self, message: str) -> None:
-        self.console.print(f"[red]{message}[/red]")
-
-    def _log_success(self, message: str) -> None:
-        self.console.print(f"[green]{message}[/green]")

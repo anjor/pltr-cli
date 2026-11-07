@@ -1,778 +1,310 @@
-"""Tests for resource service."""
+"""Tests for ResourceService against a real FoundryClient (only HTTP is faked).
+
+Replaces the Mock()-based tests, which asserted calls to the nonexistent
+``Resource.get_metadata`` (#182), passed ``preview=True`` to GA endpoints
+(#184) and read batch responses through a ``resources`` attribute the SDK
+models don't have (the field is ``data``). Every Resource endpoint pltr uses
+is GA: a stray ``preview=`` would raise a UserWarning (a failure here).
+"""
+
+import json
 
 import pytest
-from unittest.mock import Mock, patch
-
-from pltr.services.resource import ResourceService
-
-
-class TestResourceService:
-    """Test cases for ResourceService."""
-
-    @pytest.fixture
-    def mock_client(self):
-        """Create a mock Foundry client."""
-        client = Mock()
-        client.filesystem = Mock()
-        client.filesystem.Resource = Mock()
-        client.filesystem.Folder = Mock()
-        return client
-
-    @pytest.fixture
-    def mock_auth_manager(self, mock_client):
-        """Create a mock auth manager."""
-        with patch("pltr.services.base.AuthManager") as MockAuthManager:
-            mock_auth_manager = Mock()
-            mock_auth_manager.get_client.return_value = mock_client
-            MockAuthManager.return_value = mock_auth_manager
-            yield mock_auth_manager
-
-    @pytest.fixture
-    def resource_service(self, mock_auth_manager):
-        """Create a ResourceService instance with mocked dependencies."""
-        return ResourceService()
-
-    def test_get_service(self, resource_service, mock_client):
-        """Test _get_service returns filesystem service."""
-        resource_service._client = mock_client
-        assert resource_service._get_service() == mock_client.filesystem
-
-    def test_get_resource(self, resource_service, mock_client):
-        """Test getting a resource."""
-        mock_resource = Mock()
-        mock_resource.rid = "ri.compass.main.dataset.123"
-        mock_resource.display_name = "Test Dataset"
-        mock_resource.type = "dataset"
-
-        mock_client.filesystem.Resource.get.return_value = mock_resource
-        resource_service._client = mock_client
-
-        result = resource_service.get_resource("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.get.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert result["rid"] == "ri.compass.main.dataset.123"
-        assert result["display_name"] == "Test Dataset"
-        assert result["type"] == "dataset"
-
-    def test_get_resource_failure(self, resource_service, mock_client):
-        """Test handling resource get failure."""
-        mock_client.filesystem.Resource.get.side_effect = Exception("Not found")
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resource ri.compass.main.dataset.123: Not found",
-        ):
-            resource_service.get_resource("ri.compass.main.dataset.123")
-
-    def test_get_resource_failure_with_empty_message(
-        self, resource_service, mock_client
-    ):
-        """Test handling resource get failure with empty exception message."""
-        mock_client.filesystem.Resource.get.side_effect = Exception()
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resource ri.compass.main.dataset.123: Exception",
-        ):
-            resource_service.get_resource("ri.compass.main.dataset.123")
-
-    def test_get_resource_by_path(self, resource_service, mock_client):
-        """Test getting a resource by path."""
-        mock_resource = Mock()
-        mock_resource.rid = "ri.compass.main.dataset.123"
-        mock_resource.display_name = "Test Dataset"
-        mock_resource.type = "dataset"
-        mock_resource.path = "/My Organization/Project/Test Dataset"
-
-        mock_client.filesystem.Resource.get_by_path.return_value = mock_resource
-        resource_service._client = mock_client
-
-        result = resource_service.get_resource_by_path(
-            "/My Organization/Project/Test Dataset"
-        )
-
-        mock_client.filesystem.Resource.get_by_path.assert_called_once_with(
-            path="/My Organization/Project/Test Dataset", preview=True
-        )
-        assert result["rid"] == "ri.compass.main.dataset.123"
-        assert result["display_name"] == "Test Dataset"
-        assert result["type"] == "dataset"
-        assert result["path"] == "/My Organization/Project/Test Dataset"
-
-    def test_get_resource_by_path_failure(self, resource_service, mock_client):
-        """Test handling resource get by path failure."""
-        mock_client.filesystem.Resource.get_by_path.side_effect = Exception(
-            "Path not found"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resource at path '/Invalid/Path': Path not found",
-        ):
-            resource_service.get_resource_by_path("/Invalid/Path")
-
-    def test_get_resource_by_path_failure_with_empty_message(
-        self, resource_service, mock_client
-    ):
-        """Test handling resource get by path failure with empty exception message."""
-        mock_client.filesystem.Resource.get_by_path.side_effect = Exception()
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resource at path '/Invalid/Path': Exception",
-        ):
-            resource_service.get_resource_by_path("/Invalid/Path")
-
-    def test_list_resources(self, resource_service, mock_client):
-        """Test listing resources."""
-        mock_resources = [Mock(), Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
-        mock_resources[0].type = "dataset"
-        mock_resources[1].rid = "ri.compass.main.folder.456"
-        mock_resources[1].type = "folder"
-
-        mock_client.filesystem.Folder.children.return_value = iter(mock_resources)
-        resource_service._client = mock_client
-
-        result = resource_service.list_resources()
-
-        mock_client.filesystem.Folder.children.assert_called_once_with(
-            "ri.compass.main.folder.0", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.dataset.123"
-        assert result[0]["type"] == "dataset"
-        assert result[1]["rid"] == "ri.compass.main.folder.456"
-        assert result[1]["type"] == "folder"
-
-    def test_list_resources_with_filters(self, resource_service, mock_client):
-        """Test listing resources with filters."""
-        mock_resources = [Mock(), Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
-        mock_resources[0].type = "dataset"
-        mock_resources[1].rid = "ri.compass.main.folder.123"
-        mock_resources[1].type = "folder"
-
-        mock_client.filesystem.Folder.children.return_value = iter(mock_resources)
-        resource_service._client = mock_client
-
-        result = resource_service.list_resources(
-            folder_rid="ri.compass.main.folder.789",
-            resource_type="dataset",
-            page_size=10,
-            page_token="token123",
-        )
-
-        mock_client.filesystem.Folder.children.assert_called_once_with(
-            "ri.compass.main.folder.789",
-            preview=True,
-            page_size=10,
-            page_token="token123",
-        )
-        assert len(result) == 1
-        assert result[0]["rid"] == "ri.compass.main.dataset.123"
-
-    def test_get_resources_batch(self, resource_service, mock_client):
-        """Test getting multiple resources in batch."""
-        mock_response = Mock()
-        mock_resources = [Mock(), Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
-        mock_resources[1].rid = "ri.compass.main.dataset.456"
-        mock_response.resources = mock_resources
-
-        mock_client.filesystem.Resource.get_batch.return_value = mock_response
-        resource_service._client = mock_client
-
-        rids = ["ri.compass.main.dataset.123", "ri.compass.main.dataset.456"]
-        result = resource_service.get_resources_batch(rids)
-
-        # Verify the call was made with GetResourcesBatchRequestElement objects
-        call_args = mock_client.filesystem.Resource.get_batch.call_args
-        assert call_args.kwargs["preview"] is True
-        elements = call_args.kwargs["body"]
-        assert len(elements) == 2
-        assert elements[0].resource_rid == "ri.compass.main.dataset.123"
-        assert elements[1].resource_rid == "ri.compass.main.dataset.456"
-
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.dataset.123"
-        assert result[1]["rid"] == "ri.compass.main.dataset.456"
-
-    def test_get_resources_batch_too_many(self, resource_service):
-        """Test batch get with too many resources raises error."""
-        rids = ["rid"] * 1001
-
-        with pytest.raises(ValueError, match="Maximum batch size is 1000 resources"):
-            resource_service.get_resources_batch(rids)
-
-    def test_get_resource_metadata(self, resource_service, mock_client):
-        """Test getting resource metadata."""
-        mock_metadata = {"key1": "value1", "key2": "value2"}
-
-        mock_client.filesystem.Resource.get_metadata.return_value = mock_metadata
-        resource_service._client = mock_client
-
-        result = resource_service.get_resource_metadata("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.get_metadata.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert result == mock_metadata
-
-    def test_search_resources(self, resource_service, mock_client):
-        """Test searching resources."""
-        folder_resource = Mock()
-        folder_resource.rid = "ri.compass.main.folder.100"
-        folder_resource.type = "folder"
-        folder_resource.display_name = "Analytics"
-        folder_resource.name = ""
-        folder_resource.description = ""
-        folder_resource.path = ""
-
-        root_dataset = Mock()
-        root_dataset.rid = "ri.compass.main.dataset.123"
-        root_dataset.display_name = "Sales Data"
-        root_dataset.type = "dataset"
-        root_dataset.name = ""
-        root_dataset.description = ""
-        root_dataset.path = ""
-
-        nested_dataset = Mock()
-        nested_dataset.rid = "ri.compass.main.dataset.456"
-        nested_dataset.display_name = "Sales Report"
-        nested_dataset.type = "dataset"
-        nested_dataset.name = ""
-        nested_dataset.description = ""
-        nested_dataset.path = ""
-
-        mock_client.filesystem.Folder.children.side_effect = [
-            [folder_resource, root_dataset],
-            [nested_dataset],
-        ]
-        resource_service._client = mock_client
-
-        result = resource_service.search_resources("sales")
-
-        mock_client.filesystem.Folder.children.assert_any_call(
-            "ri.compass.main.folder.0", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["display_name"] == "Sales Data"
-        assert result[1]["display_name"] == "Sales Report"
-
-    def test_search_resources_with_filters(self, resource_service, mock_client):
-        """Test searching resources with filters."""
-        dataset = Mock()
-        dataset.rid = "ri.compass.main.dataset.123"
-        dataset.display_name = "Sales Data"
-        dataset.type = "dataset"
-        dataset.name = ""
-        dataset.description = ""
-        dataset.path = ""
-
-        folder = Mock()
-        folder.rid = "ri.compass.main.folder.123"
-        folder.display_name = "Sales Folder"
-        folder.type = "folder"
-        folder.name = ""
-        folder.description = ""
-        folder.path = ""
-
-        mock_client.filesystem.Folder.children.side_effect = [[dataset, folder], []]
-        resource_service._client = mock_client
-
-        result = resource_service.search_resources(
-            query="sales",
-            resource_type="dataset",
-            folder_rid="ri.compass.main.folder.789",
-            page_size=10,
-        )
-
-        mock_client.filesystem.Folder.children.assert_any_call(
-            "ri.compass.main.folder.789", preview=True
-        )
-        assert len(result) == 1
-        assert result[0]["rid"] == "ri.compass.main.dataset.123"
-
-    def test_search_resources_page_size_limits_total_matches(
-        self, resource_service, mock_client
-    ):
-        """Test page_size caps total BFS matches rather than per-folder children."""
-        first_match = Mock()
-        first_match.rid = "ri.compass.main.dataset.111"
-        first_match.display_name = "Sales First"
-        first_match.type = "dataset"
-        first_match.name = ""
-        first_match.description = ""
-        first_match.path = ""
-
-        second_match = Mock()
-        second_match.rid = "ri.compass.main.dataset.222"
-        second_match.display_name = "Sales Second"
-        second_match.type = "dataset"
-        second_match.name = ""
-        second_match.description = ""
-        second_match.path = ""
-
-        mock_client.filesystem.Folder.children.return_value = [
-            first_match,
-            second_match,
-        ]
-        resource_service._client = mock_client
-
-        result = resource_service.search_resources("sales", page_size=1)
-
-        mock_client.filesystem.Folder.children.assert_called_once_with(
-            "ri.compass.main.folder.0", preview=True
-        )
-        assert len(result) == 1
-        assert result[0]["rid"] == "ri.compass.main.dataset.111"
-
-    def test_search_resources_with_blank_query_returns_empty(
-        self, resource_service, mock_client
-    ):
-        """Test blank/whitespace query returns no results without API calls."""
-        resource_service._client = mock_client
-
-        result = resource_service.search_resources("   ")
-
-        assert result == []
-        mock_client.filesystem.Folder.children.assert_not_called()
-
-    def test_search_resources_with_page_token_unsupported(
-        self, resource_service, mock_client
-    ):
-        """Test recursive search rejects page_token cursor usage."""
-        resource_service._client = mock_client
-
-        with pytest.raises(ValueError, match="page_token is not supported"):
-            resource_service.search_resources("sales", page_token="token123")
-        mock_client.filesystem.Folder.children.assert_not_called()
-
-    def test_search_resources_raises_on_folder_scan_limit(
-        self, resource_service, mock_client
-    ):
-        """Test recursive search raises when traversal exceeds folder scan cap."""
-        folder = Mock()
-        folder.rid = "ri.compass.main.folder.123"
-        folder.display_name = "Folder"
-        folder.type = "folder"
-        folder.name = ""
-        folder.description = ""
-        folder.path = ""
-
-        mock_client.filesystem.Folder.children.return_value = [folder]
-        resource_service._client = mock_client
-        resource_service.MAX_SEARCH_FOLDERS = 1
-
-        with pytest.raises(
-            RuntimeError, match="Resource search exceeded folder scan limit"
-        ):
-            resource_service.search_resources("folder")
-
-    def test_format_resource_info(self, resource_service):
-        """Test formatting resource information."""
-        mock_resource = Mock()
-        mock_resource.rid = "ri.compass.main.dataset.123"
-        mock_resource.display_name = "Test Dataset"
-        mock_resource.name = "test_dataset"
-        mock_resource.type = "dataset"
-        mock_resource.folder_rid = "ri.compass.main.folder.456"
-        mock_resource.created_by = "user123"
-        mock_resource.created_time = Mock()
-        mock_resource.created_time.time = "2023-01-01T00:00:00Z"
-        mock_resource.size_bytes = 1024
-
-        result = resource_service._format_resource_info(mock_resource)
-
-        assert result["rid"] == "ri.compass.main.dataset.123"
-        assert result["display_name"] == "Test Dataset"
-        assert result["name"] == "test_dataset"
-        assert result["type"] == "dataset"
-        assert result["folder_rid"] == "ri.compass.main.folder.456"
-        assert result["created_by"] == "user123"
-        assert result["created_time"] == "2023-01-01T00:00:00Z"
-        assert result["size_bytes"] == 1024
-
-    def test_format_resource_info_uses_updated_fallback_fields(self, resource_service):
-        """Test formatting falls back to updated_* fields when modified_* fields missing."""
-        mock_resource = Mock()
-        mock_resource.rid = "ri.compass.main.dataset.999"
-        mock_resource.display_name = "Fallback Dataset"
-        mock_resource.name = "fallback_dataset"
-        mock_resource.type = "dataset"
-        mock_resource.folder_rid = "ri.compass.main.folder.456"
-        mock_resource.created_by = "user123"
-        mock_resource.created_time = None
-        mock_resource.modified_by = None
-        mock_resource.updated_by = "user456"
-        mock_resource.modified_time = None
-        mock_resource.updated_time = "2024-01-02T00:00:00Z"
-        mock_resource.size_bytes = 2048
-        mock_resource.trash_status = None
-
-        result = resource_service._format_resource_info(mock_resource)
-
-        assert result["modified_by"] == "user456"
-        assert result["modified_time"] == "2024-01-02T00:00:00Z"
-
-    def test_format_metadata_dict(self, resource_service):
-        """Test formatting metadata as dict."""
-        metadata = {"key1": "value1", "key2": "value2"}
-
-        result = resource_service._format_metadata(metadata)
-
-        assert result == metadata
-
-    def test_format_metadata_object(self, resource_service):
-        """Test formatting metadata object with __dict__."""
-        metadata = Mock()
-        metadata.__dict__ = {"key1": "value1", "key2": "value2"}
-
-        result = resource_service._format_metadata(metadata)
-
-        assert result == {"key1": "value1", "key2": "value2"}
-
-    def test_format_metadata_other(self, resource_service):
-        """Test formatting other metadata types."""
-        metadata = "some string"
-
-        result = resource_service._format_metadata(metadata)
-
-        assert result == {"raw": "some string"}
-
-    # ==================== Trash Operations Tests ====================
-
-    def test_delete_resource(self, resource_service, mock_client):
-        """Test moving resource to trash."""
-        mock_client.filesystem.Resource.delete.return_value = None
-        resource_service._client = mock_client
-
-        resource_service.delete_resource("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.delete.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-
-    def test_delete_resource_failure(self, resource_service, mock_client):
-        """Test handling delete resource failure."""
-        mock_client.filesystem.Resource.delete.side_effect = Exception("Delete failed")
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to delete resource ri.compass.main.dataset.123: Delete failed",
-        ):
-            resource_service.delete_resource("ri.compass.main.dataset.123")
-
-    def test_restore_resource(self, resource_service, mock_client):
-        """Test restoring resource from trash."""
-        mock_client.filesystem.Resource.restore.return_value = None
-        resource_service._client = mock_client
-
-        resource_service.restore_resource("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.restore.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-
-    def test_restore_resource_failure(self, resource_service, mock_client):
-        """Test handling restore resource failure."""
-        mock_client.filesystem.Resource.restore.side_effect = Exception(
-            "Restore failed"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to restore resource ri.compass.main.dataset.123: Restore failed",
-        ):
-            resource_service.restore_resource("ri.compass.main.dataset.123")
-
-    def test_permanently_delete_resource(self, resource_service, mock_client):
-        """Test permanently deleting resource from trash."""
-        mock_client.filesystem.Resource.permanently_delete.return_value = None
-        resource_service._client = mock_client
-
-        resource_service.permanently_delete_resource("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.permanently_delete.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-
-    def test_permanently_delete_resource_failure(self, resource_service, mock_client):
-        """Test handling permanently delete resource failure."""
-        mock_client.filesystem.Resource.permanently_delete.side_effect = Exception(
-            "Not in trash"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to permanently delete resource ri.compass.main.dataset.123: Not in trash",
-        ):
-            resource_service.permanently_delete_resource("ri.compass.main.dataset.123")
-
-    # ==================== Markings Operations Tests ====================
-
-    def test_add_markings(self, resource_service, mock_client):
-        """Test adding markings to a resource."""
-        mock_client.filesystem.Resource.add_markings.return_value = None
-        resource_service._client = mock_client
-
-        marking_ids = ["marking-1", "marking-2"]
-        resource_service.add_markings("ri.compass.main.dataset.123", marking_ids)
-
-        mock_client.filesystem.Resource.add_markings.assert_called_once_with(
-            "ri.compass.main.dataset.123", marking_ids=marking_ids, preview=True
-        )
-
-    def test_add_markings_failure(self, resource_service, mock_client):
-        """Test handling add markings failure."""
-        mock_client.filesystem.Resource.add_markings.side_effect = Exception(
-            "Invalid marking"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to add markings to resource ri.compass.main.dataset.123: Invalid marking",
-        ):
-            resource_service.add_markings("ri.compass.main.dataset.123", ["marking-1"])
-
-    def test_remove_markings(self, resource_service, mock_client):
-        """Test removing markings from a resource."""
-        mock_client.filesystem.Resource.remove_markings.return_value = None
-        resource_service._client = mock_client
-
-        marking_ids = ["marking-1", "marking-2"]
-        resource_service.remove_markings("ri.compass.main.dataset.123", marking_ids)
-
-        mock_client.filesystem.Resource.remove_markings.assert_called_once_with(
-            "ri.compass.main.dataset.123", marking_ids=marking_ids, preview=True
-        )
-
-    def test_remove_markings_failure(self, resource_service, mock_client):
-        """Test handling remove markings failure."""
-        mock_client.filesystem.Resource.remove_markings.side_effect = Exception(
-            "Marking not found"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to remove markings from resource ri.compass.main.dataset.123: Marking not found",
-        ):
-            resource_service.remove_markings(
-                "ri.compass.main.dataset.123", ["marking-1"]
-            )
-
-    def test_list_markings(self, resource_service, mock_client):
-        """Test listing markings on a resource."""
-        mock_markings = [Mock(), Mock()]
-        mock_markings[0].marking_id = "marking-1"
-        mock_markings[0].display_name = "Confidential"
-        mock_markings[1].marking_id = "marking-2"
-        mock_markings[1].display_name = "Internal"
-
-        mock_client.filesystem.Resource.markings.return_value = iter(mock_markings)
-        resource_service._client = mock_client
-
-        result = resource_service.list_markings("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.markings.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert len(result) == 2
-        assert result[0]["marking_id"] == "marking-1"
-        assert result[0]["display_name"] == "Confidential"
-        assert result[1]["marking_id"] == "marking-2"
-        assert result[1]["display_name"] == "Internal"
-
-    def test_list_markings_with_pagination(self, resource_service, mock_client):
-        """Test listing markings with pagination."""
-        mock_markings = [Mock()]
-        mock_markings[0].marking_id = "marking-1"
-
-        mock_client.filesystem.Resource.markings.return_value = iter(mock_markings)
-        resource_service._client = mock_client
-
-        resource_service.list_markings(
-            "ri.compass.main.dataset.123", page_size=10, page_token="token123"
-        )
-
-        mock_client.filesystem.Resource.markings.assert_called_once_with(
-            "ri.compass.main.dataset.123",
-            preview=True,
-            page_size=10,
-            page_token="token123",
-        )
-
-    # ==================== Access & Batch Operations Tests ====================
-
-    def test_get_access_requirements(self, resource_service, mock_client):
-        """Test getting access requirements for a resource."""
-        mock_requirements = Mock()
-        mock_org = Mock()
-        mock_org.organization_rid = "org-1"
-        mock_org.display_name = "My Org"
-        mock_marking = Mock()
-        mock_marking.marking_id = "marking-1"
-        mock_marking.display_name = "Confidential"
-        mock_requirements.organizations = [mock_org]
-        mock_requirements.markings = [mock_marking]
-
-        mock_client.filesystem.Resource.get_access_requirements.return_value = (
-            mock_requirements
-        )
-        resource_service._client = mock_client
-
-        result = resource_service.get_access_requirements("ri.compass.main.dataset.123")
-
-        mock_client.filesystem.Resource.get_access_requirements.assert_called_once_with(
-            "ri.compass.main.dataset.123", preview=True
-        )
-        assert len(result["organizations"]) == 1
-        assert result["organizations"][0]["organization_rid"] == "org-1"
-        assert result["organizations"][0]["display_name"] == "My Org"
-        assert len(result["markings"]) == 1
-        assert result["markings"][0]["marking_id"] == "marking-1"
-
-    def test_get_access_requirements_failure(self, resource_service, mock_client):
-        """Test handling get access requirements failure."""
-        mock_client.filesystem.Resource.get_access_requirements.side_effect = Exception(
-            "Access denied"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get access requirements for resource ri.compass.main.dataset.123: Access denied",
-        ):
-            resource_service.get_access_requirements("ri.compass.main.dataset.123")
-
-    def test_get_resources_by_path_batch(self, resource_service, mock_client):
-        """Test getting multiple resources by paths in batch."""
-        mock_response = Mock()
-        mock_resources = [Mock(), Mock()]
-        mock_resources[0].rid = "ri.compass.main.dataset.123"
-        mock_resources[0].path = "/Org/Project/Dataset1"
-        mock_resources[1].rid = "ri.compass.main.dataset.456"
-        mock_resources[1].path = "/Org/Project/Dataset2"
-        mock_response.resources = mock_resources
-
-        mock_client.filesystem.Resource.get_by_path_batch.return_value = mock_response
-        resource_service._client = mock_client
-
-        paths = ["/Org/Project/Dataset1", "/Org/Project/Dataset2"]
-        result = resource_service.get_resources_by_path_batch(paths)
-
-        # Verify the call was made with GetByPathResourcesBatchRequestElement objects
-        call_args = mock_client.filesystem.Resource.get_by_path_batch.call_args
-        assert call_args.kwargs["preview"] is True
-        elements = call_args.kwargs["body"]
-        assert len(elements) == 2
-        assert elements[0].path == "/Org/Project/Dataset1"
-        assert elements[1].path == "/Org/Project/Dataset2"
-
-        assert len(result) == 2
-        assert result[0]["rid"] == "ri.compass.main.dataset.123"
-        assert result[1]["rid"] == "ri.compass.main.dataset.456"
-
-    def test_get_resources_by_path_batch_too_many(self, resource_service):
-        """Test batch get by path with too many paths raises error."""
-        paths = ["/path"] * 1001
-
-        with pytest.raises(ValueError, match="Maximum batch size is 1000 paths"):
-            resource_service.get_resources_by_path_batch(paths)
-
-    def test_get_resources_by_path_batch_failure(self, resource_service, mock_client):
-        """Test handling batch get by path failure."""
-        mock_client.filesystem.Resource.get_by_path_batch.side_effect = Exception(
-            "Invalid paths"
-        )
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resources by path batch: Invalid paths",
-        ):
-            resource_service.get_resources_by_path_batch(["/Org/Project/Dataset1"])
-
-    def test_get_resources_by_path_batch_failure_with_empty_message(
-        self, resource_service, mock_client
-    ):
-        """Test handling batch get by path failure with empty exception message."""
-        mock_client.filesystem.Resource.get_by_path_batch.side_effect = Exception()
-        resource_service._client = mock_client
-
-        with pytest.raises(
-            RuntimeError,
-            match="Failed to get resources by path batch: Exception",
-        ):
-            resource_service.get_resources_by_path_batch(["/Org/Project/Dataset1"])
-
-    def test_format_error_detail_with_args_fallback(self, resource_service):
-        """Test error detail uses args when __str__ returns empty."""
-
-        class EmptyStrException(Exception):
-            def __str__(self):
-                return ""
-
-        err = EmptyStrException("some detail")
-        assert resource_service._format_error_detail(err) == "some detail"
-
-    # ==================== Formatting Tests ====================
-
-    def test_format_marking_info(self, resource_service):
-        """Test formatting marking information."""
-        mock_marking = Mock()
-        mock_marking.marking_id = "marking-1"
-        mock_marking.display_name = "Confidential"
-        mock_marking.description = "Confidential data"
-        mock_marking.category_id = "cat-1"
-        mock_marking.category_display_name = "Security"
-
-        result = resource_service._format_marking_info(mock_marking)
-
-        assert result["marking_id"] == "marking-1"
-        assert result["display_name"] == "Confidential"
-        assert result["description"] == "Confidential data"
-        assert result["category_id"] == "cat-1"
-        assert result["category_display_name"] == "Security"
-
-    def test_format_access_requirements(self, resource_service):
-        """Test formatting access requirements."""
-        mock_requirements = Mock()
-        mock_org = Mock()
-        mock_org.organization_rid = "org-1"
-        mock_org.display_name = "My Org"
-        mock_marking = Mock()
-        mock_marking.marking_id = "marking-1"
-        mock_marking.display_name = "Confidential"
-        mock_requirements.organizations = [mock_org]
-        mock_requirements.markings = [mock_marking]
-
-        result = resource_service._format_access_requirements(mock_requirements)
-
-        assert len(result["organizations"]) == 1
-        assert result["organizations"][0]["organization_rid"] == "org-1"
-        assert len(result["markings"]) == 1
-        assert result["markings"][0]["marking_id"] == "marking-1"
-
-    def test_format_access_requirements_empty(self, resource_service):
-        """Test formatting access requirements with no orgs or markings."""
-        mock_requirements = Mock()
-        mock_requirements.organizations = None
-        mock_requirements.markings = None
-
-        result = resource_service._format_access_requirements(mock_requirements)
-
-        assert result["organizations"] == []
-        assert result["markings"] == []
+from foundry_sdk import NotFoundError
+from foundry_sdk.v2.filesystem.models import (
+    AccessRequirements,
+    GetByPathResourcesBatchResponse,
+    GetResourcesBatchResponse,
+    Marking,
+    Organization,
+    Resource,
+)
+
+from pltr.services.resource import (
+    ROOT_FOLDER_RID,
+    ResourceService,
+    normalize_resource_type,
+    resource_matches,
+)
+from tests import foundry_json as fj
+from tests import foundry_json_filesystem as fs
+
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
+RID = fs.DATASET_RID
+RESOURCE_PATH = f"/api/v2/filesystem/resources/{RID}"
+
+
+def children_path(folder_rid: str) -> str:
+    return f"/api/v2/filesystem/folders/{folder_rid}/children"
+
+
+DATA = fs.child_resource(RID, "Sales Data", description="Quarterly sales")
+SUBFOLDER = fs.child_resource("ri.compass.main.folder.sub", "Archive", "COMPASS_FOLDER")
+
+
+# ------------------------------------------------------------------ reads
+
+
+def test_get_resource(stub_foundry_http):
+    stub_foundry_http.respond(json=DATA)
+
+    resource = ResourceService().get_resource(RID)
+
+    assert isinstance(resource, Resource)
+    assert (resource.rid, resource.type) == (RID, "FOUNDRY_DATASET")
+    assert resource.project_rid == fj.PROJECT_RID
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("GET", RESOURCE_PATH)
+    assert dict(request.url.params) == {}
+
+
+def test_get_resource_by_path_sends_the_path_as_query(stub_foundry_http):
+    stub_foundry_http.respond(json=DATA)
+
+    resource = ResourceService().get_resource_by_path("/Test Space/Test Project/Sales")
+
+    assert resource.display_name == "Sales Data"
+    [request] = stub_foundry_http.requests
+    assert request.url.path == "/api/v2/filesystem/resources/getByPath"
+    assert dict(request.url.params) == {"path": "/Test Space/Test Project/Sales"}
+
+
+def test_list_children_fetches_one_page(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([DATA, SUBFOLDER], token="p2"))
+
+    page = ResourceService().list_children(fj.PROJECT_RID, page_size=2, page_token="p1")
+
+    assert [item.rid for item in page.data] == [RID, SUBFOLDER["rid"]]
+    assert page.next_page_token == "p2"
+    [request] = stub_foundry_http.requests
+    assert request.url.path == children_path(fj.PROJECT_RID)
+    assert dict(request.url.params) == {"pageSize": "2", "pageToken": "p1"}
+
+
+def test_list_children_filters_by_type_locally(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([DATA, SUBFOLDER], token="p2"))
+
+    page = ResourceService().list_children(
+        fj.PROJECT_RID, resource_type="COMPASS_FOLDER"
+    )
+
+    assert [item.rid for item in page.data] == [SUBFOLDER["rid"]]
+    assert page.next_page_token == "p2"
+    assert dict(stub_foundry_http.requests[0].url.params) == {}  # no type filter
+
+
+def test_get_resources_batch_reads_data_map(stub_foundry_http):
+    other = "ri.foundry.main.dataset.other"
+    stub_foundry_http.respond(
+        json={"data": {RID: DATA, other: fs.child_resource(other, "Other")}}
+    )
+
+    response = ResourceService().get_resources_batch([RID, other])
+
+    assert isinstance(response, GetResourcesBatchResponse)
+    assert response.data[other].display_name == "Other"
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (
+        "POST",
+        "/api/v2/filesystem/resources/getBatch",
+    )
+    assert json.loads(request.content) == [{"resourceRid": RID}, {"resourceRid": other}]
+
+
+def test_get_resources_by_path_batch_reads_data_list(stub_foundry_http):
+    stub_foundry_http.respond(json={"data": [DATA]})
+
+    response = ResourceService().get_resources_by_path_batch(["/a/b", "/a/c"])
+
+    assert isinstance(response, GetByPathResourcesBatchResponse)
+    assert [item.rid for item in response.data] == [RID]
+    [request] = stub_foundry_http.requests
+    assert request.url.path == "/api/v2/filesystem/resources/getByPathBatch"
+    assert json.loads(request.content) == [{"path": "/a/b"}, {"path": "/a/c"}]
+
+
+@pytest.mark.parametrize(
+    "method", ["get_resources_batch", "get_resources_by_path_batch"]
+)
+def test_batches_reject_more_than_1000(stub_foundry_http, method):
+    values = [f"ri.foundry.main.dataset.d{i}" for i in range(1001)]
+
+    with pytest.raises(ValueError, match="Maximum batch size is 1000"):
+        getattr(ResourceService(), method)(values)
+
+    assert stub_foundry_http.requests == []
+
+
+def test_list_markings_returns_marking_ids(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([fs.MARKING_ID, "m-2"], token="p2"))
+
+    page = ResourceService().list_markings(RID, page_size=2)
+
+    assert page.data == [fs.MARKING_ID, "m-2"]
+    assert page.next_page_token == "p2"
+    [request] = stub_foundry_http.requests
+    assert request.url.path == f"{RESOURCE_PATH}/markings"
+    assert dict(request.url.params) == {"pageSize": "2"}
+
+
+def test_get_access_requirements(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.access_requirements())
+
+    requirements = ResourceService().get_access_requirements(RID)
+
+    assert isinstance(requirements, AccessRequirements)
+    [organization] = requirements.organizations
+    assert isinstance(organization, Organization)
+    assert organization.organization_rid == fj.ORG_A
+    [marking] = requirements.markings
+    assert isinstance(marking, Marking)
+    assert marking.is_directly_applied is True
+    assert stub_foundry_http.requests[0].url.path == (
+        f"{RESOURCE_PATH}/getAccessRequirements"
+    )
+
+
+# ------------------------------------------------------------------ writes
+
+
+@pytest.mark.parametrize(
+    "method, http_method, suffix",
+    [
+        ("delete_resource", "DELETE", ""),
+        ("restore_resource", "POST", "/restore"),
+        ("permanently_delete_resource", "POST", "/permanentlyDelete"),
+    ],
+)
+def test_trash_operations(stub_foundry_http, method, http_method, suffix):
+    stub_foundry_http.respond(204)
+
+    assert getattr(ResourceService(), method)(RID) is None
+
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == (http_method, RESOURCE_PATH + suffix)
+    assert dict(request.url.params) == {}
+
+
+@pytest.mark.parametrize(
+    "method, suffix",
+    [("add_markings", "/addMarkings"), ("remove_markings", "/removeMarkings")],
+)
+def test_marking_operations(stub_foundry_http, method, suffix):
+    stub_foundry_http.respond(204)
+
+    getattr(ResourceService(), method)(RID, [fs.MARKING_ID, "m-2"])
+
+    [request] = stub_foundry_http.requests
+    assert (request.method, request.url.path) == ("POST", RESOURCE_PATH + suffix)
+    assert json.loads(request.content) == {"markingIds": [fs.MARKING_ID, "m-2"]}
+
+
+def test_sdk_errors_propagate_unchanged(stub_foundry_http):
+    stub_foundry_http.respond(
+        404, json=fj.error("ResourceNotFound", parameters={"resourceRid": RID})
+    )
+
+    with pytest.raises(NotFoundError) as excinfo:
+        ResourceService().get_resource(RID)
+
+    assert excinfo.value.name == "ResourceNotFound"
+
+
+# ------------------------------------------------------------------ search
+
+
+def test_search_scans_folders_breadth_first(stub_foundry_http):
+    nested = fs.child_resource(
+        "ri.foundry.main.dataset.nested", "old sales", parent=SUBFOLDER["rid"]
+    )
+    stub_foundry_http.respond(json=fs.page([DATA, SUBFOLDER], token="p2"))
+    stub_foundry_http.respond(json=fs.page([]))  # second page of the start folder
+    stub_foundry_http.respond(json=fs.page([nested]))
+
+    result = ResourceService().search_resources("SALES", folder_rid=fj.PROJECT_RID)
+
+    assert [item.rid for item in result.matches] == [RID, nested["rid"]]
+    assert (result.folders_scanned, result.truncated) == (2, False)
+    first, second, third = stub_foundry_http.requests
+    assert first.url.path == second.url.path == children_path(fj.PROJECT_RID)
+    assert second.url.params["pageToken"] == "p2"
+    assert third.url.path == children_path(SUBFOLDER["rid"])
+
+
+def test_search_starts_at_the_root_folder(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([]))
+
+    result = ResourceService().search_resources("anything")
+
+    assert result.matches == []
+    assert stub_foundry_http.requests[0].url.path == children_path(ROOT_FOLDER_RID)
+
+
+def test_search_type_filter_still_descends_into_folders(stub_foundry_http):
+    folder_named_sales = fs.child_resource(
+        "ri.compass.main.folder.sales", "Sales", "COMPASS_FOLDER"
+    )
+    stub_foundry_http.respond(json=fs.page([folder_named_sales]))
+    stub_foundry_http.respond(json=fs.page([DATA]))
+
+    result = ResourceService().search_resources(
+        "sales", folder_rid=fj.PROJECT_RID, resource_type="FOUNDRY_DATASET"
+    )
+
+    assert [item.rid for item in result.matches] == [RID]
+
+
+def test_search_limit_stops_early(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([DATA, SUBFOLDER]))
+
+    result = ResourceService().search_resources("a", folder_rid=fj.PROJECT_RID, limit=1)
+
+    assert [item.rid for item in result.matches] == [RID]
+    assert len(stub_foundry_http.requests) == 1  # never descends into Archive
+
+
+def test_search_stops_at_max_folders(stub_foundry_http):
+    stub_foundry_http.respond(json=fs.page([SUBFOLDER]))
+
+    result = ResourceService().search_resources(
+        "nothing-matches", folder_rid=fj.PROJECT_RID, max_folders=1
+    )
+
+    assert result.matches == []
+    assert (result.folders_scanned, result.truncated) == (1, True)
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_search_rejects_an_empty_query(stub_foundry_http):
+    with pytest.raises(ValueError, match="empty"):
+        ResourceService().search_resources("  ")
+    assert stub_foundry_http.requests == []
+
+
+def test_resource_matches_reads_real_fields():
+    resource = Resource.model_validate(DATA)
+
+    assert resource_matches(resource, "quarterly")  # description
+    assert resource_matches(resource, "test project")  # path
+    assert resource_matches(resource, "foundry_dataset")  # type
+    assert not resource_matches(resource, "missing")
+
+
+@pytest.mark.parametrize(
+    "given, expected",
+    [
+        ("FOUNDRY_DATASET", "FOUNDRY_DATASET"),
+        ("compass_folder", "COMPASS_FOLDER"),
+        ("dataset", "FOUNDRY_DATASET"),
+        ("Folder", "COMPASS_FOLDER"),
+        ("mio-media-set", "MIO_MEDIA_SET"),
+    ],
+)
+def test_normalize_resource_type(given, expected):
+    assert normalize_resource_type(given) == expected
+
+
+def test_normalize_resource_type_rejects_unknown_types():
+    with pytest.raises(ValueError):
+        normalize_resource_type("spreadsheet")
