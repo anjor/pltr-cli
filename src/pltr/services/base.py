@@ -2,18 +2,11 @@
 Base service class for Foundry API wrappers.
 """
 
-from typing import Any, Optional, Dict, Callable, Iterator
+from typing import Any, Optional, Dict
 from abc import ABC, abstractmethod
-import json
 import requests
 
 from ..auth.manager import AuthManager
-from ..utils.pagination import (
-    PaginationConfig,
-    PaginationResult,
-    IteratorPaginationHandler,
-    ResponsePaginationHandler,
-)
 
 
 class BaseService(ABC):
@@ -125,108 +118,3 @@ class BaseService(ABC):
         response.raise_for_status()
 
         return response
-
-    def _paginate_iterator(
-        self,
-        iterator: Iterator[Any],
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> PaginationResult:
-        """
-        Handle pagination for iterator-based SDK methods.
-
-        Args:
-            iterator: Iterator returned from SDK (e.g., ResourceIterator)
-            config: Pagination configuration
-            progress_callback: Optional progress callback
-
-        Returns:
-            PaginationResult with collected items and metadata
-
-        Example:
-            >>> iterator = self.service.Dataset.File.list(dataset_rid, page_size=20)
-            >>> result = self._paginate_iterator(iterator, config)
-        """
-        handler = IteratorPaginationHandler()
-        return handler.collect_pages(iterator, config, progress_callback)
-
-    def _paginate_response(
-        self,
-        fetch_fn: Callable[[Optional[str]], Dict[str, Any]],
-        config: PaginationConfig,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> PaginationResult:
-        """
-        Handle pagination for response-based SDK methods.
-
-        Args:
-            fetch_fn: Function that accepts page_token and returns dict with
-                     'data' and 'next_page_token' keys
-            config: Pagination configuration
-            progress_callback: Optional progress callback
-
-        Returns:
-            PaginationResult with collected items and metadata
-
-        Example:
-            >>> def fetch(token):
-            ...     response = self.service.User.list(page_token=token)
-            ...     return self._serialize_response(response)
-            >>> result = self._paginate_response(fetch, config)
-        """
-        handler = ResponsePaginationHandler()
-        return handler.collect_pages(fetch_fn, config, progress_callback)
-
-    def _serialize_response(self, response: Any) -> Dict[str, Any]:
-        """
-        Convert response object to serializable dictionary.
-
-        .. deprecated::
-            Don't use this in new or converted code. It calls pydantic's
-            deprecated ``.dict()`` and produces snake_case keys with nulls,
-            which is not pltr's JSON contract. Return the SDK model from the
-            service and print it with ``pltr.contract.emit`` (JSON output is
-            then ``pltr.contract.to_jsonable``: the SDK's own camelCase
-            serialization without nulls). Kept unchanged for modules that
-            haven't been converted yet.
-
-        This handles various SDK response types including Pydantic models,
-        regular objects, and primitives.
-
-        Args:
-            response: Response object from SDK
-
-        Returns:
-            Serializable dictionary representation
-
-        Note:
-            This method was moved from AdminService to provide consistent
-            serialization across all services.
-        """
-        if response is None:
-            return {}
-
-        # Handle different response types
-        if hasattr(response, "dict"):
-            # Pydantic models
-            return response.dict()
-        elif hasattr(response, "__dict__"):
-            # Regular objects
-            result = {}
-            for key, value in response.__dict__.items():
-                if not key.startswith("_"):
-                    try:
-                        # Try to serialize the value
-                        json.dumps(value)
-                        result[key] = value
-                    except (TypeError, ValueError):
-                        # Convert non-serializable values to string
-                        result[key] = str(value)
-            return result
-        else:
-            # Primitive types or already serializable
-            try:
-                json.dumps(response)
-                return response
-            except (TypeError, ValueError):
-                return {"data": str(response)}

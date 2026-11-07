@@ -24,8 +24,6 @@ from pltr.contract.runtime import (
     format_from_args,
     set_output_format,
 )
-from pltr.utils.formatting import OutputFormatter
-from pltr.utils.progress import SpinnerProgressTracker
 
 runner = CliRunner()
 
@@ -127,8 +125,6 @@ def test_long_messages_are_not_wrapped(capsys, monkeypatch):
 def test_spinner_writes_nothing_when_stderr_is_not_a_terminal(capsys):
     with spinner("working"):
         pass
-    with SpinnerProgressTracker().track_spinner("working"):
-        pass
     assert capsys.readouterr() == ("", "")
 
 
@@ -180,42 +176,6 @@ def test_sdk_warning_inside_a_command_becomes_a_json_line():
         "type": "warning",
         "message": "UserWarning: SDK says hi",
     }
-
-
-# ------------------------------------------------- legacy OutputFormatter
-
-
-def test_legacy_print_methods_go_to_stderr(capsys):
-    formatter = OutputFormatter()
-    formatter.print_success("ok")
-    formatter.print_info("note")
-    formatter.print_warning("hmm")
-    formatter.print_error("bad")
-    out, err = capsys.readouterr()
-    assert out == ""
-    for text in ("ok", "note", "hmm", "bad"):
-        assert text in err
-
-
-def test_legacy_print_methods_in_json_mode(capsys):
-    set_output_format("json")
-    formatter = OutputFormatter()
-    formatter.print_success("ok")
-    formatter.print_info("note")
-    formatter.print_warning("hmm")
-    formatter.print_error("bad")
-    out, err = capsys.readouterr()
-    assert out == ""
-    assert [json.loads(line) for line in err.splitlines()] == [
-        {"type": "warning", "message": "hmm"},
-        {"type": "error", "message": "bad"},
-    ]
-
-
-def test_legacy_data_output_stays_on_stdout(capsys):
-    OutputFormatter().format_output([{"a": 1}], "json")
-    out, err = capsys.readouterr()
-    assert json.loads(out) == [{"a": 1}] and err == ""
 
 
 def test_format_does_not_leak_to_the_next_command_in_a_shell_session(capsys):

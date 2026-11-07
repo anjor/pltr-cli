@@ -51,6 +51,16 @@
   compatibility wrappers kept only for `pltr cp`). Use `create`,
   `get_dataset_schema`, `list_dataset_files`, `start_transaction` and
   `ResourceService.delete_resource`.
+- Legacy output helpers no command uses since every command moved to
+  `pltr.contract` (library API): `pltr.utils.formatting` (`OutputFormatter`),
+  `pltr.utils.progress` (`FileProgressTracker`, `SpinnerProgressTracker`,
+  ...), `pltr.utils.pagination` (`PaginationConfig`, the pagination
+  handlers), `BaseService._paginate_iterator`, `_paginate_response` and
+  `_serialize_response`, and the unused completion helpers
+  `complete_ontology_action`, `complete_file_path`,
+  `setup_completion_environment`, `handle_completion` and
+  `COMPLETION_FUNCTIONS`. Use `pltr.contract` (`emit`, `spinner`,
+  `collect_pages`, `to_jsonable`).
 
 ### Fixed
 
@@ -94,16 +104,21 @@
   schema now works" with the cp schema entry above (the fix needs both), and
   drop `b1-dataset.md`'s Deprecated entry for the `DatasetService` compat
   methods (they are removed now).
-- `docs/pagination.md`: the "Configuration" section (around line 431) lists
-  `page_size` ("Default items per page (default: 20)") as a setting; it is
-  deprecated and unused (use `--page-size`).
-- `README.md` exit-code table (and any other list of error types, e.g. in
-  `claude_skill/`): add `invalid_response` to exit code 7 ("the API's
-  response doesn't match the SDK's model or isn't JSON; upgrade pltr").
-- `README.md`, `docs/user-guide/commands.md` and
-  `claude_skill/reference/dataset-commands.md` (cp sections): a dataset copy
-  copies the schema after the files and fails (trashing the copy) when the
-  schema can't be copied; `--no-schema` copies only the files.
+- `docs/pagination.md`: the "Related Settings" section (around line 431)
+  lists `page_size` ("Default items per page (default: 20)") as a setting;
+  it is deprecated and unused (use `--page-size`). The `pltr config show`
+  command it mentions doesn't exist.
+- `docs/api/wrapper.md` describes `OutputFormatter`, `utils/progress.py` or
+  `utils/pagination.py`, which are removed (see Removed).
+- Exit-code tables: add `invalid_response` to exit code 7 ("the API's
+  response doesn't match the SDK's model or isn't JSON: upgrade pltr; a
+  retry won't help") in `README.md` (line ~189), `docs/api-commands.md`
+  (line ~213) and `claude_skill/SKILL.md` (line ~100, "What to do": upgrade
+  pltr rather than retry).
+- `README.md` and `docs/user-guide/commands.md` (cp sections): a dataset
+  copy copies the schema after the files and fails (trashing the copy) when
+  the schema can't be copied; `--no-schema` copies only the files. (The
+  generated `claude_skill/reference/` is regenerated on this branch.)
 
 ### Not verified live
 

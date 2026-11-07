@@ -520,9 +520,8 @@ End with `### Docs to update` and `### Not verified live`.
 - Keep `cache_rid(...)` calls for RID completion, after the call succeeds.
 - Don't call `iter()` or `list()` on a `ResourceIterator` you want one page
   of: iterating it fetches every page.
-- The legacy `OutputFormatter` still works for unconverted modules. Its
-  `print_*` methods now write to stderr; in JSON mode `print_info` and
-  `print_success` are suppressed and `print_warning`/`print_error` become
-  `{"type": "warning"|"error"}` lines. Don't use it in converted code, and
-  don't use `BaseService._serialize_response` (deprecated: snake_case with
-  nulls).
+- Every command is converted, so the legacy helpers are gone:
+  `pltr.utils.formatting.OutputFormatter`, `pltr.utils.progress`
+  (`SpinnerProgressTracker`, ...), `pltr.utils.pagination` and
+  `BaseService._serialize_response`/`_paginate_*`. The "Before" example above
+  shows how they were used; use `emit`, `spinner` and `collect_pages`.
