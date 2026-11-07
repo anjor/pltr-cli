@@ -12,6 +12,8 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-07
+
 This release puts every pltr command on one set of rules for output, errors
 and confirmations, fixes about 40 commands that could never succeed, and adds
 `pltr api`, a command for every method of the Foundry Platform SDK. It changes
@@ -1257,7 +1259,8 @@ No changes to pltr itself; only the version number changed.
   and OAuth2 profiles, with credentials in the system keyring),
   `pltr verify`, `pltr dataset get` and `pltr dataset create`.
 
-[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/anjor/pltr-cli/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/anjor/pltr-cli/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/anjor/pltr-cli/compare/v0.14.1...v0.15.0
 [0.14.1]: https://github.com/anjor/pltr-cli/compare/v0.14.0...v0.14.1
