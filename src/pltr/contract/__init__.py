@@ -59,7 +59,15 @@ from .options import (
     profile_option,
     stdin_is_interactive,
 )
-from .output import ColumnError, Columns, column_value, emit, format_cell
+from .output import (
+    ColumnError,
+    Columns,
+    check_binary_output,
+    column_value,
+    emit,
+    emit_bytes,
+    format_cell,
+)
 from .runtime import (
     FORMAT_ENVVAR,
     FORMATS,
@@ -108,6 +116,8 @@ __all__ = [
     "load_json_input",
     # output
     "emit",
+    "emit_bytes",
+    "check_binary_output",
     "Columns",
     "ColumnError",
     "column_value",

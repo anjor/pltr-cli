@@ -77,8 +77,18 @@ def test_coverage_script_exit_status(coverage_script, capsys):
     assert "Generated coverage:" in capsys.readouterr().out
 
 
-def test_curated_coverage_hook_exists(coverage_script):
-    assert coverage_script.curated_commands() == {}
+def test_curated_coverage_comes_from_command_metadata(coverage_script):
+    """Curated commands converted to pltr.contract count (e.g. `pltr folder get`)."""
+    curated = coverage_script.curated_commands()
+    assert "pltr folder get" in curated["filesystem.Folder.get"]
+    for method, commands in curated.items():
+        assert commands and all(c.startswith("pltr ") for c in commands), method
+        assert not any(c.startswith("pltr api ") for c in commands), method
+    generated = coverage_script.generated_commands()
+    assert generated["admin.User.list"] == "pltr api admin user list"
+    report = coverage_script.compute().to_dict()
+    assert report["curated"] == sum(1 for m in report["methods"] if m["curated"])
+    assert report["curatedUnknown"] == []
 
 
 def test_destructive_list_matches_seed_names(generator):
@@ -120,6 +130,28 @@ def test_stale_config_entries_fail_generation(generator, monkeypatch):
     monkeypatch.setattr(generator, "API_VERSIONS", (broken,))
     with pytest.raises(generator.GeneratorError, match="no_such_method"):
         generator.build_specs()
+
+
+def test_integer_path_parameters_need_a_decision(generator, monkeypatch):
+    """The SDK can't URL-quote int path parameters, so such methods are excluded."""
+    config = generator.V2
+    excluded = dict(config.excluded)
+    del excluded["media_sets.MediaSet.tile"]
+    unreviewed = generator.dataclasses.replace(config, excluded=excluded)
+    monkeypatch.setattr(generator, "API_VERSIONS", (unreviewed,))
+    with pytest.raises(generator.GeneratorError, match="non-string path parameter"):
+        generator.build_specs()
+
+
+def test_the_int_path_parameter_bug_is_real(stub_foundry_http):
+    """foundry-platform-sdk 1.111.0 fails before sending the request."""
+    from foundry_sdk import SDKInternalError
+
+    with pytest.raises(SDKInternalError, match="quote_from_bytes"):
+        stub_foundry_http.client.media_sets.MediaSet.tile(
+            "ri.mio.main.media-set.a", "ri.mio.main.media-item.b", 1, 2, 3, preview=True
+        )
+    assert stub_foundry_http.requests == []
 
 
 @pytest.mark.parametrize(

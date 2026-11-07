@@ -31,7 +31,7 @@ DESCRIPTION = (
 )
 
 
-class ApiGroup(_runtime._JsonUsageErrorsMixin, TyperGroup):
+class ApiGroup(TyperGroup):
     """The `pltr api` group: namespaces come from the generated index."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

@@ -5,10 +5,20 @@ import datetime
 import io
 import json
 
+import click
 import pytest
 from foundry_sdk.v2.filesystem.models import Folder, Space
+from foundry_sdk.v2.ontologies.models import ListObjectsResponseV2
 
-from pltr.contract import ColumnError, Page, column_value, emit, format_cell
+from pltr.contract import (
+    ColumnError,
+    Page,
+    check_binary_output,
+    column_value,
+    emit,
+    emit_bytes,
+    format_cell,
+)
 from tests import foundry_json as fj
 
 FOLDER = Folder.model_validate(fj.folder())
@@ -170,3 +180,75 @@ def test_emit_to_output_file(fmt, tmp_path, capsys):
     assert out == ""
     assert fj.FOLDER_RID in path.read_text(encoding="utf-8")
     assert str(path) in err  # text mode: tell the user where it went
+
+
+# ------------------------------------------------------- paged response models
+
+PAGED_OBJECTS = ListObjectsResponseV2.model_validate(
+    {
+        "data": [{"__apiName": "Aircraft", "tailNumber": "N1"}],
+        "nextPageToken": "page-2",
+        "totalCount": "3",
+    }
+)
+
+
+def test_emit_paged_response_model_json_keeps_the_whole_response(capsys):
+    emit(PAGED_OBJECTS, format="json")
+    assert json.loads(capsys.readouterr().out) == {
+        "data": [{"__apiName": "Aircraft", "tailNumber": "N1"}],
+        "nextPageToken": "page-2",
+        "totalCount": "3",
+    }
+
+
+def test_emit_paged_response_model_table_and_csv_show_its_data(capsys):
+    emit(PAGED_OBJECTS, format="csv")
+    out, err = capsys.readouterr()
+    assert out == "__apiName,tailNumber\nAircraft,N1\n"
+    assert "--page-token page-2" in err
+    emit(PAGED_OBJECTS, format="table")
+    out = capsys.readouterr().out
+    assert "tailNumber" in out and "N1" in out and "totalCount" not in out
+
+
+def test_a_result_with_data_but_no_page_token_is_a_single_object(capsys):
+    emit({"data": [1, 2], "model": "m"}, format="csv")
+    assert capsys.readouterr().out == 'data,model\n"[1,2]",m\n'
+
+
+# --------------------------------------------------------------------- binary
+
+
+def test_emit_bytes_to_stdout(capfdbinary):
+    assert emit_bytes([b"ab", b"c"]) == 3
+    assert capfdbinary.readouterr().out == b"abc"
+
+
+def test_emit_bytes_to_a_file(tmp_path, capsys):
+    target = tmp_path / "out.bin"
+    assert emit_bytes(b"\x00\x01", output=str(target)) == 2
+    assert target.read_bytes() == b"\x00\x01"
+    assert f"Wrote 2 bytes to {target}" in capsys.readouterr().err
+
+
+def test_emit_bytes_refuses_a_terminal(monkeypatch):
+    monkeypatch.setattr("pltr.contract.output._stdout_is_terminal", lambda: True)
+    with pytest.raises(click.UsageError, match="--output FILE"):
+        check_binary_output(None)
+    with pytest.raises(click.UsageError):
+        emit_bytes(b"x")
+    check_binary_output("-")  # explicit stdout is allowed
+    check_binary_output("file.bin")
+
+
+def test_emit_bytes_removes_a_partial_file(tmp_path):
+    target = tmp_path / "out.bin"
+
+    def chunks():
+        yield b"partial"
+        raise ConnectionError("stream broke")
+
+    with pytest.raises(ConnectionError):
+        emit_bytes(chunks(), output=str(target))
+    assert not target.exists()

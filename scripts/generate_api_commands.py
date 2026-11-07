@@ -50,10 +50,12 @@ DESTRUCTIVE_NAME_SEED = re.compile(
     r"delete|permanently_delete|abort|cancel|disable|(?:remove|revoke|replace)\w*"
 )
 
-# Options that every generated command (or some of them) adds. An SDK parameter
-# whose option name collides with one of these is exposed as `--api-<name>`.
+# The shared pltr.contract options that every generated command (or some of
+# them) adds. An SDK parameter whose option name collides with one of these is
+# exposed as `--api-<name>`. (`--page-size`/`--page-token` of paged methods are
+# the SDK's own parameters, provided by the shared paging options.)
 RESERVED_OPTION_NAMES = frozenset(
-    {"all", "format", "help", "output", "output-file", "profile", "yes"}
+    {"all", "format", "help", "max-pages", "output", "profile", "yes"}
 )
 
 
@@ -155,6 +157,13 @@ SSE_REASON = (
     "commands print one JSON document, so SSE methods are left out for now."
 )
 
+INT_PATH_REASON = (
+    "Can't be called through foundry-platform-sdk 1.111.0: the SDK URL-quotes path "
+    "parameters with urllib.parse.quote, which raises for this method's integer "
+    "path parameter, so no request is ever sent (SDKInternalError). Re-check after "
+    "an SDK bump."
+)
+
 V2 = ApiVersionConfig(
     key="v2",
     client="foundry_sdk.v2:FoundryClient",
@@ -165,6 +174,8 @@ V2 = ApiVersionConfig(
     excluded={
         "functions.Query.streaming_execute": SSE_REASON,
         "functions.Query.streaming_execute_events": SSE_REASON,
+        "media_sets.MediaSet.tile": INT_PATH_REASON,
+        "models.ModelStudio.ConfigVersion.get": INT_PATH_REASON,
     },
 )
 
@@ -617,6 +628,15 @@ def method_spec(
                 f"{method.dotted}: can't tell where parameter {name!r} is sent"
             )
         param.update(parameter_type(parameter.annotation))
+        if param["in"] == "path" and param["type"] not in ("str", "choice"):
+            raise GeneratorError(
+                f"{method.dotted} has a non-string path parameter {name!r}, which "
+                "foundry-platform-sdk 1.111.0 can't URL-quote (the call fails before "
+                "sending a request). Check whether the installed SDK still fails; if "
+                f"so, add it to the `excluded` mapping of the {config.key} config in "
+                "scripts/generate_api_commands.py with INT_PATH_REASON, otherwise "
+                "relax this check."
+            )
         if param["type"] == "bytes":
             has_bytes_body = True
         if param["type"] == "json" or param["in"] == "path":
