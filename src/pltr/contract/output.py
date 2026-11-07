@@ -316,7 +316,8 @@ def emit(
             paged response model (tables show its ``data``; JSON prints the
             whole response) or ``None`` (a call with no response body).
         format: ``table``, ``json`` or ``csv`` (the command's ``--format``).
-        output: file path from ``--output``; stdout when ``None``.
+        output: file path from ``--output``; stdout when ``None`` or ``-``
+            (as for binary output).
         columns: curated table/CSV columns (see module docstring). Defaults
             to :func:`auto_columns`. Ignored for JSON.
         rows: for table/CSV only, a callable returning the row items when
@@ -332,6 +333,8 @@ def emit(
     stderr (JSON carries it as ``nextPageToken``).
     """
     fmt = (format or "table").lower()
+    if output == "-":
+        output = None  # `--output -` is stdout, in every format
     if fmt == "json":
         document = json.dumps(to_document(result), indent=2, ensure_ascii=True)
         _write_text(document + "\n", output)

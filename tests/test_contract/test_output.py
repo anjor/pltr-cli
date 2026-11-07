@@ -193,6 +193,17 @@ def test_emit_to_output_file(fmt, tmp_path, capsys):
     assert str(path) in err  # text mode: tell the user where it went
 
 
+@pytest.mark.parametrize("fmt", ["json", "csv", "table"])
+def test_emit_output_dash_is_stdout(fmt, tmp_path, monkeypatch, capsys):
+    """As for binary output; it used to write a file named `-`."""
+    monkeypatch.chdir(tmp_path)
+    emit([FOLDER], format=fmt, output="-", columns=COLUMNS)
+    out, err = capsys.readouterr()
+    assert fj.FOLDER_RID in out
+    assert err == ""  # no "Wrote ... to -"
+    assert not (tmp_path / "-").exists()
+
+
 # ------------------------------------------------------- paged response models
 
 PAGED_OBJECTS = ListObjectsResponseV2.model_validate(

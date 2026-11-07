@@ -371,6 +371,17 @@ def test_output_option_writes_file(stub_foundry_http, pltr_api, tmp_path):
     assert json.loads(target.read_text()) == user(USER_ID, "jdoe")
 
 
+def test_output_dash_is_stdout(stub_foundry_http, pltr_api, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    stub_foundry_http.respond(200, json={"data": [user(USER_ID, "jdoe")]})
+
+    result = pltr_api("admin", "user", "list", "--format", "json", "-o", "-")
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"data": [user(USER_ID, "jdoe")]}
+    assert not (tmp_path / "-").exists()
+
+
 def test_profile_is_passed_to_auth_manager(stub_foundry_http, pltr_api):
     stub_foundry_http.respond(200, json=user(USER_ID, "jdoe"))
 

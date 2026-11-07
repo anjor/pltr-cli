@@ -290,6 +290,9 @@ can search. See Added.
 - `--all` and `--max-pages` stop, with a warning, when the API returns a page
   token that was already sent in the same listing, instead of requesting the
   same page forever. The output's `nextPageToken` is that token.
+- `--output -` writes to stdout in every format, as it does for binary
+  output; for tables, JSON and CSV it wrote a file named `-`. This includes
+  `sql export QUERY -`.
 - Usage errors found while parsing arguments (a missing argument, an unknown
   option) are JSON errors when the command was asked for JSON (`--format json`
   or `PLTR_FORMAT=json`).

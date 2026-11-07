@@ -214,7 +214,8 @@ emit(result, *, format, output=None, columns=None, rows=None, title=None)
 - **CSV** has a header row from the column headers and one row per item. An
   empty list prints only the header.
 - **`output=`** writes the rendered text to a file instead of stdout. In
-  text mode, a "Wrote ... to FILE" message goes to stderr.
+  text mode, a "Wrote ... to FILE" message goes to stderr. `-` means
+  stdout, as for binary output.
 - **`rows=`** sets the table/CSV rows when they aren't `result` itself, for
   example a batch response whose `data` is a dict:
   `rows=lambda r: list(r.data.values())`. JSON still prints the whole

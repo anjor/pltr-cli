@@ -108,7 +108,7 @@ Every generated command has the shared options of all pltr commands:
 | `--format json` | the SDK's own serialization (see below) |
 | `--format csv` | CSV with one column per field |
 | `PLTR_FORMAT=json` | sets the default format, for agents and CI |
-| `--output FILE`, `-o FILE` | write the output to a file instead of stdout |
+| `--output FILE`, `-o FILE` | write the output to a file instead of stdout (`-`: stdout) |
 | `--profile NAME`, `-p NAME` | authentication profile (default: the active profile or `FOUNDRY_*` variables) |
 
 stdout carries only data. Messages (such as "more results are available") and
