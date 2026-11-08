@@ -344,3 +344,179 @@ def test_long_paths_and_rids_are_never_cut(stub_foundry_http) -> None:
     result = runner.invoke(app, ["context", "folder", fj.PROJECT_RID])
 
     assert f"| FOUNDRY_DATASET | {long_path} | {long_rid} |" in result.stdout
+
+
+# ------------------------------------------------------ review fixes (#194)
+
+
+def test_any_dataset_pack_is_cut_at_the_budget(stub_foundry_http) -> None:
+    struct = {
+        "name": "nested",
+        "type": "STRUCT",
+        "nullable": True,
+        "subSchemas": [
+            {"name": f"field_{i}", "type": "STRING", "nullable": True}
+            for i in range(30)
+        ],
+    }
+    fields = [
+        dj.field("c" * 40 + f"{i:04d}", "DECIMAL", precision=38, scale=18)
+        for i in range(2000)
+    ]
+    dataset_responses(stub_foundry_http, [struct, *fields], {"nested": [None]})
+
+    result = runner.invoke(app, ["context", "dataset", DS])
+
+    assert result.exit_code == 0, result.stderr
+    assert len(result.stdout.encode()) < MAX_DATASET_CONTEXT_BYTES
+    assert "pltr dataset schema get" in result.stdout  # where the full schema is
+
+
+def test_json_sample_values_are_cut(stub_foundry_http) -> None:
+    dataset_responses(
+        stub_foundry_http, [dj.field("text", "STRING")], {"text": ["x" * 5000]}
+    )
+
+    result = runner.invoke(app, ["context", "dataset", DS, "--format", "json"])
+
+    document = json.loads(result.stdout)
+    assert len(document["sampleRows"][0]["text"]) < 300
+    assert any("cut" in note for note in document["notes"])
+
+
+def test_many_fixture_rows_dont_flood_the_pack(stub_foundry_http, tmp_path) -> None:
+    import pandas
+
+    dataset_responses(
+        stub_foundry_http, [dj.field("id", "LONG")], {"id": list(range(200))}
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "context",
+            "dataset",
+            DS,
+            "--rows",
+            "200",
+            "--fixture-dir",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert len(json.loads(result.stdout)["sampleRows"]) == 10
+    assert len(pandas.read_parquet(tmp_path / "sales.parquet")) == 200
+
+
+def test_the_latest_job_is_on_the_branch(stub_foundry_http) -> None:
+    dataset_responses(stub_foundry_http, FIELDS, ROWS)
+
+    runner.invoke(app, ["context", "dataset", DS, "--branch", "dev"])
+
+    jobs = next(r for r in stub_foundry_http.requests if r.url.path.endswith("/jobs"))
+    assert jobs.url.params["branchName"] == "dev"
+
+
+def test_a_dataset_without_a_schema_still_has_a_pack(stub_foundry_http) -> None:
+    stub_foundry_http.respond(json=fj.resource(DS, "raw", "FOUNDRY_DATASET"))
+    stub_foundry_http.respond(
+        404,
+        json=fj.error(
+            "SchemaNotFound", parameters={"datasetRid": DS, "branchName": "master"}
+        ),
+    )
+    stub_foundry_http.respond(
+        400, json=fj.error("ReadTableDatasetHasNoSchema", "INVALID_ARGUMENT")
+    )
+    stub_foundry_http.respond(json={"data": []})
+    stub_foundry_http.respond(json={"data": []})
+
+    result = runner.invoke(app, ["context", "dataset", DS, "--format", "json"])
+
+    assert result.exit_code == 0, result.stderr
+    document = json.loads(result.stdout)
+    assert document["columns"] == []
+    assert any("schema" in note for note in document["notes"])
+
+
+def test_unknown_sample_columns_are_a_usage_error(stub_foundry_http) -> None:
+    dataset_responses(stub_foundry_http, FIELDS, ROWS)
+
+    result = runner.invoke(app, ["context", "dataset", DS, "--columns", "nmae"])
+
+    assert result.exit_code == 2
+    assert "name" in result.stderr  # the close match
+
+
+def test_a_truncated_folder_walk_stops_calling(stub_foundry_http) -> None:
+    subfolders = [
+        {**fj.resource(f"ri.compass.main.folder.s{i}", f"s{i}"), "path": f"/S/P/s{i}"}
+        for i in range(300)
+    ]
+    stub_foundry_http.respond(json={"data": subfolders})
+    stub_foundry_http.respond_always(json={"data": subfolders[:1]})
+
+    result = runner.invoke(app, ["context", "folder", fj.PROJECT_RID, "--depth", "2"])
+
+    assert result.exit_code == 0, result.stderr
+    assert len(stub_foundry_http.requests) < 120
+
+
+def test_fixtures_never_overwrite_files(stub_foundry_http, tmp_path) -> None:
+    (tmp_path / "sales.parquet").write_bytes(b"hand-written")
+    dataset_responses(stub_foundry_http, FIELDS, ROWS)
+
+    result = runner.invoke(
+        app, ["context", "dataset", DS, "--fixture-dir", str(tmp_path)]
+    )
+
+    assert result.exit_code == 2
+    assert (tmp_path / "sales.parquet").read_bytes() == b"hand-written"
+
+
+def test_an_empty_dataset_fixture_is_only_its_schema(
+    stub_foundry_http, tmp_path
+) -> None:
+    stub_foundry_http.respond(json=fj.resource(DS, "sales", "FOUNDRY_DATASET"))
+    stub_foundry_http.respond(json=dj.schema_response(FIELDS))
+    stub_foundry_http.respond(content=b"")
+    stub_foundry_http.respond(json={"data": []})
+    stub_foundry_http.respond(json={"data": []})
+
+    result = runner.invoke(
+        app, ["context", "dataset", DS, "--fixture-dir", str(tmp_path)]
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert (tmp_path / "sales.schema.json").exists()
+    assert not (tmp_path / "sales.parquet").exists()
+
+
+def test_only_type_references_make_an_action_involve_a_type(stub_foundry_http) -> None:
+    metadata = full_metadata()
+    metadata["actionTypes"]["close-ticket"]["parameters"] = {
+        "who": {
+            "dataType": {"type": "string"},
+            "required": True,
+            "displayName": "Employee",
+        }
+    }
+    stub_foundry_http.respond(json=metadata)
+
+    result = runner.invoke(
+        app, ["context", "ontology", oj.ONTOLOGY, "--types", "Employee"]
+    )
+
+    assert "close-ticket" not in result.stdout
+
+
+def test_json_keys_are_stable(stub_foundry_http) -> None:
+    stub_foundry_http.respond(json={"data": []})
+
+    result = runner.invoke(
+        app, ["context", "folder", fj.PROJECT_RID, "--format", "json"]
+    )
+
+    assert json.loads(result.stdout)["resources"] == []

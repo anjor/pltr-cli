@@ -48,10 +48,12 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   link types, and the action and query types that involve them, with their
   parameters; a summary without `--types`) and `pltr context folder
   <rid-or-path> --depth N`. Markdown by default, `--format json` for the same
-  content as data. Output is capped (a 200-column dataset stays under 16 KB)
-  and says how to narrow it. `--fixture-dir` writes the samples for tests:
-  Parquet plus schema JSON for a dataset, JSON objects per type for an
-  ontology, with a warning that they are real data.
+  content as data. Every list is capped and long values are cut, with a note
+  on how to narrow; a Markdown pack is never longer than 15 KB. A dataset
+  without a schema, or whose rows, schedules or jobs can't be read, still
+  gets a pack with a note. `--fixture-dir` writes the samples for tests
+  (`--rows` rows as Parquet plus schema JSON, or JSON objects per type),
+  never over an existing file, with a warning that they are real data.
 - **The verify loop: `--wait` and `pltr assert`** (#195). `orchestration
   builds create`, `orchestration schedules run`, `connectivity import
   execute-file`/`execute-table` and `sql submit` take `--wait` (with

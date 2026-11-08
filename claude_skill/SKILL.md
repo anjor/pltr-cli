@@ -187,7 +187,9 @@ pltr admin user search jane --format json                                  # use
 ## 6a. Before writing code against a resource: `pltr context`
 
 Run `pltr context` first instead of several `get`/`schema`/`list` commands:
-it's one compact pack written for you to read.
+it's one compact pack written for you to read (Markdown, at most 15 KB; pass
+`--format table` for it if you set `PLTR_FORMAT=json`, which gives the same
+content as JSON). It says what it cut and how to narrow it.
 
 ```bash
 pltr context dataset <rid-or-path>          # columns + types, sample rows, schedules, latest job

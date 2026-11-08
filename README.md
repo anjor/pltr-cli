@@ -344,11 +344,12 @@ pltr context ontology my-ontology --types Employee # keys, properties, links, ac
 pltr context folder /Space/Project --depth 2       # what's in a project: type, path, RID
 ```
 
-A dataset's pack lists every column but samples at most 12 of them (pick
-others with `--columns`), so even a 200-column dataset stays under 16 KB.
-`--fixture-dir tests/fixtures` also writes the sample rows (Parquet, with a
-schema JSON) or sample objects (JSON) for tests; they are real Foundry data,
-so keep them out of git unless you may share them.
+Every list is capped and long values are cut, and the pack says what it cut
+and how to narrow it (`--columns`, `--types`, a subfolder); a Markdown pack is
+never longer than 15 KB. `--fixture-dir tests/fixtures` also writes the
+samples for tests: `--rows` rows (Parquet, with a schema JSON) or objects
+(JSON), never over an existing file. They are real Foundry data, so keep them
+out of git unless you may share them.
 
 **The verify loop: `--wait`, then `pltr assert`.** Commands that start
 asynchronous work (`orchestration builds create`, `orchestration schedules

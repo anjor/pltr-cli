@@ -12,10 +12,10 @@ Compact summaries of a dataset, folder or ontology for writing code against it (
 `pltr context dataset DATASET_RID [OPTIONS]`
 
 - `DATASET_RID` (RID or path): Dataset RID to describe.
-- `--rows` INTEGER (default: 5): Sample rows or objects (at most 1000).
+- `--rows` INTEGER (default: 5): Sample rows or objects to fetch (at most 1000).
 - `--columns` TEXT: Comma-separated columns for the sample rows (default: the first 12).
 - `--branch` TEXT: Branch (default: the default).
-- `--fixture-dir` PATH: Also write the samples to this directory for tests.
+- `--fixture-dir` PATH: Also write the samples to this directory for tests (never over an existing file).
 - beta · SDK: `filesystem.Resource.get`, `datasets.Dataset.get_schema`, `datasets.Dataset.read_table`, `datasets.Dataset.get_schedules`, `datasets.Dataset.jobs`, `orchestration.Job.get`
 
 ### pltr context folder
@@ -36,6 +36,6 @@ The resources under a folder or project: type, path and RID.
 
 - `ONTOLOGY`: Ontology RID or API name.
 - `--types` TEXT: Comma-separated object types to describe in full (default: a summary).
-- `--rows` INTEGER (default: 5): Sample rows or objects (at most 1000).
-- `--fixture-dir` PATH: Also write the samples to this directory for tests.
+- `--rows` INTEGER (default: 5): Sample rows or objects to fetch (at most 1000).
+- `--fixture-dir` PATH: Also write the samples to this directory for tests (never over an existing file).
 - beta · SDK: `ontologies.Ontology.get_full_metadata`, `ontologies.OntologyObject.list`
