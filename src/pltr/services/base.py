@@ -36,7 +36,13 @@ class BaseService(ABC):
             MissingCredentialsError: If credentials are incomplete
         """
         if self._client is None:
-            self._client = self.auth_manager.get_client(self.profile)
+            from ..contract.emit import RecordingClient, emit_mode
+
+            if emit_mode():
+                # --emit-code: record the first SDK call instead of making it.
+                self._client = RecordingClient()
+            else:
+                self._client = self.auth_manager.get_client(self.profile)
         return self._client
 
     @abstractmethod

@@ -550,6 +550,17 @@ case-sensitive. Not verified live:
 - **`ActionTypeNotFound`** and the action-type list call. Manual:
   `pltr ontology action-apply <ontology> <misspelled-action> '{}'`.
 
+### `--emit-code` snippets (#192)
+
+Verified live on 2026-11-08 (read-only): the snippets of
+`pltr dataset get <path>` (a `get_by_path` lookup, then `Dataset.get`),
+`pltr folder list <path> --page-size 2` (a `ResourceIterator` loop) and
+`pltr api ontologies ontology-object search ... --where '{"type": "eq", ...}'`
+(an `EqualsQueryV2` model, a `next_page_token` loop) ran with
+`FOUNDRY_HOST`/`FOUNDRY_TOKEN` and returned data. The other shapes (binary
+output, `open(...).read()` bodies, datetimes) are only checked to compile and,
+for a sample, to send the same request as the command against the fake.
+
 ### The smoke test itself (d2)
 
 The smoke script has run only against fakes, so a failing check can be the

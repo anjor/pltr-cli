@@ -42,6 +42,10 @@ from pltr.contract import PltrRootGroup
 app = typer.Typer(
     name="pltr",
     help="Command-line interface for Palantir Foundry APIs",
+    epilog=(
+        "Add --emit-code to any command to print the foundry-platform-sdk Python "
+        "code for its call, with your arguments, instead of making the call."
+    ),
     no_args_is_help=True,
     cls=PltrRootGroup,
     # PLTR_DEBUG=1 tracebacks must not print each frame's local variables:

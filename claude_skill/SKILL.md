@@ -182,6 +182,26 @@ pltr admin user search jane --format json                                  # use
    `@file.json` or as `@-` for stdin, and the SDK validates the value before
    anything is sent.
 
+## 6a. Writing app code: `--emit-code`
+
+When you write code that calls Foundry (an app, a pipeline, a script), first
+get the call working with pltr, then add `--emit-code` to the same command:
+it prints the foundry-platform-sdk Python code for that call, with the same
+arguments, instead of running it. Use it instead of guessing SDK parameter
+names, model classes or pagination:
+
+```bash
+pltr ontology object-search my-ontology Employee --where '{"type": "eq", "field": "dept", "value": "R&D"}' --emit-code
+pltr api datasets dataset read-table <dataset-rid> --api-format ARROW --emit-code
+```
+
+The snippet reads `FOUNDRY_HOST` and `FOUNDRY_TOKEN` (and any secret
+argument, such as connection secrets) from the environment, looks up any
+Compass path you gave, and pages the SDK's way: read its comments. Nothing runs, so
+it's safe on destructive commands. A command that makes several calls (or no
+Foundry call) fails with `emit_code_unsupported` (exit 2): use `pltr commands
+show <command>` for its SDK methods and `pltr api ... --emit-code` for each.
+
 ## 7. Workflows
 
 **Inspect a dataset and query it with SQL**

@@ -401,7 +401,7 @@ def _check_parameters(
             if not word.startswith("--") and len(word) > 2:
                 name = word[:2]  # `-fjson`
                 has_value = "attached"
-            if name == "--help":
+            if name in ("--help", "--emit-code"):  # --emit-code is global (#192)
                 continue
             option = flags.get(name)
             if option is None:

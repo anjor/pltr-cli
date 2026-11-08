@@ -444,6 +444,25 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if not wanted:
         return kwargs
 
+    from .emit import emit_mode
+
+    if emit_mode():
+        # Nothing is called: the snippet looks the paths up (#192).
+        from .codegen import PathValue
+
+        def mark(value: Any) -> Any:
+            return PathValue(value) if is_path(value) else value
+
+        marked = dict(kwargs)
+        for param in targets:
+            name = str(param.name)
+            value = marked[name]
+            if isinstance(value, (list, tuple)):
+                marked[name] = type(value)(mark(item) for item in value)
+            else:
+                marked[name] = mark(value)
+        return marked
+
     from pltr.services import base
 
     from .runtime import info

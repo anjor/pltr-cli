@@ -22,6 +22,7 @@ from __future__ import annotations
 import functools
 import importlib
 import inspect
+import json
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -45,6 +46,14 @@ from pltr.contract import (
     pltr_command,
     spinner,
     success,
+)
+from pltr.contract.codegen import Call, render_snippet
+from pltr.contract.emit import (
+    EmitDone,
+    EmitUnsupported,
+    emit_mode,
+    sdk_method,
+    typed_argument,
 )
 from pltr.contract.resources import ResourceRef
 
@@ -560,10 +569,16 @@ def read_bytes(value: str, label: str) -> bytes:
         ) from exc
 
 
-def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert parsed CLI values into SDK keyword arguments (None = not given)."""
+def build_kwargs(
+    spec: Dict[str, Any], values: Dict[str, Any], *, emit: bool = False
+) -> Dict[str, Any]:
+    """Convert parsed CLI values into SDK keyword arguments (None = not given).
+
+    With ``emit`` (``--emit-code``), file bodies aren't read: they become the
+    expressions that read them in the snippet.
+    """
     kwargs: Dict[str, Any] = {}
-    body_length: Optional[int] = None
+    body_length: Optional[Any] = None
     for param in spec["params"]:
         if is_shared_paging_parameter(spec, param):
             continue
@@ -580,6 +595,13 @@ def build_kwargs(spec: Dict[str, Any], values: Dict[str, Any]) -> Dict[str, Any]
         label = name.upper() if param["in"] == "path" else option_name(param)
         if param["type"] == "json":
             kwargs[name] = load_json_input(value, param_hint=f"'{label}'")
+        elif param["type"] == "bytes" and emit:
+            from pltr.contract.codegen import RawExpr
+
+            source = "0" if value == "-" else json.dumps(value)
+            kwargs[name] = RawExpr(f'open({source}, "rb").read()')
+            if value != "-":
+                body_length = RawExpr(f"os.path.getsize({source})")
         elif param["type"] == "bytes":
             kwargs[name] = read_bytes(value, label)
             body_length = len(kwargs[name])
@@ -632,13 +654,16 @@ def run_method(
         key: values.pop(key, None) if spec.get("paged") else None
         for key in paging_options
     }
-    kwargs = build_kwargs(spec, values)
+    emitting = emit_mode()
+    kwargs = build_kwargs(spec, values, emit=emitting)
     if spec.get("paged") and paging["page_size"] is not None:
         if not any(p["name"] == "page_size" for p in spec["params"]):
             raise click.BadParameter(
                 "this endpoint doesn't take a page size", param_hint="'--page-size'"
             )
         kwargs["page_size"] = paging["page_size"]
+    if emitting:
+        raise EmitDone(render_snippet(emit_call(spec, context, kwargs, paging, output)))
     if spec.get("binary"):
         check_binary_output(output)  # before downloading anything
 
@@ -663,6 +688,36 @@ def run_method(
         if result is None:
             success("Done (the API returned no content).")
         emit(result, format=fmt, output=output)
+
+
+def emit_call(
+    spec: Dict[str, Any],
+    context: Dict[str, Any],
+    kwargs: Dict[str, Any],
+    paging: Dict[str, Any],
+    output: Optional[str],
+) -> Call:
+    """The SDK call a generated command would make, for --emit-code (#192)."""
+    sdk_path = ".".join(context["sdk_path"])
+    if context.get("client", "v2") != "v2":
+        raise EmitUnsupported(f"--emit-code supports the v2 client only ({sdk_path}).")
+    signature = inspect.signature(sdk_method(sdk_path))
+    arguments = {
+        name: typed_argument(value, signature.parameters[name].annotation)
+        for name, value in kwargs.items()
+        if name in signature.parameters
+    }
+    if spec.get("paged") and paging.get("page_token"):
+        arguments["page_token"] = paging["page_token"]
+    if "preview" in signature.parameters:
+        arguments["preview"] = True
+    return Call(
+        sdk_path,
+        arguments,
+        paged=spec.get("paged"),
+        binary=bool(spec.get("binary")),
+        output=output,
+    )
 
 
 def run_binary(

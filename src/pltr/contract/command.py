@@ -40,6 +40,7 @@ import click
 import typer
 from typer.core import TyperGroup
 
+from .emit import emit_mode, reset_emit_mode, set_emit_mode, strip_emit_flag
 from .errors import classify_error, fail, render_error
 from .resources import resolve_resource_paths
 from .runtime import (
@@ -90,6 +91,11 @@ class CommandMeta:
     destructive: bool = False
     paged: bool = False
     binary: bool = False
+    #: Why --emit-code can't show this command as its SDK call (e.g. the
+    #: command does more than the call); None when it can.
+    no_emit_code: Optional[str] = None
+    #: A comment for --emit-code snippets (e.g. a filter pltr applies locally).
+    emit_note: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -128,6 +134,8 @@ def pltr_command(
     destructive: bool = False,
     paged: bool = False,
     binary: bool = False,
+    no_emit_code: Optional[str] = None,
+    emit_note: Optional[str] = None,
 ) -> Callable[[F], F]:
     """Declare a command's metadata and give it the error/output contract.
 
@@ -149,6 +157,8 @@ def pltr_command(
         destructive=destructive,
         paged=paged,
         binary=binary,
+        no_emit_code=no_emit_code,
+        emit_note=emit_note,
     )
 
     def decorate(func: F) -> F:
@@ -156,6 +166,8 @@ def pltr_command(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with capture_warnings():
                 try:
+                    if emit_mode():
+                        return _emit_code(func, meta, args, kwargs)
                     kwargs = resolve_resource_paths(kwargs)
                     return func(*args, **kwargs)
                 except (click.exceptions.Exit, click.Abort):
@@ -177,6 +189,67 @@ def pltr_command(
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def _emit_code(
+    func: Callable[..., Any],
+    meta: CommandMeta,
+    args: Sequence[Any],
+    kwargs: Dict[str, Any],
+) -> None:
+    """Run the command up to its SDK call and print that call as code (#192)."""
+    from .codegen import render_snippet
+    from .emit import (
+        EmitDone,
+        EmitUnsupported,
+        RecordedCall,
+        call_from_recording,
+        check_supported,
+    )
+
+    ctx = click.get_current_context(silent=True)
+    command_path = ctx.command_path if ctx is not None else "pltr"
+    import pydantic
+
+    from .codegen import PathValue
+
+    check_supported(meta, command_path)
+    kwargs = resolve_resource_paths(kwargs)
+    try:
+        func(*args, **kwargs)
+    except EmitDone as done:
+        code = done.code
+    except RecordedCall as recorded:
+        output = kwargs.get("output") or kwargs.get("output_path")
+        call = call_from_recording(
+            recorded,
+            paged=meta.paged,
+            binary=meta.binary,
+            output=str(output) if output else None,
+        )
+        if meta.emit_note:
+            call.comments.append(meta.emit_note)
+        code = render_snippet(call)
+    except pydantic.ValidationError:
+        given = [
+            v
+            for value in kwargs.values()
+            for v in (value if isinstance(value, (list, tuple)) else [value])
+            if isinstance(v, PathValue)
+        ]
+        if not given:
+            raise
+        raise EmitUnsupported(
+            f"--emit-code can't show the Compass paths given to `{command_path}`: "
+            "it builds request models from RIDs. Give RIDs instead (`pltr "
+            "resource get-by-path` finds them)."
+        ) from None
+    else:
+        raise EmitUnsupported(
+            f"`{command_path}` finished without reaching its Foundry call, so "
+            "--emit-code has no SDK code to show for these arguments."
+        )
+    click.echo(code, nl=False)
 
 
 def get_command_meta(command: click.Command) -> Optional[CommandMeta]:
@@ -307,18 +380,46 @@ class PltrRootGroup(TyperGroup):
         **extra: Any,
     ) -> Any:
         ensure_utf8_output()
-        previous = begin_invocation(sys.argv[1:] if args is None else list(args))
+        arguments, emit = strip_emit_flag(sys.argv[1:] if args is None else list(args))
+        previous = begin_invocation(arguments)
+        token = set_emit_mode(emit)
         try:
+            if emit:
+                self._refuse_emit_without_metadata(arguments, standalone_mode)
             with capture_warnings():
                 return super().main(
-                    args=args,
+                    args=arguments,
                     prog_name=prog_name,
                     complete_var=complete_var,
                     standalone_mode=standalone_mode,
                     **extra,
                 )
         finally:
+            reset_emit_mode(token)
             set_output_format(previous)
+
+    def _refuse_emit_without_metadata(
+        self, arguments: Sequence[str], standalone_mode: bool
+    ) -> None:
+        """--emit-code on a command without @pltr_command (e.g. `pltr shell`):
+        it would run for real, so refuse before anything runs."""
+        from .emit import EmitUnsupported, leaf_command
+
+        leaf = leaf_command(self, arguments)
+        if leaf is None or isinstance(leaf, click.Group) and not leaf.callback:
+            return
+        if get_command_meta(leaf) is not None:
+            return
+        info = classify_error(
+            EmitUnsupported(
+                f"`pltr {leaf.name}` doesn't support --emit-code: it makes no "
+                "Foundry call through foundry-platform-sdk."
+            )
+        )
+        render_error(info)
+        if standalone_mode:
+            sys.exit(int(info.exit_code))
+        raise click.exceptions.Exit(int(info.exit_code))
 
     def make_context(
         self,

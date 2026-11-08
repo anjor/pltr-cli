@@ -332,6 +332,43 @@ scripts as much as by people. An agent works in four steps:
 Destructive commands never prompt without a terminal: they fail with exit
 code 2 and change nothing unless you pass `--yes`.
 
+**From a working command to app code: `--emit-code`.** Add `--emit-code` to
+a command and pltr prints the foundry-platform-sdk Python code for the call it
+would make, with your argument values, instead of making it:
+
+```bash
+pltr dataset get "/My Space/My Project/sales" --emit-code
+```
+
+```python
+import os
+
+from foundry_sdk import FoundryClient, UserTokenAuth
+
+client = FoundryClient(
+    auth=UserTokenAuth(token=os.environ["FOUNDRY_TOKEN"]),
+    hostname=os.environ["FOUNDRY_HOST"],
+)
+
+dataset_rid = client.filesystem.Resource.get_by_path(
+    path="/My Space/My Project/sales",
+).rid
+result = client.datasets.Dataset.get(
+    dataset_rid=dataset_rid,
+)
+print(result)
+```
+
+The snippet runs as is: it reads the host and token from the environment
+(never a credential pltr knows), passes SDK models for JSON options
+(`ontologies_models.EqualsQueryV2(...)`), pages the SDK's way and looks up
+Compass paths. Secret arguments (connection secrets, media-set tokens) are
+read from environment variables in the snippet, never written into it.
+Nothing is called, so it's safe on destructive commands too.
+Commands that make several calls (`pltr cp`, uploads in a transaction), call
+Foundry without the SDK, or make no Foundry call say so (exit 2,
+`emit_code_unsupported`) instead of printing part of the code.
+
 `pltr commands list --format json` prints the whole manifest, one entry per
 command, deterministically (sorted, no timestamps). The
 [Claude Code skill](docs/user-guide/claude-skill.md) in `claude_skill/` packages

@@ -605,6 +605,7 @@ def check_invocation(manifest: Mapping[str, Any], words: Sequence[str]) -> List[
     entry = commands[path]
     flags = {flag for option in entry["options"] for flag in option["flags"]}
     flags.add("--help")
+    flags.add("--emit-code")  # global: works on every command (#192)
     problems = []
     for word in rest:
         if word == "--":
