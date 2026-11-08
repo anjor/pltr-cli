@@ -31,7 +31,7 @@ Show the organizations and markings a user needs to view a resource.
 
 `pltr resource access-requirements RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - SDK: `filesystem.Resource.get_access_requirements`
 
 ### pltr resource add-markings
@@ -40,7 +40,7 @@ Apply markings to a resource.
 
 `pltr resource add-markings RESOURCE_RID --marking TEXT [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - `--marking`, `-m` TEXT (required; repeatable): Marking ID (repeat for several).
 - SDK: `filesystem.Resource.add_markings`
 
@@ -50,7 +50,7 @@ Get several resources in one request.
 
 `pltr resource batch-get RESOURCE_RIDS... [OPTIONS]`
 
-- `RESOURCE_RIDS...`: Resource RIDs, separated by spaces (at most 1000).
+- `RESOURCE_RIDS...` (RID or path): Resource RIDs, separated by spaces (at most 1000).
 - SDK: `filesystem.Resource.get_batch`
 
 ### pltr resource batch-get-by-path
@@ -68,7 +68,7 @@ Move a resource to the trash.
 
 `pltr resource delete RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.delete`
 
 ### pltr resource get
@@ -77,7 +77,7 @@ Get a resource's metadata by RID.
 
 `pltr resource get RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - SDK: `filesystem.Resource.get`
 
 ### pltr resource get-by-path
@@ -93,9 +93,9 @@ Get a resource's metadata by its path.
 
 List the resources directly inside a folder (not its subfolders).
 
-`pltr resource list --folder-rid TEXT [OPTIONS]`
+`pltr resource list --folder-rid RID|PATH [OPTIONS]`
 
-- `--folder-rid`, `-f` TEXT (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
+- `--folder-rid`, `-f` RID|PATH (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
 - `--type`, `-t` TEXT: Only show resources of this type: an API type name such as FOUNDRY_DATASET or COMPASS_FOLDER (case-insensitive; 'dataset' and 'folder' work too).
 - paged · SDK: `filesystem.Folder.children`
 
@@ -105,7 +105,7 @@ List the IDs of the markings applied directly to a resource.
 
 `pltr resource list-markings RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - paged · SDK: `filesystem.Resource.markings`
 
 ### pltr resource permanently-delete
@@ -114,7 +114,7 @@ Permanently delete a resource that is in the trash. This can't be undone.
 
 `pltr resource permanently-delete RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.permanently_delete`
 
 ### pltr resource remove-markings
@@ -123,7 +123,7 @@ Remove markings from a resource.
 
 `pltr resource remove-markings RESOURCE_RID --marking TEXT [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - `--marking`, `-m` TEXT (required; repeatable): Marking ID (repeat for several).
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.remove_markings`
 
@@ -133,17 +133,17 @@ Restore a resource, and its directly trashed ancestors, from the trash.
 
 `pltr resource restore RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
+- `RESOURCE_RID` (RID or path): Resource RID (ri.<service>.<instance>.<type>.<id>), for example a dataset (ri.foundry.main.dataset.<id>) or a folder or project (ri.compass.main.folder.<id>).
 - SDK: `filesystem.Resource.restore`
 
 ### pltr resource search
 
 Find resources below a folder by name, path, description, RID or type.
 
-`pltr resource search QUERY --folder-rid TEXT [OPTIONS]`
+`pltr resource search QUERY --folder-rid RID|PATH [OPTIONS]`
 
 - `QUERY`: Text to look for (case-insensitive) in display names, paths, descriptions, RIDs and types.
-- `--folder-rid`, `-f` TEXT (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
+- `--folder-rid`, `-f` RID|PATH (required): RID of the folder, project or space (the API can't list the root folder: find spaces with 'pltr space list').
 - `--type`, `-t` TEXT: Only show resources of this type: an API type name such as FOUNDRY_DATASET or COMPASS_FOLDER (case-insensitive; 'dataset' and 'folder' work too).
 - `--limit` INTEGER: Stop after this many matches.
 - `--max-folders` INTEGER (default: 1000): Stop after listing this many folders (one request per page each).

@@ -26,6 +26,7 @@ from ..contract import (
     emit,
     pltr_command,
     profile_option,
+    resource_argument,
     spinner,
     success,
     warn,
@@ -67,7 +68,8 @@ ROLE_COLUMNS: Columns = {
 
 ResourceRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "resource",
         help=(
             "RID of the resource: a project, folder, dataset or any other "
             "filesystem resource (ri.<service>.<instance>.<type>.<id>)."

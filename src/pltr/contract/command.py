@@ -8,6 +8,9 @@
   callback wrapping and can be read back from the click command tree with
   :func:`get_command_meta` / :func:`iter_commands`;
 * prefixes the help (the docstring) of beta commands with ``[beta]``;
+* resolves Compass paths given to resource parameters (click type
+  :class:`~pltr.contract.resources.ResourceRef`) to RIDs before the body runs
+  (:func:`~pltr.contract.resources.resolve_resource_paths`);
 * activates the command's ``--format`` for stderr messages, routes Python
   warnings through :func:`pltr.contract.warn`, and turns any exception into
   a structured error plus exit code (:mod:`pltr.contract.errors`).
@@ -38,6 +41,7 @@ import typer
 from typer.core import TyperGroup
 
 from .errors import classify_error, fail, render_error
+from .resources import resolve_resource_paths
 from .runtime import (
     begin_invocation,
     capture_warnings,
@@ -152,6 +156,7 @@ def pltr_command(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with capture_warnings():
                 try:
+                    kwargs = resolve_resource_paths(kwargs)
                     return func(*args, **kwargs)
                 except (click.exceptions.Exit, click.Abort):
                     raise

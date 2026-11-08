@@ -29,6 +29,7 @@ from ..contract import (
     emit_bytes,
     info,
     pltr_command,
+    resource_argument,
     spinner,
     success,
     warn,
@@ -66,7 +67,8 @@ def _item_info_columns(media_item_rid: str) -> Columns:
 
 MediaSetRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "media-set",
         help="Media set RID (ri.mio.main.media-set.<uuid>).",
         autocompletion=complete_rid,
         show_default=False,

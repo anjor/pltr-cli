@@ -25,7 +25,7 @@ Examples:
 
 `pltr media-sets abort MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `TRANSACTION_ID`: Transaction ID (a UUID, from 'pltr media-sets create').
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `media_sets.MediaSet.abort`
 
@@ -35,7 +35,7 @@ Examples:
 
 `pltr media-sets clear MEDIA_SET_RID MEDIA_ITEM_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_PATH`: Path of the media item to clear within the media set.
 - `--branch` TEXT: Media set branch (default: the default branch, usually master).
 - `--transaction-id` TEXT: ID of an open transaction to clear the item in; required for transactional media sets (the deletion shows once it's committed).
@@ -47,7 +47,7 @@ Examples:
 
 `pltr media-sets commit MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `TRANSACTION_ID`: Transaction ID (a UUID, from 'pltr media-sets create').
 - beta · SDK: `media_sets.MediaSet.commit`
 
@@ -57,7 +57,7 @@ Examples:
 
 `pltr media-sets create MEDIA_SET_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `--branch` TEXT: Media set branch (default: the default branch, usually master).
 - beta · SDK: `media_sets.MediaSet.create`
 
@@ -67,7 +67,7 @@ Download a media item's content to a file, or to stdout with -.
 
 `pltr media-sets download MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - `OUTPUT_PATH`: File to save the media item's content to, or - for stdout.
 - `--original`: Download the file as originally uploaded, not the processed version.
@@ -80,7 +80,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets get MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - SDK: `media_sets.MediaSet.info`
 
@@ -90,7 +90,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets get-by-path MEDIA_SET_RID MEDIA_ITEM_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_PATH`: Path of the media item within the media set.
 - `--branch` TEXT: Media set branch (default: the default branch, usually master).
 - beta · SDK: `media_sets.MediaSet.get_rid_by_path`
@@ -101,7 +101,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets reference MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - beta · SDK: `media_sets.MediaSet.reference`
 
@@ -111,7 +111,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets thumbnail-calculate MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - beta · SDK: `media_sets.MediaSet.calculate`
 
@@ -121,7 +121,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets thumbnail-retrieve MEDIA_SET_RID MEDIA_ITEM_RID OUTPUT_PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `MEDIA_ITEM_RID`: Media item RID (ri.mio.main.media-item.<uuid>); find one with 'pltr media-sets get-by-path'.
 - `OUTPUT_PATH`: File to save the thumbnail (webp) to, or - for stdout.
 - `--overwrite`: Replace OUTPUT_PATH if it exists.
@@ -133,7 +133,7 @@ Get a media item's metadata: path, MIME type, size and who uploaded it.
 
 `pltr media-sets upload MEDIA_SET_RID FILE_PATH MEDIA_ITEM_PATH [TRANSACTION_ID] [OPTIONS]`
 
-- `MEDIA_SET_RID`: Media set RID (ri.mio.main.media-set.<uuid>).
+- `MEDIA_SET_RID` (RID or path): Media set RID (ri.mio.main.media-set.<uuid>).
 - `FILE_PATH`: Local file to upload.
 - `MEDIA_ITEM_PATH`: Path of the new item within the media set, e.g. images/photo.jpg.
 - `TRANSACTION_ID` (optional): ID of an open transaction (from 'pltr media-sets create'); required for transactional media sets.

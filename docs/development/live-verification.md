@@ -104,6 +104,7 @@ Besides the check's own expectations it checks the output contract
 | `auth` | 2 | runs `pltr verify` with a made-up token and made-up OAuth client credentials, through environment variables and an empty home directory (no profile): both must exit 3 |
 | `contract` | 3 | nothing: a missing folder (exit 5, or 4), an invalid RID (exit 2), a destructive command without `--yes` (exit 2) |
 | `dataset` | 13 | `dataset.rid` |
+| `paths` | 4 | `dataset.rid`: its path (from `resource get`) is resolved by `dataset get`, refused by `project get` (exit 2, `wrong_resource_type`), and a made-up path exits 5 (`path_not_found`) |
 | `sql` | 5 | `sql.table` or `sql.query` |
 | `ontology` | 11 | nothing (found), but see Inputs |
 | `action` | 1 | `action.name`, `action.parameters`; validated, never applied |
@@ -501,6 +502,30 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
   `Resource.path` (assumed to be the `/`-joined display-name path). Manual:
   `pltr cp -r <folder-rid> <subfolder-rid>` should exit 2 before creating
   anything; `pltr cp -r <folder-rid> <sibling-rid>` should copy.
+
+### Compass paths for resource RIDs (#193)
+
+Verified live on 2026-11-07 (one stack): `getByPath` for a project, a dataset
+and a media set (`MIO_MEDIA_SET`); `getByPathBatch` matching two paths, one
+with a trailing slash; a project told apart from a dataset (`project get` on a
+dataset path exits 2); a missing path answering 404 `PathNotFound`
+(`path_not_found`, exit 5). Smoke: the `paths` group. Not verified live:
+
+- **The `ResourceType` of the other kinds**: connections are
+  `MAGRITTE_SOURCE`, AIP agents `AIP_AGENTS_AGENT`, third-party applications
+  `THIRD_PARTY_APPLICATIONS_APPLICATION`, widget repositories
+  `STEMMA_REPOSITORY`, models `MODELS_MODEL`, and dataset views
+  `FOUNDRY_DATASET`. A wrong guess makes a valid path fail with
+  `wrong_resource_type`. Manual: pass the path of one of each to its `get`
+  command.
+- **A folder inside a project is not its own project** (`projectRid` differs
+  from its RID), so `project get` refuses its path. Manual:
+  `pltr project get "/Space/Project/folder"` exits 2 with
+  `wrong_resource_type`.
+- **Paths that differ from `Resource.path` other than by leading or trailing
+  slashes** (case, repeated slashes) aren't matched in a batch lookup and are
+  reported as `path_not_found`. Manual: `pltr resource batch-get` with two
+  paths, one in different case.
 
 ### The smoke test itself (d2)
 

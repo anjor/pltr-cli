@@ -26,6 +26,7 @@ from ..contract import (
     emit,
     load_json_input,
     pltr_command,
+    resource_argument,
     spinner,
     success,
 )
@@ -128,7 +129,8 @@ BUILD_COLUMNS: Columns = {"Build RID": lambda build_rid: build_rid}
 
 ConnectionRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "connection",
         help=(
             "Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>)."
         ),
@@ -138,7 +140,8 @@ ConnectionRid = Annotated[
 ]
 DatasetRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "dataset",
         help=(
             "RID of the dataset the import writes to "
             "(ri.foundry.main.dataset.<id>); it can't be changed later."
@@ -244,7 +247,8 @@ def create_connection(
     ],
     parent_folder_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "folder",
             help="RID of the folder to create the connection in.",
             autocompletion=complete_rid,
             show_default=False,

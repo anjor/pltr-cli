@@ -24,7 +24,7 @@ SPEC = {
                     "beta": True,
                     "destructive": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "transaction_id", "in": "path", "api": "transactionId", "type": "str", "schema": "TransactionId", "required": True},
                     ],
                 },
@@ -36,7 +36,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/transform/imagery/thumbnail/calculate",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -50,7 +50,7 @@ SPEC = {
                     "beta": True,
                     "destructive": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_path", "in": "query", "api": "mediaItemPath", "type": "str", "required": True, "help": "The path of the media item to clear."},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "Specifies the specific branch by name from which this media item will be cleared. May not be provided if branch rid or view rid are provided."},
                         {"name": "branch_rid", "in": "query", "api": "branchRid", "type": "str", "help": "Specifies the specific branch by rid from which this media item will be cleared. May not be provided if branch name or view rid are provided."},
@@ -66,7 +66,7 @@ SPEC = {
                     "http": "POST /v2/mediasets/{mediaSetRid}/transactions/{transactionId}/commit",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "transaction_id", "in": "path", "api": "transactionId", "type": "str", "schema": "TransactionId", "required": True},
                     ],
                 },
@@ -78,7 +78,7 @@ SPEC = {
                     "http": "POST /v2/mediasets/{mediaSetRid}/transactions",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "The branch on which to open the transaction. Defaults to `master` for most enrollments."},
                     ],
                 },
@@ -90,7 +90,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                     ],
                 },
                 {
@@ -102,7 +102,7 @@ SPEC = {
                     "beta": True,
                     "binary": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "transformation_job_id", "in": "path", "api": "transformationJobId", "type": "str", "schema": "TransformationJobId", "required": True, "help": "The ID of the transformation job."},
                         {"name": "token", "in": "header", "api": "Token", "type": "str"},
@@ -116,7 +116,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/getRidByPath",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_path", "in": "query", "api": "mediaItemPath", "type": "str", "required": True, "help": "The path of the media item."},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "Specifies the specific branch by name in which to search for this media item. May not be provided if branch rid or view rid are provided."},
                         {"name": "branch_rid", "in": "query", "api": "branchRid", "type": "str", "help": "Specifies the specific branch by rid in which to search for this media item. May not be provided if branch name or view rid are provided."},
@@ -131,7 +131,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/transformationJobs/{transformationJobId}",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "transformation_job_id", "in": "path", "api": "transformationJobId", "type": "str", "schema": "TransformationJobId", "required": True, "help": "The ID of the transformation job."},
                         {"name": "token", "in": "header", "api": "Token", "type": "str"},
@@ -144,7 +144,7 @@ SPEC = {
                     "help": "Gets information about the media item.\n\nRequired scopes: [api:mediasets-read]",
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}",
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -156,7 +156,7 @@ SPEC = {
                     "help": "Gets detailed metadata about the media item, including type-specific information\nsuch as dimensions for images, duration for audio/video, page count for documents, etc.\n\nRequired scopes: [api:mediasets-read]",
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/metadata",
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -169,7 +169,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/content",
                     "binary": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -182,7 +182,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/original",
                     "binary": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -195,7 +195,7 @@ SPEC = {
                     "http": "GET /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/reference",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -208,7 +208,7 @@ SPEC = {
                     "http": "POST /v2/mediasets/{mediaSetRid}/items/register",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "physical_item_name", "in": "body", "type": "str", "required": True, "help": "The relative path within the federated media store where the media item exists."},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "Specifies the specific branch by name to which this media item will be registered."},
                         {"name": "media_item_path", "in": "body", "type": "str"},
@@ -225,7 +225,7 @@ SPEC = {
                     "beta": True,
                     "binary": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "read_token", "in": "header", "api": "ReadToken", "type": "str"},
                     ],
@@ -238,7 +238,7 @@ SPEC = {
                     "http": "POST /v2/mediasets/{mediaSetRid}/items/{mediaItemRid}/transform",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True, "help": "The RID of the media set."},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True, "help": "The RID of the media set."},
                         {"name": "media_item_rid", "in": "path", "api": "mediaItemRid", "type": "str", "schema": "MediaItemRid", "required": True, "help": "The RID of the media item."},
                         {"name": "transformation", "in": "body", "type": "json", "schema": "Transformation", "required": True},
                         {"name": "attribution", "in": "header", "api": "Attribution", "type": "str", "help": "Optional resource to attribute LLM calls on behalf of."},
@@ -253,7 +253,7 @@ SPEC = {
                     "http": "POST /v2/mediasets/{mediaSetRid}/items",
                     "beta": True,
                     "params": [
-                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "required": True},
+                        {"name": "media_set_rid", "in": "path", "api": "mediaSetRid", "type": "str", "schema": "MediaSetRid", "resource": "media-set", "required": True},
                         {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "Body of the request"},
                         {"name": "branch_name", "in": "query", "api": "branchName", "type": "str", "help": "Specifies the specific branch by name to which this media item will be uploaded. May not be provided if branch rid or view rid are provided."},
                         {"name": "branch_rid", "in": "query", "api": "branchRid", "type": "str", "help": "Specifies the specific branch by rid to which this media item will be uploaded. May not be provided if branch name or view rid are provided."},

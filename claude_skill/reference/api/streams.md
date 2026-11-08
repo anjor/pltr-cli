@@ -13,10 +13,10 @@ client.streams.Dataset: create, stream
 
 [beta] Creates a streaming dataset with a stream on the specified branch, or if no branch is specified,...
 
-`pltr api streams dataset create --name TEXT --parent-folder-rid TEXT --schema JSON [OPTIONS]`
+`pltr api streams dataset create --name TEXT --parent-folder-rid RID|PATH --schema JSON [OPTIONS]`
 
 - `--name` TEXT (required)
-- `--parent-folder-rid` TEXT (required)
+- `--parent-folder-rid` RID|PATH (required)
 - `--schema` JSON (required): The Foundry schema to apply to the new stream.
 - Options: `--branch-name` TEXT, `--compressed`, `--partitions-count` INTEGER, `--stream-type` LOW_LATENCY|HIGH_THROUGHPUT
 - beta · SDK: `streams.Dataset.create`
@@ -31,7 +31,7 @@ client.streams.Dataset.Stream: create, get, get-end-offsets, get-records, publis
 
 `pltr api streams dataset stream create DATASET_RID --branch-name TEXT --schema JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--branch-name` TEXT (required)
 - `--schema` JSON (required): The Foundry schema for this stream.
 - Options: `--compressed`, `--partitions-count` INTEGER, `--stream-type` LOW_LATENCY|HIGH_THROUGHPUT
@@ -43,7 +43,7 @@ Get a stream by its branch name.
 
 `pltr api streams dataset stream get DATASET_RID STREAM_BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - SDK: `streams.Dataset.Stream.get`
 
@@ -53,7 +53,7 @@ Get a stream by its branch name.
 
 `pltr api streams dataset stream get-end-offsets DATASET_RID STREAM_BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - Options: `--view-rid` TEXT
 - beta · SDK: `streams.Dataset.Stream.get_end_offsets`
@@ -64,7 +64,7 @@ Get a stream by its branch name.
 
 `pltr api streams dataset stream get-records DATASET_RID STREAM_BRANCH_NAME --limit INTEGER --partition-id TEXT [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `--limit` INTEGER (required): The total number of records to be retrieved.
 - `--partition-id` TEXT (required): The ID of the partition to retrieve records from.
@@ -77,7 +77,7 @@ Publish a single binary record to the stream.
 
 `pltr api streams dataset stream publish-binary-record DATASET_RID STREAM_BRANCH_NAME --body PATH [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `--body` PATH (required): The binary record to publish to the stream.
 - Options: `--view-rid` TEXT
@@ -89,7 +89,7 @@ Publish a single record to the stream.
 
 `pltr api streams dataset stream publish-record DATASET_RID STREAM_BRANCH_NAME --record JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `--record` JSON (required): The record to publish to the stream.
 - Options: `--view-rid` TEXT
@@ -101,7 +101,7 @@ Publish a batch of records to the stream.
 
 `pltr api streams dataset stream publish-records DATASET_RID STREAM_BRANCH_NAME --records JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `--records` JSON (required): The records to publish to the stream.
 - Options: `--view-rid` TEXT
@@ -113,7 +113,7 @@ Publish a batch of records to the stream.
 
 `pltr api streams dataset stream reset DATASET_RID STREAM_BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - Options: `--compressed`, `--partitions-count` INTEGER, `--schema` JSON, `--stream-type` LOW_LATENCY|HIGH_THROUGHPUT
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `streams.Dataset.Stream.reset`
@@ -128,7 +128,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber commit-offsets DATASET_RID STREAM_BRANCH_NAME SUBSCRIBER_SUBSCRIBER_ID --offsets JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `SUBSCRIBER_SUBSCRIBER_ID`: SubscriberId.
 - `--offsets` JSON (required): The last processed offset for each partition.
@@ -141,7 +141,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber create DATASET_RID STREAM_BRANCH_NAME --subscriber-id TEXT [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `--subscriber-id` TEXT (required)
 - Options: `--read-position` JSON
@@ -153,7 +153,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber delete DATASET_RID STREAM_BRANCH_NAME SUBSCRIBER_SUBSCRIBER_ID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `SUBSCRIBER_SUBSCRIBER_ID`: SubscriberId.
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `streams.Dataset.Stream.Subscriber.delete`
@@ -164,7 +164,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber get-read-position DATASET_RID STREAM_BRANCH_NAME SUBSCRIBER_SUBSCRIBER_ID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `SUBSCRIBER_SUBSCRIBER_ID`: SubscriberId.
 - Options: `--view-rid` TEXT
@@ -176,7 +176,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber read-records DATASET_RID STREAM_BRANCH_NAME SUBSCRIBER_SUBSCRIBER_ID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `SUBSCRIBER_SUBSCRIBER_ID`: SubscriberId.
 - Options: `--auto-commit`, `--limit` INTEGER, `--partition-ids` TEXT, `--view-rid` TEXT
@@ -188,7 +188,7 @@ client.streams.Dataset.Stream.Subscriber: commit-offsets, create, delete, get-re
 
 `pltr api streams dataset stream subscriber reset-offsets DATASET_RID STREAM_BRANCH_NAME SUBSCRIBER_SUBSCRIBER_ID --position JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `STREAM_BRANCH_NAME`: BranchName.
 - `SUBSCRIBER_SUBSCRIBER_ID`: SubscriberId.
 - `--position` JSON (required): The position to reset offsets to.

@@ -135,7 +135,7 @@ def test_entries(rendered):
 
         `pltr folder list FOLDER_RID [OPTIONS]`
 
-        - `FOLDER_RID`: RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
+        - `FOLDER_RID` (RID or path): RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
         - paged · SDK: `filesystem.Folder.children`
         """
         )
@@ -252,3 +252,58 @@ def test_write_files_replaces_the_directory(generator, tmp_path):
         "api/a.md",
         "index.md",
     ]
+
+
+def test_resource_parameters_say_they_take_a_path(generator):
+    argument = {
+        "name": "dataset_rid",
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "resourceKind": "dataset",
+        "help": "Dataset RID. A Compass path such as /Space/Project/name works too.",
+    }
+    assert generator.render_argument(argument) == (
+        "- `DATASET_RID` (RID or path): Dataset RID."
+    )
+    option = {
+        "name": "parent",
+        "flags": ["--parent"],
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "resourceKind": "folder",
+        "help": "Folder. A Compass path such as /Space/Project/name works too.",
+    }
+    assert generator.render_option(option) == (
+        "- `--parent` RID|PATH (required): Folder."
+    )
+
+
+def test_generated_path_help_is_not_repeated(generator):
+    path_help = "A Compass path such as /Space/Project/name works too."
+    argument = {
+        "name": "dataset_rid",
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "help": f"Path parameter datasetRid. Type: DatasetRid. {path_help}",
+    }
+    assert generator.render_argument(argument) == (
+        "- `DATASET_RID` (RID or path): DatasetRid."
+    )
+    option = {
+        "name": "parent_folder_rid",
+        "flags": ["--parent-folder-rid"],
+        "type": "string",
+        "required": True,
+        "multiple": False,
+        "acceptsPath": True,
+        "help": path_help,
+    }
+    assert generator.render_option(option) == (
+        "- `--parent-folder-rid` RID|PATH (required)"
+    )

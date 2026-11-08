@@ -22,6 +22,8 @@ from ..contract import (
     format_option,
     load_json_input,
     pltr_command,
+    resource_argument,
+    resource_option,
     spinner,
     success,
 )
@@ -63,7 +65,8 @@ _SCHEMA_EXAMPLE = (
 
 DatasetRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "dataset",
         help="RID of the streaming dataset (ri.foundry.main.dataset.<id>).",
         autocompletion=complete_rid,
         show_default=False,
@@ -149,9 +152,10 @@ def create_dataset(
     ],
     parent_folder_rid: Annotated[
         str,
-        typer.Option(
+        resource_option(
             "--folder",
             "-f",
+            kind="folder",
             help=(
                 "RID of the folder or project to create the dataset in "
                 "(ri.compass.main.folder.<id>; not a user folder)."

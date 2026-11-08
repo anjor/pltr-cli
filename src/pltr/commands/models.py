@@ -24,6 +24,8 @@ from ..contract import (
     emit,
     format_option,
     pltr_command,
+    resource_argument,
+    resource_option,
     spinner,
     success,
 )
@@ -73,7 +75,8 @@ VERSION_LIST_COLUMNS: Columns = {
 
 ModelRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "model",
         help="Model RID (shown when the model is created).",
         autocompletion=complete_rid,
     ),
@@ -86,9 +89,10 @@ def create_model(
     name: Annotated[str, typer.Argument(help="Name of the new model.")],
     folder: Annotated[
         str,
-        typer.Option(
+        resource_option(
             "--folder",
             "-f",
+            kind="folder",
             help=(
                 "RID of the folder or project to create the model in "
                 "(ri.compass.main.folder.<id>)."

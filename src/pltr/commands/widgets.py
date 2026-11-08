@@ -25,6 +25,7 @@ from ..contract import (
     confirm_destructive,
     emit,
     pltr_command,
+    resource_argument,
     spinner,
     success,
 )
@@ -179,7 +180,8 @@ def delete_release(
 def get_repository(
     repository_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "repository",
             help="Repository RID (ri.stemma.main.repository.<id>).",
             autocompletion=complete_rid,
         ),

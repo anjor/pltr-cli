@@ -18,10 +18,10 @@ failure it was:
 | Exit code | Meaning | What to check |
 |---|---|---|
 | 1 | Unexpected error, or "no" at a prompt | Re-run with `PLTR_DEBUG=1` for the traceback, and report it |
-| 2 | Usage error | The arguments: the message names the problem; see `pltr <command> --help` |
+| 2 | Usage error | The arguments: the message names the problem; see `pltr <command> --help`. `wrong_resource_type`: a path you gave is the wrong kind of resource |
 | 3 | Authentication | The credentials (see below) |
 | 4 | Permission denied (HTTP 403) | Your access to the resource, or the OAuth client's scopes |
-| 5 | Not found (HTTP 404) | The RID, and that you can see the resource |
+| 5 | Not found (HTTP 404) | The RID or path, and that you can see the resource |
 | 6 | Validation error (HTTP 400, 422) | The values you sent; the message has Foundry's error name |
 | 7 | Other API or network errors, or a response pltr can't read | Connectivity, rate limits (429), server errors. For `invalid_response` (the API's response doesn't match the SDK's model or isn't JSON), upgrade pltr: a retry won't help |
 
@@ -140,7 +140,21 @@ to stderr. Don't merge the streams (`2>&1`) when you parse stdout.
 RIDs look like `ri.foundry.main.dataset.<uuid>`: copy them from Foundry's
 web interface, or find them with `pltr resource get-by-path "/Space/Project/name"`
 or `pltr folder list <folder-rid>`. A 404 can also mean you can't see the
-resource. User and group IDs are UUIDs, not usernames: find them with
+resource.
+
+A path given instead of a RID (`/Space/Project/name`) that fails with
+`path_not_found` (exit code 5) is either wrong or not visible to your
+account: it's the full path, starting with the space, as Foundry shows it.
+Spaces and the root folder can't be looked up by path; use their RIDs
+(`pltr space list`). `wrong_resource_type` (exit code 2) means the path
+exists but is the wrong kind of resource for the command, for example a
+folder given to `pltr dataset get`.
+
+On Windows, Git Bash (MSYS) rewrites arguments that start with `/` into
+Windows paths, so `/Space/Project/name` reaches pltr as
+`C:/Program Files/Git/Space/Project/name` and fails with a usage error that
+says so. Run the command with `MSYS_NO_PATHCONV=1`, or start the path with two
+slashes (`//Space/Project/name`). User and group IDs are UUIDs, not usernames: find them with
 `pltr admin user search` and `pltr admin group search`.
 
 ### SQL queries

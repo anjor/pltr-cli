@@ -13,7 +13,7 @@ Manage AIP Agents, sessions, and versions
 
 `pltr aip-agents get AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `AGENT_RID` (RID or path): Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
 - `--version`, `-v` TEXT: Agent version (e.g. 1.0; default: the latest published version).
 - beta · SDK: `aip_agents.Agent.get`
 
@@ -27,7 +27,7 @@ Your conversation sessions with an agent.
 
 `pltr aip-agents sessions get AGENT_RID SESSION_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `AGENT_RID` (RID or path): Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
 - `SESSION_RID`: Session RID (ri.aip-agents..session.<id>; see 'sessions list').
 - beta · SDK: `aip_agents.Agent.Session.get`
 
@@ -37,7 +37,7 @@ Your conversation sessions with an agent.
 
 `pltr aip-agents sessions list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `AGENT_RID` (RID or path): Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
 - beta · paged · SDK: `aip_agents.Agent.Session.list`
 
 ## pltr aip-agents versions
@@ -50,5 +50,5 @@ Published versions of an agent.
 
 `pltr aip-agents versions list AGENT_RID [OPTIONS]`
 
-- `AGENT_RID`: Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
+- `AGENT_RID` (RID or path): Agent RID (ri.aip-agents..agent.<id>; shown in AIP Agent Studio).
 - beta · paged · SDK: `aip_agents.Agent.AgentVersion.list`

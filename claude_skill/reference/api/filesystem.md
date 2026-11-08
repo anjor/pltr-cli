@@ -15,17 +15,17 @@ List all child resources of the Folder.
 
 `pltr api filesystem folder children FOLDER_RID [OPTIONS]`
 
-- `FOLDER_RID`: FolderRid.
+- `FOLDER_RID` (RID or path): FolderRid.
 - paged · SDK: `filesystem.Folder.children`
 
 ### pltr api filesystem folder create
 
 Creates a new Folder.
 
-`pltr api filesystem folder create --display-name TEXT --parent-folder-rid TEXT [OPTIONS]`
+`pltr api filesystem folder create --display-name TEXT --parent-folder-rid RID|PATH [OPTIONS]`
 
 - `--display-name` TEXT (required)
-- `--parent-folder-rid` TEXT (required): The parent folder Resource Identifier (RID).
+- `--parent-folder-rid` RID|PATH (required): The parent folder Resource Identifier (RID).
 - SDK: `filesystem.Folder.create`
 
 ### pltr api filesystem folder get
@@ -34,7 +34,7 @@ Get the Folder with the specified rid.
 
 `pltr api filesystem folder get FOLDER_RID [OPTIONS]`
 
-- `FOLDER_RID`: FolderRid.
+- `FOLDER_RID` (RID or path): FolderRid.
 - SDK: `filesystem.Folder.get`
 
 ### pltr api filesystem folder get-batch
@@ -50,11 +50,11 @@ Fetches multiple folders in a single request.
 
 [beta] Replace the Folder with the specified rid.
 
-`pltr api filesystem folder replace FOLDER_RID --display-name TEXT --parent-folder-rid TEXT [OPTIONS]`
+`pltr api filesystem folder replace FOLDER_RID --display-name TEXT --parent-folder-rid RID|PATH [OPTIONS]`
 
-- `FOLDER_RID`: FolderRid.
+- `FOLDER_RID` (RID or path): FolderRid.
 - `--display-name` TEXT (required)
-- `--parent-folder-rid` TEXT (required): The parent folder Resource Identifier (RID).
+- `--parent-folder-rid` RID|PATH (required): The parent folder Resource Identifier (RID).
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Folder.replace`
 
 ## pltr api filesystem project
@@ -67,7 +67,7 @@ Adds a list of Organizations to a Project.
 
 `pltr api filesystem project add-organizations PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - Options: `--organization-rids` TEXT
 - SDK: `filesystem.Project.add_organizations`
 
@@ -100,7 +100,7 @@ Get the Project with the specified rid.
 
 `pltr api filesystem project get PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - SDK: `filesystem.Project.get`
 
 ### pltr api filesystem project organizations
@@ -109,7 +109,7 @@ List of Organizations directly applied to a Project.
 
 `pltr api filesystem project organizations PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - paged · SDK: `filesystem.Project.organizations`
 
 ### pltr api filesystem project remove-organizations
@@ -118,7 +118,7 @@ Removes Organizations from a Project.
 
 `pltr api filesystem project remove-organizations PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - Options: `--organization-rids` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Project.remove_organizations`
 
@@ -128,7 +128,7 @@ Removes Organizations from a Project.
 
 `pltr api filesystem project replace PROJECT_RID --display-name TEXT [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - `--display-name` TEXT (required): The display name of the Project.
 - Options: `--description` TEXT
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Project.replace`
@@ -143,7 +143,7 @@ Add references to the given project
 
 `pltr api filesystem project reference add PROJECT_RID --resources JSON [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - `--resources` JSON (required): List[AddResourceReferenceRequest].
 - SDK: `filesystem.Project.Reference.add`
 
@@ -153,7 +153,7 @@ List all references in the given project
 
 `pltr api filesystem project reference list PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - Options: `--reference-type` EXTERNAL|FILESYSTEM
 - paged · SDK: `filesystem.Project.Reference.list`
 
@@ -163,7 +163,7 @@ Remove references from the given project
 
 `pltr api filesystem project reference remove PROJECT_RID [OPTIONS]`
 
-- `PROJECT_RID`: ProjectRid.
+- `PROJECT_RID` (RID or path): ProjectRid.
 - Options: `--resources` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Project.Reference.remove`
 
@@ -177,7 +177,7 @@ Adds a list of Markings to a resource.
 
 `pltr api filesystem resource add-markings RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - Options: `--marking-ids` TEXT
 - SDK: `filesystem.Resource.add_markings`
 
@@ -187,7 +187,7 @@ Move the given resource to the trash.
 
 `pltr api filesystem resource delete RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.delete`
 
 ### pltr api filesystem resource get
@@ -196,7 +196,7 @@ Get the Resource with the specified rid.
 
 `pltr api filesystem resource get RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - SDK: `filesystem.Resource.get`
 
 ### pltr api filesystem resource get-access-requirements
@@ -205,7 +205,7 @@ Returns a list of access requirements a user needs in order to view a resource.
 
 `pltr api filesystem resource get-access-requirements RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - SDK: `filesystem.Resource.get_access_requirements`
 
 ### pltr api filesystem resource get-batch
@@ -250,7 +250,7 @@ List of Markings directly applied to a resource.
 
 `pltr api filesystem resource markings RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - paged · SDK: `filesystem.Resource.markings`
 
 ### pltr api filesystem resource permanently-delete
@@ -259,7 +259,7 @@ Permanently delete the given resource from the trash.
 
 `pltr api filesystem resource permanently-delete RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.permanently_delete`
 
 ### pltr api filesystem resource remove-markings
@@ -268,7 +268,7 @@ Removes Markings from a resource.
 
 `pltr api filesystem resource remove-markings RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - Options: `--marking-ids` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.remove_markings`
 
@@ -278,7 +278,7 @@ Restore the given resource and any directly trashed ancestors from the trash.
 
 `pltr api filesystem resource restore RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - SDK: `filesystem.Resource.restore`
 
 ## pltr api filesystem resource role
@@ -291,7 +291,7 @@ Calls POST /v2/filesystem/resources/{resourceRid}/roles/add (SDK: client.filesys
 
 `pltr api filesystem resource role add RESOURCE_RID --roles JSON [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - `--roles` JSON (required): List[ResourceRoleIdentifier].
 - SDK: `filesystem.Resource.Role.add`
 
@@ -301,7 +301,7 @@ List the roles on a resource.
 
 `pltr api filesystem resource role list RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - Options: `--include-inherited`
 - paged · SDK: `filesystem.Resource.Role.list`
 
@@ -311,7 +311,7 @@ Calls POST /v2/filesystem/resources/{resourceRid}/roles/remove (SDK: client.file
 
 `pltr api filesystem resource role remove RESOURCE_RID --roles JSON [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - `--roles` JSON (required): List[ResourceRoleIdentifier].
 - **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.Role.remove`
 
@@ -325,7 +325,7 @@ client.filesystem.Resource.Tag: add, list, remove
 
 `pltr api filesystem resource tag add RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - Options: `--tag-rids` TEXT
 - beta · SDK: `filesystem.Resource.Tag.add`
 
@@ -335,7 +335,7 @@ client.filesystem.Resource.Tag: add, list, remove
 
 `pltr api filesystem resource tag list RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - beta · SDK: `filesystem.Resource.Tag.list`
 
 ### pltr api filesystem resource tag remove
@@ -344,7 +344,7 @@ client.filesystem.Resource.Tag: add, list, remove
 
 `pltr api filesystem resource tag remove RESOURCE_RID [OPTIONS]`
 
-- `RESOURCE_RID`: ResourceRid.
+- `RESOURCE_RID` (RID or path): ResourceRid.
 - Options: `--tag-rids` TEXT
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `filesystem.Resource.Tag.remove`
 

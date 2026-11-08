@@ -58,7 +58,7 @@ SPEC = {
                     "http": "GET /v2/models/liveDeployments",
                     "beta": True,
                     "params": [
-                        {"name": "model_rid", "in": "query", "api": "modelRid", "type": "str", "required": True, "help": "The Resource Identifier (RID) of the Model to list live deployments for."},
+                        {"name": "model_rid", "in": "query", "api": "modelRid", "type": "str", "resource": "model", "required": True, "help": "The Resource Identifier (RID) of the Model to list live deployments for."},
                         {"name": "branch", "in": "query", "api": "branch", "type": "str", "help": "If provided, only return the live deployment associated with this branch."},
                     ],
                 },
@@ -118,7 +118,7 @@ SPEC = {
                     "beta": True,
                     "params": [
                         {"name": "name", "in": "body", "type": "str", "required": True},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                     ],
                 },
                 {
@@ -129,7 +129,7 @@ SPEC = {
                     "http": "GET /v2/models/{modelRid}",
                     "beta": True,
                     "params": [
-                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                     ],
                 },
                 {
@@ -140,7 +140,7 @@ SPEC = {
                     "http": "POST /v2/models/{modelRid}/promoteVersion",
                     "beta": True,
                     "params": [
-                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                         {"name": "source_model_version_rid", "in": "body", "type": "str", "required": True},
                         {"name": "branch", "in": "body", "type": "str", "help": "The branch to promote the version to. Defaults to master on most enrollments."},
                     ],
@@ -161,7 +161,7 @@ SPEC = {
                             "http": "GET /v2/models/{modelRid}/experiments/{experimentRid}",
                             "beta": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "experiment_rid", "in": "path", "api": "experimentRid", "type": "str", "schema": "ExperimentRid", "required": True},
                             ],
                         },
@@ -174,7 +174,7 @@ SPEC = {
                             "beta": True,
                             "paged": "response",
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "order_by", "in": "body", "type": "json", "schema": "SearchExperimentsOrderBy", "help": "The field to sort by. Default is to sort by relevance."},
                                 {"name": "page_size", "in": "body", "type": "int", "help": "The maximum number of results to return. Default 50, maximum of 100."},
                                 {"name": "page_token", "in": "body", "type": "str", "help": "PageToken to identify the next page to retrieve. Leave empty for the first request."},
@@ -198,7 +198,7 @@ SPEC = {
                                     "beta": True,
                                     "binary": True,
                                     "params": [
-                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                         {"name": "experiment_rid", "in": "path", "api": "experimentRid", "type": "str", "schema": "ExperimentRid", "required": True},
                                         {"name": "experiment_artifact_table_name", "in": "path", "api": "experimentArtifactTableName", "type": "str", "schema": "ExperimentArtifactName", "required": True},
                                         {"name": "offset", "in": "query", "api": "offset", "type": "int", "help": "Number of rows to skip from the beginning. Defaults to 0."},
@@ -214,7 +214,7 @@ SPEC = {
                                     "beta": True,
                                     "binary": True,
                                     "params": [
-                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                         {"name": "experiment_rid", "in": "path", "api": "experimentRid", "type": "str", "schema": "ExperimentRid", "required": True},
                                         {"name": "experiment_artifact_table_name", "in": "path", "api": "experimentArtifactTableName", "type": "str", "schema": "ExperimentArtifactName", "required": True},
                                     ],
@@ -235,7 +235,7 @@ SPEC = {
                                     "http": "GET /v2/models/{modelRid}/experiments/{experimentRid}/series/{experimentSeriesName}/json",
                                     "beta": True,
                                     "params": [
-                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                         {"name": "experiment_rid", "in": "path", "api": "experimentRid", "type": "str", "schema": "ExperimentRid", "required": True},
                                         {"name": "experiment_series_name", "in": "path", "api": "experimentSeriesName", "type": "str", "schema": "SeriesName", "required": True},
                                         {"name": "offset", "in": "query", "api": "offset", "type": "int", "help": "Number of values to skip from the beginning. Defaults to 0."},
@@ -251,7 +251,7 @@ SPEC = {
                                     "beta": True,
                                     "binary": True,
                                     "params": [
-                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                        {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                         {"name": "experiment_rid", "in": "path", "api": "experimentRid", "type": "str", "schema": "ExperimentRid", "required": True},
                                         {"name": "experiment_series_name", "in": "path", "api": "experimentSeriesName", "type": "str", "schema": "SeriesName", "required": True},
                                     ],
@@ -274,7 +274,7 @@ SPEC = {
                             "http": "POST /v2/models/{modelRid}/function",
                             "beta": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "api_name", "in": "body", "type": "str", "required": True},
                                 {"name": "display_name", "in": "body", "type": "str", "required": True},
                                 {"name": "is_row_wise", "in": "body", "type": "bool", "required": True},
@@ -289,7 +289,7 @@ SPEC = {
                             "http": "GET /v2/models/{modelRid}/function",
                             "beta": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                             ],
                         },
                         {
@@ -301,7 +301,7 @@ SPEC = {
                             "beta": True,
                             "destructive": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "api_name", "in": "body", "type": "str", "required": True},
                                 {"name": "is_row_wise", "in": "body", "type": "bool", "required": True},
                                 {"name": "ontology_binding", "in": "body", "type": "str"},
@@ -323,7 +323,7 @@ SPEC = {
                             "http": "POST /v2/models/{modelRid}/versions",
                             "beta": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "backing_repositories", "in": "body", "type": "str", "multiple": True, "required": True},
                                 {"name": "conda_requirements", "in": "body", "type": "str", "multiple": True, "required": True},
                                 {"name": "model_api", "in": "body", "type": "json", "schema": "ModelApi", "required": True},
@@ -338,7 +338,7 @@ SPEC = {
                             "http": "GET /v2/models/{modelRid}/versions/{modelVersionRid}",
                             "beta": True,
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "model_version_rid", "in": "path", "api": "modelVersionRid", "type": "str", "schema": "ModelVersionRid", "required": True},
                             ],
                         },
@@ -351,7 +351,7 @@ SPEC = {
                             "beta": True,
                             "paged": "iterator",
                             "params": [
-                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "required": True},
+                                {"name": "model_rid", "in": "path", "api": "modelRid", "type": "str", "schema": "ModelRid", "resource": "model", "required": True},
                                 {"name": "branch", "in": "query", "api": "branch", "type": "str", "help": "The branch to list versions from. Defaults to master on most enrollments."},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
@@ -376,7 +376,7 @@ SPEC = {
                     "beta": True,
                     "params": [
                         {"name": "name", "in": "body", "type": "str", "required": True, "help": "The name of the Model Studio."},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True, "help": "The RID of the parent folder where the studio will be created."},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True, "help": "The RID of the parent folder where the studio will be created."},
                     ],
                 },
                 {

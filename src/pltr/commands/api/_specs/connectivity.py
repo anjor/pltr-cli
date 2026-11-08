@@ -24,7 +24,7 @@ SPEC = {
                     "params": [
                         {"name": "configuration", "in": "body", "type": "json", "schema": "CreateConnectionRequestConnectionConfiguration", "required": True},
                         {"name": "display_name", "in": "body", "type": "str", "required": True, "help": "The display name of the Connection. The display name must not be blank."},
-                        {"name": "parent_folder_rid", "in": "body", "type": "str", "required": True},
+                        {"name": "parent_folder_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                         {"name": "worker", "in": "body", "type": "json", "schema": "CreateConnectionRequestConnectionWorker", "required": True},
                     ],
                 },
@@ -35,7 +35,7 @@ SPEC = {
                     "help": "Get the Connection with the specified rid.\n\nRequired scopes: [api:connectivity-connection-read]",
                     "http": "GET /v2/connectivity/connections/{connectionRid}",
                     "params": [
-                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                     ],
                 },
                 {
@@ -45,7 +45,7 @@ SPEC = {
                     "help": "Retrieves the ConnectionConfiguration of the [Connection](https://palantir.com/docs/foundry/data-connection/set-up-source/) itself.\nThis operation is intended for use when other Connection data is not required, providing a lighter-weight alternative to `getConnection` operation.\n\nRequired scopes: [api:connectivity-connection-read]",
                     "http": "GET /v2/connectivity/connections/{connectionRid}/getConfiguration",
                     "params": [
-                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                     ],
                 },
                 {
@@ -65,7 +65,7 @@ SPEC = {
                     "help": "Updates the [export settings on the Connection.](https://palantir.com/docs/foundry/data-connection/export-overview/#enable-exports-for-source)\nOnly users with Information Security Officer role can modify the export settings.\n\nRequired scopes: [api:connectivity-connection-write]",
                     "http": "POST /v2/connectivity/connections/{connectionRid}/updateExportSettings",
                     "params": [
-                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                         {"name": "export_settings", "in": "body", "type": "json", "schema": "ConnectionExportSettings", "required": True},
                     ],
                 },
@@ -77,7 +77,7 @@ SPEC = {
                     "http": "POST /v2/connectivity/connections/{connectionRid}/updateSecrets",
                     "destructive": True,
                     "params": [
-                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                         {"name": "secrets", "in": "body", "type": "json", "schema": "Dict[SecretName, PlaintextValue]", "required": True, "help": "The secrets to be updated. The specified secret names must already be configured on the connection."},
                     ],
                 },
@@ -88,7 +88,7 @@ SPEC = {
                     "help": "Upload custom jdbc drivers to an existing JDBC connection.\nThe body of the request must contain the binary content of the file and the `Content-Type` header must be `application/octet-stream`.\n\nRequired scopes: [api:connectivity-connection-write]",
                     "http": "POST /v2/connectivity/connections/{connectionRid}/uploadCustomJdbcDrivers",
                     "params": [
-                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                        {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                         {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "Body of the request"},
                         {"name": "file_name", "in": "query", "api": "fileName", "type": "str", "required": True, "help": "The file name of the uploaded JDBC driver. Must end with .jar"},
                     ],
@@ -108,8 +108,8 @@ SPEC = {
                             "help": "Creates a new FileImport.\n\nRequired scopes: [api:connectivity-file-import-write]",
                             "http": "POST /v2/connectivity/connections/{connectionRid}/fileImports",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
-                                {"name": "dataset_rid", "in": "body", "type": "str", "required": True, "help": "The RID of the output dataset. Can not be modified after the file import is created."},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
+                                {"name": "dataset_rid", "in": "body", "type": "str", "resource": "dataset", "required": True, "help": "The RID of the output dataset. Can not be modified after the file import is created."},
                                 {"name": "display_name", "in": "body", "type": "str", "required": True},
                                 {"name": "file_import_filters", "in": "body", "type": "json", "schema": "List[FileImportFilter]", "required": True, "help": "Use filters to limit which files should be imported. Filters are applied in the order they are defined. A different ordering of filters may lead to a more optimized import. [Learn more about optimizing file imports.](https://palantir.com/docs/foundry/data-connection/file-based-syncs/#optimize-file-based-syncs)"},
                                 {"name": "import_mode", "in": "body", "type": "choice", "choices": ["SNAPSHOT", "APPEND", "UPDATE"], "required": True},
@@ -125,7 +125,7 @@ SPEC = {
                             "http": "DELETE /v2/connectivity/connections/{connectionRid}/fileImports/{fileImportRid}",
                             "destructive": True,
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "file_import_rid", "in": "path", "api": "fileImportRid", "type": "str", "schema": "FileImportRid", "required": True},
                             ],
                         },
@@ -136,7 +136,7 @@ SPEC = {
                             "help": "Executes the FileImport, which runs asynchronously as a [Foundry Build](https://palantir.com/docs/foundry/data-integration/builds/).\nThe returned BuildRid can be used to check the status via the Orchestration API.\n\nRequired scopes: [api:connectivity-file-import-execute]",
                             "http": "POST /v2/connectivity/connections/{connectionRid}/fileImports/{fileImportRid}/execute",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "file_import_rid", "in": "path", "api": "fileImportRid", "type": "str", "schema": "FileImportRid", "required": True},
                             ],
                         },
@@ -147,7 +147,7 @@ SPEC = {
                             "help": "Get the FileImport with the specified rid.\n\nRequired scopes: [api:connectivity-file-import-read]",
                             "http": "GET /v2/connectivity/connections/{connectionRid}/fileImports/{fileImportRid}",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "file_import_rid", "in": "path", "api": "fileImportRid", "type": "str", "schema": "FileImportRid", "required": True},
                             ],
                         },
@@ -159,7 +159,7 @@ SPEC = {
                             "http": "GET /v2/connectivity/connections/{connectionRid}/fileImports",
                             "paged": "iterator",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                             ],
@@ -172,7 +172,7 @@ SPEC = {
                             "http": "PUT /v2/connectivity/connections/{connectionRid}/fileImports/{fileImportRid}",
                             "destructive": True,
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "file_import_rid", "in": "path", "api": "fileImportRid", "type": "str", "schema": "FileImportRid", "required": True},
                                 {"name": "display_name", "in": "body", "type": "str", "required": True},
                                 {"name": "file_import_filters", "in": "body", "type": "json", "schema": "List[FileImportFilter]", "required": True, "help": "Use filters to limit which files should be imported. Filters are applied in the order they are defined. A different ordering of filters may lead to a more optimized import. [Learn more about optimizing file imports.](https://palantir.com/docs/foundry/data-connection/file-based-syncs/#optimize-file-based-syncs)"},
@@ -195,9 +195,9 @@ SPEC = {
                             "help": "Creates a new TableImport.\n\nRequired scopes: [api:connectivity-table-import-write]",
                             "http": "POST /v2/connectivity/connections/{connectionRid}/tableImports",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "config", "in": "body", "type": "json", "schema": "CreateTableImportRequestTableImportConfig", "required": True},
-                                {"name": "dataset_rid", "in": "body", "type": "str", "required": True, "help": "The RID of the output dataset. Can not be modified after the table import is created."},
+                                {"name": "dataset_rid", "in": "body", "type": "str", "resource": "dataset", "required": True, "help": "The RID of the output dataset. Can not be modified after the table import is created."},
                                 {"name": "display_name", "in": "body", "type": "str", "required": True},
                                 {"name": "import_mode", "in": "body", "type": "choice", "choices": ["SNAPSHOT", "APPEND"], "required": True},
                                 {"name": "allow_schema_changes", "in": "body", "type": "bool", "help": "Allow the TableImport to succeed if the schema of imported rows does not match the existing dataset's schema. Defaults to false for new table imports."},
@@ -212,7 +212,7 @@ SPEC = {
                             "http": "DELETE /v2/connectivity/connections/{connectionRid}/tableImports/{tableImportRid}",
                             "destructive": True,
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "table_import_rid", "in": "path", "api": "tableImportRid", "type": "str", "schema": "TableImportRid", "required": True},
                             ],
                         },
@@ -223,7 +223,7 @@ SPEC = {
                             "help": "Executes the TableImport, which runs asynchronously as a [Foundry Build](https://palantir.com/docs/foundry/data-integration/builds/).\nThe returned BuildRid can be used to check the status via the Orchestration API.\n\nRequired scopes: [api:connectivity-table-import-execute]",
                             "http": "POST /v2/connectivity/connections/{connectionRid}/tableImports/{tableImportRid}/execute",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "table_import_rid", "in": "path", "api": "tableImportRid", "type": "str", "schema": "TableImportRid", "required": True},
                             ],
                         },
@@ -234,7 +234,7 @@ SPEC = {
                             "help": "Get the TableImport with the specified rid.\n\nRequired scopes: [api:connectivity-table-import-read]",
                             "http": "GET /v2/connectivity/connections/{connectionRid}/tableImports/{tableImportRid}",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "table_import_rid", "in": "path", "api": "tableImportRid", "type": "str", "schema": "TableImportRid", "required": True},
                             ],
                         },
@@ -246,7 +246,7 @@ SPEC = {
                             "http": "GET /v2/connectivity/connections/{connectionRid}/tableImports",
                             "paged": "iterator",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                 {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                             ],
@@ -259,7 +259,7 @@ SPEC = {
                             "http": "PUT /v2/connectivity/connections/{connectionRid}/tableImports/{tableImportRid}",
                             "destructive": True,
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "table_import_rid", "in": "path", "api": "tableImportRid", "type": "str", "schema": "TableImportRid", "required": True},
                                 {"name": "config", "in": "body", "type": "json", "schema": "ReplaceTableImportRequestTableImportConfig", "required": True},
                                 {"name": "display_name", "in": "body", "type": "str", "required": True},
@@ -282,10 +282,10 @@ SPEC = {
                             "help": "Creates a new [Virtual Table](https://palantir.com/docs/foundry/data-integration/virtual-tables/) from an upstream table. The VirtualTable will be created\nin the specified parent folder and can be queried through Foundry's data access APIs.\n\nRequired scopes: [api:connectivity-virtual-table-write]",
                             "http": "POST /v2/connectivity/connections/{connectionRid}/virtualTables",
                             "params": [
-                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "required": True},
+                                {"name": "connection_rid", "in": "path", "api": "connectionRid", "type": "str", "schema": "ConnectionRid", "resource": "connection", "required": True},
                                 {"name": "config", "in": "body", "type": "json", "schema": "VirtualTableConfig", "required": True},
                                 {"name": "name", "in": "body", "type": "str", "required": True},
-                                {"name": "parent_rid", "in": "body", "type": "str", "required": True},
+                                {"name": "parent_rid", "in": "body", "type": "str", "resource": "folder", "required": True},
                                 {"name": "markings", "in": "body", "type": "str", "multiple": True},
                             ],
                         },

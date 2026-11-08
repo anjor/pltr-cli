@@ -25,6 +25,8 @@ from ..contract import (
     format_option,
     output_option,
     pltr_command,
+    resource_argument,
+    resource_option,
     spinner,
     success,
     warn,
@@ -95,7 +97,8 @@ ACCESS_REQUIREMENT_COLUMNS: Columns = {
 
 ResourceRid = Annotated[
     str,
-    typer.Argument(
+    resource_argument(
+        "resource",
         help=(
             "Resource RID (ri.<service>.<instance>.<type>.<id>), for example "
             "a dataset (ri.foundry.main.dataset.<id>) or a folder or project "
@@ -120,9 +123,10 @@ TypeOption = Annotated[
 ]
 FolderRidOption = Annotated[
     str,
-    typer.Option(
+    resource_option(
         "--folder-rid",
         "-f",
+        kind="folder",
         help=(
             "RID of the folder, project or space (the API can't list the "
             "root folder: find spaces with 'pltr space list')."
@@ -350,8 +354,9 @@ def search_resources(
 def get_resources_batch(
     resource_rids: Annotated[
         List[str],
-        typer.Argument(
-            help=f"Resource RIDs, separated by spaces (at most {MAX_BATCH_SIZE})."
+        resource_argument(
+            "resource",
+            help=f"Resource RIDs, separated by spaces (at most {MAX_BATCH_SIZE}).",
         ),
     ],
     profile: ProfileOption = None,

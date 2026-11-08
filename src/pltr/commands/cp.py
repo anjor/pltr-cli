@@ -17,6 +17,7 @@ from ..contract import (
     ProfileOption,
     emit,
     pltr_command,
+    resource_argument,
     warn,
 )
 from ..services.copy import DATASET_TYPE, FOLDER_TYPE, CopyService
@@ -76,14 +77,16 @@ COPY_COLUMNS: Columns = {
 def cp_command(
     source_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "dataset-or-folder",
             help="RID of the dataset or folder to copy.",
             autocompletion=complete_rid,
         ),
     ],
     target_folder_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "folder",
             help="RID of the folder or project to copy into.",
             autocompletion=complete_rid,
         ),

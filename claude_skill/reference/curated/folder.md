@@ -22,17 +22,17 @@ Get several folders in one request.
 
 `pltr folder batch-get FOLDER_RIDS... [OPTIONS]`
 
-- `FOLDER_RIDS...`: Folder RIDs, separated by spaces (at most 1000).
+- `FOLDER_RIDS...` (RID or path): Folder RIDs, separated by spaces (at most 1000).
 - SDK: `filesystem.Folder.get_batch`
 
 ### pltr folder create
 
 Create a folder inside a project or another folder.
 
-`pltr folder create NAME --parent-folder TEXT [OPTIONS]`
+`pltr folder create NAME --parent-folder RID|PATH [OPTIONS]`
 
 - `NAME`: Display name of the new folder.
-- `--parent-folder`, `-p` TEXT (required): RID of the project or folder to create the folder in.
+- `--parent-folder`, `-p` RID|PATH (required): RID of the project or folder to create the folder in.
 - SDK: `filesystem.Folder.create`
 
 ### pltr folder get
@@ -41,7 +41,7 @@ Get a folder's metadata.
 
 `pltr folder get FOLDER_RID [OPTIONS]`
 
-- `FOLDER_RID`: Folder RID (ri.compass.main.folder.<id>).
+- `FOLDER_RID` (RID or path): Folder RID (ri.compass.main.folder.<id>).
 - SDK: `filesystem.Folder.get`
 
 ### pltr folder list
@@ -50,5 +50,5 @@ List the resources directly inside a folder.
 
 `pltr folder list FOLDER_RID [OPTIONS]`
 
-- `FOLDER_RID`: RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
+- `FOLDER_RID` (RID or path): RID of the folder, project or space to list (the API can't list the root folder: find spaces with 'pltr space list').
 - paged · SDK: `filesystem.Folder.children`

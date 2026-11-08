@@ -12,6 +12,26 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+### Added
+
+- **Compass paths wherever a resource RID is accepted** (#193). Every
+  argument or option that takes the RID of a Compass resource (datasets and
+  views, folders, projects, any resource, media sets, connections, models,
+  AIP agents, third-party applications and widget repositories) also takes
+  its path, such as `/Space/Project/data/employees`, in curated commands and
+  in `pltr api`. pltr resolves the paths before calling the API, with one
+  `Resource.get_by_path` call (or one `get_by_path_batch` call for several
+  paths) and none when only RIDs are given, and prints
+  `Resolved '<path>' to <rid>` on stderr in text mode. A path to the wrong
+  kind of resource fails with the new error type `wrong_resource_type`
+  (exit 2), naming both types; a path with no visible resource fails with
+  `path_not_found` (exit 5). Output still shows RIDs. Spaces and the root
+  folder can't be looked up by path. The command manifest marks these
+  parameters with `"acceptsPath": true` and their `resourceKind`, and usage
+  lines show such an option's value as `RID|PATH`.
+- Errors raised by pltr itself can carry `parameters` in the JSON error
+  object, like API errors do.
+
 ## [0.17.0] - 2026-11-07
 
 This release puts every pltr command on one set of rules for output, errors

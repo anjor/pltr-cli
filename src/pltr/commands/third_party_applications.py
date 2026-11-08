@@ -17,6 +17,7 @@ from ..contract import (
     ProfileOption,
     emit,
     pltr_command,
+    resource_argument,
     spinner,
 )
 from ..services.third_party_applications import ThirdPartyApplicationsService
@@ -33,7 +34,8 @@ APPLICATION_COLUMNS: Columns = {"RID": "rid"}
 def get_application(
     application_rid: Annotated[
         str,
-        typer.Argument(
+        resource_argument(
+            "third-party-application",
             help=(
                 "Third-party application RID "
                 "(ri.third-party-applications.main.application.<id>; shown in "

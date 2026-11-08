@@ -13,10 +13,10 @@ client.datasets.Dataset: branch, create, file, get, get-health-check-reports, ge
 
 Creates a new Dataset.
 
-`pltr api datasets dataset create --name TEXT --parent-folder-rid TEXT [OPTIONS]`
+`pltr api datasets dataset create --name TEXT --parent-folder-rid RID|PATH [OPTIONS]`
 
 - `--name` TEXT (required)
-- `--parent-folder-rid` TEXT (required)
+- `--parent-folder-rid` RID|PATH (required)
 - SDK: `datasets.Dataset.create`
 
 ### pltr api datasets dataset get
@@ -25,7 +25,7 @@ Get the Dataset with the specified rid.
 
 `pltr api datasets dataset get DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - SDK: `datasets.Dataset.get`
 
 ### pltr api datasets dataset get-health-check-reports
@@ -34,7 +34,7 @@ Get the Dataset with the specified rid.
 
 `pltr api datasets dataset get-health-check-reports DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - Options: `--branch-name` TEXT
 - beta · SDK: `datasets.Dataset.get_health_check_reports`
 
@@ -44,7 +44,7 @@ Get the Dataset with the specified rid.
 
 `pltr api datasets dataset get-health-checks DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - Options: `--branch-name` TEXT
 - beta · SDK: `datasets.Dataset.get_health_checks`
 
@@ -54,7 +54,7 @@ Get the RIDs of the Schedules that target the given Dataset.
 
 `pltr api datasets dataset get-schedules DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - Options: `--branch-name` TEXT
 - paged · SDK: `datasets.Dataset.get_schedules`
 
@@ -64,7 +64,7 @@ Gets a dataset's schema.
 
 `pltr api datasets dataset get-schema DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - Options: `--branch-name` TEXT, `--end-transaction-rid` TEXT, `--version-id` TEXT
 - SDK: `datasets.Dataset.get_schema`
 
@@ -83,7 +83,7 @@ Fetch schemas for multiple datasets in a single request.
 
 `pltr api datasets dataset jobs DATASET_RID --order-by JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--order-by` JSON (required): List[GetDatasetJobsSort].
 - Options: `--branch-name` TEXT, `--where` JSON
 - beta · paged · SDK: `datasets.Dataset.jobs`
@@ -94,7 +94,7 @@ Adds a schema on an existing dataset using a PUT request.
 
 `pltr api datasets dataset put-schema DATASET_RID --schema JSON [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--schema` JSON (required): The schema that will be added.
 - Options: `--branch-name` TEXT, `--dataframe-reader` AVRO|CSV|PARQUET|DATASOURCE, `--end-transaction-rid` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.put_schema`
@@ -105,7 +105,7 @@ Gets the content of a dataset as a table in the specified format.
 
 `pltr api datasets dataset read-table DATASET_RID --api-format ARROW|CSV [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--api-format` ARROW|CSV (required): The export format.
 - Options: `--branch-name` TEXT, `--columns` TEXT, `--end-transaction-rid` TEXT, `--row-limit` INTEGER, `--start-transaction-rid` TEXT
 - output: binary (to `--output FILE` or a pipe) · SDK: `datasets.Dataset.read_table`
@@ -116,7 +116,7 @@ Gets the content of a dataset as a table in the specified format.
 
 `pltr api datasets dataset transactions DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - beta · paged · SDK: `datasets.Dataset.transactions`
 
 ## pltr api datasets dataset branch
@@ -129,7 +129,7 @@ Creates a branch on an existing dataset.
 
 `pltr api datasets dataset branch create DATASET_RID --name TEXT [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--name` TEXT (required)
 - Options: `--transaction-rid` TEXT
 - SDK: `datasets.Dataset.Branch.create`
@@ -140,7 +140,7 @@ Deletes the Branch with the given BranchName.
 
 `pltr api datasets dataset branch delete DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `BRANCH_NAME`: BranchName.
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.Branch.delete`
 
@@ -150,7 +150,7 @@ Get a Branch of a Dataset.
 
 `pltr api datasets dataset branch get DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `BRANCH_NAME`: BranchName.
 - SDK: `datasets.Dataset.Branch.get`
 
@@ -160,7 +160,7 @@ Lists the Branches of a Dataset.
 
 `pltr api datasets dataset branch list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - paged · SDK: `datasets.Dataset.Branch.list`
 
 ### pltr api datasets dataset branch transactions
@@ -169,7 +169,7 @@ Lists the Branches of a Dataset.
 
 `pltr api datasets dataset branch transactions DATASET_RID BRANCH_NAME [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `BRANCH_NAME`: BranchName.
 - beta · paged · SDK: `datasets.Dataset.Branch.transactions`
 
@@ -183,7 +183,7 @@ Gets the content of a File contained in a Dataset.
 
 `pltr api datasets dataset file content DATASET_RID FILE_PATH [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `FILE_PATH`: FilePath.
 - Options: `--branch-name` TEXT, `--end-transaction-rid` TEXT, `--start-transaction-rid` TEXT
 - output: binary (to `--output FILE` or a pipe) · SDK: `datasets.Dataset.File.content`
@@ -194,7 +194,7 @@ Deletes a File from a Dataset.
 
 `pltr api datasets dataset file delete DATASET_RID FILE_PATH [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `FILE_PATH`: FilePath.
 - Options: `--branch-name` TEXT, `--transaction-rid` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.File.delete`
@@ -205,7 +205,7 @@ Gets metadata about a File contained in a Dataset.
 
 `pltr api datasets dataset file get DATASET_RID FILE_PATH [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `FILE_PATH`: FilePath.
 - Options: `--branch-name` TEXT, `--end-transaction-rid` TEXT, `--start-transaction-rid` TEXT
 - SDK: `datasets.Dataset.File.get`
@@ -216,7 +216,7 @@ Lists Files contained in a Dataset.
 
 `pltr api datasets dataset file list DATASET_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - Options: `--branch-name` TEXT, `--end-transaction-rid` TEXT, `--path-prefix` TEXT, `--start-transaction-rid` TEXT
 - paged · SDK: `datasets.Dataset.File.list`
 
@@ -226,7 +226,7 @@ Uploads a File to an existing Dataset.
 
 `pltr api datasets dataset file upload DATASET_RID FILE_PATH --body PATH [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `FILE_PATH`: FilePath.
 - `--body` PATH (required): Body of the request.
 - Options: `--branch-name` TEXT, `--transaction-rid` TEXT, `--transaction-type` APPEND|UPDATE|SNAPSHOT|DELETE
@@ -242,7 +242,7 @@ Aborts an open Transaction.
 
 `pltr api datasets dataset transaction abort DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `TRANSACTION_RID`: TransactionRid.
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.Dataset.Transaction.abort`
 
@@ -252,7 +252,7 @@ Aborts an open Transaction.
 
 `pltr api datasets dataset transaction build DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `TRANSACTION_RID`: TransactionRid.
 - beta · SDK: `datasets.Dataset.Transaction.build`
 
@@ -262,7 +262,7 @@ Commits an open Transaction.
 
 `pltr api datasets dataset transaction commit DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `TRANSACTION_RID`: TransactionRid.
 - SDK: `datasets.Dataset.Transaction.commit`
 
@@ -272,7 +272,7 @@ Creates a Transaction on a Branch of a Dataset.
 
 `pltr api datasets dataset transaction create DATASET_RID --transaction-type APPEND|UPDATE|SNAPSHOT|DELETE [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `--transaction-type` APPEND|UPDATE|SNAPSHOT|DELETE (required)
 - Options: `--branch-name` TEXT
 - SDK: `datasets.Dataset.Transaction.create`
@@ -283,7 +283,7 @@ Gets a Transaction of a Dataset.
 
 `pltr api datasets dataset transaction get DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `TRANSACTION_RID`: TransactionRid.
 - SDK: `datasets.Dataset.Transaction.get`
 
@@ -293,7 +293,7 @@ Gets a Transaction of a Dataset.
 
 `pltr api datasets dataset transaction job DATASET_RID TRANSACTION_RID [OPTIONS]`
 
-- `DATASET_RID`: DatasetRid.
+- `DATASET_RID` (RID or path): DatasetRid.
 - `TRANSACTION_RID`: TransactionRid.
 - beta · SDK: `datasets.Dataset.Transaction.job`
 
@@ -307,7 +307,7 @@ Adds one or more backing datasets to a View.
 
 `pltr api datasets view add-backing-datasets VIEW_DATASET_RID --backing-datasets JSON [OPTIONS]`
 
-- `VIEW_DATASET_RID`: The rid of the View.
+- `VIEW_DATASET_RID` (RID or path): The rid of the View.
 - `--backing-datasets` JSON (required): List[ViewBackingDataset].
 - Options: `--branch` TEXT
 - SDK: `datasets.View.add_backing_datasets`
@@ -318,7 +318,7 @@ Adds a primary key to a View that does not already have one.
 
 `pltr api datasets view add-primary-key VIEW_DATASET_RID --primary-key JSON [OPTIONS]`
 
-- `VIEW_DATASET_RID`: The rid of the View.
+- `VIEW_DATASET_RID` (RID or path): The rid of the View.
 - `--primary-key` JSON (required): ViewPrimaryKey.
 - Options: `--branch` TEXT
 - SDK: `datasets.View.add_primary_key`
@@ -327,10 +327,10 @@ Adds a primary key to a View that does not already have one.
 
 Create a new View.
 
-`pltr api datasets view create --backing-datasets JSON --parent-folder-rid TEXT --view-name TEXT [OPTIONS]`
+`pltr api datasets view create --backing-datasets JSON --parent-folder-rid RID|PATH --view-name TEXT [OPTIONS]`
 
 - `--backing-datasets` JSON (required): List[ViewBackingDataset].
-- `--parent-folder-rid` TEXT (required)
+- `--parent-folder-rid` RID|PATH (required)
 - `--view-name` TEXT (required)
 - Options: `--branch` TEXT, `--primary-key` JSON
 - SDK: `datasets.View.create`
@@ -341,7 +341,7 @@ Get metadata for a View.
 
 `pltr api datasets view get VIEW_DATASET_RID [OPTIONS]`
 
-- `VIEW_DATASET_RID`: The rid of the View.
+- `VIEW_DATASET_RID` (RID or path): The rid of the View.
 - Options: `--branch` TEXT
 - SDK: `datasets.View.get`
 
@@ -351,7 +351,7 @@ Removes specified backing datasets from a View.
 
 `pltr api datasets view remove-backing-datasets VIEW_DATASET_RID --backing-datasets JSON [OPTIONS]`
 
-- `VIEW_DATASET_RID`: The rid of the View.
+- `VIEW_DATASET_RID` (RID or path): The rid of the View.
 - `--backing-datasets` JSON (required): List[ViewBackingDataset].
 - Options: `--branch` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.View.remove_backing_datasets`
@@ -362,7 +362,7 @@ Replaces the backing datasets for a View.
 
 `pltr api datasets view replace-backing-datasets VIEW_DATASET_RID --backing-datasets JSON [OPTIONS]`
 
-- `VIEW_DATASET_RID`: The rid of the View.
+- `VIEW_DATASET_RID` (RID or path): The rid of the View.
 - `--backing-datasets` JSON (required): List[ViewBackingDataset].
 - Options: `--branch` TEXT
 - **destructive** (asks first; `--yes` skips) · SDK: `datasets.View.replace_backing_datasets`

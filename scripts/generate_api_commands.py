@@ -35,6 +35,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
+from pltr.contract.resources import kind_for_sdk_type
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPECS_DIR = REPO_ROOT / "src" / "pltr" / "commands" / "api" / "_specs"
 SPECS_PACKAGE = "pltr.commands.api._specs"
@@ -667,6 +669,10 @@ def method_spec(
             schema = _schema_name(doc.types.get(name))
             if schema:
                 param["schema"] = schema
+        resource_kind = kind_for_sdk_type(doc.types.get(name))
+        if resource_kind and param["type"] == "str":
+            # The RID of a Compass resource: the command accepts its path too (#193).
+            param["resource"] = resource_kind
         if parameter.default is inspect.Parameter.empty:
             param["required"] = True
         option = kebab(name)

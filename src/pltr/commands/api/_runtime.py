@@ -29,6 +29,7 @@ import click
 
 from pltr.contract import (
     BETA_LABEL,
+    PATH_HELP,
     PltrError,
     check_binary_output,
     click_format_option,
@@ -45,6 +46,7 @@ from pltr.contract import (
     spinner,
     success,
 )
+from pltr.contract.resources import ResourceRef
 
 SPECS_PACKAGE = "pltr.commands.api._specs"
 
@@ -253,6 +255,9 @@ def is_shared_paging_parameter(spec: Dict[str, Any], param: Dict[str, Any]) -> b
 
 
 def _click_type(param: Dict[str, Any]) -> Any:
+    if param.get("resource"):
+        # A Compass resource RID; @pltr_command resolves paths (#193).
+        return ResourceRef(param["resource"])
     kind = param["type"]
     if kind == "int":
         return click.INT
@@ -285,6 +290,8 @@ def _option_help(param: Dict[str, Any]) -> str:
             parts.append("The API requires this list; leave it out to send [].")
     if param.get("auto") == "body_length":
         parts.append("Defaults to the size of --body.")
+    if param.get("resource"):
+        parts.append(PATH_HELP)
     return " ".join(part for part in parts if part)
 
 
@@ -293,6 +300,8 @@ def _argument_help(param: Dict[str, Any]) -> str:
     schema = param.get("schema")
     if schema:
         text += f" Type: {schema}."
+    if param.get("resource"):
+        text += f" {PATH_HELP}"
     return text
 
 

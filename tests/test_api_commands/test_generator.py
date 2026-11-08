@@ -354,3 +354,46 @@ def test_specs_record_flags(generator, rendered):
     stream = {r["name"]: r for r in streams.SPEC["resources"]}["dataset"]
     stream = {r["name"]: r for r in stream["resources"]}["stream"]
     assert {m["name"]: m for m in stream["methods"]}["reset"]["destructive"] is True
+
+
+def _method(spec, *path):
+    """The method spec at `path` (resource names..., method name) in `spec`."""
+    node = spec
+    for name in path[:-1]:
+        node = {r["name"]: r for r in node["resources"]}[name]
+    return {m["name"]: m for m in node["methods"]}[path[-1]]
+
+
+def _params(method):
+    return {p["name"]: p for p in method["params"]}
+
+
+def test_specs_mark_compass_resource_parameters(generator, rendered):
+    from pltr.commands.api._specs import (
+        datasets,
+        filesystem,
+        models,
+        orchestration,
+    )
+
+    get = _params(_method(datasets.SPEC, "dataset", "get"))
+    assert get["dataset_rid"]["resource"] == "dataset"
+    create = _params(_method(datasets.SPEC, "dataset", "create"))
+    assert create["parent_folder_rid"]["resource"] == "folder"  # a body parameter
+    folder = _params(_method(filesystem.SPEC, "folder", "create"))
+    assert folder["parent_folder_rid"]["resource"] == "folder"
+    project = _params(_method(filesystem.SPEC, "project", "get"))
+    assert project["project_rid"]["resource"] == "project"
+    deployments = _params(_method(models.SPEC, "live-deployment", "list"))
+    assert deployments["model_rid"]["resource"] == "model"  # a query parameter
+
+    # Not Compass resources, or not resolvable by path.
+    assert (
+        "resource"
+        not in _params(_method(orchestration.SPEC, "build", "get"))["build_rid"]
+    )
+    assert (
+        "resource" not in _params(_method(filesystem.SPEC, "space", "get"))["space_rid"]
+    )
+    transaction = _params(_method(datasets.SPEC, "dataset", "transaction", "get"))
+    assert "resource" not in transaction["transaction_rid"]

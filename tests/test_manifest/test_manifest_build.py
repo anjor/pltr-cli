@@ -12,12 +12,15 @@ from typing import List, Optional
 import click
 import pytest
 import typer
+from typing_extensions import Annotated
 
 from pltr import __version__
 from pltr.cli import app
 from pltr.commands.api import _specs
 from pltr.contract import (
     FormatOption,
+    resource_argument,
+    resource_option,
     YesOption,
     get_command_meta,
     iter_commands,
@@ -147,7 +150,12 @@ def test_curated_entry(entries):
             "type": "string",
             "required": True,
             "multiple": False,
-            "help": "Folder RID (ri.compass.main.folder.<id>).",
+            "acceptsPath": True,
+            "resourceKind": "folder",
+            "help": (
+                "Folder RID (ri.compass.main.folder.<id>). "
+                "A Compass path such as /Space/Project/name works too."
+            ),
         }
     ]
     assert [o["flags"] for o in entry["options"]] == [
@@ -193,7 +201,9 @@ def test_generated_entry(entries):
 def test_generated_arguments_keep_their_help(entries):
     entry = entries["pltr api datasets dataset branch list"]
     assert entry["arguments"][0]["name"] == "dataset_rid"
-    assert entry["arguments"][0]["help"].endswith("Type: DatasetRid.")
+    help_text = entry["arguments"][0]["help"]
+    assert "Type: DatasetRid." in help_text
+    assert help_text.endswith("A Compass path such as /Space/Project/name works too.")
 
 
 def test_generated_json_options_are_typed(entries):
@@ -349,6 +359,17 @@ def synthetic_app() -> typer.Typer:
     ):
         """Every kind of option."""
 
+    @test_app.command("paths")
+    @pltr_command(sdk="datasets.Dataset.create")
+    def paths_command(
+        dataset_rid: Annotated[str, resource_argument("dataset", help="Dataset RID.")],
+        parent: Annotated[
+            str, resource_option("--parent", kind="folder", help="Folder.")
+        ],
+        label: Optional[str] = typer.Option(None, "--label"),
+    ):
+        """Arguments and options that take a RID or a Compass path."""
+
     return test_app
 
 
@@ -434,3 +455,60 @@ def test_metadata_reader_sees_the_synthetic_commands():
     ctx = click.Context(root)
     assert get_command_meta(root.get_command(ctx, "legacy")) is None
     assert get_command_meta(root.get_command(ctx, "http")) is not None
+
+
+def test_resource_parameters_accept_paths(synthetic):
+    entry = synthetic["pltr paths"]
+    (argument,) = entry["arguments"]
+    options = {o["name"]: o for o in entry["options"]}
+    assert argument["acceptsPath"] is True
+    assert argument["resourceKind"] == "dataset"
+    assert argument["type"] == "string"
+    assert options["parent"]["acceptsPath"] is True
+    assert options["parent"]["resourceKind"] == "folder"
+    assert "acceptsPath" not in options["label"]
+    assert "resourceKind" not in options["label"]
+    assert entry["usage"] == "pltr paths DATASET_RID --parent RID|PATH [OPTIONS]"
+
+
+@pytest.mark.parametrize(
+    "path, name, kind",
+    [
+        ("pltr api datasets dataset get", "dataset_rid", "dataset"),
+        ("pltr api datasets dataset create", "parent_folder_rid", "folder"),
+        ("pltr api filesystem folder children", "folder_rid", "folder"),
+        ("pltr api filesystem project get", "project_rid", "project"),
+        ("pltr api filesystem resource get", "resource_rid", "resource"),
+        ("pltr api media-sets media-set info", "media_set_rid", "media-set"),
+        ("pltr api connectivity connection get", "connection_rid", "connection"),
+        ("pltr api models model get", "model_rid", "model"),
+        ("pltr api aip-agents agent get", "agent_rid", "agent"),
+        (
+            "pltr api third-party-applications third-party-application get",
+            "third_party_application_rid",
+            "third-party-application",
+        ),
+        ("pltr api widgets repository get", "repository_rid", "repository"),
+    ],
+)
+def test_generated_resource_parameters_accept_paths(entries, path, name, kind):
+    entry = entries[path]
+    params = {p["name"]: p for p in entry["arguments"] + entry["options"]}
+    assert params[name]["acceptsPath"] is True
+    assert params[name]["resourceKind"] == kind
+
+
+@pytest.mark.parametrize(
+    "path, name",
+    [
+        ("pltr api orchestration build get", "build_rid"),
+        ("pltr api filesystem space get", "space_rid"),
+        ("pltr api datasets dataset transaction get", "transaction_rid"),
+        ("pltr api orchestration schedule get", "schedule_rid"),
+        ("pltr api admin organization get", "organization_rid"),
+    ],
+)
+def test_other_rid_parameters_take_rids_only(entries, path, name):
+    entry = entries[path]
+    params = {p["name"]: p for p in entry["arguments"] + entry["options"]}
+    assert "acceptsPath" not in params[name]

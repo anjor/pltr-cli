@@ -23,7 +23,7 @@ SPEC = {
                     "http": "GET /v2/thirdPartyApplications/{thirdPartyApplicationRid}",
                     "beta": True,
                     "params": [
-                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                     ],
                 },
             ],
@@ -41,7 +41,7 @@ SPEC = {
                             "help": "Deploy a version of the Website.\n\nRequired scopes: [third-party-application:deploy-application-website]",
                             "http": "POST /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/deploy",
                             "params": [
-                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                 {"name": "version", "in": "body", "type": "str", "required": True},
                             ],
                         },
@@ -52,7 +52,7 @@ SPEC = {
                             "help": "Get the Website.\n\nRequired scopes: [third-party-application:deploy-application-website]",
                             "http": "GET /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website",
                             "params": [
-                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                             ],
                         },
                         {
@@ -63,7 +63,7 @@ SPEC = {
                             "http": "POST /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/undeploy",
                             "destructive": True,
                             "params": [
-                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                             ],
                         },
                     ],
@@ -82,7 +82,7 @@ SPEC = {
                                     "http": "DELETE /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/versions/{versionVersion}",
                                     "destructive": True,
                                     "params": [
-                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                         {"name": "version_version", "in": "path", "api": "versionVersion", "type": "str", "schema": "VersionVersion", "required": True, "help": "The semantic version of the Website."},
                                     ],
                                 },
@@ -93,7 +93,7 @@ SPEC = {
                                     "help": "Get the Version with the specified version.\n\nRequired scopes: [third-party-application:deploy-application-website]",
                                     "http": "GET /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/versions/{versionVersion}",
                                     "params": [
-                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                         {"name": "version_version", "in": "path", "api": "versionVersion", "type": "str", "schema": "VersionVersion", "required": True, "help": "The semantic version of the Website."},
                                     ],
                                 },
@@ -105,7 +105,7 @@ SPEC = {
                                     "http": "GET /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/versions",
                                     "paged": "iterator",
                                     "params": [
-                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                         {"name": "page_size", "in": "query", "api": "pageSize", "type": "int", "help": "The page size to use for the endpoint."},
                                         {"name": "page_token", "in": "query", "api": "pageToken", "type": "str", "help": "The page token indicates where to start paging. This should be omitted from the first page's request. To fetch the next page, clients should take the value from the `nextPageToken` field of the previous response and use it to populate the `pageToken` field of the next request."},
                                     ],
@@ -117,7 +117,7 @@ SPEC = {
                                     "help": "Upload a new version of the Website.\n\nRequired scopes: [third-party-application:deploy-application-website]",
                                     "http": "POST /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/versions/upload",
                                     "params": [
-                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                         {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "The zip file that contains the contents of your application. For more information,  refer to the [documentation](https://palantir.com/docs/foundry/ontology-sdk/deploy-osdk-application-on-foundry/) user documentation."},
                                         {"name": "version", "in": "query", "api": "version", "type": "str", "required": True},
                                     ],
@@ -130,7 +130,7 @@ SPEC = {
                                     "http": "POST /v2/thirdPartyApplications/{thirdPartyApplicationRid}/website/versions/uploadSnapshot",
                                     "beta": True,
                                     "params": [
-                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
+                                        {"name": "third_party_application_rid", "in": "path", "api": "thirdPartyApplicationRid", "type": "str", "schema": "ThirdPartyApplicationRid", "resource": "third-party-application", "required": True, "help": "An RID identifying a third-party application created in Developer Console."},
                                         {"name": "body", "in": "body", "type": "bytes", "required": True, "help": "The zip file that contains the contents of your application. For more information,  refer to the [documentation](https://palantir.com/docs/foundry/ontology-sdk/deploy-osdk-application-on-foundry/) user documentation."},
                                         {"name": "version", "in": "query", "api": "version", "type": "str", "required": True},
                                         {"name": "snapshot_identifier", "in": "query", "api": "snapshotIdentifier", "type": "str", "help": "The identifier of the snapshot. If the identifier follows the format `foundry.v1@<repositoryRid>@<pullRequestRid>@<commitHash>`, PR preview for such identifier will be accessible from foundry code repositories."},

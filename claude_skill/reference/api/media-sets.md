@@ -15,7 +15,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set abort MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `TRANSACTION_ID`: TransactionId.
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `media_sets.MediaSet.abort`
 
@@ -25,7 +25,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set calculate MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - Options: `--read-token` TEXT
 - beta · SDK: `media_sets.MediaSet.calculate`
@@ -36,7 +36,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set clear MEDIA_SET_RID --media-item-path TEXT [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `--media-item-path` TEXT (required): The path of the media item to clear.
 - Options: `--branch-name` TEXT, `--branch-rid` TEXT, `--transaction-id` TEXT, `--view-rid` TEXT
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `media_sets.MediaSet.clear`
@@ -47,7 +47,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set commit MEDIA_SET_RID TRANSACTION_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `TRANSACTION_ID`: TransactionId.
 - beta · SDK: `media_sets.MediaSet.commit`
 
@@ -57,7 +57,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set create MEDIA_SET_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - Options: `--branch-name` TEXT
 - beta · SDK: `media_sets.MediaSet.create`
 
@@ -67,7 +67,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set get MEDIA_SET_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - beta · SDK: `media_sets.MediaSet.get`
 
 ### pltr api media-sets media-set get-result
@@ -76,7 +76,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set get-result MEDIA_SET_RID MEDIA_ITEM_RID TRANSFORMATION_JOB_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - `TRANSFORMATION_JOB_ID`: The ID of the transformation job.
 - Options: `--token` TEXT
@@ -88,7 +88,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set get-rid-by-path MEDIA_SET_RID --media-item-path TEXT [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `--media-item-path` TEXT (required): The path of the media item.
 - Options: `--branch-name` TEXT, `--branch-rid` TEXT, `--view-rid` TEXT
 - beta · SDK: `media_sets.MediaSet.get_rid_by_path`
@@ -99,7 +99,7 @@ client.media_sets.MediaSet: abort, calculate, clear, commit, create, get, get-re
 
 `pltr api media-sets media-set get-status MEDIA_SET_RID MEDIA_ITEM_RID TRANSFORMATION_JOB_ID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - `TRANSFORMATION_JOB_ID`: The ID of the transformation job.
 - Options: `--token` TEXT
@@ -111,7 +111,7 @@ Gets information about the media item.
 
 `pltr api media-sets media-set info MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - Options: `--read-token` TEXT
 - SDK: `media_sets.MediaSet.info`
@@ -122,7 +122,7 @@ Gets detailed metadata about the media item, including type-specific information
 
 `pltr api media-sets media-set metadata MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - Options: `--read-token` TEXT
 - SDK: `media_sets.MediaSet.metadata`
@@ -133,7 +133,7 @@ Gets the content of a media item.
 
 `pltr api media-sets media-set read MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `MEDIA_ITEM_RID`: MediaItemRid.
 - Options: `--read-token` TEXT
 - output: binary (to `--output FILE` or a pipe) · SDK: `media_sets.MediaSet.read`
@@ -144,7 +144,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set read-original MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `MEDIA_ITEM_RID`: MediaItemRid.
 - Options: `--read-token` TEXT
 - output: binary (to `--output FILE` or a pipe) · SDK: `media_sets.MediaSet.read_original`
@@ -155,7 +155,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set reference MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - Options: `--read-token` TEXT
 - beta · SDK: `media_sets.MediaSet.reference`
@@ -166,7 +166,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set register MEDIA_SET_RID --physical-item-name TEXT [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `--physical-item-name` TEXT (required): The relative path within the federated media store where the media item exists.
 - Options: `--branch-name` TEXT, `--media-item-path` TEXT, `--transaction-id` TEXT, `--view-rid` TEXT
 - beta · SDK: `media_sets.MediaSet.register`
@@ -177,7 +177,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set retrieve MEDIA_SET_RID MEDIA_ITEM_RID [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - Options: `--read-token` TEXT
 - beta · output: binary (to `--output FILE` or a pipe) · SDK: `media_sets.MediaSet.retrieve`
@@ -188,7 +188,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set transform MEDIA_SET_RID MEDIA_ITEM_RID --transformation JSON [OPTIONS]`
 
-- `MEDIA_SET_RID`: The RID of the media set.
+- `MEDIA_SET_RID` (RID or path): The RID of the media set.
 - `MEDIA_ITEM_RID`: The RID of the media item.
 - `--transformation` JSON (required): Transformation.
 - Options: `--attribution` TEXT, `--token` TEXT
@@ -200,7 +200,7 @@ Gets the content of an original file uploaded to the media item, even if it was 
 
 `pltr api media-sets media-set upload MEDIA_SET_RID --body PATH [OPTIONS]`
 
-- `MEDIA_SET_RID`: MediaSetRid.
+- `MEDIA_SET_RID` (RID or path): MediaSetRid.
 - `--body` PATH (required): Body of the request.
 - Options: `--branch-name` TEXT, `--branch-rid` TEXT, `--media-item-path` TEXT, `--media-item-rid` TEXT, `--transaction-id` TEXT, `--view-rid` TEXT
 - beta · SDK: `media_sets.MediaSet.upload`

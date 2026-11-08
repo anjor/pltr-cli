@@ -17,7 +17,8 @@ loading every ``--help`` page. ``pltr commands list --format json`` prints it::
           "generated": false, "local": false, "hidden": false,
           "outputFormats": ["table", "json", "csv"],
           "sdkMethods": ["filesystem.Folder.get"],
-          "arguments": [{"name": "folder_rid", "type": "string", ...}],
+          "arguments": [{"name": "folder_rid", "type": "string",
+                         "acceptsPath": true, "resourceKind": "folder", ...}],
           "options": [{"name": "profile", "flags": ["--profile", "-p"], ...}],
           "help": "Get a folder's metadata."
         }
@@ -30,6 +31,12 @@ deterministic: sorted, no timestamps, and nothing in it depends on the
 terminal, the OS, the environment or the installed SDK patch version.
 ``sdkVersion`` is the foundry-platform-sdk version the ``pltr api`` tree was
 generated from (the locked version), not the installed one.
+
+A parameter that takes the RID of a Compass resource also takes the
+resource's path (``/Space/Project/name``, resolved by pltr): its entry has
+``"acceptsPath": true`` and the ``resourceKind`` it must be (``dataset``,
+``folder``, ``resource`` for any, ...; see :mod:`pltr.contract.resources`),
+and usage lines show such an option's value as ``RID|PATH``.
 
 Keys follow the Foundry API style of pltr's JSON output: camelCase, and keys
 that don't apply are left out. A command without ``@pltr_command`` metadata
@@ -63,7 +70,7 @@ from typing import (
 import click
 import typer
 
-from .contract import CommandEntry, CommandMeta, iter_commands
+from .contract import CommandEntry, CommandMeta, ResourceRef, iter_commands
 
 PROGRAM = "pltr"
 
@@ -292,6 +299,9 @@ def option_entry(param: click.Option) -> Dict[str, Any]:
 
 
 def _add_details(entry: Dict[str, Any], param: click.Parameter) -> None:
+    if isinstance(param.type, ResourceRef):
+        entry["acceptsPath"] = True
+        entry["resourceKind"] = param.type.kind.name
     if isinstance(param.type, click.Choice):
         entry["choices"] = [str(choice) for choice in param.type.choices]
     default = default_value(param)
@@ -384,6 +394,8 @@ def long_flag(option: Mapping[str, Any]) -> str:
 
 def metavar(option: Mapping[str, Any]) -> str:
     """How an option's value is shown in usage lines: TEXT, JSON, A|B, ..."""
+    if option.get("acceptsPath"):
+        return "RID|PATH"
     if option["type"] == "choice":
         choices = option.get("choices", [])
         return "|".join(choices) if 0 < len(choices) <= 4 else "CHOICE"
