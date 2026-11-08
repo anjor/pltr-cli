@@ -207,8 +207,8 @@ pltr is built to be scripted, by people and by agents.
   printed as readable text, including the Foundry `errorName`.
 - **Errors say how to recover** where pltr knows: the error object then has a
   `hint`, and a `suggestedCommand` to run next (text mode prints them as
-  `Hint:` and `Try:` lines). To make a hint specific pltr may make one extra
-  read call, for example to find the open transaction to abort.
+  `Hint:` and `Try:` lines). To make a hint specific pltr may make a few
+  read calls, for example to find the open transaction to abort.
 
 | Failure | Error `type` (`errorName`) | `hint` / `suggestedCommand` |
 |---|---|---|
@@ -216,7 +216,7 @@ pltr is built to be scripted, by people and by agents.
 | A RID or path of the wrong kind (a folder for a dataset) | `wrong_resource_type` | for a folder: `pltr folder list <it>` |
 | A branch that already has an open transaction | `conflict` (`OpenTransactionAlreadyExists`) | names the transaction; `pltr dataset transactions abort <dataset> <transaction>` |
 | A missing OAuth scope | `permission_denied` (`ApiUsageDenied`) | the scope the endpoint needs |
-| Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid>` |
+| Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid> --include-inherited` |
 | An expired or revoked token (HTTP 401) | `auth_error` | `export FOUNDRY_TOKEN=<new-token>`, or the `pltr configure configure` command for the profile |
 | No resource at a path | `path_not_found` | what a path looks like |
 

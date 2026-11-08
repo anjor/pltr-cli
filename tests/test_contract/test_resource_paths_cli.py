@@ -313,3 +313,12 @@ def test_any_known_rid_suits_a_resource_parameter(stub_foundry_http) -> None:
     result = invoke("things", "batch", FOLDER_RID, DATASET_RID)
 
     assert stdout_json(result) == {"rids": [FOLDER_RID, DATASET_RID]}
+
+
+def test_the_folder_suggestion_keeps_the_profile(stub_foundry_http) -> None:
+    result = invoke("things", "get", FOLDER_RID, "--profile", "staging", "-f", "json")
+
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["suggestedCommand"] == (
+        f"pltr folder list {FOLDER_RID} --profile staging"
+    )

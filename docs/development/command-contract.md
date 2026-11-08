@@ -378,10 +378,12 @@ hints come from:
 - `PltrError(..., hint=..., suggested_command=...)` raised by pltr itself;
 - the recovery providers in `pltr.contract.hints`: after classifying an
   error, `fail()` asks each function in `PROVIDERS` in turn, passing the
-  `ErrorInfo`, the Foundry API error in the chain and the click context, and
-  the first `Recovery` it gets wins. A provider may read from Foundry (with
-  the command's `--profile`) to make its hint specific; any exception in a
-  provider is swallowed and the error is reported without its hint. Add a
+  `ErrorInfo`, the exception and the click context, and the first `Recovery`
+  it gets wins. A provider may read from Foundry (with the command's
+  `--profile`, and `request_timeout=HINT_TIMEOUT`) to make its hint specific;
+  its warnings are silenced, and any exception in it is swallowed so the
+  error is reported without its hint. Build suggested commands with
+  `suggest(ctx, "pltr", ...)`, which quotes them and keeps `--profile`. Add a
   provider for a failure agents hit often, with a `stub_foundry_http` test in
   `tests/test_contract/test_hints.py`, and never suggest a command that
   doesn't exist.
@@ -392,7 +394,7 @@ hints come from:
 | A RID or path of the wrong kind (a folder for a dataset) | `wrong_resource_type` | for a folder: `pltr folder list <it>` |
 | A branch that already has an open transaction | `conflict` (`OpenTransactionAlreadyExists`) | names the transaction; `pltr dataset transactions abort <dataset> <transaction>` |
 | A missing OAuth scope | `permission_denied` (`ApiUsageDenied`) | the scope the endpoint needs |
-| Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid>` |
+| Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid> --include-inherited` |
 | An expired or revoked token (HTTP 401) | `auth_error` | `export FOUNDRY_TOKEN=<new-token>`, or the `pltr configure configure` command for the profile |
 | No resource at a path | `path_not_found` | what a path looks like |
 

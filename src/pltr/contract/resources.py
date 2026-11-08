@@ -239,6 +239,7 @@ class WrongResourceTypeError(PltrError):
         label: str,
         *,
         from_path: bool,
+        profile: Optional[str] = None,
     ) -> None:
         expected = sorted(kind.resource_types or ())
         if from_path and kind.project_only and actual in expected:
@@ -262,6 +263,8 @@ class WrongResourceTypeError(PltrError):
         if actual == "COMPASS_FOLDER" and actual not in expected:
             hint = f"That is a folder: look in it for {kind.label}."
             suggested = f"pltr folder list {shlex.quote(given)}"
+            if profile:
+                suggested += f" --profile {shlex.quote(profile)}"
         super().__init__(
             message, parameters=parameters, hint=hint, suggested_command=suggested
         )
@@ -350,7 +353,13 @@ def resolve_paths(client: Any, paths: Sequence[str]) -> Dict[str, Any]:
     return found
 
 
-def check_kind(path: str, resource: Any, kind: ResourceKind, label: str) -> None:
+def check_kind(
+    path: str,
+    resource: Any,
+    kind: ResourceKind,
+    label: str,
+    profile: Optional[str] = None,
+) -> None:
     """Fail unless ``resource`` (resolved from ``path``) is of ``kind``.
 
     ``label`` names the parameter in the message (``DATASET_RID``,
@@ -358,11 +367,19 @@ def check_kind(path: str, resource: Any, kind: ResourceKind, label: str) -> None
     """
     if not kind.accepts(resource):
         raise WrongResourceTypeError(
-            path, resource.rid, str(resource.type), kind, label, from_path=True
+            path,
+            resource.rid,
+            str(resource.type),
+            kind,
+            label,
+            from_path=True,
+            profile=profile,
         )
 
 
-def check_rid_kind(rid: str, kind: ResourceKind, label: str) -> None:
+def check_rid_kind(
+    rid: str, kind: ResourceKind, label: str, profile: Optional[str] = None
+) -> None:
     """Fail, before any API call, when ``rid`` names a resource of another kind.
 
     Only RIDs whose format pltr knows (:data:`RID_RESOURCE_TYPES`) are checked.
@@ -372,7 +389,9 @@ def check_rid_kind(rid: str, kind: ResourceKind, label: str) -> None:
     if actual is None or kind.resource_types is None:
         return
     if actual not in kind.resource_types:
-        raise WrongResourceTypeError(rid, rid, actual, kind, label, from_path=False)
+        raise WrongResourceTypeError(
+            rid, rid, actual, kind, label, from_path=False, profile=profile
+        )
 
 
 # ----------------------------------------------------------- command layer
@@ -410,11 +429,12 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
         for param in ctx.command.params
         if isinstance(param.type, ResourceRef) and param.name in kwargs
     ]
+    profile = kwargs.get("profile", ctx.params.get("profile"))
     for param in targets:
         assert isinstance(param.type, ResourceRef)
         for value in _values(kwargs[str(param.name)]):
             if isinstance(value, str) and not is_path(value):
-                check_rid_kind(value, param.type.kind, _parameter_label(param))
+                check_rid_kind(value, param.type.kind, _parameter_label(param), profile)
     wanted = [
         (value, param)
         for param in targets
@@ -428,12 +448,13 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     from .runtime import info
 
-    profile = kwargs.get("profile", ctx.params.get("profile"))
     client = base.AuthManager().get_client(profile)
     resolved = resolve_paths(client, [path for path, _ in wanted])
     for path, param in wanted:
         assert isinstance(param.type, ResourceRef)
-        check_kind(path, resolved[path], param.type.kind, _parameter_label(param))
+        check_kind(
+            path, resolved[path], param.type.kind, _parameter_label(param), profile
+        )
     for path, resource in resolved.items():
         info(f"Resolved {path!r} to {resource.rid} ({resource.type})")
 

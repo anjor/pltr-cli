@@ -39,7 +39,7 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   `ApiUsageDenied`; the operation and resource for a `...PermissionDenied`
   error, with `pltr resource-role list`; and how to replace a rejected token
   (HTTP 401). Type-level default hints stay in text mode only. To make a hint
-  specific pltr may make one extra read call after the failure.
+  specific pltr may make a few read calls (10 s timeout each) after the failure; suggested commands keep the command's `--profile`.
 - **A RID of the wrong kind fails before any call** (#197): a folder RID
   given to a dataset parameter (or a dataset RID to a project parameter) is a
   `wrong_resource_type` error (exit 2), and a folder suggests

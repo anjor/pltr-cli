@@ -19,6 +19,7 @@ import difflib
 import itertools
 import re
 import shlex
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
@@ -35,10 +36,14 @@ class Recovery:
     suggested_command: Optional[str] = None
 
 
-#: ``provider(info, api_error, ctx)``: ``api_error`` is the Foundry API error
-#: in the exception chain (or None), ``ctx`` the running command's click
-#: context (or None).
-Provider = Callable[[ErrorInfo, Any, Optional[click.Context]], Optional[Recovery]]
+#: ``provider(info, exc, ctx)``: ``exc`` is the exception being reported,
+#: ``ctx`` the running command's click context (or None).
+Provider = Callable[
+    [ErrorInfo, BaseException, Optional[click.Context]], Optional[Recovery]
+]
+
+#: Seconds each Foundry call a provider makes may take.
+HINT_TIMEOUT = 10
 
 # ------------------------------------------------------------------ helpers
 
@@ -64,8 +69,11 @@ def _client(ctx: Optional[click.Context]) -> Any:
     return base.AuthManager().get_client(_profile(ctx))
 
 
-def _q(value: Any) -> str:
-    return shlex.quote(str(value))
+def suggest(ctx: Optional[click.Context], *argv: Any) -> str:
+    """A pltr command line: quoted arguments, plus the command's ``--profile``."""
+    command = " ".join(shlex.quote(str(arg)) for arg in argv)
+    profile = _profile(ctx)
+    return f"{command} --profile {shlex.quote(profile)}" if profile else command
 
 
 def _parameters(info: ErrorInfo) -> Dict[str, Any]:
@@ -126,7 +134,7 @@ def _command_scopes(ctx: Optional[click.Context]) -> List[str]:
 
 
 def open_transaction(
-    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """409 ``OpenTransactionAlreadyExists``: name the transaction to abort."""
     if info.error_name != "OpenTransactionAlreadyExists":
@@ -138,8 +146,16 @@ def open_transaction(
     transaction = None
     try:
         datasets = _client(ctx).datasets.Dataset
-        candidate = datasets.Branch.get(dataset, branch).transaction_rid
-        if candidate and datasets.Transaction.get(dataset, candidate).status == "OPEN":
+        candidate = datasets.Branch.get(
+            dataset, branch, request_timeout=HINT_TIMEOUT
+        ).transaction_rid
+        if (
+            candidate
+            and datasets.Transaction.get(
+                dataset, candidate, request_timeout=HINT_TIMEOUT
+            ).status
+            == "OPEN"
+        ):
             transaction = candidate
     except Exception:
         transaction = None
@@ -147,12 +163,16 @@ def open_transaction(
         return Recovery(
             f"Branch {branch} of {dataset} already has an open transaction, "
             f"{transaction}: commit it or abort it first.",
-            f"pltr dataset transactions abort {_q(dataset)} {_q(transaction)}",
+            suggest(
+                ctx, "pltr", "dataset", "transactions", "abort", dataset, transaction
+            ),
         )
     return Recovery(
         f"Branch {branch} of {dataset} already has an open transaction: commit "
         "it or abort it first.",
-        f"pltr dataset transactions list {_q(dataset)} --branch {_q(branch)}",
+        suggest(
+            ctx, "pltr", "dataset", "transactions", "list", dataset, "--branch", branch
+        ),
     )
 
 
@@ -162,20 +182,30 @@ _GRANT = (
 
 
 def missing_scope(
-    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """403 ``ApiUsageDenied``: name the scope the endpoint needs."""
     if info.error_name != "ApiUsageDenied":
         return None
+    from .errors import _chain
+    from .resources import PathResolutionError
+
     scope = _parameters(info).get("missingScope")
     if isinstance(scope, str) and scope:
         return Recovery(f"The token or OAuth client lacks the scope {scope}. {_GRANT}")
-    scopes = _command_scopes(ctx)
+    if any(isinstance(e, PathResolutionError) for e in _chain(exc)):
+        # The failed call looked up a Compass path (#193), not the command's own.
+        method = _method_spec("filesystem.Resource.get_by_path")
+        scopes = _scopes_in(method.get("help", "") if method else "")
+        subject = "Looking up a Compass path"
+    else:
+        scopes = _command_scopes(ctx)
+        subject = "This command"
     if not scopes:
         return None
     noun = "scope" if len(scopes) == 1 else "scopes"
     return Recovery(
-        f"This command needs the {noun} {', '.join(scopes)}, which the token or "
+        f"{subject} needs the {noun} {', '.join(scopes)}, which the token or "
         f"OAuth client may lack. {_GRANT}"
     )
 
@@ -185,13 +215,17 @@ def _words(camel: str) -> str:
 
 
 def permission_denied(
-    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """403 ``<Operation>PermissionDenied``: name the operation and the resource."""
     from .resources import rid_resource_type
 
     name = info.error_name or ""
-    if info.type != "permission_denied" or not name.endswith("PermissionDenied"):
+    # Typed SDK errors only: a namespaced name such as Default:PermissionDenied
+    # says nothing about the operation.
+    if info.type != "permission_denied" or not re.fullmatch(
+        r"[A-Z][A-Za-z0-9]*PermissionDenied", name
+    ):
         return None
     operation = _words(name[: -len("PermissionDenied")])
     rids = [
@@ -205,12 +239,16 @@ def permission_denied(
     return Recovery(
         f"Your account isn't allowed to {operation} on {rid}. Ask someone who "
         "manages it for a role that allows this.",
-        f"pltr resource-role list {_q(rid)}" if rid_resource_type(rid) else None,
+        (
+            suggest(ctx, "pltr", "resource-role", "list", rid, "--include-inherited")
+            if rid_resource_type(rid)
+            else None
+        ),
     )
 
 
 def rejected_token(
-    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """401 with a token: say how to give pltr a new one."""
     from pltr.services import base
@@ -220,23 +258,24 @@ def rejected_token(
     source = base.AuthManager().get_auth_context(_profile(ctx)).source
     if source.auth_type != "token":
         return None
+    where = f"Foundry at {source.host}" if source.host else "Foundry"
     if source.kind == "environment":
         return Recovery(
-            "Foundry rejected FOUNDRY_TOKEN (invalid, expired or revoked). "
+            f"{where} rejected FOUNDRY_TOKEN (invalid, expired or revoked). "
             "Set a new token.",
             "export FOUNDRY_TOKEN=<new-token>",
         )
     if not source.profile:
         return None
-    command = (
-        f"pltr configure configure --profile {_q(source.profile)} --auth-type token"
-    )
+    argv = ["pltr", "configure", "configure", "--profile", source.profile]
+    argv += ["--auth-type", "token"]
     if source.host:
-        command += f" --host {_q(source.host)}"
+        argv += ["--host", source.host]
+    # No --token: configure asks for it, so it stays out of shell history.
     return Recovery(
-        f"Foundry rejected the token of profile {source.profile} (invalid, "
+        f"{where} rejected the token of profile {source.profile} (invalid, "
         "expired or revoked). Store a new one.",
-        f"{command} --token <new-token>",
+        " ".join(shlex.quote(arg) for arg in argv),
     )
 
 
@@ -245,14 +284,19 @@ NAME_LIMIT = 2000
 
 
 def closest_names(wanted: str, names: List[str], limit: int = 3) -> List[str]:
-    """The names closest to ``wanted``: same name in another case first."""
-    exact = [name for name in names if name.lower() == wanted.lower()]
+    """The names closest to ``wanted``, compared ignoring case; never ``wanted``
+    itself in another case (Foundry resolves API names ignoring case, so such a
+    name isn't the problem)."""
     lowered: Dict[str, str] = {}
     for name in names:
         lowered.setdefault(name.lower(), name)
+    lowered.pop(wanted.lower(), None)
     close = difflib.get_close_matches(wanted.lower(), list(lowered), limit, 0.6)
-    result = exact + [lowered[c] for c in close if lowered[c] not in exact]
-    return result[:limit]
+    return [lowered[c] for c in close]
+
+
+def _has_name(wanted: str, names: List[str]) -> bool:
+    return any(name.lower() == wanted.lower() for name in names)
 
 
 def _api_names(items: Any) -> List[str]:
@@ -268,7 +312,7 @@ _ONTOLOGY_ERRORS = (
 
 
 def ontology_names(
-    info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """An object type, property, action type or link type that doesn't exist:
     list the closest API names."""
@@ -283,39 +327,67 @@ def ontology_names(
         properties = parameters.get("properties") or []
         if not object_type or not properties:
             return None
-        names = list(ontologies.ObjectType.get(ontology, object_type).properties)
+        names = list(
+            ontologies.ObjectType.get(
+                ontology, object_type, request_timeout=HINT_TIMEOUT
+            ).properties
+        )
+        properties = [p for p in properties if not _has_name(str(p), names)]
+        if not properties:
+            return None
         pairs = [
             f"{prop!r} -> {', '.join(closest_names(str(prop), names)) or 'none'}"
             for prop in properties
         ]
         return Recovery(
             "Closest property API names: " + "; ".join(pairs) + ".",
-            f"pltr ontology object-type-get {_q(ontology)} {_q(object_type)}",
+            suggest(ctx, "pltr", "ontology", "object-type-get", ontology, object_type),
         )
     if name == "ObjectTypeNotFound":
         wanted, label = parameters.get("objectType"), "object type"
-        listing = f"pltr ontology object-type-list {_q(ontology)}"
+        listing = suggest(ctx, "pltr", "ontology", "object-type-list", ontology)
         items: Callable[[], Any] = lambda: ontologies.ObjectType.list(  # noqa: E731
-            ontology, page_size=500
+            ontology, page_size=500, request_timeout=HINT_TIMEOUT
         )
     elif name == "ActionTypeNotFound":
         wanted, label = parameters.get("actionType"), "action type"
-        listing = f"pltr api ontologies ontology action-type list {_q(ontology)}"
-        items = lambda: ontologies.ActionType.list(ontology, page_size=500)  # noqa: E731
+        listing = suggest(
+            ctx,
+            "pltr",
+            "api",
+            "ontologies",
+            "ontology",
+            "action-type",
+            "list",
+            ontology,
+        )
+        items = lambda: ontologies.ActionType.list(  # noqa: E731
+            ontology, page_size=500, request_timeout=HINT_TIMEOUT
+        )
     else:
         wanted, label = parameters.get("linkType"), "link type"
         if not object_type:
             return None
-        listing = (
-            "pltr api ontologies ontology object-type list-outgoing-link-types "
-            f"{_q(ontology)} {_q(object_type)}"
+        listing = suggest(
+            ctx,
+            "pltr",
+            "api",
+            "ontologies",
+            "ontology",
+            "object-type",
+            "list-outgoing-link-types",
+            ontology,
+            object_type,
         )
         items = lambda: ontologies.ObjectType.list_outgoing_link_types(  # noqa: E731
-            ontology, object_type, page_size=500
+            ontology, object_type, page_size=500, request_timeout=HINT_TIMEOUT
         )
     if not wanted:
         return None
-    close = closest_names(str(wanted), _api_names(items()))
+    names = _api_names(items())
+    if _has_name(str(wanted), names):
+        return None  # the name exists: something else is wrong
+    close = closest_names(str(wanted), names)
     if not close:
         return Recovery(
             f"No {label} in {ontology} has an API name close to {wanted!r}.", listing
@@ -334,29 +406,17 @@ PROVIDERS: List[Provider] = [
 ]
 
 
-def api_error_in(exc: BaseException) -> Any:
-    """The first Foundry API error (``PalantirRPCException``) in the chain."""
-    from foundry_sdk import _errors as sdk
-
-    from .errors import _chain
-
-    for candidate in _chain(exc):
-        if isinstance(candidate, sdk.PalantirRPCException):
-            return candidate
-    return None
-
-
 def add_recovery(info: ErrorInfo, exc: BaseException) -> None:
     """Give ``info`` the hint and suggested command of the first provider that
     knows the failure; keep it unchanged if none does (or one fails)."""
-    try:
-        api_error = api_error_in(exc)
-    except Exception:
-        api_error = None
     ctx = click.get_current_context(silent=True)
     for provider in PROVIDERS:
         try:
-            recovery = provider(info, api_error, ctx)
+            # A lookup's SDK warnings (e.g. an error body it can't decode)
+            # would print before the error: the hint is best effort.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                recovery = provider(info, exc, ctx)
         except Exception:
             continue
         if recovery is not None:
