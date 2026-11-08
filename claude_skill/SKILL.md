@@ -184,7 +184,24 @@ pltr admin user search jane --format json                                  # use
    `@file.json` or as `@-` for stdin, and the SDK validates the value before
    anything is sent.
 
-## 6a. The verify loop: trigger with `--wait`, then `pltr assert`
+## 6a. Before writing code against a resource: `pltr context`
+
+Run `pltr context` first instead of several `get`/`schema`/`list` commands:
+it's one compact pack written for you to read.
+
+```bash
+pltr context dataset <rid-or-path>          # columns + types, sample rows, schedules, latest job
+pltr context ontology <ontology> --types Employee,Department   # keys, properties, links, actions, queries
+pltr context folder <rid-or-path> --depth 2 # resources with type, path and RID
+```
+
+Without `--types`, `context ontology` is a summary of every object type;
+describe the ones you need with `--types`. For tests that shouldn't call
+Foundry, add `--fixture-dir tests/fixtures` (and `--rows N`, at most 1000):
+it writes sample rows (Parquet + schema JSON) or objects (JSON). They are real
+data: tell the user, and keep them out of git unless they say otherwise.
+
+## 6b. The verify loop: trigger with `--wait`, then `pltr assert`
 
 After you start a build, a schedule run, an import or a SQL query, don't poll
 by hand and don't stop checking early. Add `--wait` (and `--timeout`
@@ -209,7 +226,7 @@ work twice. Never re-run the trigger command to "retry" a wait.
 `pltr dataset schema get --format json`. To check an ontology action without
 applying it, use `pltr ontology action-validate`.
 
-## 6b. Writing app code: `--emit-code`
+## 6c. Writing app code: `--emit-code`
 
 When you write code that calls Foundry (an app, a pipeline, a script), first
 get the call working with pltr, then add `--emit-code` to the same command:

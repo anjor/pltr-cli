@@ -334,6 +334,22 @@ scripts as much as by people. An agent works in four steps:
 Destructive commands never prompt without a terminal: they fail with exit
 code 2 and change nothing unless you pass `--yes`.
 
+**Know what's there before writing code: `pltr context`.** Context packs
+are compact summaries for a model to read (Markdown; `--format json` for the
+same content as data):
+
+```bash
+pltr context dataset /Space/Project/sales        # columns, sample rows, schedules, latest job
+pltr context ontology my-ontology --types Employee # keys, properties, links, actions and queries
+pltr context folder /Space/Project --depth 2       # what's in a project: type, path, RID
+```
+
+A dataset's pack lists every column but samples at most 12 of them (pick
+others with `--columns`), so even a 200-column dataset stays under 16 KB.
+`--fixture-dir tests/fixtures` also writes the sample rows (Parquet, with a
+schema JSON) or sample objects (JSON) for tests; they are real Foundry data,
+so keep them out of git unless you may share them.
+
 **The verify loop: `--wait`, then `pltr assert`.** Commands that start
 asynchronous work (`orchestration builds create`, `orchestration schedules
 run`, `connectivity import execute-file/-table`, `sql submit`) take `--wait`:

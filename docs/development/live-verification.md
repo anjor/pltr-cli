@@ -561,6 +561,17 @@ Verified live on 2026-11-08 (read-only): the snippets of
 output, `open(...).read()` bodies, datetimes) are only checked to compile and,
 for a sample, to send the same request as the command against the fake.
 
+### Context packs (#194)
+
+Verified live on 2026-11-08 (read-only): `pltr context dataset <path>` (an
+8-column dataset, 1.3 KB: resource, schema, rows, schedules, jobs),
+`pltr context folder <path> --depth 2` and `pltr context ontology <ontology>
+--types <type>` (properties with `timeseries<double>` types, links). Not
+verified live: action and query parameter rendering against a real
+ontology's action types (the test fixture shapes come from the SDK models),
+`--fixture-dir` for ontology objects, and a dataset whose schedules or jobs
+the account can't read (noted, not fatal, in tests).
+
 ### `--wait` and `pltr assert` (#195)
 
 Verified live on 2026-11-08 (read-only): `pltr assert dataset <path>

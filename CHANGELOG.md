@@ -40,6 +40,18 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   error, with `pltr resource-role list`; and how to replace a rejected token
   (HTTP 401). Type-level default hints stay in text mode only. To make a hint
   specific pltr may make a few read calls (10 s timeout each) after the failure; suggested commands keep the command's `--profile`.
+- **Context packs: `pltr context`** (#194). Compact summaries for a model to
+  read before writing code: `pltr context dataset <rid-or-path>` (columns
+  with full types, sample rows, schedules, the latest job and its status),
+  `pltr context ontology <ontology> [--types A,B]` (from one
+  `Ontology.get_full_metadata` call: each type's primary key, properties and
+  link types, and the action and query types that involve them, with their
+  parameters; a summary without `--types`) and `pltr context folder
+  <rid-or-path> --depth N`. Markdown by default, `--format json` for the same
+  content as data. Output is capped (a 200-column dataset stays under 16 KB)
+  and says how to narrow it. `--fixture-dir` writes the samples for tests:
+  Parquet plus schema JSON for a dataset, JSON objects per type for an
+  ontology, with a warning that they are real data.
 - **The verify loop: `--wait` and `pltr assert`** (#195). `orchestration
   builds create`, `orchestration schedules run`, `connectivity import
   execute-file`/`execute-table` and `sql submit` take `--wait` (with
