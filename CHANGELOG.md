@@ -31,6 +31,19 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   lines show such an option's value as `RID|PATH`.
 - Errors raised by pltr itself can carry `parameters` in the JSON error
   object, like API errors do.
+- **Errors say how to recover** (#197). The JSON error object gains `hint`
+  and `suggestedCommand` when pltr knows what to do next (text mode prints
+  `Hint:` and `Try:` lines): the closest API names for an unknown object
+  type, property, action type or link type; the open transaction to abort
+  for `OpenTransactionAlreadyExists`; the missing OAuth scope for
+  `ApiUsageDenied`; the operation and resource for a `...PermissionDenied`
+  error, with `pltr resource-role list`; and how to replace a rejected token
+  (HTTP 401). Type-level default hints stay in text mode only. To make a hint
+  specific pltr may make one extra read call after the failure.
+- **A RID of the wrong kind fails before any call** (#197): a folder RID
+  given to a dataset parameter (or a dataset RID to a project parameter) is a
+  `wrong_resource_type` error (exit 2), and a folder suggests
+  `pltr folder list`. Only RID formats pltr is sure of are checked.
 
 ## [0.17.0] - 2026-11-07
 

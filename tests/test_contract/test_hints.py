@@ -193,8 +193,7 @@ def test_a_rejected_environment_token(stub_foundry_http) -> None:
 
     assert error["type"] == "auth_error"
     assert error["hint"] == (
-        "Foundry rejected FOUNDRY_TOKEN: it has expired or been revoked. "
-        "Set a new token."
+        "Foundry rejected FOUNDRY_TOKEN (invalid, expired or revoked). Set a new token."
     )
     assert error["suggestedCommand"] == "export FOUNDRY_TOKEN=<new-token>"
 
@@ -215,8 +214,8 @@ def test_a_rejected_profile_token(stub_foundry_http) -> None:
     error = error_of("dataset", "get", DS, "--profile", "work")
 
     assert error["hint"] == (
-        "Foundry rejected the token of profile work: it has expired or been "
-        "revoked. Store a new one."
+        "Foundry rejected the token of profile work (invalid, expired or "
+        "revoked). Store a new one."
     )
     assert error["suggestedCommand"] == (
         "pltr configure configure --profile work --auth-type token "
@@ -298,8 +297,7 @@ def test_an_unknown_object_type_lists_the_closest_names(stub_foundry_http) -> No
     error = error_of("ontology", "object-type-get", ONT, "employee")
 
     assert error["hint"] == (
-        "Object type API names are case-sensitive. Closest to 'employee': "
-        "Employee, EmployeeReview."
+        "Closest object type API names to 'employee': Employee, EmployeeReview."
     )
     assert error["suggestedCommand"] == f"pltr ontology object-type-list {ONT}"
     assert stub_foundry_http.requests[1].url.path == (
@@ -335,8 +333,7 @@ def test_unknown_properties_list_the_closest_names(stub_foundry_http) -> None:
     error = error_of("ontology", "object-get", ONT, "Employee", "e-1")
 
     assert error["hint"] == (
-        "Property API names are case-sensitive. Closest: 'fullname' -> fullName; "
-        "'xyz' -> none."
+        "Closest property API names: 'fullname' -> fullName; 'xyz' -> none."
     )
     assert error["suggestedCommand"] == (
         f"pltr ontology object-type-get {ONT} Employee"
@@ -357,8 +354,8 @@ def test_an_unknown_action_type_lists_the_closest_names(stub_foundry_http) -> No
     error = error_of("ontology", "action-apply", ONT, "promote-employe", "{}")
 
     assert error["hint"] == (
-        "Action type API names are case-sensitive. Closest to 'promote-employe': "
-        "promote-employee, fire-employee."
+        "Closest action type API names to 'promote-employe': promote-employee, "
+        "fire-employee."
     )
     assert error["suggestedCommand"] == (
         f"pltr api ontologies ontology action-type list {ONT}"
@@ -379,9 +376,7 @@ def test_an_unknown_link_type_lists_the_closest_names(stub_foundry_http) -> None
 
     error = error_of("ontology", "object-linked", ONT, "Employee", "e-1", "Manager")
 
-    assert error["hint"] == (
-        "Link type API names are case-sensitive. Closest to 'Manager': manager."
-    )
+    assert error["hint"] == ("Closest link type API names to 'Manager': manager.")
     assert error["suggestedCommand"] == (
         "pltr api ontologies ontology object-type list-outgoing-link-types "
         f"{ONT} Employee"

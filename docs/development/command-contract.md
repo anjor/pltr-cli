@@ -366,7 +366,40 @@ keys that don't apply:
 {"type":"not_found","message":"FolderNotFound: The given Folder could not be found. (folderRid=ri.compass.main.folder.x)","exitCode":5,"statusCode":404,"errorCode":"NOT_FOUND","errorName":"FolderNotFound","errorInstanceId":"...","parameters":{"folderRid":"ri.compass.main.folder.x"}}
 ```
 
-Text mode prints `Error: <message>`, then the details and a hint.
+Text mode prints `Error: <message>`, then the details, a `Hint:` line and a
+`Try:` line.
+
+**Hints (#197).** `hint` and `suggestedCommand` are in the JSON object only
+when they are specific to this failure. The type-level default hints (for
+example "Check your credentials with `pltr verify`" for `auth_error`) are
+shown in text mode only, since an agent learns as much from `type`. Specific
+hints come from:
+
+- `PltrError(..., hint=..., suggested_command=...)` raised by pltr itself;
+- the recovery providers in `pltr.contract.hints`: after classifying an
+  error, `fail()` asks each function in `PROVIDERS` in turn, passing the
+  `ErrorInfo`, the Foundry API error in the chain and the click context, and
+  the first `Recovery` it gets wins. A provider may read from Foundry (with
+  the command's `--profile`) to make its hint specific; any exception in a
+  provider is swallowed and the error is reported without its hint. Add a
+  provider for a failure agents hit often, with a `stub_foundry_http` test in
+  `tests/test_contract/test_hints.py`, and never suggest a command that
+  doesn't exist.
+
+| Failure | Error `type` (`errorName`) | `hint` / `suggestedCommand` |
+|---|---|---|
+| An object type, property, action type or link type that doesn't exist | `not_found` or `validation_error` (`ObjectTypeNotFound`, `PropertiesNotFound`, `ActionTypeNotFound`, `LinkTypeNotFound`) | the closest API names; the command that lists them |
+| A RID or path of the wrong kind (a folder for a dataset) | `wrong_resource_type` | for a folder: `pltr folder list <it>` |
+| A branch that already has an open transaction | `conflict` (`OpenTransactionAlreadyExists`) | names the transaction; `pltr dataset transactions abort <dataset> <transaction>` |
+| A missing OAuth scope | `permission_denied` (`ApiUsageDenied`) | the scope the endpoint needs |
+| Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid>` |
+| An expired or revoked token (HTTP 401) | `auth_error` | `export FOUNDRY_TOKEN=<new-token>`, or the `pltr configure configure` command for the profile |
+| No resource at a path | `path_not_found` | what a path looks like |
+
+A resource parameter (`ResourceRef`) also refuses a RID whose format names
+another kind of resource before any call (`ri.compass.main.folder.*` for a
+dataset): `RID_RESOURCE_TYPES` in `pltr.contract.resources` lists the formats
+pltr is sure of, and RIDs of other formats go to the API.
 
 - **Sources.** The layer maps:
   - foundry_sdk exceptions, including typed ones such as `FolderNotFound`.

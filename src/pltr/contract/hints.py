@@ -222,7 +222,7 @@ def rejected_token(
         return None
     if source.kind == "environment":
         return Recovery(
-            "Foundry rejected FOUNDRY_TOKEN: it has expired or been revoked. "
+            "Foundry rejected FOUNDRY_TOKEN (invalid, expired or revoked). "
             "Set a new token.",
             "export FOUNDRY_TOKEN=<new-token>",
         )
@@ -234,8 +234,8 @@ def rejected_token(
     if source.host:
         command += f" --host {_q(source.host)}"
     return Recovery(
-        f"Foundry rejected the token of profile {source.profile}: it has expired "
-        "or been revoked. Store a new one.",
+        f"Foundry rejected the token of profile {source.profile} (invalid, "
+        "expired or revoked). Store a new one.",
         f"{command} --token <new-token>",
     )
 
@@ -271,7 +271,7 @@ def ontology_names(
     info: ErrorInfo, api_error: Any, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
     """An object type, property, action type or link type that doesn't exist:
-    list the closest API names (they are case-sensitive)."""
+    list the closest API names."""
     name = info.error_name
     ontology = _param(ctx, "ontology")
     if name not in _ONTOLOGY_ERRORS or ontology is None:
@@ -289,7 +289,7 @@ def ontology_names(
             for prop in properties
         ]
         return Recovery(
-            "Property API names are case-sensitive. Closest: " + "; ".join(pairs) + ".",
+            "Closest property API names: " + "; ".join(pairs) + ".",
             f"pltr ontology object-type-get {_q(ontology)} {_q(object_type)}",
         )
     if name == "ObjectTypeNotFound":
@@ -321,9 +321,7 @@ def ontology_names(
             f"No {label} in {ontology} has an API name close to {wanted!r}.", listing
         )
     return Recovery(
-        f"{label.capitalize()} API names are case-sensitive. Closest to "
-        f"{wanted!r}: {', '.join(close)}.",
-        listing,
+        f"Closest {label} API names to {wanted!r}: {', '.join(close)}.", listing
     )
 
 
