@@ -24,6 +24,7 @@ them), so ``SpaceRid`` parameters take RIDs only.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence
 
@@ -162,6 +163,34 @@ class ResourceRef(click.ParamType):
         return f"ResourceRef({self.kind.name!r})"
 
 
+#: The ``ResourceType`` a RID names, by its service and type
+#: (``ri.<service>.<instance>.<type>.<locator>``). Only formats pltr is sure
+#: of: a RID of another format is left to the API.
+RID_RESOURCE_TYPES: Dict[tuple, str] = {
+    ("foundry", "dataset"): "FOUNDRY_DATASET",
+    ("compass", "folder"): "COMPASS_FOLDER",
+    ("mio", "media-set"): "MIO_MEDIA_SET",
+    ("magritte", "source"): "MAGRITTE_SOURCE",
+    ("aip-agents", "agent"): "AIP_AGENTS_AGENT",
+    ("third-party-applications", "application"): (
+        "THIRD_PARTY_APPLICATIONS_APPLICATION"
+    ),
+    ("stemma", "repository"): "STEMMA_REPOSITORY",
+}
+
+_RID = re.compile(r"ri\.([a-z0-9-]+)\.[a-z0-9-]*\.([a-z0-9-]+)\..+")
+
+
+def rid_resource_type(value: Any) -> Optional[str]:
+    """The ``ResourceType`` a RID names, when pltr knows its format."""
+    if not isinstance(value, str):
+        return None
+    match = _RID.fullmatch(value)
+    if match is None:
+        return None
+    return RID_RESOURCE_TYPES.get((match.group(1), match.group(2)))
+
+
 def is_path(value: Any) -> bool:
     """True when ``value`` is a Compass path (it starts with ``/``)."""
     return isinstance(value, str) and value.startswith("/")
@@ -196,32 +225,48 @@ class PathNotFoundError(PltrError):
 
 
 class WrongResourceTypeError(PltrError):
-    """A path resolved to a resource of the wrong kind for its parameter."""
+    """A RID or path names a resource of the wrong kind for its parameter."""
 
     error_type = "wrong_resource_type"
     exit_code = ExitCode.USAGE
 
-    def __init__(self, path: str, resource: Any, kind: ResourceKind, label: str):
+    def __init__(
+        self,
+        given: str,
+        rid: str,
+        actual: str,
+        kind: ResourceKind,
+        label: str,
+        *,
+        from_path: bool,
+        profile: Optional[str] = None,
+    ) -> None:
         expected = sorted(kind.resource_types or ())
-        actual = str(resource.type)
-        if kind.project_only and actual in expected:
+        if from_path and kind.project_only and actual in expected:
             message = (
-                f"{path!r} is a folder ({resource.rid}), not a project, but "
-                f"{label} takes a project."
+                f"{given!r} is a folder ({rid}), not a project, but {label} "
+                "takes a project."
+            )
+        elif from_path:
+            message = (
+                f"{given!r} is a {actual} ({rid}), but {label} takes "
+                f"{kind.label} ({', '.join(expected)})."
             )
         else:
             message = (
-                f"{path!r} is a {actual} ({resource.rid}), but {label} takes "
-                f"{kind.label} ({', '.join(expected)})."
+                f"{rid} is a {actual}, but {label} takes {kind.label} "
+                f"({', '.join(expected)})."
             )
+        parameters: Dict[str, Any] = {"path": given} if from_path else {}
+        parameters.update(rid=rid, resourceType=actual, expectedTypes=expected)
+        hint = suggested = None
+        if actual == "COMPASS_FOLDER" and actual not in expected:
+            hint = f"That is a folder: look in it for {kind.label}."
+            suggested = f"pltr folder list {shlex.quote(given)}"
+            if profile:
+                suggested += f" --profile {shlex.quote(profile)}"
         super().__init__(
-            message,
-            parameters={
-                "path": path,
-                "rid": resource.rid,
-                "resourceType": actual,
-                "expectedTypes": expected,
-            },
+            message, parameters=parameters, hint=hint, suggested_command=suggested
         )
 
 
@@ -308,14 +353,45 @@ def resolve_paths(client: Any, paths: Sequence[str]) -> Dict[str, Any]:
     return found
 
 
-def check_kind(path: str, resource: Any, kind: ResourceKind, label: str) -> None:
+def check_kind(
+    path: str,
+    resource: Any,
+    kind: ResourceKind,
+    label: str,
+    profile: Optional[str] = None,
+) -> None:
     """Fail unless ``resource`` (resolved from ``path``) is of ``kind``.
 
     ``label`` names the parameter in the message (``DATASET_RID``,
     ``--parent-folder``).
     """
     if not kind.accepts(resource):
-        raise WrongResourceTypeError(path, resource, kind, label)
+        raise WrongResourceTypeError(
+            path,
+            resource.rid,
+            str(resource.type),
+            kind,
+            label,
+            from_path=True,
+            profile=profile,
+        )
+
+
+def check_rid_kind(
+    rid: str, kind: ResourceKind, label: str, profile: Optional[str] = None
+) -> None:
+    """Fail, before any API call, when ``rid`` names a resource of another kind.
+
+    Only RIDs whose format pltr knows (:data:`RID_RESOURCE_TYPES`) are checked.
+    A folder RID given for a project passes: the RID can't tell them apart.
+    """
+    actual = rid_resource_type(rid)
+    if actual is None or kind.resource_types is None:
+        return
+    if actual not in kind.resource_types:
+        raise WrongResourceTypeError(
+            rid, rid, actual, kind, label, from_path=False, profile=profile
+        )
 
 
 # ----------------------------------------------------------- command layer
@@ -353,6 +429,12 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
         for param in ctx.command.params
         if isinstance(param.type, ResourceRef) and param.name in kwargs
     ]
+    profile = kwargs.get("profile", ctx.params.get("profile"))
+    for param in targets:
+        assert isinstance(param.type, ResourceRef)
+        for value in _values(kwargs[str(param.name)]):
+            if isinstance(value, str) and not is_path(value):
+                check_rid_kind(value, param.type.kind, _parameter_label(param), profile)
     wanted = [
         (value, param)
         for param in targets
@@ -366,12 +448,13 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     from .runtime import info
 
-    profile = kwargs.get("profile", ctx.params.get("profile"))
     client = base.AuthManager().get_client(profile)
     resolved = resolve_paths(client, [path for path, _ in wanted])
     for path, param in wanted:
         assert isinstance(param.type, ResourceRef)
-        check_kind(path, resolved[path], param.type.kind, _parameter_label(param))
+        check_kind(
+            path, resolved[path], param.type.kind, _parameter_label(param), profile
+        )
     for path, resource in resolved.items():
         info(f"Resolved {path!r} to {resource.rid} ({resource.type})")
 

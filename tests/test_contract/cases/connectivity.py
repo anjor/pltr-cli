@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from tests import foundry_json_connectivity as cj
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 _DATA = Path(__file__).parent / "data"
 #: update-secrets refuses an empty secrets file; upload-jdbc-drivers takes .jar files.
@@ -45,20 +45,23 @@ ARGS = {
         json.dumps(cj.foundry_worker()),
     ],
     "connectivity connection update-secrets": [
-        CONTRACT_RID,
+        resource_rid("connection"),
         "--secrets-file",
         SECRETS_FILE,
     ],
     # SETTINGS is an optional argument (it can come from --settings-file)
     "connectivity connection update-export-settings": [
-        CONTRACT_RID,
+        resource_rid("connection"),
         '{"exportsEnabled": true, "exportEnabledWithoutMarkingsValidation": false}',
     ],
-    "connectivity connection upload-jdbc-drivers": [CONTRACT_RID, DRIVER_JAR],
+    "connectivity connection upload-jdbc-drivers": [
+        resource_rid("connection"),
+        DRIVER_JAR,
+    ],
     # --config must be a table import config object
     "connectivity import table": [
-        CONTRACT_RID,
-        CONTRACT_RID,
+        resource_rid("connection"),
+        resource_rid("dataset"),
         "--name",
         "Contract import",
         "--mode",

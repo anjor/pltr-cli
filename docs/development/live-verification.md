@@ -527,6 +527,29 @@ dataset path exits 2); a missing path answering 404 `PathNotFound`
   reported as `path_not_found`. Manual: `pltr resource batch-get` with two
   paths, one in different case.
 
+### Recovery hints (#197)
+
+Verified live on 2026-11-07 (one stack, read-only): `ObjectTypeNotFound`,
+`PropertiesNotFound` (a 404 there) and `LinkTypeNotFound` hints with the
+closest names; the rejected-token hint for `FOUNDRY_TOKEN` (HTTP 401
+`Default:Unauthorized`); a folder RID given to `dataset get` refused before
+any call. On that stack object type, property and link type API names
+resolved **case-insensitively**, so the hints don't claim they are
+case-sensitive. Not verified live:
+
+- **`Branch.transactionRid` is the open transaction** when
+  `OpenTransactionAlreadyExists` is raised (pltr also checks it is `OPEN`).
+  Manual: start a transaction on a scratch dataset, start another, and check
+  the hint names the first.
+- **`ApiUsageDenied` carries `missingScope`** for an OAuth client without a
+  scope; without it pltr lists the scopes the command's SDK methods document.
+  Manual: an OAuth client without `api:datasets-read`, then `pltr dataset get`.
+- **`<Operation>PermissionDenied` errors put the resource RID first among
+  their parameters.** Manual: abort a transaction on a dataset you can read
+  but not edit.
+- **`ActionTypeNotFound`** and the action-type list call. Manual:
+  `pltr ontology action-apply <ontology> <misspelled-action> '{}'`.
+
 ### The smoke test itself (d2)
 
 The smoke script has run only against fakes, so a failing check can be the

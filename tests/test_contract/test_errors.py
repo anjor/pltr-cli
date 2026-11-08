@@ -633,3 +633,43 @@ def test_fail_reraises_with_pltr_debug(monkeypatch, capsys):
     with pytest.raises(NotFoundError):
         fail(error)
     assert "Thing:NotFound" in capsys.readouterr().err
+
+
+# ------------------------------------------------------ recovery hints (#197)
+
+
+def test_specific_hints_and_suggested_commands_are_in_the_json():
+    info = ErrorInfo(
+        "conflict",
+        "busy",
+        ExitCode.API,
+        hint="Abort the open transaction first.",
+        suggested_command="pltr dataset transactions abort ri.a ri.b --yes",
+    )
+    assert info.to_json() == {
+        "type": "conflict",
+        "message": "busy",
+        "exitCode": 7,
+        "hint": "Abort the open transaction first.",
+        "suggestedCommand": "pltr dataset transactions abort ri.a ri.b --yes",
+    }
+
+
+def test_generic_type_hints_stay_out_of_the_json():
+    info = classify_error(raised(NotFoundError(GENERIC_BODY)))
+    assert info.hint.startswith("Check the RID")
+    assert "hint" not in info.to_json()
+
+
+def test_pltr_error_hints_are_specific():
+    info = classify_error(raised(PltrError("x", hint="Do this.")))
+    assert info.to_json()["hint"] == "Do this."
+
+
+def test_render_text_shows_the_suggested_command(capsys):
+    info = ErrorInfo(
+        "conflict", "busy", ExitCode.API, hint="Abort it.", suggested_command="pltr x"
+    )
+    render_error(info, as_json=False)
+    lines = capsys.readouterr().err.splitlines()
+    assert lines[-2:] == ["Hint: Abort it.", "Try: pltr x"]

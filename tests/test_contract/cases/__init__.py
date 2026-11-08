@@ -39,6 +39,24 @@ from typing import Any, Dict, List, Set
 CONTRACT_RID = "ri.compass.main.folder.contract-test"
 
 
+def resource_rid(kind_name: str) -> str:
+    """A RID of the right kind for a resource parameter of ``kind_name``.
+
+    pltr refuses a RID of a known wrong kind before calling the API (#197), so
+    a dataset parameter gets a dataset RID, and a kind whose RID format pltr
+    doesn't know gets a RID of an unknown format.
+    """
+    from pltr.contract.resources import KINDS, RID_RESOURCE_TYPES
+
+    kind = KINDS[kind_name]
+    if kind.resource_types is None:
+        return CONTRACT_RID
+    for (service, rid_type), resource_type in sorted(RID_RESOURCE_TYPES.items()):
+        if resource_type in kind.resource_types:
+            return f"ri.{service}.main.{rid_type}.contract-test"
+    return "ri.contract-test.main.resource.contract-test"
+
+
 @dataclass
 class Cases:
     not_converted: Set[str] = field(default_factory=set)

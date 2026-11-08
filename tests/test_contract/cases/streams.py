@@ -3,7 +3,7 @@
 import json
 
 from tests import foundry_json_streams as st
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 _SCHEMA = json.dumps(st.SCHEMA)
 
@@ -26,21 +26,21 @@ ARGS = {
         _SCHEMA,
     ],
     "streams stream create": [
-        CONTRACT_RID,
+        resource_rid("dataset"),
         "--branch",
         "contract-test",
         "--schema",
         _SCHEMA,
     ],
     "streams stream publish": [
-        CONTRACT_RID,
+        resource_rid("dataset"),
         "--branch",
         "contract-test",
         "--record",
         '{"id": 1}',
     ],
     "streams stream publish-batch": [
-        CONTRACT_RID,
+        resource_rid("dataset"),
         "--branch",
         "contract-test",
         "--records",

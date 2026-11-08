@@ -100,6 +100,26 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
 | 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
 
+### Errors that say how to recover
+
+When pltr knows how to recover, the error object has a `hint` and often a
+`suggestedCommand`. Read them before retrying, and don't retry blindly:
+
+- `ObjectTypeNotFound`, `PropertiesNotFound`, `ActionTypeNotFound`,
+  `LinkTypeNotFound`: the hint lists the closest API names;
+- `wrong_resource_type`: you passed a RID or path of the wrong kind; for a
+  folder, `suggestedCommand` lists it;
+- `OpenTransactionAlreadyExists` (`conflict`): the hint names the open
+  transaction and `suggestedCommand` aborts it. Aborting discards its
+  uploads: ask the user unless you opened it yourself;
+- `ApiUsageDenied` (`permission_denied`): the OAuth scope that's missing;
+  tell the user;
+- `<Operation>PermissionDenied`: the operation and resource;
+  `suggestedCommand` shows who has roles on it;
+- `auth_error` after HTTP 401: the token expired or was revoked; ask the user
+  for a new one (`suggestedCommand` shows where it goes);
+- `path_not_found`: what a Compass path looks like.
+
 ## 4. Safety rules
 
 - **Destructive commands** (`destructive: true`: delete, remove, revoke,
