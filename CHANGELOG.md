@@ -12,6 +12,31 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-08
+
+This release makes pltr easier for coding agents to build on Foundry with
+(#191): Compass paths wherever a RID is accepted, errors that say how to
+recover, `--emit-code` to turn a command into SDK Python, `--wait` and
+`pltr assert` to check that work finished, and `pltr context` packs to read
+before writing code. Two exit codes change: read "Breaking changes" first.
+
+### Breaking changes
+
+- **SQL failures and timeouts exit 8 and 9.** `sql wait`, `sql execute`,
+  `sql export`, `sql submit` (a query that fails at once) and
+  `sql submit --wait` now exit 8 (`work_failed`, was 7 `api_error`) for a
+  failed or canceled query and 9 (`wait_timeout`, was 7 `timeout`) when
+  `--timeout` passes, like the other `--wait` commands (#195). In JSON mode,
+  `--wait` commands write a `{"type": "started", ...}` stderr line with the
+  RID as soon as the work starts, and an error while waiting says the work
+  keeps running and how to wait again.
+- **A RID of the wrong kind exits 2 before any call** (#197). A folder RID
+  given to a dataset parameter (or a dataset RID to a project parameter) is
+  now a `wrong_resource_type` error (exit 2), and a folder suggests
+  `pltr folder list`. Such a RID used to be sent to the API, which usually
+  rejected it as not found (exit 5). Only RID formats pltr is sure of are
+  checked.
+
 ### Added
 
 - **Compass paths wherever a resource RID is accepted** (#193). Every
@@ -66,14 +91,6 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   `--updated-within 1h`), `pltr assert build --succeeded` and `pltr assert
   objects --min-count` print a result and exit 8 (`assertion_failed`) when a
   check fails.
-- **Breaking:** `sql wait`, `sql execute`, `sql export`, `sql submit` (a
-  query that fails at once) and `sql submit --wait` now exit 8
-  (`work_failed`, was 7 `api_error`) for a failed or canceled query and 9
-  (`wait_timeout`, was 7 `timeout`) when `--timeout` passes, like the other
-  `--wait` commands (#195). In JSON mode, `--wait` commands write a
-  `{"type": "started", ...}` stderr line with the RID as soon as the work
-  starts, and an error while waiting says the work keeps running and how to
-  wait again.
 - **`--emit-code`: the SDK code for a command's call** (#192). Add
   `--emit-code` anywhere on a command line and pltr prints runnable
   foundry-platform-sdk Python for the call the command would make, with the
@@ -89,10 +106,6 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   command and the curated commands that make one SDK call); the others
   (several calls, `resource search`, direct HTTP, local) fail with
   `emit_code_unsupported` (exit 2).
-- **A RID of the wrong kind fails before any call** (#197): a folder RID
-  given to a dataset parameter (or a dataset RID to a project parameter) is a
-  `wrong_resource_type` error (exit 2), and a folder suggests
-  `pltr folder list`. Only RID formats pltr is sure of are checked.
 
 ## [0.17.0] - 2026-11-07
 
@@ -1341,7 +1354,8 @@ No changes to pltr itself; only the version number changed.
   and OAuth2 profiles, with credentials in the system keyring),
   `pltr verify`, `pltr dataset get` and `pltr dataset create`.
 
-[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/anjor/pltr-cli/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/anjor/pltr-cli/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/anjor/pltr-cli/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/anjor/pltr-cli/compare/v0.14.1...v0.15.0
