@@ -5,7 +5,7 @@ generated (``pltr api``), so agents can find the right command without
 loading every ``--help`` page. ``pltr commands list --format json`` prints it::
 
     {
-      "pltrVersion": "0.17.0",
+      "pltrVersion": "0.18.0",
       "sdkVersion": "1.111.0",
       "groups": [{"path": "pltr folder", "description": "Manage folders", ...}],
       "commands": [
