@@ -195,8 +195,9 @@ pltr ontology object-search my-ontology Employee --where '{"type": "eq", "field"
 pltr api datasets dataset read-table <dataset-rid> --api-format ARROW --emit-code
 ```
 
-The snippet reads `FOUNDRY_HOST` and `FOUNDRY_TOKEN` from the environment,
-looks up any Compass path you gave, and pages the SDK's way. Nothing runs, so
+The snippet reads `FOUNDRY_HOST` and `FOUNDRY_TOKEN` (and any secret
+argument, such as connection secrets) from the environment, looks up any
+Compass path you gave, and pages the SDK's way: read its comments. Nothing runs, so
 it's safe on destructive commands. A command that makes several calls (or no
 Foundry call) fails with `emit_code_unsupported` (exit 2): use `pltr commands
 show <command>` for its SDK methods and `pltr api ... --emit-code` for each.

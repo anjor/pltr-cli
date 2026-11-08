@@ -162,6 +162,8 @@ def typed_argument(value: Any, annotation: Any) -> Any:
         return value
     if not isinstance(value, (dict, list)):
         return value
+    if isinstance(value, list) and any(isinstance(v, PathValue) for v in value):
+        return value  # validating would turn the paths into plain strings
     try:
         return pydantic.TypeAdapter(annotation).validate_python(value)
     except Exception:
@@ -195,6 +197,11 @@ def call_from_recording(
 
 def check_supported(meta: Any, command_path: str) -> None:
     """Fail unless ``--emit-code`` can show the command as one SDK call."""
+    if meta is not None and meta.no_emit_code:
+        raise EmitUnsupported(
+            f"--emit-code can't show `{command_path}` as one SDK call: "
+            f"{meta.no_emit_code}"
+        )
     if meta is None or (not meta.sdk and not meta.http):
         raise EmitUnsupported(
             f"`{command_path}` makes no Foundry call, so --emit-code has no SDK "

@@ -362,7 +362,9 @@ print(result)
 The snippet runs as is: it reads the host and token from the environment
 (never a credential pltr knows), passes SDK models for JSON options
 (`ontologies_models.EqualsQueryV2(...)`), pages the SDK's way and looks up
-Compass paths. Nothing is called, so it's safe on destructive commands too.
+Compass paths. Secret arguments (connection secrets, media-set tokens) are
+read from environment variables in the snippet, never written into it.
+Nothing is called, so it's safe on destructive commands too.
 Commands that make several calls (`pltr cp`, uploads in a transaction), call
 Foundry without the SDK, or make no Foundry call say so (exit 2,
 `emit_code_unsupported`) instead of printing part of the code.

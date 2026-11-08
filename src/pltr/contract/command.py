@@ -91,6 +91,11 @@ class CommandMeta:
     destructive: bool = False
     paged: bool = False
     binary: bool = False
+    #: Why --emit-code can't show this command as its SDK call (e.g. the
+    #: command does more than the call); None when it can.
+    no_emit_code: Optional[str] = None
+    #: A comment for --emit-code snippets (e.g. a filter pltr applies locally).
+    emit_note: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -129,6 +134,8 @@ def pltr_command(
     destructive: bool = False,
     paged: bool = False,
     binary: bool = False,
+    no_emit_code: Optional[str] = None,
+    emit_note: Optional[str] = None,
 ) -> Callable[[F], F]:
     """Declare a command's metadata and give it the error/output contract.
 
@@ -150,6 +157,8 @@ def pltr_command(
         destructive=destructive,
         paged=paged,
         binary=binary,
+        no_emit_code=no_emit_code,
+        emit_note=emit_note,
     )
 
     def decorate(func: F) -> F:
@@ -200,6 +209,10 @@ def _emit_code(
 
     ctx = click.get_current_context(silent=True)
     command_path = ctx.command_path if ctx is not None else "pltr"
+    import pydantic
+
+    from .codegen import PathValue
+
     check_supported(meta, command_path)
     kwargs = resolve_resource_paths(kwargs)
     try:
@@ -207,14 +220,30 @@ def _emit_code(
     except EmitDone as done:
         code = done.code
     except RecordedCall as recorded:
-        output = kwargs.get("output")
+        output = kwargs.get("output") or kwargs.get("output_path")
         call = call_from_recording(
             recorded,
             paged=meta.paged,
             binary=meta.binary,
-            output=output if isinstance(output, str) else None,
+            output=str(output) if output else None,
         )
+        if meta.emit_note:
+            call.comments.append(meta.emit_note)
         code = render_snippet(call)
+    except pydantic.ValidationError:
+        given = [
+            v
+            for value in kwargs.values()
+            for v in (value if isinstance(value, (list, tuple)) else [value])
+            if isinstance(v, PathValue)
+        ]
+        if not given:
+            raise
+        raise EmitUnsupported(
+            f"--emit-code can't show the Compass paths given to `{command_path}`: "
+            "it builds request models from RIDs. Give RIDs instead (`pltr "
+            "resource get-by-path` finds them)."
+        ) from None
     else:
         raise EmitUnsupported(
             f"`{command_path}` finished without reaching its Foundry call, so "

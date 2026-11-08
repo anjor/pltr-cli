@@ -48,9 +48,12 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   constructors, paged methods are looped the SDK's way, binary content goes
   to the `--output` file or stdout, beta methods get `preview=True`, and
   Compass paths (#193) are looked up with `Resource.get_by_path`. Nothing is
-  called and destructive commands don't ask. 561 commands support it (every
-  generated `pltr api` command and the curated commands that make one SDK
-  call); the others (several calls, direct HTTP, local) fail with
+  called and destructive commands don't ask. Secret arguments (connection
+  secrets, media-set tokens) come from environment variables in the snippet,
+  never inlined; a filter pltr applies locally, and reading every page, are
+  noted in a comment. 560 commands support it (every generated `pltr api`
+  command and the curated commands that make one SDK call); the others
+  (several calls, `resource search`, direct HTTP, local) fail with
   `emit_code_unsupported` (exit 2).
 - **A RID of the wrong kind fails before any call** (#197): a folder RID
   given to a dataset parameter (or a dataset RID to a project parameter) is a

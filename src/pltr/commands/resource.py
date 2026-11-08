@@ -239,7 +239,14 @@ def get_resource_by_path(
 
 
 @app.command("list")
-@pltr_command(sdk="filesystem.Folder.children", paged=True)
+@pltr_command(
+    sdk="filesystem.Folder.children",
+    paged=True,
+    emit_note=(
+        "pltr filters the children by --type locally (the API can't); "
+        "this snippet lists every child."
+    ),
+)
 def list_resources(
     folder_rid: FolderRidOption,
     resource_type: TypeOption = None,
@@ -278,7 +285,13 @@ def list_resources(
 
 
 @app.command("search")
-@pltr_command(sdk="filesystem.Folder.children")
+@pltr_command(
+    sdk="filesystem.Folder.children",
+    no_emit_code=(
+        "pltr searches folder by folder and matches names locally; list a "
+        "folder's children with `pltr folder list ... --emit-code` instead."
+    ),
+)
 def search_resources(
     query: Annotated[
         str,

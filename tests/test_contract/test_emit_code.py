@@ -175,7 +175,7 @@ def test_a_path_is_looked_up_in_the_snippet(stub_foundry_http, monkeypatch) -> N
 
 
 def unsupported(*args: str) -> dict:
-    result = runner.invoke(app, [*args, "--emit-code", "-f", "json"])
+    result = runner.invoke(app, [*args, "--emit-code", "--format", "json"])
     assert result.exit_code == 2, result.stdout
     assert result.stdout == ""
     return json.loads(result.stderr.strip().splitlines()[-1])
@@ -220,6 +220,7 @@ def test_every_command_handles_emit_code(path, contract_env, tmp_path) -> None: 
     )
 
     assert contract_env.requests == [], f"pltr {path} called Foundry"
+    assert STUB_TOKEN not in result.stdout
     if result.exit_code == 0:
         compile(result.stdout, f"pltr {path}", "exec")
         assert "client = FoundryClient(" in result.stdout
@@ -235,3 +236,129 @@ def test_root_help_mentions_emit_code() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert "--emit-code" in result.stdout
+
+
+# ------------------------------------------------------ review fixes (#192)
+
+CONNECTION = "ri.magritte..source.c1"
+
+
+def test_secrets_from_a_file_are_not_inlined(stub_foundry_http, tmp_path) -> None:
+    secrets = tmp_path / "secrets.json"
+    secrets.write_text('{"password": "hunter2-SUPER-SECRET"}')
+
+    code = emit(
+        "connectivity",
+        "connection",
+        "update-secrets",
+        CONNECTION,
+        "--secrets-file",
+        str(secrets),
+    )
+
+    assert "hunter2" not in code
+    assert 'secrets=json.loads(os.environ["SECRETS"])' in code
+    assert "import json" in code
+
+
+def test_generated_secret_arguments_are_not_inlined(stub_foundry_http) -> None:
+    code = emit(
+        "api",
+        "connectivity",
+        "connection",
+        "update-secrets",
+        CONNECTION,
+        "--secrets",
+        '{"password": "hunter2"}',
+    )
+
+    assert "hunter2" not in code
+
+
+def test_resource_search_is_refused(stub_foundry_http) -> None:
+    error = unsupported("resource", "search", "sales", "--folder-rid", fj.FOLDER_RID)
+
+    assert "search" in error["message"]
+
+
+def test_a_local_filter_is_noted_in_the_snippet(stub_foundry_http) -> None:
+    code = emit(
+        "resource", "list", "--folder-rid", fj.FOLDER_RID, "--type", "FOUNDRY_DATASET"
+    )
+
+    assert code.startswith("# ")
+    assert "--type" in code.splitlines()[0]
+
+
+def test_extra_model_fields_are_kept(stub_foundry_http, monkeypatch) -> None:
+    from tests import foundry_json_ontology as oj
+
+    stub_foundry_http.respond_always(json={"data": [], "totalCount": "0"})
+    where = {"type": "eq", "field": "fullName", "value": "Ada", "fuzzy": True}
+    args = ["api", "ontologies", "ontology-object", "search", oj.ONTOLOGY, "Employee"]
+    args += ["--where", json.dumps(where)]
+    runner.invoke(app, [*args, "-f", "json"])
+    by_command = list(stub_foundry_http.requests)
+    stub_foundry_http.requests.clear()
+
+    run_snippet(emit(*args), monkeypatch)
+
+    same_requests(by_command, stub_foundry_http.requests)
+
+
+def test_a_page_token_starts_a_response_paged_loop(
+    stub_foundry_http, monkeypatch
+) -> None:
+    from tests import foundry_json_admin as aj
+
+    stub_foundry_http.respond_always(json={"data": [aj.user()]})
+    args = ["admin", "user", "search", "jane", "--page-token", "TOKEN123"]
+    runner.invoke(app, [*args, "-f", "json"])
+    by_command = list(stub_foundry_http.requests)
+    stub_foundry_http.requests.clear()
+
+    run_snippet(emit(*args), monkeypatch)
+
+    same_requests(by_command, stub_foundry_http.requests)
+
+
+def test_paths_in_a_batch_get_are_refused_cleanly(stub_foundry_http) -> None:
+    error = unsupported("resource", "batch-get", fj.FOLDER_RID, "/Space/Project/x")
+
+    assert error["type"] == "emit_code_unsupported"
+    assert "path" in error["message"]
+
+
+def test_an_output_path_argument_is_used(stub_foundry_http) -> None:
+    code = emit(
+        "media-sets",
+        "thumbnail-retrieve",
+        "ri.mio.main.media-set.m1",
+        "ri.mio.main.media-item.i1",
+        "thumb.webp",
+    )
+
+    assert 'with open("thumb.webp", "wb") as file:' in code
+
+
+def test_a_paged_snippet_says_it_reads_every_page(stub_foundry_http) -> None:
+    code = emit("api", "admin", "user", "list")
+
+    assert "every page" in code.splitlines()[0]
+
+
+def test_a_binary_snippet_writes_what_the_command_writes(
+    stub_foundry_http, monkeypatch, tmp_path
+) -> None:
+    stub_foundry_http.respond_always(content=b"a,b\n1,2\n")
+    by_command_file = tmp_path / "by-command.csv"
+    args = ["api", "datasets", "dataset", "file", "content", DS, "data/a.csv"]
+    runner.invoke(app, [*args, "--output", str(by_command_file)])
+    by_command = list(stub_foundry_http.requests)
+    stub_foundry_http.requests.clear()
+    by_snippet_file = tmp_path / "by-snippet.csv"
+
+    run_snippet(emit(*args, "--output", str(by_snippet_file)), monkeypatch)
+
+    same_requests(by_command, stub_foundry_http.requests)
+    assert by_snippet_file.read_bytes() == by_command_file.read_bytes()

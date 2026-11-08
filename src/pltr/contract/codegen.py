@@ -19,7 +19,7 @@ import datetime
 import enum
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 
 class PathValue(str):
@@ -27,7 +27,24 @@ class PathValue(str):
 
 
 class RawExpr(str):
-    """A Python expression the snippet uses verbatim (e.g. reading a file)."""
+    """A Python expression the snippet uses verbatim (e.g. reading a file),
+    with the imports it needs."""
+
+    imports: frozenset = frozenset()
+
+    def __new__(cls, text: str, imports: Sequence[str] = ()) -> "RawExpr":
+        expression = super().__new__(cls, text)
+        expression.imports = frozenset(imports)
+        return expression
+
+
+#: Arguments that carry credentials: the snippet reads them from the
+#: environment instead of holding their values.
+SECRET_ARGUMENTS: Dict[str, Tuple[str, str]] = {
+    "secrets": ("SECRETS", 'json.loads(os.environ["SECRETS"])'),
+    "token": ("MEDIA_SET_TOKEN", 'os.environ["MEDIA_SET_TOKEN"]'),
+    "read_token": ("MEDIA_SET_READ_TOKEN", 'os.environ["MEDIA_SET_READ_TOKEN"]'),
+}
 
 
 @dataclass
@@ -62,6 +79,7 @@ def render_value(
     if isinstance(value, PathValue) and paths is not None and value in paths:
         return paths[value]
     if isinstance(value, RawExpr):
+        imports.update(value.imports)
         return str(value)
     if isinstance(value, enum.Enum):
         value = value.value
@@ -92,12 +110,22 @@ def render_value(
             )
         namespace = cls.__module__.rsplit(".", 1)[0]
         imports.add(f"from {namespace} import models as {alias}")
-        arguments = ", ".join(
+        parts = [
             f"{name}={render_value(getattr(value, name), imports, paths)}"
             for name in cls.model_fields
             if name in value.model_fields_set
-        )
-        return f"{alias}.{cls.__name__}({arguments})"
+        ]
+        # Keys the SDK's model doesn't know (extra="allow") are sent too.
+        extra = dict(value.model_extra or {})
+        odd = {k: v for k, v in extra.items() if not str(k).isidentifier()}
+        parts += [
+            f"{key}={render_value(item, imports, paths)}"
+            for key, item in extra.items()
+            if key not in odd
+        ]
+        if odd:
+            parts.append(f"**{render_value(odd, imports, paths)}")
+        return f"{alias}.{cls.__name__}({', '.join(parts)})"
     if isinstance(value, bytes):
         return repr(value)
     return json.dumps(str(value), ensure_ascii=False)
@@ -150,6 +178,19 @@ def _call_expression(
 def render_snippet(call: Call) -> str:
     """The whole runnable snippet for ``call``."""
     imports: Set[str] = {"import os"}
+    comments = list(call.comments)
+    kwargs = dict(call.kwargs)
+    for name, (variable, expression) in SECRET_ARGUMENTS.items():
+        if name in kwargs:
+            kwargs[name] = RawExpr(
+                expression, ["import json"] if "json." in expression else []
+            )
+            comments.append(f"Set {variable} before running: {name} is a secret.")
+    if call.paged:
+        comments.append(
+            "This loops over every page; pltr printed one page (--all for every page)."
+        )
+    call = Call(call.sdk_path, kwargs, call.paged, call.binary, call.output, comments)
     paths = _lookup_variables(call.kwargs)
     body: List[str] = []
     for path, variable in paths.items():
@@ -161,13 +202,14 @@ def render_snippet(call: Call) -> str:
         body.append("")
 
     if call.paged == "response":
+        first_token = render_value(call.kwargs.get("page_token"), imports, paths)
         kwargs = {k: v for k, v in call.kwargs.items() if k != "page_token"}
         kwargs["page_token"] = RawExpr("page_token")
         expression = _call_expression(
             call.sdk_path, kwargs, imports, paths, indent="    "
         )
         body += [
-            "page_token = None",
+            f"page_token = {first_token}",
             "while True:",
             f"    page = {expression}",
             "    for item in page.data:",

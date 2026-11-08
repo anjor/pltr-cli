@@ -217,7 +217,14 @@ def revoke_role(
 
 
 @app.command("list")
-@pltr_command(sdk="filesystem.Resource.Role.list", paged=True)
+@pltr_command(
+    sdk="filesystem.Resource.Role.list",
+    paged=True,
+    emit_note=(
+        "pltr filters the roles by --principal-type locally; this snippet "
+        "lists every role."
+    ),
+)
 def list_roles(
     resource_rid: ResourceRid,
     principal_type_filter: Annotated[
