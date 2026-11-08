@@ -108,7 +108,24 @@ jobs:
           echo "Checking wheel contents:"
           uv run python -m zipfile -l dist/*.whl
 
+      # TestPyPI's trusted-publishing token exchange sometimes times out (the
+      # action allows it 5 seconds), so a failed first attempt is retried once.
+      # skip-existing makes the retry safe if the first attempt uploaded files.
       - name: Publish to TestPyPI
+        id: publish
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+          skip-existing: true
+
+      - name: Wait before retrying the TestPyPI publish
+        if: steps.publish.outcome == 'failure'
+        run: sleep 60
+
+      - name: Publish to TestPyPI (retry)
+        if: steps.publish.outcome == 'failure'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -116,18 +133,35 @@ jobs:
           skip-existing: true
 
       - name: Test installation from TestPyPI
+        env:
+          TEST_VERSION: ${{ steps.test_version.outputs.TEST_VERSION }}
         run: |
-          # Wait a moment for TestPyPI to process the upload
-          sleep 30
+          # Install into a fresh virtualenv outside the checkout, so the smoke
+          # test runs the published package, not the project's editable install.
+          python -m venv "$RUNNER_TEMP/testpypi-venv"
+          VENV_BIN="$RUNNER_TEMP/testpypi-venv/bin"
+          cd "$RUNNER_TEMP"
 
-          # Try to install the package from TestPyPI
-          uv run pip install --index-url https://test.pypi.org/simple/ \
-                            --extra-index-url https://pypi.org/simple/ \
-                            pltr-cli==${{ steps.test_version.outputs.TEST_VERSION }}
+          # TestPyPI's index can take minutes to list a fresh upload, so retry.
+          attempts=10
+          for attempt in $(seq 1 "$attempts"); do
+            if "$VENV_BIN/pip" install --no-cache-dir \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "pltr-cli==$TEST_VERSION"; then
+              break
+            fi
+            if [ "$attempt" -eq "$attempts" ]; then
+              echo "::error::pltr-cli==$TEST_VERSION was not installable from TestPyPI after $attempts attempts"
+              exit 1
+            fi
+            echo "pltr-cli==$TEST_VERSION is not installable yet (attempt $attempt/$attempts); retrying in 30s"
+            sleep 30
+          done
 
-          # Test basic import and CLI functionality
-          uv run python -c "import pltr; print('Package import successful')"
-          uv run pltr --help
+          # Test basic import and CLI functionality of the installed package
+          "$VENV_BIN/python" -c "import pltr; print(f'Package import successful: {pltr.__file__}')"
+          "$VENV_BIN/pltr" --help
 
       - name: Report test results
         if: always()
