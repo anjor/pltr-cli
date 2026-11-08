@@ -434,9 +434,9 @@ pltr sql cancel "$QUERY_ID" --yes
 
 JSON output of `execute`, `results`, `wait` and `export` to a `.json` file
 is `{"data": [...]}`, one object per row. `submit`, `status` and `cancel`
-print the query status (`{"type": "running", "queryId": "..."}`). A failed or
-canceled query exits with code 7, and so does `--timeout` (the query keeps
-running). `sql results` exits with 6 while the query is still running.
+print the query status (`{"type": "running", "queryId": "..."}`); `submit
+--wait` waits and prints the final status. A failed or canceled query exits
+with code 8, and `--timeout` with code 9 (the query keeps running). `sql results` exits with 6 while the query is still running.
 
 ## Orchestration: `pltr orchestration`
 

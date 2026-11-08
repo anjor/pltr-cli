@@ -20,6 +20,7 @@ from ..contract import (
     FormatOption,
     OutputOption,
     ProfileOption,
+    WaitOption,
     YesOption,
     confirm_destructive,
     emit,
@@ -31,6 +32,7 @@ from ..contract import (
     table_rows,
     warn,
 )
+from ..contract.hints import note_started
 from ..services.sql import SqlService, check_not_failed, query_id_of
 from ..utils.completion import complete_sql_query
 
@@ -189,16 +191,21 @@ def execute_query(
 
 
 @app.command("submit")
-@pltr_command(sdk="sql_queries.SqlQuery.execute")
+@pltr_command(
+    sdk=("sql_queries.SqlQuery.execute", "sql_queries.SqlQuery.get_status"),
+    waits=True,
+)
 def submit_query(
     query: QueryArgument,
+    wait: WaitOption = False,
+    timeout: TimeoutOption = 300,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
     fallback_branches: FallbackBranchesOption = None,
     preview: PreviewFlagNoopOption = None,
 ):
-    """Start a SQL query without waiting; print its status and query ID.
+    """Start a SQL query; print its status and query ID (with --wait, its final status).
 
     Follow up with 'pltr sql status', 'pltr sql wait' or 'pltr sql results'.
     In a script: QUERY_ID=$(pltr sql submit "..." --format json | jq -r .queryId)
@@ -206,14 +213,20 @@ def submit_query(
     """
     from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
 
+    service = SqlService(profile=profile)
     with spinner("Submitting SQL query..."):
-        status = SqlService(profile=profile).submit_query(
+        status = service.submit_query(
             query, fallback_branch_ids=_branches(fallback_branches)
         )
     check_not_failed(status)
     query_id = query_id_of(status)
     success(f"Submitted query {query_id}")
-    if isinstance(status, RunningQueryStatus):
+    if wait and query_id is not None:
+        note_started(f"query {query_id}", f"pltr sql wait {query_id}", queryId=query_id)
+        with spinner(f"Waiting for query {query_id}..."):
+            status = service.wait_for_query(query_id, timeout=timeout, status=status)
+        success(f"Query {query_id} succeeded")
+    elif isinstance(status, RunningQueryStatus):
         info(f"Wait for its results with: pltr sql wait {query_id}")
     emit(
         status,

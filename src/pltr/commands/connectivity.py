@@ -20,6 +20,8 @@ from ..contract import (
     PageSizeOption,
     PageTokenOption,
     ProfileOption,
+    WaitOption,
+    WaitTimeoutOption,
     YesOption,
     collect_pages,
     confirm_destructive,
@@ -30,6 +32,9 @@ from ..contract import (
     spinner,
     success,
 )
+from .orchestration import BUILD_COLUMNS as BUILD_MODEL_COLUMNS
+from ..contract.hints import note_started
+from ..services.orchestration import OrchestrationService
 from ..services.connectivity import ConnectivityService
 from ..utils.completion import cache_rid, complete_rid
 
@@ -629,15 +634,24 @@ def list_file_imports(
 
 
 @import_app.command("execute-file")
-@pltr_command(sdk="connectivity.Connection.FileImport.execute")
+@pltr_command(
+    sdk=(
+        "connectivity.Connection.FileImport.execute",
+        "orchestration.Build.get",
+        "orchestration.Build.jobs",
+    ),
+    waits=True,
+)
 def execute_file_import(
     connection_rid: ConnectionRid,
     file_import_rid: FileImportRid,
+    wait: WaitOption = False,
+    timeout: WaitTimeoutOption = 600,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Run a file import; prints the RID of the build that runs it.
+    """Run a file import; prints the RID of the build that runs it (with --wait, the finished build).
 
     The import runs asynchronously as a Foundry build; check it with
     'pltr orchestration builds get BUILD_RID'.
@@ -647,7 +661,33 @@ def execute_file_import(
             connection_rid, file_import_rid
         )
     _report_build(build_rid, "file", file_import_rid)
+    if wait:
+        _emit_finished_build(build_rid, timeout, profile, format, output)
+        return
     emit(build_rid, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
+
+
+def _emit_finished_build(
+    build_rid: str,
+    timeout: float,
+    profile: Optional[str],
+    format: str,
+    output: Optional[str],
+) -> None:
+    """--wait: wait for the import's build, then print it (exit 8/9 otherwise)."""
+    note_started(
+        f"build {build_rid}",
+        f"pltr orchestration builds wait {build_rid}",
+        buildRid=build_rid,
+    )
+    with spinner(f"Waiting for build {build_rid}..."):
+        build = OrchestrationService(profile=profile).wait_for_build(
+            build_rid, timeout=timeout
+        )
+    success(f"Build {build_rid} succeeded")
+    emit(
+        build, format=format, output=output, columns=BUILD_MODEL_COLUMNS, title="Build"
+    )
 
 
 # ----------------------------------------------------------- table imports
@@ -787,15 +827,24 @@ def list_table_imports(
 
 
 @import_app.command("execute-table")
-@pltr_command(sdk="connectivity.Connection.TableImport.execute")
+@pltr_command(
+    sdk=(
+        "connectivity.Connection.TableImport.execute",
+        "orchestration.Build.get",
+        "orchestration.Build.jobs",
+    ),
+    waits=True,
+)
 def execute_table_import(
     connection_rid: ConnectionRid,
     table_import_rid: TableImportRid,
+    wait: WaitOption = False,
+    timeout: WaitTimeoutOption = 600,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Run a table import; prints the RID of the build that runs it.
+    """Run a table import; prints the RID of the build that runs it (with --wait, the finished build).
 
     The import runs asynchronously as a Foundry build; check it with
     'pltr orchestration builds get BUILD_RID'.
@@ -805,6 +854,9 @@ def execute_table_import(
             connection_rid, table_import_rid
         )
     _report_build(build_rid, "table", table_import_rid)
+    if wait:
+        _emit_finished_build(build_rid, timeout, profile, format, output)
+        return
     emit(build_rid, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
 
 

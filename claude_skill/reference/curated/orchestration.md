@@ -19,7 +19,7 @@ Examples:
         pltr orchestration schedules runs <SCHEDULE_RID>
         pltr orchestration schedules run <SCHEDULE_RID>
 
-16 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+17 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ## pltr orchestration builds
 
@@ -47,7 +47,9 @@ Start a build of datasets (or other build targets).
 - `--abort-on-failure`: Stop the other jobs when one job fails.
 - `--notifications`, `--no-notifications` (default: True): Send build notifications.
 - `--retry-count` INTEGER: Number of retry attempts for failed jobs.
-- SDK: `orchestration.Build.create`
+- `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
+- SDK: `orchestration.Build.create`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr orchestration builds get
 
@@ -92,6 +94,16 @@ List the jobs of a build, with their status and outputs.
 - `--finished-before` TEXT: Only builds finished before this time.
 - `--order-by` TEXT (repeatable): Sort by STARTED_TIME or FINISHED_TIME, optionally with :ASC or :DESC (default DESC); repeat to sort by both.
 - beta · paged · SDK: `orchestration.Build.search`
+
+### pltr orchestration builds wait
+
+Wait for a build to finish, then print it.
+
+`pltr orchestration builds wait BUILD_RID [OPTIONS]`
+
+- `BUILD_RID`: Build RID (ri.foundry.main.build.<id>).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
+- SDK: `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ## pltr orchestration jobs
 
@@ -180,7 +192,9 @@ Run a schedule now, and show the run (with the build it started).
 `pltr orchestration schedules run SCHEDULE_RID [OPTIONS]`
 
 - `SCHEDULE_RID`: Schedule RID (ri.scheduler.main.schedule.<id>).
-- SDK: `orchestration.Schedule.run`
+- `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
+- SDK: `orchestration.Schedule.run`, `orchestration.Schedule.runs`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr orchestration schedules runs
 

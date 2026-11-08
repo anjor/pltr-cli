@@ -230,6 +230,8 @@ pltr is built to be scripted, by people and by agents.
 | 5 | Not found (HTTP 404), or no resource at a path you gave | `not_found`, `api_not_found`, `path_not_found` |
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
 | 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
+| 8 | The work finished but failed (a build, query or import waited for with `--wait`), or a `pltr assert` check failed | `work_failed`, `assertion_failed` |
+| 9 | `--wait` timed out; the work keeps running (the error's `suggestedCommand` waits again) | `wait_timeout` |
 
 **Destructive commands ask first.** Commands that delete, remove, revoke,
 reset, cancel, abort or replace something ask for confirmation, and
@@ -331,6 +333,20 @@ scripts as much as by people. An agent works in four steps:
 
 Destructive commands never prompt without a terminal: they fail with exit
 code 2 and change nothing unless you pass `--yes`.
+
+**The verify loop: `--wait`, then `pltr assert`.** Commands that start
+asynchronous work (`orchestration builds create`, `orchestration schedules
+run`, `connectivity import execute-file/-table`, `sql submit`) take `--wait`:
+pltr polls with backoff until the work finishes, prints its final state, and
+exits 8 if it failed (the error names the failed jobs) or 9 if `--timeout`
+passed first (`pltr orchestration builds wait <rid>` resumes). Then check the
+result with exit codes, like tests:
+
+```bash
+pltr orchestration builds create @target.json --wait --timeout 900 --format json
+pltr assert dataset /Space/Project/sales --min-rows 1 --updated-within 1h --schema expected.json
+pltr assert objects my-ontology Employee --min-count 100
+```
 
 **From a working command to app code: `--emit-code`.** Add `--emit-code` to
 a command and pltr prints the foundry-platform-sdk Python code for the call it

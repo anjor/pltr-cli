@@ -378,6 +378,8 @@ Commands contain no `try/except` for reporting.
 | 5 | `not_found`, `api_not_found`, `path_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack; `path_not_found`: no resource the account can see at a Compass path given for a RID) |
 | 6 | `validation_error` | HTTP 400, 422 |
 | 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
+| 8 | `work_failed`, `assertion_failed` | work pltr waited for (`--wait`) finished but failed; a `pltr assert` check failed (its result is still on stdout) |
+| 9 | `wait_timeout` | `--wait`/`sql wait` gave up after `--timeout`; the work keeps running |
 
 JSON mode prints one compact object as the last stderr line, and leaves out
 keys that don't apply:

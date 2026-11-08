@@ -40,6 +40,26 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   error, with `pltr resource-role list`; and how to replace a rejected token
   (HTTP 401). Type-level default hints stay in text mode only. To make a hint
   specific pltr may make a few read calls (10 s timeout each) after the failure; suggested commands keep the command's `--profile`.
+- **The verify loop: `--wait` and `pltr assert`** (#195). `orchestration
+  builds create`, `orchestration schedules run`, `connectivity import
+  execute-file`/`execute-table` and `sql submit` take `--wait` (with
+  `--timeout`): pltr polls with backoff until the work finishes and prints its
+  final state. New exit codes: **8** (`work_failed`) when it finished but
+  failed (a failed build names its failed jobs and their outputs), and **9**
+  (`wait_timeout`) when `--timeout` passed first; the work keeps running and
+  `pltr orchestration builds wait <rid>` (new) resumes. `pltr assert dataset`
+  (`--min-rows`, reading at most that many rows; `--schema expected.json`;
+  `--updated-within 1h`), `pltr assert build --succeeded` and `pltr assert
+  objects --min-count` print a result and exit 8 (`assertion_failed`) when a
+  check fails.
+- **Breaking:** `sql wait`, `sql execute`, `sql export`, `sql submit` (a
+  query that fails at once) and `sql submit --wait` now exit 8
+  (`work_failed`, was 7 `api_error`) for a failed or canceled query and 9
+  (`wait_timeout`, was 7 `timeout`) when `--timeout` passes, like the other
+  `--wait` commands (#195). In JSON mode, `--wait` commands write a
+  `{"type": "started", ...}` stderr line with the RID as soon as the work
+  starts, and an error while waiting says the work keeps running and how to
+  wait again.
 - **`--emit-code`: the SDK code for a command's call** (#192). Add
   `--emit-code` anywhere on a command line and pltr prints runnable
   foundry-platform-sdk Python for the call the command would make, with the

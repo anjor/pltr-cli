@@ -15,6 +15,7 @@ a vague hint.
 
 from __future__ import annotations
 
+import contextvars
 import difflib
 import itertools
 import re
@@ -397,7 +398,52 @@ def ontology_names(
     )
 
 
+#: Work a --wait command started: (what, resume command).
+_STARTED: contextvars.ContextVar[Optional[tuple]] = contextvars.ContextVar(
+    "pltr_started_work", default=None
+)
+
+
+def note_started(
+    subject: str, resume: str, *, announce: bool = True, **ids: str
+) -> None:
+    """Record work a --wait command started (``subject``: "build ri...").
+
+    In JSON mode it is announced at once as a ``{"type": "started", ...}``
+    stderr line with ``ids``, so an agent whose tool call is cut off still
+    knows the RID. An error while waiting then says the work keeps running and
+    suggests ``resume`` (see :func:`started_work`).
+    """
+    from .runtime import is_json, write_json_line
+
+    _STARTED.set((subject, resume))
+    if announce and is_json():
+        write_json_line(
+            {"type": "started", "message": f"Started {subject}; waiting for it.", **ids}
+        )
+
+
+def clear_started() -> None:
+    _STARTED.set(None)
+
+
+def started_work(
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """An error while waiting for work pltr started: it keeps running."""
+    started = _STARTED.get()
+    if started is None or info.type in ("work_failed", "wait_timeout"):
+        return None
+    subject, resume = started
+    return Recovery(
+        f"The {subject} was started and keeps running: this error came while "
+        "waiting for it.",
+        resume,
+    )
+
+
 PROVIDERS: List[Provider] = [
+    started_work,
     ontology_names,
     open_transaction,
     missing_scope,

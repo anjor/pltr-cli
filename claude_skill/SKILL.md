@@ -99,6 +99,8 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 | 5 | not found (404); `path_not_found`: nothing at a path you gave | check the RID or path and that the account can see it |
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
 | 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
+| 8 | the work failed (`work_failed`: a build, query or import you waited for) or a `pltr assert` check failed (`assertion_failed`) | read `parameters` (failed jobs) or the assert result on stdout |
+| 9 | `--wait` timed out (`wait_timeout`); the work keeps running | run `suggestedCommand` to wait again |
 
 ### Errors that say how to recover
 
@@ -182,7 +184,32 @@ pltr admin user search jane --format json                                  # use
    `@file.json` or as `@-` for stdin, and the SDK validates the value before
    anything is sent.
 
-## 6a. Writing app code: `--emit-code`
+## 6a. The verify loop: trigger with `--wait`, then `pltr assert`
+
+After you start a build, a schedule run, an import or a SQL query, don't poll
+by hand and don't stop checking early. Add `--wait` (and `--timeout`
+seconds; default 600, or 300 for SQL): pltr returns once the work finished,
+with exit 0 and the final state, exit 8 if it failed, or exit 9 if it's still
+running (then run the error's `suggestedCommand`). Then verify the output
+with `pltr assert`, which exits 8 when a check fails:
+
+```bash
+pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}' --wait --format json
+pltr assert dataset ri.foundry.main.dataset.abc --min-rows 1 --updated-within 1h --format json
+pltr assert build ri.foundry.main.build.abc --succeeded
+pltr assert objects my-ontology Employee --min-count 1
+```
+
+Keep `--timeout` below your own tool-call timeout (for example 100 for a
+two-minute limit): the RID is on the `{"type": "started"}` stderr line, and
+after exit 9 the error's `suggestedCommand` waits again without starting the
+work twice. Never re-run the trigger command to "retry" a wait.
+
+`--schema expected.json` compares a dataset's columns with the output of
+`pltr dataset schema get --format json`. To check an ontology action without
+applying it, use `pltr ontology action-validate`.
+
+## 6b. Writing app code: `--emit-code`
 
 When you write code that calls Foundry (an app, a pipeline, a script), first
 get the call working with pltr, then add `--emit-code` to the same command:

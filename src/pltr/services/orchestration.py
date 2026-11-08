@@ -62,6 +62,97 @@ class OrchestrationService(BaseService):
             retry_count=retry_count,
         )
 
+    def wait_for_build(
+        self, build_rid: str, *, timeout: float, build: Any = None
+    ) -> Any:
+        """Poll ``Build.get`` (GA) until the build finishes; return it if it succeeded.
+
+        Args:
+            build: The build's latest state, if already known.
+
+        Raises:
+            WorkFailed: (exit 8) the build failed or was canceled; its
+                ``parameters`` name the failed jobs (from ``Build.jobs``) and
+                their outputs. The public API has no job error messages.
+            WaitTimedOut: (exit 9) still running after ``timeout`` seconds.
+        """
+        from ..contract import WaitTimedOut, WorkFailed, to_jsonable
+        from .waiting import wait_until
+
+        def timed_out(latest: Any) -> Exception:
+            return WaitTimedOut(
+                f"Build {build_rid} is still running after {timeout:g} seconds.",
+                hint="It keeps running: wait again, or cancel it.",
+                suggested_command=f"pltr orchestration builds wait {build_rid}",
+                parameters={"buildRid": build_rid, "status": "RUNNING"},
+            )
+
+        build = wait_until(
+            lambda: self.get_build(build_rid),
+            lambda b: b.status != "RUNNING",
+            timeout=timeout,
+            on_timeout=timed_out,
+            current=build,
+        )
+        if build.status == "SUCCEEDED":
+            return build
+        try:
+            failed = [
+                job
+                for job in self.service.Build.jobs(build_rid)
+                if job.job_status == "FAILED"
+            ]
+        except Exception:
+            failed = []  # only detail: the build's own status decides
+        names = ", ".join(job.rid for job in failed)
+        detail = f": {len(failed)} job(s) failed ({names})" if failed else ""
+        raise WorkFailed(
+            f"Build {build_rid} {str(build.status).lower()}{detail}.",
+            hint=(
+                "The API doesn't return job error messages: open the build in "
+                "Foundry for the logs."
+            ),
+            suggested_command=f"pltr orchestration builds jobs {build_rid}",
+            parameters={
+                "buildRid": build_rid,
+                "status": build.status,
+                "failedJobs": [
+                    {"rid": job.rid, "outputs": to_jsonable(job.outputs)}
+                    for job in failed
+                ],
+            },
+        )
+
+    def wait_for_schedule_run(
+        self, schedule_rid: str, run: Any, *, timeout: float
+    ) -> Any:
+        """Poll ``Schedule.runs`` (GA) until ``run`` has a result (#195).
+
+        A run's ``result`` is empty while the service is still triggering the
+        schedule.
+        """
+        from ..contract import WaitTimedOut
+        from .waiting import wait_until
+
+        def latest() -> Any:
+            for candidate in self.service.Schedule.runs(schedule_rid, page_size=50):
+                if candidate.rid == run.rid:
+                    return candidate
+            return run
+
+        return wait_until(
+            latest,
+            lambda current: current.result is not None,
+            timeout=timeout,
+            on_timeout=lambda _: WaitTimedOut(
+                f"Schedule run {run.rid} hasn't started anything after "
+                f"{timeout:g} seconds.",
+                suggested_command=f"pltr orchestration schedules runs {schedule_rid}",
+                parameters={"scheduleRid": schedule_rid, "scheduleRunRid": run.rid},
+            ),
+            current=run,
+        )
+
     def cancel_build(self, build_rid: str) -> None:
         """Request cancellation of a build's unfinished jobs (``Build.cancel``, GA)."""
         self.service.Build.cancel(build_rid)

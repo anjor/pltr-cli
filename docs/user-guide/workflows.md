@@ -53,7 +53,7 @@ pltr sql wait "$QUERY_ID" --timeout 1800 --format json > rows.json
 ```
 
 Several queries can run at once: submit them all, then `pltr sql wait` for
-each ID. A query that fails exits with code 7, and its error is on stderr.
+each ID. A query that fails exits with code 8, and its error is on stderr.
 
 ## Load files into a dataset
 

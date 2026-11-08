@@ -37,6 +37,8 @@ class ExitCode(IntEnum):
     NOT_FOUND = 5  # HTTP 404
     VALIDATION = 6  # HTTP 400, 422
     API = 7  # other API/network errors: 409, 413, 429, 5xx, bad responses, timeouts
+    FAILED = 8  # the work finished but failed (build, query, import); a failed check
+    TIMED_OUT = 9  # --wait gave up; the work keeps running
 
 
 class PltrError(Exception):
@@ -68,6 +70,20 @@ class PltrError(Exception):
         if exit_code is not None:
             self.exit_code = exit_code
         self.hint = hint
+
+
+class WorkFailed(PltrError):
+    """Work pltr waited for (a build, a query, an import) finished but failed."""
+
+    error_type = "work_failed"
+    exit_code = ExitCode.FAILED
+
+
+class WaitTimedOut(PltrError):
+    """``--wait``/``--timeout`` gave up; the work keeps running."""
+
+    error_type = "wait_timeout"
+    exit_code = ExitCode.TIMED_OUT
 
 
 class ConfirmationRequired(PltrError):

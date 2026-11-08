@@ -7,6 +7,7 @@ from typing_extensions import Annotated
 
 from pltr import __version__
 from pltr.commands import (
+    assertions,
     configure,
     verify,
     dataset,
@@ -59,6 +60,11 @@ app = typer.Typer(
 app.add_typer(configure.app, name="configure", help="Manage authentication profiles")
 app.command("verify", short_help="Verify authentication")(verify.verify)
 app.add_typer(dataset.app, name="dataset", short_help="Manage datasets")
+app.add_typer(
+    assertions.app,
+    name="assert",
+    short_help="Check a dataset, build or object type (exit 8 when a check fails)",
+)
 app.add_typer(folder.app, name="folder", short_help="Manage folders")
 app.add_typer(project.app, name="project", short_help="Manage projects")
 app.add_typer(resource.app, name="resource", short_help="Manage resources")

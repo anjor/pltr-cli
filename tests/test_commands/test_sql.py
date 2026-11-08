@@ -242,13 +242,13 @@ def test_execute_failed_query(stub_foundry_http):
 
     result = invoke("sql", "execute", sj.QUERY, "-f", "json")
 
-    assert result.exit_code == 7
+    assert result.exit_code == 8
     assert result.stdout == ""
     error = json_lines(result.stderr)[-1]
     assert error == {
-        "type": "api_error",
+        "type": "work_failed",
         "message": f"Query {sj.QUERY_ID} failed: Column 'nope' does not exist",
-        "exitCode": 7,
+        "exitCode": 8,
     }
 
 
@@ -280,7 +280,7 @@ def test_execute_timeout(stub_foundry_http, monkeypatch):
 
     result = invoke("sql", "execute", sj.QUERY, "--timeout", "3")
 
-    assert result.exit_code == 7
+    assert result.exit_code == 9
     assert f"Query {sj.QUERY_ID} is still running after 3 seconds" in result.stderr
     assert f"pltr sql wait {sj.QUERY_ID}" in result.stderr
 
@@ -338,7 +338,7 @@ def test_submit_fails_when_the_query_fails_at_once(stub_foundry_http):
 
     result = invoke("sql", "submit", sj.QUERY, "-f", "json")
 
-    assert result.exit_code == 7
+    assert result.exit_code == 8
     assert result.stdout == ""
     assert json_lines(result.stderr)[-1]["message"] == (
         "The query failed: Dataset not found"
@@ -580,7 +580,7 @@ def test_wait_for_a_canceled_query_fails(stub_foundry_http):
 
     result = invoke("sql", "wait", sj.QUERY_ID, "-f", "json")
 
-    assert result.exit_code == 7
+    assert result.exit_code == 8
     assert json_lines(result.stderr)[-1]["message"] == (
         f"Query {sj.QUERY_ID} was canceled."
     )

@@ -212,7 +212,7 @@ def check_supported(meta: Any, command_path: str) -> None:
             f"`{command_path}` calls Foundry without foundry-platform-sdk "
             f"({'; '.join(meta.http)}), so --emit-code has no SDK code to show."
         )
-    if len(meta.sdk) > 1:
+    if len(meta.sdk) > 1 and not meta.waits:
         raise EmitUnsupported(
             f"`{command_path}` makes several calls ({', '.join(meta.sdk)}), so "
             "--emit-code can't show it as one snippet. Write them one by one: "
