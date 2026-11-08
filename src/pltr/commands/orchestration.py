@@ -19,6 +19,9 @@ from ..contract import (
     PageTokenOption,
     PreviewNoopOption,
     ProfileOption,
+    WaitOption,
+    WaitTimeoutOption,
+    WorkFailed,
     YesOption,
     collect_pages,
     confirm_destructive,
@@ -248,7 +251,14 @@ def get_build(
 
 
 @builds_app.command("create")
-@pltr_command(sdk="orchestration.Build.create")
+@pltr_command(
+    sdk=(
+        "orchestration.Build.create",
+        "orchestration.Build.get",
+        "orchestration.Build.jobs",
+    ),
+    waits=True,
+)
 def create_build(
     target: Annotated[
         str,
@@ -297,6 +307,8 @@ def create_build(
             "--retry-count", min=0, help="Number of retry attempts for failed jobs."
         ),
     ] = None,
+    wait: WaitOption = False,
+    timeout: WaitTimeoutOption = 600,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
@@ -340,7 +352,43 @@ def create_build(
         )
     cache_rid(build.rid)
     success(f"Started build {build.rid} ({build.status})")
-    info(f"Check its status with: pltr orchestration builds get {build.rid}")
+    if wait:
+        build = wait_for_build_rid(
+            build.rid, timeout=timeout, build=build, profile=profile
+        )
+    else:
+        info(f"Check its status with: pltr orchestration builds get {build.rid}")
+    emit(build, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
+
+
+def wait_for_build_rid(
+    build_rid: str, *, timeout: float, build: Any = None, profile: Optional[str]
+) -> Any:
+    """Wait for a build (--wait); return it once it succeeded."""
+    with spinner(f"Waiting for build {build_rid}..."):
+        build = OrchestrationService(profile=profile).wait_for_build(
+            build_rid, timeout=timeout, build=build
+        )
+    success(f"Build {build_rid} succeeded")
+    return build
+
+
+@builds_app.command("wait")
+@pltr_command(sdk=("orchestration.Build.get", "orchestration.Build.jobs"), waits=True)
+def wait_for_build(
+    build_rid: BuildRid,
+    timeout: WaitTimeoutOption = 600,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Wait for a build to finish, then print it.
+
+    Exits 8 if the build failed or was canceled (the error names the failed
+    jobs), and 9 if it is still running after --timeout seconds (it keeps
+    running: run this again).
+    """
+    build = wait_for_build_rid(build_rid, timeout=timeout, profile=profile)
     emit(build, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
 
 
@@ -849,9 +897,18 @@ def unpause_schedule(
 
 
 @schedules_app.command("run")
-@pltr_command(sdk="orchestration.Schedule.run")
+@pltr_command(
+    sdk=(
+        "orchestration.Schedule.run",
+        "orchestration.Build.get",
+        "orchestration.Build.jobs",
+    ),
+    waits=True,
+)
 def run_schedule(
     schedule_rid: ScheduleRid,
+    wait: WaitOption = False,
+    timeout: WaitTimeoutOption = 600,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
@@ -860,9 +917,26 @@ def run_schedule(
     with spinner(f"Running schedule {schedule_rid}..."):
         run = OrchestrationService(profile=profile).run_schedule(schedule_rid)
     build_rid = _run_build(run)
+    error = getattr(run.result, "error_name", None)
+    if wait and error is not None:
+        raise WorkFailed(
+            f"Schedule {schedule_rid} didn't start a build: {error}: "
+            f"{getattr(run.result, 'description', '')}".rstrip(": "),
+            parameters={"scheduleRid": schedule_rid, "scheduleRunRid": run.rid},
+        )
     if build_rid is not None:
         cache_rid(build_rid)
         success(f"Schedule {schedule_rid} started build {build_rid}")
+        if wait:
+            build = wait_for_build_rid(build_rid, timeout=timeout, profile=profile)
+            emit(
+                build,
+                format=format,
+                output=output,
+                columns=BUILD_COLUMNS,
+                title="Build",
+            )
+            return
         info(f"Check its status with: pltr orchestration builds get {build_rid}")
     else:
         success(f"Ran schedule {schedule_rid}")

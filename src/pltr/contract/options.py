@@ -352,3 +352,26 @@ def load_json_input(value: str, *, param_hint: str) -> Any:
             f"({exc.reason} at byte {exc.start})",
             param_hint=param_hint,
         ) from exc
+
+
+#: ``--wait`` on commands that start asynchronous work (#195).
+WaitOption = Annotated[
+    bool,
+    typer.Option(
+        "--wait",
+        help=(
+            "Wait until the work finishes and print its final state: exit 8 if "
+            "it failed, 9 if --timeout passed first (it keeps running)."
+        ),
+    ),
+]
+
+#: How long ``--wait`` waits (seconds).
+WaitTimeoutOption = Annotated[
+    float,
+    typer.Option(
+        "--timeout",
+        min=0,
+        help="With --wait: seconds to wait before giving up (exit 9).",
+    ),
+]

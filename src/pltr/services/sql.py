@@ -12,7 +12,7 @@ with ``serializationFormat`` CSV.
 import time
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
-from ..contract import ExitCode, PltrError
+from ..contract import PltrError, WaitTimedOut, WorkFailed
 from .base import BaseService
 
 if TYPE_CHECKING:
@@ -26,14 +26,8 @@ _ARROW_STREAM_MARKER = b"\xff\xff\xff\xff"
 _ARROW_FILE_MAGIC = b"ARROW1"
 
 
-class QueryNotSucceeded(PltrError):
-    """A query finished without results: it failed or was canceled.
-
-    Exit code 7, like the API's own ``QueryFailed`` error for the same state.
-    """
-
-    error_type = "api_error"
-    exit_code = ExitCode.API
+class QueryNotSucceeded(WorkFailed):
+    """A query finished without results: it failed or was canceled (exit 8)."""
 
 
 def query_id_of(status: Any) -> Optional[str]:
@@ -160,14 +154,14 @@ class SqlService(BaseService):
         while isinstance(status, RunningQueryStatus):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise PltrError(
+                raise WaitTimedOut(
                     f"Query {query_id} is still running after {timeout:g} seconds.",
-                    error_type="timeout",
-                    exit_code=ExitCode.API,
                     hint=(
-                        f"It keeps running: wait again with 'pltr sql wait {query_id}', "
-                        f"or stop it with 'pltr sql cancel {query_id}'."
+                        "It keeps running: wait again, or stop it with "
+                        f"'pltr sql cancel {query_id}'."
                     ),
+                    suggested_command=f"pltr sql wait {query_id}",
+                    parameters={"queryId": query_id},
                 )
             time.sleep(min(POLL_INTERVAL, remaining))
             status = self.service.get_status(query_id)

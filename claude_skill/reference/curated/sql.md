@@ -62,8 +62,10 @@ Start a SQL query without waiting; print its status and query ID.
 `pltr sql submit QUERY [OPTIONS]`
 
 - `QUERY`: SQL query (Spark SQL dialect, SELECT only).
+- `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
+- `--timeout` INTEGER (default: 300): Seconds to wait for the query to finish.
 - `--fallback-branches` TEXT: Comma-separated branch names to read datasets from when the query names no branch; the first that exists is used (default: the default branch, usually master).
-- SDK: `sql_queries.SqlQuery.execute`
+- SDK: `sql_queries.SqlQuery.execute`, `sql_queries.SqlQuery.get_status`
 
 ### pltr sql wait
 

@@ -62,6 +62,64 @@ class OrchestrationService(BaseService):
             retry_count=retry_count,
         )
 
+    def wait_for_build(
+        self, build_rid: str, *, timeout: float, build: Any = None
+    ) -> Any:
+        """Poll ``Build.get`` (GA) until the build finishes; return it if it succeeded.
+
+        Args:
+            build: The build's latest state, if already known.
+
+        Raises:
+            WorkFailed: (exit 8) the build failed or was canceled; its
+                ``parameters`` name the failed jobs (from ``Build.jobs``) and
+                their outputs. The public API has no job error messages.
+            WaitTimedOut: (exit 9) still running after ``timeout`` seconds.
+        """
+        from ..contract import WaitTimedOut, WorkFailed, to_jsonable
+        from .waiting import wait_until
+
+        def timed_out(latest: Any) -> Exception:
+            return WaitTimedOut(
+                f"Build {build_rid} is still running after {timeout:g} seconds.",
+                hint="It keeps running: wait again, or cancel it.",
+                suggested_command=f"pltr orchestration builds wait {build_rid}",
+                parameters={"buildRid": build_rid, "status": "RUNNING"},
+            )
+
+        build = wait_until(
+            lambda: self.get_build(build_rid),
+            lambda b: b.status != "RUNNING",
+            timeout=timeout,
+            on_timeout=timed_out,
+            current=build,
+        )
+        if build.status == "SUCCEEDED":
+            return build
+        failed = [
+            job
+            for job in self.service.Build.jobs(build_rid)
+            if job.job_status == "FAILED"
+        ]
+        names = ", ".join(job.rid for job in failed)
+        detail = f": {len(failed)} job(s) failed ({names})" if failed else ""
+        raise WorkFailed(
+            f"Build {build_rid} {str(build.status).lower()}{detail}.",
+            hint=(
+                "The API doesn't return job error messages: open the build in "
+                "Foundry for the logs."
+            ),
+            suggested_command=f"pltr orchestration builds jobs {build_rid}",
+            parameters={
+                "buildRid": build_rid,
+                "status": build.status,
+                "failedJobs": [
+                    {"rid": job.rid, "outputs": to_jsonable(job.outputs)}
+                    for job in failed
+                ],
+            },
+        )
+
     def cancel_build(self, build_rid: str) -> None:
         """Request cancellation of a build's unfinished jobs (``Build.cancel``, GA)."""
         self.service.Build.cancel(build_rid)

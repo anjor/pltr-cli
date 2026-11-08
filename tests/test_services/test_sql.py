@@ -207,7 +207,7 @@ def test_wait_for_query_fails_for_failed_or_canceled(
         SqlService().wait_for_query("q1", timeout=60)
 
     assert caught.value.message == message
-    assert caught.value.exit_code == 7
+    assert caught.value.exit_code == 8
 
 
 def test_wait_for_query_polls_until_succeeded(stub_foundry_http, no_sleep):
@@ -245,7 +245,7 @@ def test_wait_for_query_times_out(stub_foundry_http, monkeypatch):
         SqlService().wait_for_query(sj.QUERY_ID, timeout=5)
 
     error = caught.value
-    assert (error.error_type, error.exit_code) == ("timeout", 7)
+    assert (error.error_type, error.exit_code) == ("wait_timeout", 9)
     assert "still running after 5 seconds" in error.message
     assert f"pltr sql cancel {sj.QUERY_ID}" in error.hint
     # polled at t=0, 2, 4 and 5 (the last sleep is cut to the deadline)

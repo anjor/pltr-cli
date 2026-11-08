@@ -20,6 +20,7 @@ from ..contract import (
     FormatOption,
     OutputOption,
     ProfileOption,
+    WaitOption,
     YesOption,
     confirm_destructive,
     emit,
@@ -189,9 +190,14 @@ def execute_query(
 
 
 @app.command("submit")
-@pltr_command(sdk="sql_queries.SqlQuery.execute")
+@pltr_command(
+    sdk=("sql_queries.SqlQuery.execute", "sql_queries.SqlQuery.get_status"),
+    waits=True,
+)
 def submit_query(
     query: QueryArgument,
+    wait: WaitOption = False,
+    timeout: TimeoutOption = 300,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
@@ -206,14 +212,19 @@ def submit_query(
     """
     from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
 
+    service = SqlService(profile=profile)
     with spinner("Submitting SQL query..."):
-        status = SqlService(profile=profile).submit_query(
+        status = service.submit_query(
             query, fallback_branch_ids=_branches(fallback_branches)
         )
     check_not_failed(status)
     query_id = query_id_of(status)
     success(f"Submitted query {query_id}")
-    if isinstance(status, RunningQueryStatus):
+    if wait and query_id is not None:
+        with spinner(f"Waiting for query {query_id}..."):
+            status = service.wait_for_query(query_id, timeout=timeout, status=status)
+        success(f"Query {query_id} succeeded")
+    elif isinstance(status, RunningQueryStatus):
         info(f"Wait for its results with: pltr sql wait {query_id}")
     emit(
         status,

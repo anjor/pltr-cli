@@ -8,6 +8,7 @@ from tests.test_contract.cases import CONTRACT_RID
 SUCCESS = {
     "orchestration builds get": [{"json": fo.build(CONTRACT_RID)}],
     "orchestration builds create": [{"json": fo.build()}],
+    "orchestration builds wait": [{"json": fo.build(CONTRACT_RID)}],
     "orchestration builds cancel": [{"status_code": 204}],
     "orchestration builds jobs": [
         {"json": {"data": [fo.job()], "nextPageToken": "next"}}

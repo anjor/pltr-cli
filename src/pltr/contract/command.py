@@ -96,6 +96,9 @@ class CommandMeta:
     no_emit_code: Optional[str] = None
     #: A comment for --emit-code snippets (e.g. a filter pltr applies locally).
     emit_note: Optional[str] = None
+    #: The command has --wait: its first SDK method is its call, the others
+    #: poll (so --emit-code shows the first, unless --wait is given).
+    waits: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -136,6 +139,7 @@ def pltr_command(
     binary: bool = False,
     no_emit_code: Optional[str] = None,
     emit_note: Optional[str] = None,
+    waits: bool = False,
 ) -> Callable[[F], F]:
     """Declare a command's metadata and give it the error/output contract.
 
@@ -159,6 +163,7 @@ def pltr_command(
         binary=binary,
         no_emit_code=no_emit_code,
         emit_note=emit_note,
+        waits=waits,
     )
 
     def decorate(func: F) -> F:
@@ -214,6 +219,11 @@ def _emit_code(
     from .codegen import PathValue
 
     check_supported(meta, command_path)
+    if meta.waits and kwargs.get("wait"):
+        raise EmitUnsupported(
+            f"--emit-code can't show `{command_path} --wait` as one SDK call: it "
+            "polls until the work finishes. Leave out --wait to see the call."
+        )
     kwargs = resolve_resource_paths(kwargs)
     try:
         func(*args, **kwargs)
