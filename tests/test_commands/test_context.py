@@ -114,8 +114,10 @@ def test_unavailable_sections_are_noted_not_fatal(stub_foundry_http) -> None:
     assert any("jobs" in note for note in notes)
 
 
-def test_dataset_fixtures_load_with_pandas(stub_foundry_http, tmp_path) -> None:
-    import pandas
+def test_dataset_fixtures_load_as_parquet(stub_foundry_http, tmp_path) -> None:
+    # pyarrow is the engine pandas.read_parquet uses; pandas itself is not a
+    # pltr dependency, so the test reads the fixture with pyarrow directly.
+    import pyarrow.parquet
 
     dataset_responses(stub_foundry_http, FIELDS, ROWS)
 
@@ -124,9 +126,9 @@ def test_dataset_fixtures_load_with_pandas(stub_foundry_http, tmp_path) -> None:
     )
 
     assert result.exit_code == 0, result.stderr
-    frame = pandas.read_parquet(tmp_path / "fx" / "sales.parquet")
-    assert list(frame.columns) == ["id", "name"]
-    assert len(frame) == 2
+    table = pyarrow.parquet.read_table(tmp_path / "fx" / "sales.parquet")
+    assert table.column_names == ["id", "name"]
+    assert table.num_rows == 2
     schema = json.loads((tmp_path / "fx" / "sales.schema.json").read_text())
     assert [f["name"] for f in schema["fieldSchemaList"]] == ["id", "name"]
     assert "real Foundry data" in result.stderr
@@ -385,7 +387,7 @@ def test_json_sample_values_are_cut(stub_foundry_http) -> None:
 
 
 def test_many_fixture_rows_dont_flood_the_pack(stub_foundry_http, tmp_path) -> None:
-    import pandas
+    import pyarrow.parquet
 
     dataset_responses(
         stub_foundry_http, [dj.field("id", "LONG")], {"id": list(range(200))}
@@ -407,7 +409,7 @@ def test_many_fixture_rows_dont_flood_the_pack(stub_foundry_http, tmp_path) -> N
     )
 
     assert len(json.loads(result.stdout)["sampleRows"]) == 10
-    assert len(pandas.read_parquet(tmp_path / "sales.parquet")) == 200
+    assert pyarrow.parquet.read_table(tmp_path / "sales.parquet").num_rows == 200
 
 
 def test_the_latest_job_is_on_the_branch(stub_foundry_http) -> None:
