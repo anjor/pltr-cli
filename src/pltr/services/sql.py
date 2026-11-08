@@ -142,9 +142,9 @@ class SqlService(BaseService):
             The ``SucceededQueryStatus``.
 
         Raises:
-            QueryNotSucceeded: the query failed or was canceled.
-            PltrError: (``timeout``, exit code 7) the query was still running
-                after ``timeout`` seconds; it keeps running.
+            QueryNotSucceeded: (exit 8) the query failed or was canceled.
+            WaitTimedOut: (exit 9) the query was still running after
+                ``timeout`` seconds; it keeps running.
         """
         from foundry_sdk.v2.sql_queries.models import RunningQueryStatus
 
@@ -180,8 +180,8 @@ class SqlService(BaseService):
         then ``get_results`` (all GA).
 
         Raises:
-            QueryNotSucceeded: the query failed or was canceled.
-            PltrError: (``timeout``) the query didn't finish within ``timeout``.
+            QueryNotSucceeded: (exit 8) the query failed or was canceled.
+            WaitTimedOut: (exit 9) the query didn't finish within ``timeout``.
         """
         status = self.submit_query(query, fallback_branch_ids=fallback_branch_ids)
         query_id = query_id_of(check_not_failed(status))

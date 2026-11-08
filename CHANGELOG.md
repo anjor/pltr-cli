@@ -52,10 +52,14 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   `--updated-within 1h`), `pltr assert build --succeeded` and `pltr assert
   objects --min-count` print a result and exit 8 (`assertion_failed`) when a
   check fails.
-- **Breaking:** `sql wait`, `sql execute` and `sql submit --wait` now exit 8
+- **Breaking:** `sql wait`, `sql execute`, `sql export`, `sql submit` (a
+  query that fails at once) and `sql submit --wait` now exit 8
   (`work_failed`, was 7 `api_error`) for a failed or canceled query and 9
   (`wait_timeout`, was 7 `timeout`) when `--timeout` passes, like the other
-  `--wait` commands (#195).
+  `--wait` commands (#195). In JSON mode, `--wait` commands write a
+  `{"type": "started", ...}` stderr line with the RID as soon as the work
+  starts, and an error while waiting says the work keeps running and how to
+  wait again.
 - **`--emit-code`: the SDK code for a command's call** (#192). Add
   `--emit-code` anywhere on a command line and pltr prints runnable
   foundry-platform-sdk Python for the call the command would make, with the

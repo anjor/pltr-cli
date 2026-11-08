@@ -200,6 +200,11 @@ pltr assert build ri.foundry.main.build.abc --succeeded
 pltr assert objects my-ontology Employee --min-count 1
 ```
 
+Keep `--timeout` below your own tool-call timeout (for example 100 for a
+two-minute limit): the RID is on the `{"type": "started"}` stderr line, and
+after exit 9 the error's `suggestedCommand` waits again without starting the
+work twice. Never re-run the trigger command to "retry" a wait.
+
 `--schema expected.json` compares a dataset's columns with the output of
 `pltr dataset schema get --format json`. To check an ontology action without
 applying it, use `pltr ontology action-validate`.

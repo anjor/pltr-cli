@@ -66,8 +66,24 @@ def _report(
         title=f"Checks on {target}",
     )
     if not passed:
-        failed = ", ".join(c["check"] for c in checks if not c["passed"])
+        failed = "; ".join(_describe(c) for c in checks if not c["passed"])
         raise AssertionFailed(f"Failed on {target}: {failed}.")
+
+
+def _describe(check: Dict[str, Any]) -> str:
+    """One failed check, readable in text mode."""
+    if check["check"] == "schema":
+        parts = []
+        if check["missing"]:
+            parts.append("missing " + ", ".join(check["missing"]))
+        if check["unexpected"]:
+            parts.append("unexpected " + ", ".join(check["unexpected"]))
+        parts += [
+            f"{m['column']} is {m['actual']}, expected {m['expected']}"
+            for m in check["typeMismatches"]
+        ]
+        return f"schema ({'; '.join(parts)})"
+    return f"{check['check']} (expected {check['expected']}, got {check['actual']})"
 
 
 # ----------------------------------------------------------------- dataset
@@ -88,12 +104,40 @@ def parse_duration(text: str) -> datetime.timedelta:
     return datetime.timedelta(seconds=sum(int(n) * _UNITS[u] for n, u in parts))
 
 
+def type_text(field: Dict[str, Any]) -> str:
+    """A field's full type: ``ARRAY<LONG>``, ``DECIMAL(10,2)``, ``STRUCT<a:LONG>``.
+
+    Nested types, precision and scale count; ``nullable`` and metadata don't.
+    """
+    kind = str(field.get("type", "")).upper()
+    if field.get("arraySubtype"):
+        return f"{kind}<{type_text(field['arraySubtype'])}>"
+    if field.get("mapKeyType") or field.get("mapValueType"):
+        key = type_text(field.get("mapKeyType") or {})
+        value = type_text(field.get("mapValueType") or {})
+        return f"{kind}<{key},{value}>"
+    if field.get("subSchemas"):
+        members = ",".join(
+            f"{sub.get('name')}:{type_text(sub)}" for sub in field["subSchemas"]
+        )
+        return f"{kind}<{members}>"
+    if field.get("precision") is not None or field.get("scale") is not None:
+        return f"{kind}({field.get('precision')},{field.get('scale')})"
+    return kind
+
+
 def _schema_fields(document: Any) -> Dict[str, str]:
-    """Column name -> type, from an API schema or a ``schema get`` response."""
+    """Column name -> full type, from an API schema or a ``schema get`` response.
+
+    Raises ValueError when there is no field list.
+    """
     if isinstance(document, dict) and "schema" in document:
         document = document["schema"]
-    fields = (document or {}).get("fieldSchemaList") or []
-    return {str(f["name"]): str(f.get("type", "")).upper() for f in fields}
+    if not isinstance(document, dict) or not isinstance(
+        document.get("fieldSchemaList"), list
+    ):
+        raise ValueError("no fieldSchemaList")
+    return {str(f["name"]): type_text(f) for f in document["fieldSchemaList"]}
 
 
 def _load_expected_schema(path: str) -> Dict[str, str]:
@@ -180,8 +224,8 @@ def assert_dataset(
         raise typer.BadParameter(
             "give at least one check: --min-rows, --schema or --updated-within"
         )
-    expected_schema = _load_expected_schema(schema) if schema else None
-    window = parse_duration(updated_within) if updated_within else None
+    expected_schema = _load_expected_schema(schema) if schema is not None else None
+    window = parse_duration(updated_within) if updated_within is not None else None
     service = DatasetService(profile=profile)
     checks: List[Dict[str, Any]] = []
     with spinner(f"Checking dataset {dataset_rid}..."):

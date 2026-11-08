@@ -33,6 +33,7 @@ from ..contract import (
     success,
 )
 from .orchestration import BUILD_COLUMNS as BUILD_MODEL_COLUMNS
+from ..contract.hints import note_started
 from ..services.orchestration import OrchestrationService
 from ..services.connectivity import ConnectivityService
 from ..utils.completion import cache_rid, complete_rid
@@ -650,7 +651,7 @@ def execute_file_import(
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Run a file import; prints the RID of the build that runs it.
+    """Run a file import; prints the RID of the build that runs it (with --wait, the finished build).
 
     The import runs asynchronously as a Foundry build; check it with
     'pltr orchestration builds get BUILD_RID'.
@@ -674,6 +675,11 @@ def _emit_finished_build(
     output: Optional[str],
 ) -> None:
     """--wait: wait for the import's build, then print it (exit 8/9 otherwise)."""
+    note_started(
+        f"build {build_rid}",
+        f"pltr orchestration builds wait {build_rid}",
+        buildRid=build_rid,
+    )
     with spinner(f"Waiting for build {build_rid}..."):
         build = OrchestrationService(profile=profile).wait_for_build(
             build_rid, timeout=timeout
@@ -838,7 +844,7 @@ def execute_table_import(
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
-    """Run a table import; prints the RID of the build that runs it.
+    """Run a table import; prints the RID of the build that runs it (with --wait, the finished build).
 
     The import runs asynchronously as a Foundry build; check it with
     'pltr orchestration builds get BUILD_RID'.

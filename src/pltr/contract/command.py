@@ -171,6 +171,9 @@ def pltr_command(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with capture_warnings():
                 try:
+                    from .hints import clear_started
+
+                    clear_started()
                     if emit_mode():
                         return _emit_code(func, meta, args, kwargs)
                     kwargs = resolve_resource_paths(kwargs)
@@ -219,7 +222,8 @@ def _emit_code(
     from .codegen import PathValue
 
     check_supported(meta, command_path)
-    if meta.waits and kwargs.get("wait"):
+    # A --wait command waits when --wait is given, a `... wait` command always.
+    if meta.waits and kwargs.get("wait", "wait" not in kwargs):
         raise EmitUnsupported(
             f"--emit-code can't show `{command_path} --wait` as one SDK call: it "
             "polls until the work finishes. Leave out --wait to see the call."

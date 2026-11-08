@@ -372,6 +372,6 @@ WaitTimeoutOption = Annotated[
     typer.Option(
         "--timeout",
         min=0,
-        help="With --wait: seconds to wait before giving up (exit 9).",
+        help="Seconds to wait before giving up (exit 9; the work keeps running).",
     ),
 ]

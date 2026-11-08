@@ -57,7 +57,7 @@ Get a query's status: running, succeeded, failed (with the error) or canceled.
 
 ### pltr sql submit
 
-Start a SQL query without waiting; print its status and query ID.
+Start a SQL query; print its status and query ID (with --wait, its final status).
 
 `pltr sql submit QUERY [OPTIONS]`
 

@@ -92,26 +92,26 @@ Manage file and table imports
 
 ### pltr connectivity import execute-file
 
-Run a file import; prints the RID of the build that runs it.
+Run a file import; prints the RID of the build that runs it (with --wait, the finished build).
 
 `pltr connectivity import execute-file CONNECTION_RID FILE_IMPORT_RID [OPTIONS]`
 
 - `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `FILE_IMPORT_RID`: File import RID (find it with 'pltr connectivity import list-file').
 - `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
-- `--timeout` NUMBER (default: 600): With --wait: seconds to wait before giving up (exit 9).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
 - SDK: `connectivity.Connection.FileImport.execute`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr connectivity import execute-table
 
-Run a table import; prints the RID of the build that runs it.
+Run a table import; prints the RID of the build that runs it (with --wait, the finished build).
 
 `pltr connectivity import execute-table CONNECTION_RID TABLE_IMPORT_RID [OPTIONS]`
 
 - `CONNECTION_RID` (RID or path): Connection RID (a Data Connection source, e.g. ri.magritte..source.<id>).
 - `TABLE_IMPORT_RID`: Table import RID (find it with 'pltr connectivity import list-table').
 - `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
-- `--timeout` NUMBER (default: 600): With --wait: seconds to wait before giving up (exit 9).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
 - SDK: `connectivity.Connection.TableImport.execute`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr connectivity import file

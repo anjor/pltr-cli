@@ -96,11 +96,14 @@ class OrchestrationService(BaseService):
         )
         if build.status == "SUCCEEDED":
             return build
-        failed = [
-            job
-            for job in self.service.Build.jobs(build_rid)
-            if job.job_status == "FAILED"
-        ]
+        try:
+            failed = [
+                job
+                for job in self.service.Build.jobs(build_rid)
+                if job.job_status == "FAILED"
+            ]
+        except Exception:
+            failed = []  # only detail: the build's own status decides
         names = ", ".join(job.rid for job in failed)
         detail = f": {len(failed)} job(s) failed ({names})" if failed else ""
         raise WorkFailed(
@@ -118,6 +121,36 @@ class OrchestrationService(BaseService):
                     for job in failed
                 ],
             },
+        )
+
+    def wait_for_schedule_run(
+        self, schedule_rid: str, run: Any, *, timeout: float
+    ) -> Any:
+        """Poll ``Schedule.runs`` (GA) until ``run`` has a result (#195).
+
+        A run's ``result`` is empty while the service is still triggering the
+        schedule.
+        """
+        from ..contract import WaitTimedOut
+        from .waiting import wait_until
+
+        def latest() -> Any:
+            for candidate in self.service.Schedule.runs(schedule_rid, page_size=50):
+                if candidate.rid == run.rid:
+                    return candidate
+            return run
+
+        return wait_until(
+            latest,
+            lambda current: current.result is not None,
+            timeout=timeout,
+            on_timeout=lambda _: WaitTimedOut(
+                f"Schedule run {run.rid} hasn't started anything after "
+                f"{timeout:g} seconds.",
+                suggested_command=f"pltr orchestration schedules runs {schedule_rid}",
+                parameters={"scheduleRid": schedule_rid, "scheduleRunRid": run.rid},
+            ),
+            current=run,
         )
 
     def cancel_build(self, build_rid: str) -> None:

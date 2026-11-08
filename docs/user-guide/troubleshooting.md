@@ -163,8 +163,8 @@ slashes (`//Space/Project/name`). User and group IDs are UUIDs, not usernames: f
 
 - Refer to datasets by path or RID in backticks, inside single quotes:
   ``pltr sql execute 'SELECT * FROM `<dataset-rid>` LIMIT 10'``.
-- A query that fails exits with code 7, and the error has Foundry's message.
-- `--timeout` exits with code 7 and leaves the query running. For long
+- A query that fails exits with code 8, and the error has Foundry's message.
+- `--timeout` exits with code 9 and leaves the query running. For long
   queries, submit and wait:
 
   ```bash

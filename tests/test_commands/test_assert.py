@@ -174,3 +174,74 @@ def test_assert_objects_min_count(stub_foundry_http) -> None:
     assert result_of(result)["checks"] == [
         {"check": "min-count", "passed": True, "expected": 40, "actual": 42}
     ]
+
+
+# ------------------------------------------------------ review fixes (#195)
+
+
+def test_nested_and_decimal_types_are_compared(stub_foundry_http, tmp_path) -> None:
+    expected = tmp_path / "schema.json"
+    expected.write_text(
+        json.dumps(
+            {
+                "fieldSchemaList": [
+                    {
+                        "name": "tags",
+                        "type": "ARRAY",
+                        "arraySubtype": {"type": "STRING"},
+                    },
+                    {"name": "price", "type": "DECIMAL", "precision": 38, "scale": 0},
+                ]
+            }
+        )
+    )
+    stub_foundry_http.respond(
+        json=dj.schema_response(
+            [
+                {
+                    "name": "tags",
+                    "type": "ARRAY",
+                    "nullable": True,
+                    "arraySubtype": {"type": "LONG", "nullable": True},
+                },
+                {
+                    "name": "price",
+                    "type": "DECIMAL",
+                    "nullable": True,
+                    "precision": 10,
+                    "scale": 2,
+                },
+            ]
+        )
+    )
+
+    result = run("dataset", DS, "--schema", str(expected))
+
+    assert result.exit_code == 8
+    (check,) = result_of(result)["checks"]
+    assert check["typeMismatches"] == [
+        {"column": "price", "expected": "DECIMAL(38,0)", "actual": "DECIMAL(10,2)"},
+        {"column": "tags", "expected": "ARRAY<STRING>", "actual": "ARRAY<LONG>"},
+    ]
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert "price" in error["message"]
+
+
+@pytest.mark.parametrize("flag", ["--schema", "--updated-within"])
+def test_empty_check_values_are_usage_errors(stub_foundry_http, flag) -> None:
+    result = run("dataset", DS, flag, "")
+
+    assert result.exit_code == 2
+    assert stub_foundry_http.requests == []
+
+
+@pytest.mark.parametrize("content", ["{}", "[]", '{"schema": null}'])
+def test_a_schema_file_without_fields_is_a_usage_error(
+    stub_foundry_http, tmp_path, content
+) -> None:
+    expected = tmp_path / "schema.json"
+    expected.write_text(content)
+
+    result = run("dataset", DS, "--schema", str(expected))
+
+    assert result.exit_code == 2

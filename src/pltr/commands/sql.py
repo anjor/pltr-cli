@@ -32,6 +32,7 @@ from ..contract import (
     table_rows,
     warn,
 )
+from ..contract.hints import note_started
 from ..services.sql import SqlService, check_not_failed, query_id_of
 from ..utils.completion import complete_sql_query
 
@@ -204,7 +205,7 @@ def submit_query(
     fallback_branches: FallbackBranchesOption = None,
     preview: PreviewFlagNoopOption = None,
 ):
-    """Start a SQL query without waiting; print its status and query ID.
+    """Start a SQL query; print its status and query ID (with --wait, its final status).
 
     Follow up with 'pltr sql status', 'pltr sql wait' or 'pltr sql results'.
     In a script: QUERY_ID=$(pltr sql submit "..." --format json | jq -r .queryId)
@@ -221,6 +222,7 @@ def submit_query(
     query_id = query_id_of(status)
     success(f"Submitted query {query_id}")
     if wait and query_id is not None:
+        note_started(f"query {query_id}", f"pltr sql wait {query_id}", queryId=query_id)
         with spinner(f"Waiting for query {query_id}..."):
             status = service.wait_for_query(query_id, timeout=timeout, status=status)
         success(f"Query {query_id} succeeded")

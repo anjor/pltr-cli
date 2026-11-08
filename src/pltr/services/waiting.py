@@ -33,5 +33,27 @@ def wait_until(
             raise on_timeout(value)
         time.sleep(min(interval, remaining))
         interval = min(interval * BACKOFF, MAX_POLL)
-        value = fetch()
+        try:
+            value = fetch()
+        except Exception as exc:
+            # A rate limit, 5xx or network error while polling: the work keeps
+            # going, so keep polling until the deadline.
+            if not is_transient(exc) or time.monotonic() >= deadline:
+                raise
     return value
+
+
+def is_transient(exc: BaseException) -> bool:
+    """A rate limit, server or network error worth retrying while waiting."""
+    import httpx
+    from foundry_sdk import _errors as sdk
+
+    transient = (
+        sdk.RateLimitError,
+        sdk.ServiceUnavailable,
+        sdk.InternalServerError,
+        sdk.ConnectionError,
+        sdk.TimeoutError,
+        httpx.TransportError,
+    )
+    return isinstance(exc, transient)

@@ -48,7 +48,7 @@ Start a build of datasets (or other build targets).
 - `--notifications`, `--no-notifications` (default: True): Send build notifications.
 - `--retry-count` INTEGER: Number of retry attempts for failed jobs.
 - `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
-- `--timeout` NUMBER (default: 600): With --wait: seconds to wait before giving up (exit 9).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
 - SDK: `orchestration.Build.create`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr orchestration builds get
@@ -102,7 +102,7 @@ Wait for a build to finish, then print it.
 `pltr orchestration builds wait BUILD_RID [OPTIONS]`
 
 - `BUILD_RID`: Build RID (ri.foundry.main.build.<id>).
-- `--timeout` NUMBER (default: 600): With --wait: seconds to wait before giving up (exit 9).
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
 - SDK: `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ## pltr orchestration jobs
@@ -193,8 +193,8 @@ Run a schedule now, and show the run (with the build it started).
 
 - `SCHEDULE_RID`: Schedule RID (ri.scheduler.main.schedule.<id>).
 - `--wait`: Wait until the work finishes and print its final state: exit 8 if it failed, 9 if --timeout passed first (it keeps running).
-- `--timeout` NUMBER (default: 600): With --wait: seconds to wait before giving up (exit 9).
-- SDK: `orchestration.Schedule.run`, `orchestration.Build.get`, `orchestration.Build.jobs`
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9; the work keeps running).
+- SDK: `orchestration.Schedule.run`, `orchestration.Schedule.runs`, `orchestration.Build.get`, `orchestration.Build.jobs`
 
 ### pltr orchestration schedules runs
 

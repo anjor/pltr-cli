@@ -2,6 +2,7 @@
 Orchestration commands: builds, jobs and schedules (Foundry orchestration API).
 """
 
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -32,6 +33,7 @@ from ..contract import (
     spinner,
     success,
 )
+from ..contract.hints import note_started
 from ..services.orchestration import (
     MAX_BUILDS_BATCH,
     MAX_JOBS_BATCH,
@@ -362,9 +364,20 @@ def create_build(
 
 
 def wait_for_build_rid(
-    build_rid: str, *, timeout: float, build: Any = None, profile: Optional[str]
+    build_rid: str,
+    *,
+    timeout: float,
+    build: Any = None,
+    profile: Optional[str],
+    announce: bool = True,
 ) -> Any:
     """Wait for a build (--wait); return it once it succeeded."""
+    note_started(
+        f"build {build_rid}",
+        f"pltr orchestration builds wait {build_rid}",
+        announce=announce,
+        buildRid=build_rid,
+    )
     with spinner(f"Waiting for build {build_rid}..."):
         build = OrchestrationService(profile=profile).wait_for_build(
             build_rid, timeout=timeout, build=build
@@ -388,7 +401,9 @@ def wait_for_build(
     jobs), and 9 if it is still running after --timeout seconds (it keeps
     running: run this again).
     """
-    build = wait_for_build_rid(build_rid, timeout=timeout, profile=profile)
+    build = wait_for_build_rid(
+        build_rid, timeout=timeout, profile=profile, announce=False
+    )
     emit(build, format=format, output=output, columns=BUILD_COLUMNS, title="Build")
 
 
@@ -900,6 +915,7 @@ def unpause_schedule(
 @pltr_command(
     sdk=(
         "orchestration.Schedule.run",
+        "orchestration.Schedule.runs",
         "orchestration.Build.get",
         "orchestration.Build.jobs",
     ),
@@ -916,6 +932,18 @@ def run_schedule(
     """Run a schedule now, and show the run (with the build it started)."""
     with spinner(f"Running schedule {schedule_rid}..."):
         run = OrchestrationService(profile=profile).run_schedule(schedule_rid)
+    deadline = time.monotonic() + timeout
+    if wait and run.result is None:
+        # The service is still triggering the schedule: wait for the result.
+        note_started(
+            f"schedule run {run.rid}",
+            f"pltr orchestration schedules runs {schedule_rid}",
+            scheduleRunRid=run.rid,
+        )
+        with spinner(f"Waiting for schedule run {run.rid}..."):
+            run = OrchestrationService(profile=profile).wait_for_schedule_run(
+                schedule_rid, run, timeout=timeout
+            )
     build_rid = _run_build(run)
     error = getattr(run.result, "error_name", None)
     if wait and error is not None:
@@ -928,7 +956,8 @@ def run_schedule(
         cache_rid(build_rid)
         success(f"Schedule {schedule_rid} started build {build_rid}")
         if wait:
-            build = wait_for_build_rid(build_rid, timeout=timeout, profile=profile)
+            remaining = max(0.0, deadline - time.monotonic())
+            build = wait_for_build_rid(build_rid, timeout=remaining, profile=profile)
             emit(
                 build,
                 format=format,
