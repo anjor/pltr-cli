@@ -73,6 +73,10 @@ class OntologyService(BaseService):
         """
         return self.service.Ontology.list()
 
+    def get_full_metadata(self, ontology: str) -> Any:
+        """Everything in an ontology (``Ontology.get_full_metadata``, beta)."""
+        return self.service.Ontology.get_full_metadata(ontology, preview=True)
+
     def get_ontology(self, ontology: str) -> Any:
         """Get an ontology by API name or RID (``Ontology.get``, GA).
 

@@ -9,6 +9,7 @@ from pltr import __version__
 from pltr.commands import (
     assertions,
     configure,
+    context,
     verify,
     dataset,
     folder,
@@ -60,6 +61,11 @@ app = typer.Typer(
 app.add_typer(configure.app, name="configure", help="Manage authentication profiles")
 app.command("verify", short_help="Verify authentication")(verify.verify)
 app.add_typer(dataset.app, name="dataset", short_help="Manage datasets")
+app.add_typer(
+    context.app,
+    name="context",
+    short_help="Compact summaries of a dataset, folder or ontology for writing code",
+)
 app.add_typer(
     assertions.app,
     name="assert",
