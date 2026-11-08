@@ -12,6 +12,17 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** `ontology object-type-create` and `ontology link-type-create`
+  (#216). They could never succeed. The Foundry Platform API has no endpoints
+  for creating object types or link types, and neither does the SDK. The
+  commands POSTed to guessed schema endpoints, and every stack answered 404.
+  Create object types and link types in Ontology Manager in the Foundry UI.
+  Where your stack offers Ontology as Code repositories, you can also define
+  them with
+  [`@osdk/maker`](https://github.com/palantir/osdk-ts/tree/main/packages/maker).
+
 ## [0.18.0] - 2026-11-08
 
 This release makes pltr easier for coding agents to build on Foundry with

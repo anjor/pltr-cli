@@ -279,6 +279,11 @@ pltr ontology object-search my-ontology Aircraft \
 exactly as Foundry's API docs describe it, for options the curated command
 doesn't have.
 
+pltr can't create object types or link types: the Foundry Platform API has
+no endpoints for it. Tell the user to create them in Ontology Manager in the
+Foundry UI, or in an Ontology as Code repository with `@osdk/maker` where
+their stack offers one.
+
 **Grant access to a project**
 
 ```bash

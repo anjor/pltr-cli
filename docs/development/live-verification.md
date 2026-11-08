@@ -281,12 +281,6 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 
 ### Ontology (b2)
 
-- **The schema endpoints of `object-type-create`/`link-type-create`** (the
-  first two are requested at the host root and probably return 404). Manual
-  only, since the smoke test never changes an ontology: on a test ontology,
-  `pltr ontology object-type-create <ontology> --api-name SmokeType
-  --display-name "Smoke type" --primary-key id --backing-dataset <ds>`, and
-  see which endpoint answers (stderr) or whether it fails.
 - **`object-search` sends `select: []` to get every property.** Smoke:
   `ontology.object-search` (fails if the objects come back with only `__`
   fields).
