@@ -244,6 +244,26 @@ and `tests/test_commands/test_resource_paths.py` fails when a curated
 parameter named like a resource RID doesn't take a path. The manifest shows
 `"acceptsPath": true` and the `resourceKind` on such parameters.
 
+## `--emit-code` (#192)
+
+`pltr <command> --emit-code` prints the foundry-platform-sdk code for the
+command's call instead of making it (`pltr.contract.emit`,
+`pltr.contract.codegen`). It works without any per-command code when:
+
+- the command's `@pltr_command(sdk=...)` names exactly **one** SDK method
+  (several, or `http=...`, or none: `emit_code_unsupported`, exit 2);
+- the command gets its client through a service (`BaseService.client`):
+  in emit mode that is a `RecordingClient`, whose first SDK call stops the
+  command (`RecordedCall`, a `BaseException`, so `except Exception` blocks
+  let it through); `@pltr_command` renders it;
+- nothing irreversible happens before the SDK call (local files may be
+  read; `confirm_destructive` returns at once in emit mode).
+
+Generated `pltr api` commands render straight from their spec. Resource
+paths become `PathValue`s that the snippet looks up. A test runs every
+command in the manifest with `--emit-code`: each must print a snippet that
+compiles, or fail with `emit_code_unsupported`, without any HTTP request.
+
 ## Output: `emit` and columns
 
 ```python

@@ -40,6 +40,7 @@ import click
 import typer
 from typer.core import TyperGroup
 
+from .emit import emit_mode, reset_emit_mode, set_emit_mode, strip_emit_flag
 from .errors import classify_error, fail, render_error
 from .resources import resolve_resource_paths
 from .runtime import (
@@ -156,6 +157,8 @@ def pltr_command(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with capture_warnings():
                 try:
+                    if emit_mode():
+                        return _emit_code(func, meta, args, kwargs)
                     kwargs = resolve_resource_paths(kwargs)
                     return func(*args, **kwargs)
                 except (click.exceptions.Exit, click.Abort):
@@ -177,6 +180,47 @@ def pltr_command(
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def _emit_code(
+    func: Callable[..., Any],
+    meta: CommandMeta,
+    args: Sequence[Any],
+    kwargs: Dict[str, Any],
+) -> None:
+    """Run the command up to its SDK call and print that call as code (#192)."""
+    from .codegen import render_snippet
+    from .emit import (
+        EmitDone,
+        EmitUnsupported,
+        RecordedCall,
+        call_from_recording,
+        check_supported,
+    )
+
+    ctx = click.get_current_context(silent=True)
+    command_path = ctx.command_path if ctx is not None else "pltr"
+    check_supported(meta, command_path)
+    kwargs = resolve_resource_paths(kwargs)
+    try:
+        func(*args, **kwargs)
+    except EmitDone as done:
+        code = done.code
+    except RecordedCall as recorded:
+        output = kwargs.get("output")
+        call = call_from_recording(
+            recorded,
+            paged=meta.paged,
+            binary=meta.binary,
+            output=output if isinstance(output, str) else None,
+        )
+        code = render_snippet(call)
+    else:
+        raise EmitUnsupported(
+            f"`{command_path}` finished without reaching its Foundry call, so "
+            "--emit-code has no SDK code to show for these arguments."
+        )
+    click.echo(code, nl=False)
 
 
 def get_command_meta(command: click.Command) -> Optional[CommandMeta]:
@@ -307,18 +351,46 @@ class PltrRootGroup(TyperGroup):
         **extra: Any,
     ) -> Any:
         ensure_utf8_output()
-        previous = begin_invocation(sys.argv[1:] if args is None else list(args))
+        arguments, emit = strip_emit_flag(sys.argv[1:] if args is None else list(args))
+        previous = begin_invocation(arguments)
+        token = set_emit_mode(emit)
         try:
+            if emit:
+                self._refuse_emit_without_metadata(arguments, standalone_mode)
             with capture_warnings():
                 return super().main(
-                    args=args,
+                    args=arguments,
                     prog_name=prog_name,
                     complete_var=complete_var,
                     standalone_mode=standalone_mode,
                     **extra,
                 )
         finally:
+            reset_emit_mode(token)
             set_output_format(previous)
+
+    def _refuse_emit_without_metadata(
+        self, arguments: Sequence[str], standalone_mode: bool
+    ) -> None:
+        """--emit-code on a command without @pltr_command (e.g. `pltr shell`):
+        it would run for real, so refuse before anything runs."""
+        from .emit import EmitUnsupported, leaf_command
+
+        leaf = leaf_command(self, arguments)
+        if leaf is None or isinstance(leaf, click.Group) and not leaf.callback:
+            return
+        if get_command_meta(leaf) is not None:
+            return
+        info = classify_error(
+            EmitUnsupported(
+                f"`pltr {leaf.name}` doesn't support --emit-code: it makes no "
+                "Foundry call through foundry-platform-sdk."
+            )
+        )
+        render_error(info)
+        if standalone_mode:
+            sys.exit(int(info.exit_code))
+        raise click.exceptions.Exit(int(info.exit_code))
 
     def make_context(
         self,

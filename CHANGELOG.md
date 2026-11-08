@@ -40,6 +40,18 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   error, with `pltr resource-role list`; and how to replace a rejected token
   (HTTP 401). Type-level default hints stay in text mode only. To make a hint
   specific pltr may make a few read calls (10 s timeout each) after the failure; suggested commands keep the command's `--profile`.
+- **`--emit-code`: the SDK code for a command's call** (#192). Add
+  `--emit-code` anywhere on a command line and pltr prints runnable
+  foundry-platform-sdk Python for the call the command would make, with the
+  real argument values, instead of making it: the client is built from
+  `FOUNDRY_HOST` and `FOUNDRY_TOKEN`, JSON options become SDK model
+  constructors, paged methods are looped the SDK's way, binary content goes
+  to the `--output` file or stdout, beta methods get `preview=True`, and
+  Compass paths (#193) are looked up with `Resource.get_by_path`. Nothing is
+  called and destructive commands don't ask. 561 commands support it (every
+  generated `pltr api` command and the curated commands that make one SDK
+  call); the others (several calls, direct HTTP, local) fail with
+  `emit_code_unsupported` (exit 2).
 - **A RID of the wrong kind fails before any call** (#197): a folder RID
   given to a dataset parameter (or a dataset RID to a project parameter) is a
   `wrong_resource_type` error (exit 2), and a folder suggests

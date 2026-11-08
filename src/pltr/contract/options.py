@@ -280,6 +280,10 @@ def confirm_destructive(prompt: str, *, yes: bool = False) -> None:
 
     ``prompt`` is a question such as ``"Delete space ri.compass.main.space.x?"``.
     """
+    from .emit import emit_mode
+
+    if emit_mode():
+        return  # --emit-code: nothing runs, so there is nothing to confirm
     ctx = click.get_current_context(silent=True)
     if yes or (ctx is not None and getattr(ctx, _YES_ATTR, False)):
         return
