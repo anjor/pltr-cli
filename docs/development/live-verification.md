@@ -561,6 +561,21 @@ Verified live on 2026-11-08 (read-only): the snippets of
 output, `open(...).read()` bodies, datetimes) are only checked to compile and,
 for a sample, to send the same request as the command against the fake.
 
+### `--wait` and `pltr assert` (#195)
+
+Verified live on 2026-11-08 (read-only): `pltr assert dataset <path>
+--min-rows 5 --updated-within ...` (a row-limited `read_table`, then
+`Branch.transactions` for the latest commit), `--schema` against a saved
+`pltr dataset schema get --format json`, and `pltr assert objects ...
+--min-count 1`. Not verified live (they start real work):
+
+- **`--wait` on a build**: `Build.get` until the status leaves `RUNNING`, then
+  `Build.jobs` for the failed jobs. Manual: `pltr orchestration builds create
+  @target.json --wait` on a scratch dataset, once succeeding and once failing.
+- **`schedules run --wait`** follows the `submitted` result's build; and
+  **`connectivity import execute-* --wait`** waits for the build the import
+  returns. Manual: run each on a scratch schedule/import.
+
 ### The smoke test itself (d2)
 
 The smoke script has run only against fakes, so a failing check can be the
