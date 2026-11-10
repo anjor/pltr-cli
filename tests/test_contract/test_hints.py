@@ -461,3 +461,94 @@ def test_an_existing_name_in_another_case_gets_no_name_hint(stub_foundry_http) -
     error = error_of("ontology", "object-type-get", ONT, "employee")
 
     assert "hint" not in error
+
+
+# ------------------------------------------- build targets up to date (#218)
+
+UP_TO_DATE_HINT = (
+    "Nothing to build: every target is already up to date, so no build was "
+    "started. Add --force to rebuild anyway."
+)
+
+
+def build_targets_up_to_date(stub) -> None:
+    stub.respond(400, json=fj.error("BuildTargetsUpToDate", "INVALID_ARGUMENT"))
+
+
+def test_an_up_to_date_build_suggests_the_same_command_with_force(
+    stub_foundry_http,
+) -> None:
+    stub_foundry_http.respond(
+        json=fj.resource(DS, "sales", "FOUNDRY_DATASET")  # /Space/Project/sales
+    )
+    build_targets_up_to_date(stub_foundry_http)
+
+    error = error_of(
+        "orchestration",
+        "builds",
+        "create",
+        "--dataset",
+        "/Space/Project/sales",
+        "--branch",
+        "master",
+        "--wait",
+    )
+
+    assert (error["type"], error["exitCode"]) == ("validation_error", 6)
+    assert error["errorName"] == "BuildTargetsUpToDate"
+    assert error["hint"] == UP_TO_DATE_HINT
+    assert error["suggestedCommand"] == (
+        "pltr orchestration builds create --dataset /Space/Project/sales "
+        "--branch master --wait --format json --force"
+    )
+
+
+def test_the_suggestion_keeps_target_options_and_profile(stub_foundry_http) -> None:
+    build_targets_up_to_date(stub_foundry_http)
+    target = json.dumps({"type": "manual", "targetRids": [DS]})
+
+    error = error_of(
+        "orchestration",
+        "builds",
+        "create",
+        target,
+        "--fallback-branch",
+        "develop",
+        "--fallback-branch",
+        "main",
+        "--no-notifications",
+        "--retry-count",
+        "2",
+        "--wait",
+        "--timeout",
+        "90",
+        "--profile",
+        "dev",
+    )
+
+    assert error["hint"] == UP_TO_DATE_HINT
+    assert error["suggestedCommand"] == (
+        f"pltr orchestration builds create '{target}' --fallback-branch develop "
+        "--fallback-branch main --no-notifications --retry-count 2 --wait "
+        "--timeout 90.0 --format json --force --profile dev"
+    )
+
+
+def test_the_up_to_date_hint_in_text_mode(stub_foundry_http) -> None:
+    build_targets_up_to_date(stub_foundry_http)
+
+    stderr = text_error_of("orchestration", "builds", "create", "--dataset", DS)
+
+    assert "Add --force to rebuild anyway" in stderr
+    assert f"pltr orchestration builds create --dataset {DS} --force" in stderr
+
+
+def test_the_generated_command_names_its_own_flag(stub_foundry_http) -> None:
+    build_targets_up_to_date(stub_foundry_http)
+    target = json.dumps({"type": "manual", "targetRids": [DS]})
+
+    error = error_of("api", "orchestration", "build", "create", "--target", target)
+
+    assert error["hint"] == UP_TO_DATE_HINT.replace("--force", "--force-build")
+    assert error["suggestedCommand"].endswith("--force-build")
+    assert error["suggestedCommand"].startswith("pltr api orchestration build create")

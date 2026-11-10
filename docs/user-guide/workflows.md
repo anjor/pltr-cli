@@ -86,7 +86,7 @@ See [CSV upload examples](../examples/csv-upload.md) and
 pltr orchestration builds search --status FAILED --branch master --order-by STARTED_TIME:DESC
 
 # Build a dataset and follow its jobs
-BUILD=$(pltr orchestration builds create '{"type": "manual", "targetRids": ["<dataset-rid>"]}' \
+BUILD=$(pltr orchestration builds create --dataset <dataset-rid-or-path> \
   --branch master --format json | jq -r .rid)
 pltr orchestration builds get "$BUILD"
 pltr orchestration builds jobs "$BUILD"

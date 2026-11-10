@@ -244,6 +244,18 @@ and `tests/test_commands/test_resource_paths.py` fails when a curated
 parameter named like a resource RID doesn't take a path. The manifest shows
 `"acceptsPath": true` and the `resourceKind` on such parameters.
 
+**RIDs inside JSON arguments (#218).** When a JSON argument has fields that
+the SDK's model types as resource RIDs, pass the parsed JSON through
+`resolve_json_paths(document, {"targetRids": "resource", ...}, label="TARGET",
+profile=profile)` (several JSON arguments of one command:
+`resolve_json_documents([(document, fields, label), ...], profile=profile)`).
+Wherever a named key appears, at any depth, its path values (a string or
+list items starting with `/`) are resolved with the same lookup, checks and
+messages as parameters, in one call per command; RIDs of a known wrong kind
+fail first, and `--emit-code` snippets look the paths up. Only name fields
+the SDK types as RIDs: free-form values (ontology properties, function
+parameters) can legitimately start with `/`.
+
 ## `--emit-code` (#192)
 
 `pltr <command> --emit-code` prints the foundry-platform-sdk code for the
@@ -419,6 +431,7 @@ hints come from:
 | Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid> --include-inherited` |
 | An expired or revoked token (HTTP 401) | `auth_error` | `export FOUNDRY_TOKEN=<new-token>`, or the `pltr configure configure` command for the profile |
 | No resource at a path | `path_not_found` | what a path looks like |
+| A build whose targets are up to date (nothing built) | `validation_error` (`BuildTargetsUpToDate`) | add `--force`; the same command with it (`--force-build` for `pltr api`) |
 
 A resource parameter (`ResourceRef`) also refuses a RID whose format names
 another kind of resource before any call (`ri.compass.main.folder.*` for a

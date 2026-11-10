@@ -481,9 +481,8 @@ that call beta Foundry endpoints say `[beta]` at the start of their help.
 pltr orchestration builds search --status FAILED --branch master
 pltr orchestration builds search --started-after 2026-01-31T00:00:00Z --format json
 
-# Start a build of a dataset, follow it, cancel it
-pltr orchestration builds create \
-  '{"type": "manual", "targetRids": ["<dataset-rid>"]}' --branch master
+# Start a build of a dataset (RID or path), follow it, cancel it
+pltr orchestration builds create --dataset /Space/Project/sales --branch master
 pltr orchestration builds get <build-rid>
 pltr orchestration builds jobs <build-rid>
 pltr orchestration builds cancel <build-rid> --yes

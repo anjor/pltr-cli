@@ -77,6 +77,8 @@ from .output import (
 from .resources import (
     PATH_HELP,
     ResourceRef,
+    resolve_json_documents,
+    resolve_json_paths,
     resource_argument,
     resource_option,
 )
@@ -149,6 +151,8 @@ __all__ = [
     "resource_argument",
     "resource_option",
     "PATH_HELP",
+    "resolve_json_paths",
+    "resolve_json_documents",
     # stderr
     "info",
     "success",

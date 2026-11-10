@@ -3,7 +3,7 @@
 import json
 
 from tests import foundry_json_orchestration as fo
-from tests.test_contract.cases import CONTRACT_RID
+from tests.test_contract.cases import CONTRACT_RID, resource_rid
 
 SUCCESS = {
     "orchestration builds get": [{"json": fo.build(CONTRACT_RID)}],
@@ -32,8 +32,10 @@ SUCCESS = {
 }
 
 ARGS = {
-    # TARGET / ACTION are JSON in the API's shape
-    "orchestration builds create": [json.dumps(fo.MANUAL_TARGET)],
+    # builds create needs TARGET (JSON) or --dataset (#218); test_orchestration
+    # covers TARGET
+    "orchestration builds create": ["--dataset", resource_rid("dataset")],
+    # ACTION is JSON in the API's shape
     "orchestration schedules create": [json.dumps({"target": fo.MANUAL_TARGET})],
     "orchestration schedules replace": [
         CONTRACT_RID,
