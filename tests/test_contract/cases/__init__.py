@@ -26,6 +26,10 @@ module may define any of:
     success path) don't need a ``SUCCESS`` case; the 404/400 error checks
     still run. Use sparingly; a ``SUCCESS`` case, when present, still runs.
 
+``SETUP``: dict of command path -> function ``(monkeypatch, tmp_path)``,
+    called before each run of the command, for commands that need more than
+    Foundry faked (``osdk generate`` runs Node.js).
+
 Use ``CONTRACT_RID`` (below) wherever a case needs the RID the contract test
 passes for RID-like arguments.
 """
@@ -33,7 +37,7 @@ passes for RID-like arguments.
 import importlib
 import pkgutil
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Set
+from typing import Any, Callable, Dict, List, Set
 
 #: The value the contract test passes for arguments whose name ends in "rid".
 CONTRACT_RID = "ri.compass.main.folder.contract-test"
@@ -64,6 +68,7 @@ class Cases:
     success: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     args: Dict[str, List[str]] = field(default_factory=dict)
     success_exempt: Dict[str, str] = field(default_factory=dict)
+    setup: Dict[str, Callable[..., None]] = field(default_factory=dict)
     duplicates: List[str] = field(default_factory=list)
 
 
@@ -78,6 +83,7 @@ def load_cases() -> Cases:
             ("SUCCESS", cases.success),
             ("ARGS", cases.args),
             ("SUCCESS_EXEMPT", cases.success_exempt),
+            ("SETUP", cases.setup),
         ):
             values = getattr(module, attr, None) or {}
             for key in values:

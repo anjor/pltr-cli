@@ -103,6 +103,9 @@ jobs:
         pltr --version
         pltr --help
         pltr api --help
+        # The Node helper and the generator's lockfile of `pltr osdk generate`
+        # must ship in the wheel (#220).
+        python -c "from pltr.services.osdk import HELPER, LOCK_DIR; assert HELPER.is_file(); assert (LOCK_DIR / 'package-lock.json').is_file()"
 
     - name: Check the error contract (JSON error on stderr, documented exit code)
       working-directory: ${{ runner.temp }}

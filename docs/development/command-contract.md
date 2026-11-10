@@ -388,13 +388,13 @@ Commands contain no `try/except` for reporting.
 |---|---|---|
 | 0 | | success |
 | 1 | `unexpected_error`, `aborted` | a bug or unknown failure (including an unexpected failure inside the SDK); "no" at a confirmation prompt |
-| 2 | `usage_error`, `confirmation_required`, `wrong_resource_type` | bad or missing arguments, invalid JSON input, an invalid RID, a path to the wrong kind of resource, a destructive command without `--yes` when stdin is not a terminal |
+| 2 | `usage_error`, `confirmation_required`, `wrong_resource_type`, `missing_dependency` | bad or missing arguments, invalid JSON input, an invalid RID, a path to the wrong kind of resource, a destructive command without `--yes` when stdin is not a terminal; a tool the command runs (Node.js, npm) is missing or too old |
 | 3 | `auth_error` | no usable profile or credentials, an OAuth token request refused (400, 401, 403), HTTP 401 |
 | 4 | `permission_denied` | HTTP 403 |
 | 5 | `not_found`, `api_not_found`, `path_not_found` | HTTP 404 (`api_not_found`: 404 with no body, so the endpoint isn't on this stack; `path_not_found`: no resource the account can see at a Compass path given for a RID) |
 | 6 | `validation_error` | HTTP 400, 422 |
 | 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
-| 8 | `work_failed`, `assertion_failed` | work pltr waited for (`--wait`) finished but failed; a `pltr assert` check failed (its result is still on stdout) |
+| 8 | `work_failed`, `assertion_failed` | work pltr waited for (`--wait`) or ran (the OSDK generator) finished but failed; a `pltr assert` check failed (its result is still on stdout) |
 | 9 | `wait_timeout` | `--wait`/`sql wait` gave up after `--timeout`; the work keeps running. `resource wait` gave up: still nothing at the path or RID |
 
 JSON mode prints one compact object as the last stderr line, and leaves out
@@ -637,6 +637,10 @@ parallel conversions don't conflict:
   don't need a `SUCCESS` case. The error checks still run. It's meant for
   the generated `pltr api` tree, whose generator tests the success path.
   Curated commands don't use it.
+- `SETUP`: `{path: function(monkeypatch, tmp_path)}`, called before every
+  run of the command, for a command that needs more than Foundry's HTTP
+  faked: `osdk generate` runs Node.js, so its case fakes `node` and `npm`
+  (`tests/osdk_fakes.py`).
 
 ## Changelog
 

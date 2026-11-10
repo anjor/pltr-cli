@@ -18,13 +18,13 @@ failure it was:
 | Exit code | Meaning | What to check |
 |---|---|---|
 | 1 | Unexpected error, or "no" at a prompt | Re-run with `PLTR_DEBUG=1` for the traceback, and report it |
-| 2 | Usage error | The arguments: the message names the problem; see `pltr <command> --help`. `wrong_resource_type`: a path you gave is the wrong kind of resource |
+| 2 | Usage error | The arguments: the message names the problem; see `pltr <command> --help`. `wrong_resource_type`: a path you gave is the wrong kind of resource. `missing_dependency`: install the tool the hint names (Node.js and npm for `pltr osdk generate`) |
 | 3 | Authentication | The credentials (see below) |
 | 4 | Permission denied (HTTP 403) | Your access to the resource, or the OAuth client's scopes |
 | 5 | Not found (HTTP 404) | The RID or path, and that you can see the resource |
 | 6 | Validation error (HTTP 400, 422) | The values you sent; the message has Foundry's error name |
 | 7 | Other API or network errors, or a response pltr can't read | Connectivity, rate limits (429), server errors. For `invalid_response` (the API's response doesn't match the SDK's model or isn't JSON), upgrade pltr: a retry won't help |
-| 8 | The work you waited for failed, or a `pltr assert` check failed | The error's failed jobs, or the checks on stdout |
+| 8 | The work you waited for (or the OSDK generator) failed, or a `pltr assert` check failed | The error's failed jobs or generator errors, or the checks on stdout |
 | 9 | `--wait` timed out; the work keeps running. Or `resource wait` timed out: still nothing at the path | Wait again with the suggested command |
 
 In text mode the error is printed as `Error: ...` on stderr, with Foundry's

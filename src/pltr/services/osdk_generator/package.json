@@ -1,0 +1,8 @@
+{
+  "name": "pltr-osdk-generator",
+  "private": true,
+  "description": "The OSDK generator pltr osdk generate runs, with its dependencies locked (#220).",
+  "dependencies": {
+    "@osdk/foundry-sdk-generator": "2.87.0"
+  }
+}

@@ -224,13 +224,13 @@ pltr is built to be scripted, by people and by agents.
 |---|---|---|
 | 0 | Success | |
 | 1 | Unexpected error, or "no" at a confirmation prompt | `unexpected_error`, `aborted` |
-| 2 | Usage error: bad or missing arguments, invalid JSON input, a path to the wrong kind of resource, or `--yes` required | `usage_error`, `confirmation_required`, `wrong_resource_type` |
+| 2 | Usage error: bad or missing arguments, invalid JSON input, a path to the wrong kind of resource, or `--yes` required; or Node.js or npm is missing or too old (`pltr osdk generate`) | `usage_error`, `confirmation_required`, `wrong_resource_type`, `missing_dependency` |
 | 3 | Authentication: no usable credentials, or HTTP 401 | `auth_error` |
 | 4 | Permission denied (HTTP 403) | `permission_denied` |
 | 5 | Not found (HTTP 404), or no resource at a path you gave | `not_found`, `api_not_found`, `path_not_found` |
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
 | 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
-| 8 | The work finished but failed (a build, query or import waited for with `--wait`), or a `pltr assert` check failed | `work_failed`, `assertion_failed` |
+| 8 | The work finished but failed (a build, query or import waited for with `--wait`, or the generator `pltr osdk generate` runs), or a `pltr assert` check failed | `work_failed`, `assertion_failed` |
 | 9 | `--wait` timed out; the work keeps running. Or `resource wait` timed out: still nothing at the path. The error's `suggestedCommand` waits again | `wait_timeout` |
 
 **Destructive commands ask first.** Commands that delete, remove, revoke,

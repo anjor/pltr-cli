@@ -30,7 +30,6 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   build because its targets are up to date (`BuildTargetsUpToDate`, still
   exit 6), the error says so and its `suggestedCommand` repeats the command
   with `--force` (`--force-build` for `pltr api orchestration build create`).
-
 - **`pltr resource wait <rid-or-path>`: wait until a resource exists**
   (#219). It is for the step between a git push to a code repository and a
   build: on the first push, Foundry's checks create the transform's output
@@ -45,6 +44,27 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   since the API answers "not found" for those too. The public API has no
   code repository check or commit status, so there is no `--after-commit`:
   for a dataset that already exists the command returns at once.
+- **`pltr osdk generate`: an OSDK TypeScript package from the pltr profile**
+  (#220). `pltr osdk generate --ontology <name|rid> --object-type A
+  [--action-type x] [--query-type q] [--link-type A.b] [--interface-type I]
+  --out ./osdk [--package-name @app/sdk] [--package-version 0.0.1]` runs
+  Palantir's `@osdk/foundry-sdk-generator`, pinned to 2.87.0, with the host
+  and token pltr uses: no Developer Console application is needed. It needs
+  Node.js 18+ and npm (`missing_dependency`, exit 2, when they're missing or
+  too old) and installs the generator into `~/.cache/pltr/osdk-generator`
+  on first use, with `npm ci` from a lockfile pltr ships, so its dependencies
+  are pinned too. The token is never on a command line: a Node script shipped
+  with pltr calls the generator's library entry point in-process and reads
+  the token from an environment variable. The result has the package path,
+  the `package.json` dependency line, the `@osdk` packages and versions the
+  app needs, and the `"overrides": {"@osdk/api": "2.87.0"}` entry that
+  avoids TS2322 errors with `@osdk/react`. `--replace` regenerates an
+  existing package, which is swapped in only once the new one is complete.
+  A failed install, generation or replacement is `work_failed` (exit 8),
+  with the generator's errors.
+  The skill has a minimal OSDK React app recipe
+  (`claude_skill/workflows/osdk-react-app.md`), since `npx @osdk/create-app`
+  needs a terminal.
 
 ## [0.18.0] - 2026-11-08
 

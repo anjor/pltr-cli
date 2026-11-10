@@ -24,7 +24,8 @@ claude_skill/
 ├── workflows/          # hand-written, longer workflows
 │   ├── explore-data.md
 │   ├── builds-and-schedules.md
-│   └── permissions.md
+│   ├── permissions.md
+│   └── osdk-react-app.md
 └── reference/          # GENERATED from the command manifest; don't edit
     ├── index.md        # what's where, and how to read an entry
     ├── curated/        # one file per curated group: dataset.md, sql.md, ...

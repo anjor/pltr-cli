@@ -37,7 +37,7 @@ class ExitCode(IntEnum):
     NOT_FOUND = 5  # HTTP 404
     VALIDATION = 6  # HTTP 400, 422
     API = 7  # other API/network errors: 409, 413, 429, 5xx, bad responses, timeouts
-    FAILED = 8  # the work finished but failed (build, query, import); a failed check
+    FAILED = 8  # the work finished but failed (build, query, import, OSDK generator); a failed check
     TIMED_OUT = 9  # --wait gave up; the work keeps running
 
 
