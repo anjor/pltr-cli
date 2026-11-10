@@ -330,6 +330,13 @@ npm run dev            # http://localhost:8080; sign in with Foundry
 npm run build          # dist/, for hosting
 ```
 
+To host it on Foundry, deploy `dist/` to the application's website (the
+user does the one-time hosting setup first; see SKILL.md §6e):
+
+```bash
+pltr site deploy dist --application <application-rid> --auto-version package-json --yes --format json
+```
+
 Before you call an action for real, check it with
 `pltr ontology action-validate <ontology> assign-order '{"order": "<primary-key>", "assignee": "Jane"}'`.
 
@@ -343,7 +350,9 @@ Before you call an action for real, check it with
   makes Vite fail when 8080 is taken instead of quietly using another port.
 - **Hosting**: a hosted site calls the stack from its own domain (no proxy),
   so that domain needs a network-ingress allowlist entry on the stack
-  (Control Panel) before the app can reach the API.
+  (Control Panel) before the app can reach the API. Deploy with `pltr site deploy`; bump
+  `version` in package.json for each deploy, since a version can't be uploaded
+  twice.
 - **Regenerating**: after the types or the ontology change, run
   `pltr osdk generate ... --replace` with every type the app uses, then
   `npm install` and `npm run typecheck`.
