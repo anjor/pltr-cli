@@ -31,7 +31,6 @@ from ..contract import (
     info,
     load_json_input,
     pltr_command,
-    resource_option,
     spinner,
     success,
     warn,
@@ -39,9 +38,7 @@ from ..contract import (
 from ..services.ontology import (
     AGGREGATION_ACCURACIES,
     BATCH_RETURN_EDITS_MODES,
-    LINK_TYPE_CREATE_ENDPOINTS,
     LOAD_LEVELS,
-    OBJECT_TYPE_CREATE_ENDPOINTS,
     RETURN_EDITS_MODES,
     ActionService,
     ObjectTypeService,
@@ -210,14 +207,6 @@ OntologyArg = Annotated[
             "Ontology API name or RID (ri.ontology.main.ontology.<id>); find it "
             "with 'pltr ontology list'."
         ),
-        autocompletion=complete_rid,
-        show_default=False,
-    ),
-]
-OntologyRidArg = Annotated[
-    str,
-    typer.Argument(
-        help="Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.",
         autocompletion=complete_rid,
         show_default=False,
     ),
@@ -645,108 +634,6 @@ def get_object_type(
         columns=OBJECT_TYPE_COLUMNS,
         title="Object Type",
     )
-
-
-@app.command("object-type-create")
-@pltr_command(http=tuple(f"POST {path}" for path in OBJECT_TYPE_CREATE_ENDPOINTS))
-def create_object_type(
-    ontology_rid: OntologyRidArg,
-    api_name: Annotated[str, typer.Option("--api-name", help="Object type API name.")],
-    display_name: Annotated[
-        str, typer.Option("--display-name", help="Object type display name.")
-    ],
-    primary_key: Annotated[
-        str, typer.Option("--primary-key", help="API name of the primary key property.")
-    ],
-    backing_dataset: Annotated[
-        str,
-        resource_option(
-            "--backing-dataset",
-            kind="dataset",
-            help="RID of the backing dataset (ri.foundry.main.dataset.<id>).",
-            autocompletion=complete_rid,
-        ),
-    ],
-    description: Annotated[
-        Optional[str], typer.Option("--description", help="Object type description.")
-    ] = None,
-    profile: ProfileOption = None,
-    format: FormatOption = "table",
-    output: OutputOption = None,
-):
-    """Create an object type (direct HTTP: the SDK can't create object types).
-
-    The Foundry Platform SDK has no endpoint for creating object types, so
-    this POSTs to the schema endpoints pltr knows, in order, until one exists
-    on your stack: /v2/ontologies/{ontology}/objectTypes,
-    /v1/ontologies/{ontology}/objectTypes and
-    /ontology-manager/api/ontologies/{ontology}/objectTypes. JSON output is the
-    response body as Foundry returns it (null when empty).
-    """
-    with spinner(f"Creating object type {api_name}..."):
-        result = ObjectTypeService(profile=profile).create_object_type(
-            ontology_rid=ontology_rid,
-            api_name=api_name,
-            display_name=display_name,
-            primary_key=primary_key,
-            backing_dataset=backing_dataset,
-            description=description,
-        )
-    _remember(ontology_rid)
-    success(f"Created object type '{api_name}' in ontology {ontology_rid}")
-    emit(result, format=format, output=output, title="Object Type")
-
-
-@app.command("link-type-create")
-@pltr_command(http=tuple(f"POST {path}" for path in LINK_TYPE_CREATE_ENDPOINTS))
-def create_link_type(
-    ontology_rid: OntologyRidArg,
-    api_name: Annotated[str, typer.Option("--api-name", help="Link type API name.")],
-    from_object: Annotated[
-        str, typer.Option("--from", help="API name of the source object type.")
-    ],
-    to_object: Annotated[
-        str, typer.Option("--to", help="API name of the target object type.")
-    ],
-    display_name: Annotated[
-        Optional[str], typer.Option("--display-name", help="Link type display name.")
-    ] = None,
-    description: Annotated[
-        Optional[str], typer.Option("--description", help="Link type description.")
-    ] = None,
-    reverse_api_name: Annotated[
-        Optional[str],
-        typer.Option(
-            "--reverse-api-name",
-            help="API name of the reverse (target to source) link.",
-        ),
-    ] = None,
-    profile: ProfileOption = None,
-    format: FormatOption = "table",
-    output: OutputOption = None,
-):
-    """Create a link type (direct HTTP: the SDK can't create link types).
-
-    The Foundry Platform SDK has no endpoint for creating link types, so this
-    POSTs to the schema endpoints pltr knows, in order, until one exists on
-    your stack: /v2/ontologies/{ontology}/linkTypes,
-    /v1/ontologies/{ontology}/linkTypes and
-    /ontology-manager/api/ontologies/{ontology}/linkTypes. JSON output is the
-    response body as Foundry returns it (null when empty).
-    """
-    with spinner(f"Creating link type {api_name}..."):
-        result = ObjectTypeService(profile=profile).create_link_type(
-            ontology_rid=ontology_rid,
-            api_name=api_name,
-            from_object_type=from_object,
-            to_object_type=to_object,
-            display_name=display_name,
-            description=description,
-            reverse_api_name=reverse_api_name,
-        )
-    _remember(ontology_rid)
-    success(f"Created link type '{api_name}' in ontology {ontology_rid}")
-    emit(result, format=format, output=output, title="Link Type")
 
 
 # ------------------------------------------------------------------ objects

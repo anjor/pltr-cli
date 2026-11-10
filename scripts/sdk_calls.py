@@ -81,9 +81,6 @@ LABELED_HTTP_EXCEPTIONS: Dict[str, str] = {
         "shared helper used by the labeled exceptions below"
     ),
     "services/dataset.py::DatasetService.apply_schema": "dataset schema apply",
-    "services/ontology.py::ObjectTypeService._create_schema_entity": (
-        "ontology object-type-create / link-type-create fallback"
-    ),
     "services/language_models.py::LanguageModelsService.enroll_model": (
         "language-models enroll"
     ),

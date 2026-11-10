@@ -69,7 +69,6 @@ EXPECTED: List[Tuple[str, str, str]] = [
     ("aip-agents sessions list", "agent_rid", "agent"),
     ("third-party-apps get", "application_rid", "third-party-application"),
     ("widgets repository get", "repository_rid", "repository"),
-    ("ontology object-type-create", "backing_dataset", "dataset"),
     ("orchestration builds create", "datasets", "dataset"),
 ]
 

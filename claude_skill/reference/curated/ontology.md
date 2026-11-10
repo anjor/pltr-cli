@@ -20,7 +20,7 @@ Examples:
         pltr ontology action-validate my-ontology transferEmployee '{"employee": "EMP001"}'
         pltr ontology action-apply my-ontology transferEmployee '{"employee": "EMP001"}'
 
-16 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+14 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ### pltr ontology action-apply
 
@@ -68,21 +68,6 @@ Get an ontology's metadata.
 
 - `ONTOLOGY`: Ontology API name or RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
 - SDK: `ontologies.Ontology.get`
-
-### pltr ontology link-type-create
-
-Create a link type (direct HTTP: the SDK can't create link types).
-
-`pltr ontology link-type-create ONTOLOGY_RID --api-name TEXT --from TEXT --to TEXT [OPTIONS]`
-
-- `ONTOLOGY_RID`: Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
-- `--api-name` TEXT (required): Link type API name.
-- `--from` TEXT (required): API name of the source object type.
-- `--to` TEXT (required): API name of the target object type.
-- `--display-name` TEXT: Link type display name.
-- `--description` TEXT: Link type description.
-- `--reverse-api-name` TEXT: API name of the reverse (target to source) link.
-- HTTP (direct, labeled exception): `POST /v2/ontologies/{ontology}/linkTypes`, `POST /v1/ontologies/{ontology}/linkTypes`, `POST /ontology-manager/api/ontologies/{ontology}/linkTypes`
 
 ### pltr ontology list
 
@@ -177,20 +162,6 @@ Search the objects of an object type with a typed query.
 - `--default-load-level` applyReducersAndExtractMainValue|applyReducers|extractMainValue|noLoadLevel: How to load properties that have reducers or struct main values (defaultLoadLevel): applyReducersAndExtractMainValue, applyReducers, extractMainValue, noLoadLevel.
 - `--derived-properties`, `--no-derived-properties`: Whether to load ontology-defined derived properties (loadOntologyDefinedDerivedProperties; experimental in Foundry).
 - paged · SDK: `ontologies.OntologyObject.search`
-
-### pltr ontology object-type-create
-
-Create an object type (direct HTTP: the SDK can't create object types).
-
-`pltr ontology object-type-create ONTOLOGY_RID --api-name TEXT --display-name TEXT --primary-key TEXT --backing-dataset RID|PATH [OPTIONS]`
-
-- `ONTOLOGY_RID`: Ontology RID (ri.ontology.main.ontology.<id>); find it with 'pltr ontology list'.
-- `--api-name` TEXT (required): Object type API name.
-- `--display-name` TEXT (required): Object type display name.
-- `--primary-key` TEXT (required): API name of the primary key property.
-- `--backing-dataset` RID|PATH (required): RID of the backing dataset (ri.foundry.main.dataset.<id>).
-- `--description` TEXT: Object type description.
-- HTTP (direct, labeled exception): `POST /v2/ontologies/{ontology}/objectTypes`, `POST /v1/ontologies/{ontology}/objectTypes`, `POST /ontology-manager/api/ontologies/{ontology}/objectTypes`
 
 ### pltr ontology object-type-get
 

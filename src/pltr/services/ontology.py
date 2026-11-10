@@ -9,19 +9,13 @@ can classify them.
 Every SDK method used here is GA except ``OntologyObject.count``, which is
 beta and always called with ``preview=True``.
 
-``ObjectTypeService.create_object_type`` and ``create_link_type`` are a
-labeled direct-HTTP exception (#181): the SDK has no endpoints for creating
-object types or link types, so they POST to the schema endpoints in
-``_OBJECT_TYPE_CREATE_ENDPOINTS`` / ``_LINK_TYPE_CREATE_ENDPOINTS`` (see
-``ObjectTypeService._create_schema_entity``).
+The Platform API can't create object types, link types or action types, so
+pltr has no commands for that (#216): use Ontology Manager or an Ontology as
+Code repository.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
-from urllib.parse import quote
+from typing import Any, Dict, List, Optional, Sequence
 
-import requests
-
-from ..contract import ExitCode, PltrError
 from .base import BaseService
 
 #: ``options.returnEdits`` values of ``Action.apply`` (``ReturnEditsMode``).
@@ -40,21 +34,6 @@ LOAD_LEVELS = (
 
 #: ``accuracy`` values of ``OntologyObject.aggregate`` (``AggregationAccuracyRequest``).
 AGGREGATION_ACCURACIES = ("REQUIRE_ACCURATE", "ALLOW_APPROXIMATE")
-
-#: Schema endpoints ``ontology object-type-create`` tries, in order (labeled
-#: direct-HTTP exception; ``{ontology}`` is the URL-encoded ontology RID).
-OBJECT_TYPE_CREATE_ENDPOINTS = (
-    "/v2/ontologies/{ontology}/objectTypes",
-    "/v1/ontologies/{ontology}/objectTypes",
-    "/ontology-manager/api/ontologies/{ontology}/objectTypes",
-)
-
-#: Schema endpoints ``ontology link-type-create`` tries, in order.
-LINK_TYPE_CREATE_ENDPOINTS = (
-    "/v2/ontologies/{ontology}/linkTypes",
-    "/v1/ontologies/{ontology}/linkTypes",
-    "/ontology-manager/api/ontologies/{ontology}/linkTypes",
-)
 
 
 class OntologyService(BaseService):
@@ -87,8 +66,7 @@ class OntologyService(BaseService):
 
 
 class ObjectTypeService(BaseService):
-    """Object types (``client.ontologies.Ontology.ObjectType``) and the labeled
-    direct-HTTP object/link type creation."""
+    """Object types (``client.ontologies.Ontology.ObjectType``)."""
 
     def _get_service(self) -> Any:
         """Get the Foundry ontologies service."""
@@ -130,165 +108,6 @@ class ObjectTypeService(BaseService):
         return self.service.Ontology.ObjectType.get(
             ontology, object_type, include_datasources=include_datasources
         )
-
-    def create_object_type(
-        self,
-        ontology_rid: str,
-        api_name: str,
-        display_name: str,
-        primary_key: str,
-        backing_dataset: str,
-        description: Optional[str] = None,
-    ) -> Any:
-        """Create an object type (labeled direct-HTTP exception; no SDK endpoint).
-
-        Args:
-            ontology_rid: Ontology RID
-            api_name: Object type API name
-            display_name: Object type display name
-            primary_key: Primary key property API name
-            backing_dataset: Backing dataset RID
-            description: Optional object type description
-
-        Returns:
-            The response body (parsed JSON), or ``None`` when it is empty.
-        """
-        payload: Dict[str, Any] = {
-            "apiName": api_name,
-            "displayName": display_name,
-            "primaryKey": primary_key,
-            "backingDatasetRid": backing_dataset,
-        }
-        if description is not None:
-            payload["description"] = description
-
-        return self._create_schema_entity(
-            ontology_rid=ontology_rid,
-            endpoints=OBJECT_TYPE_CREATE_ENDPOINTS,
-            payload=payload,
-            entity_type="object type",
-            entity_id=api_name,
-        )
-
-    def create_link_type(
-        self,
-        ontology_rid: str,
-        api_name: str,
-        from_object_type: str,
-        to_object_type: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        reverse_api_name: Optional[str] = None,
-    ) -> Any:
-        """Create a link type (labeled direct-HTTP exception; no SDK endpoint).
-
-        Args:
-            ontology_rid: Ontology RID
-            api_name: Link type API name
-            from_object_type: Source object type API name
-            to_object_type: Target object type API name
-            display_name: Optional link type display name
-            description: Optional link type description
-            reverse_api_name: Optional reverse direction API name
-
-        Returns:
-            The response body (parsed JSON), or ``None`` when it is empty.
-        """
-        modern_payload: Dict[str, Any] = {
-            "apiName": api_name,
-            "fromObjectTypeApiName": from_object_type,
-            "toObjectTypeApiName": to_object_type,
-        }
-        legacy_payload: Dict[str, Any] = {
-            "apiName": api_name,
-            "linkTypeApiNameAtoB": api_name,
-            "aSideObjectTypeApiName": from_object_type,
-            "bSideObjectTypeApiName": to_object_type,
-        }
-
-        if display_name is not None:
-            modern_payload["displayName"] = display_name
-            legacy_payload["displayName"] = display_name
-        if description is not None:
-            modern_payload["description"] = description
-            legacy_payload["description"] = description
-        if reverse_api_name is not None:
-            modern_payload["reverseApiName"] = reverse_api_name
-            legacy_payload["linkTypeApiNameBtoA"] = reverse_api_name
-
-        def payload_for_endpoint(endpoint_template: str) -> Dict[str, Any]:
-            if endpoint_template.startswith("/v2/"):
-                return modern_payload
-            return legacy_payload
-
-        return self._create_schema_entity(
-            ontology_rid=ontology_rid,
-            endpoints=LINK_TYPE_CREATE_ENDPOINTS,
-            payload=payload_for_endpoint,
-            entity_type="link type",
-            entity_id=api_name,
-        )
-
-    def _create_schema_entity(
-        self,
-        ontology_rid: str,
-        endpoints: Sequence[str],
-        payload: Union[Dict[str, Any], Callable[[str], Dict[str, Any]]],
-        entity_type: str,
-        entity_id: str,
-    ) -> Any:
-        """POST a create request to the first schema endpoint the stack serves.
-
-        Labeled direct-HTTP exception (#181), through
-        ``BaseService._make_request``, which takes the host and bearer token
-        from the same auth object as the SDK client (token, OAuth and
-        environment-variable auth all work).
-
-        The endpoints are tried in order. A 404 or 405 means the stack doesn't
-        serve that endpoint, so the next one is tried; any other HTTP error is
-        raised at once, keeping the ``requests.HTTPError`` as ``__cause__``
-        so the error layer reports its status and Foundry error body.
-
-        Returns:
-            The response body (parsed JSON), or ``None`` when it is empty.
-        """
-        encoded_ontology = quote(ontology_rid, safe="")
-        last_error: Optional[requests.HTTPError] = None
-        tried: List[str] = []
-
-        for endpoint_template in endpoints:
-            endpoint = endpoint_template.format(ontology=encoded_ontology)
-            request_payload = (
-                payload(endpoint_template) if callable(payload) else payload
-            )
-            try:
-                response = self._make_request(
-                    "POST", endpoint, json_data=request_payload
-                )
-            except requests.HTTPError as e:
-                status_code = e.response.status_code if e.response is not None else None
-                if status_code in (404, 405):
-                    last_error = e
-                    tried.append(f"POST {endpoint} ({status_code})")
-                    continue
-                raise RuntimeError(f"Failed to create {entity_type} {entity_id}") from e
-
-            if not response.content:
-                return None
-            try:
-                return response.json()
-            except ValueError as e:
-                raise PltrError(
-                    f"Failed to create {entity_type} {entity_id}: POST {endpoint} "
-                    "returned a response that is not JSON.",
-                    error_type="api_error",
-                    exit_code=ExitCode.API,
-                ) from e
-
-        raise RuntimeError(
-            f"Failed to create {entity_type} {entity_id}: this Foundry stack serves "
-            f"none of the schema endpoints pltr knows ({'; '.join(tried)})"
-        ) from last_error
 
 
 class OntologyObjectService(BaseService):

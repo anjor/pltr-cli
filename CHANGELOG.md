@@ -12,6 +12,17 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+### Removed
+
+- **`ontology object-type-create` and `ontology link-type-create`** (#216).
+  They could never succeed: the Foundry Platform API has no endpoints for
+  creating object types or link types, and every endpoint they tried
+  answered 404 (`RouteNotMounted`) on a current stack. Create object, link
+  and action types in Ontology Manager, or in an Ontology as Code repository
+  with [`@osdk/maker`](https://github.com/palantir/osdk-ts/tree/main/packages/maker)
+  where your stack has one; pltr then reads their objects and applies their
+  actions.
+
 ## [0.19.0] - 2026-11-10
 
 This release fills the gaps found building a dataset-to-OSDK-app demo with
