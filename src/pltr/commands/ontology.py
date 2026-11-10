@@ -26,7 +26,9 @@ from ..contract import (
     PageTokenOption,
     PltrError,
     ProfileOption,
+    YesOption,
     collect_pages,
+    confirm_destructive,
     emit,
     info,
     load_json_input,
@@ -1095,6 +1097,12 @@ def list_linked_objects(
 
 # ------------------------------------------------------------------ actions
 
+#: First line of the confirmation prompt of the commands that apply actions.
+VALIDATE_FIRST = (
+    "Applying an action edits objects. To check its parameters without "
+    "applying anything, run 'pltr ontology action-validate'."
+)
+
 ParametersArg = Annotated[
     str,
     typer.Argument(
@@ -1108,7 +1116,7 @@ ParametersArg = Annotated[
 
 
 @app.command("action-apply")
-@pltr_command(sdk="ontologies.Action.apply")
+@pltr_command(sdk="ontologies.Action.apply", destructive=True)
 def apply_action(
     ontology: OntologyArg,
     action: ActionArg,
@@ -1131,24 +1139,31 @@ def apply_action(
         ),
     ] = None,
     scenario_rid: ScenarioOption = None,
+    yes: YesOption = False,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
 ):
     """Apply an action: validate its parameters and make its edits.
 
-    The action is applied as soon as its parameters are valid (no
-    confirmation). Check them first with 'pltr ontology action-validate'. If
-    Foundry reports the parameters invalid, nothing is applied and the
-    command fails with exit code 6.
+    The edits can create, modify or delete objects, so this asks for
+    confirmation first; --yes skips the question, and is required with
+    --format json or without a terminal. To check the parameters without
+    applying anything, run 'pltr ontology action-validate' with the same
+    arguments. If Foundry reports the parameters invalid, nothing is applied
+    and the command fails with exit code 6.
 
     Example:
 
     \b
     pltr ontology action-apply my-ontology transferEmployee \\
-        '{"employee": "EMP001", "newDepartment": "Sales"}' --return-edits ALL
+        '{"employee": "EMP001", "newDepartment": "Sales"}' \\
+        --return-edits ALL --yes
     """
     params = _parse_parameters(parameters, param_hint="PARAMETERS")
+    confirm_destructive(
+        f"{VALIDATE_FIRST}\nApply action {action} in ontology {ontology}?", yes=yes
+    )
     with spinner(f"Applying action {action}..."):
         result = ActionService(profile=profile).apply_action(
             ontology,
@@ -1218,7 +1233,7 @@ def validate_action(
 
 
 @app.command("action-apply-batch")
-@pltr_command(sdk="ontologies.Action.apply_batch")
+@pltr_command(sdk="ontologies.Action.apply_batch", destructive=True)
 def apply_action_batch(
     ontology: OntologyArg,
     action: ActionArg,
@@ -1242,6 +1257,7 @@ def apply_action_batch(
         ),
     ] = None,
     scenario_rid: ScenarioOption = None,
+    yes: YesOption = False,
     profile: ProfileOption = None,
     format: FormatOption = "table",
     output: OutputOption = None,
@@ -1249,17 +1265,26 @@ def apply_action_batch(
     """Apply several actions of one action type in a single request.
 
     Foundry applies up to 20 actions per request (more for actions that only
-    edit Object Storage V2 objects and call no Functions). They are applied
-    without confirmation; if any is invalid, Foundry rejects the request.
+    edit Object Storage V2 objects and call no Functions); if any is invalid,
+    Foundry rejects the request. The edits can create, modify or delete
+    objects, so this asks for confirmation first; --yes skips the question,
+    and is required with --format json or without a terminal. To check one
+    action's parameters without applying it, run
+    'pltr ontology action-validate'.
 
     Example:
 
     \b
     pltr ontology action-apply-batch my-ontology transferEmployee \\
         '[{"parameters": {"employee": "EMP001", "newDepartment": "Sales"}},
-          {"parameters": {"employee": "EMP002", "newDepartment": "Sales"}}]'
+          {"parameters": {"employee": "EMP002", "newDepartment": "Sales"}}]' \\
+        --yes
     """
     items = _parse_batch_requests(requests)
+    confirm_destructive(
+        f"{VALIDATE_FIRST}\nApply {len(items)} {action} actions in ontology {ontology}?",
+        yes=yes,
+    )
     with spinner(f"Applying {len(items)} {action} actions..."):
         result = ActionService(profile=profile).apply_batch_actions(
             ontology,

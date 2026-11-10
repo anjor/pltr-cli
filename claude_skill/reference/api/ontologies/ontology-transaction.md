@@ -15,4 +15,4 @@ Commands for the OntologyTransaction resource (SDK: client.ontologies.OntologyTr
 - `TRANSACTION_ID`: The ID of the transaction to apply edits to.
 - `--edits` JSON (required): List[TransactionEdit].
 - Options: `--sdk-package-rid` TEXT, `--sdk-version` TEXT
-- beta · SDK: `ontologies.OntologyTransaction.post_edits`
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `ontologies.OntologyTransaction.post_edits`

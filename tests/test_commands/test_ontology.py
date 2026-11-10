@@ -1034,7 +1034,7 @@ def test_action_apply(stub_foundry_http):
     stub_foundry_http.respond(json=fo.apply_response())
 
     result = invoke(
-        "action-apply", fo.ONTOLOGY, "transferEmployee", json.dumps(PARAMETERS)
+        "action-apply", "--yes", fo.ONTOLOGY, "transferEmployee", json.dumps(PARAMETERS)
     )
 
     assert result.exit_code == 0, result.output
@@ -1053,6 +1053,7 @@ def test_action_apply_returns_edits(stub_foundry_http, tmp_path):
 
     result = invoke(
         "action-apply",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         f"@{parameters_file}",
@@ -1088,6 +1089,7 @@ def test_action_apply_json_is_the_api_response(stub_foundry_http):
 
     result = invoke(
         "action-apply",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(PARAMETERS),
@@ -1108,6 +1110,7 @@ def test_action_apply_large_scale_edits(stub_foundry_http):
 
     result = invoke(
         "action-apply",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(PARAMETERS),
@@ -1147,6 +1150,7 @@ def test_action_apply_rejected_by_foundry(stub_foundry_http):
 
     result = invoke(
         "action-apply",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(PARAMETERS),
@@ -1171,6 +1175,7 @@ def test_action_apply_invalid_validation_result_fails(stub_foundry_http):
 
     result = invoke(
         "action-apply",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(PARAMETERS),
@@ -1259,6 +1264,7 @@ def test_action_apply_batch(stub_foundry_http):
 
     result = invoke(
         "action-apply-batch",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(BATCH),
@@ -1282,6 +1288,7 @@ def test_action_apply_batch_json(stub_foundry_http):
 
     result = invoke(
         "action-apply-batch",
+        "--yes",
         fo.ONTOLOGY,
         "transferEmployee",
         json.dumps(BATCH),
@@ -1310,6 +1317,169 @@ def test_action_apply_batch_invalid_requests(stub_foundry_http, requests, expect
     message = json_error(result)["message"]
     assert "REQUESTS" in message
     assert expected in message
+    assert stub_foundry_http.requests == []
+
+
+# ------------------------------------- applying actions asks first (#217)
+
+#: Every command that applies an action's edits.
+ACTION_APPLY_COMMANDS = [
+    "pltr ontology action-apply",
+    "pltr ontology action-apply-batch",
+    "pltr api ontologies action apply",
+    "pltr api ontologies action apply-batch",
+    "pltr api ontologies action apply-with-overrides",
+    "pltr api ontologies action apply-batch-with-overrides",
+    "pltr api ontologies ontology-transaction post-edits",
+]
+
+
+@pytest.fixture(scope="module")
+def manifest_entries() -> dict:
+    from pltr.manifest import build_manifest
+
+    return {entry["path"]: entry for entry in build_manifest()["commands"]}
+
+
+@pytest.fixture
+def interactive(monkeypatch):
+    """Pretend stdin is a terminal so confirmation prompts are allowed."""
+    monkeypatch.setattr("pltr.contract.options.stdin_is_interactive", lambda: True)
+
+
+@pytest.mark.parametrize("path", ACTION_APPLY_COMMANDS)
+def test_commands_that_apply_actions_are_destructive(manifest_entries, path):
+    assert manifest_entries[path]["destructive"] is True
+
+
+def test_action_validate_is_not_destructive(manifest_entries):
+    assert manifest_entries["pltr ontology action-validate"]["destructive"] is False
+
+
+@pytest.mark.parametrize("command", ["action-apply", "action-apply-batch"])
+def test_action_apply_help_names_yes_and_the_dry_run(manifest_entries, command):
+    help_text = manifest_entries[f"pltr ontology {command}"]["help"]
+    assert "--yes" in help_text
+    assert "pltr ontology action-validate" in help_text
+
+
+def test_action_apply_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke(
+        "action-apply",
+        fo.ONTOLOGY,
+        "transferEmployee",
+        json.dumps(PARAMETERS),
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    error = json_error(result)
+    assert error["type"] == "confirmation_required"
+    assert (
+        f"Apply action transferEmployee in ontology {fo.ONTOLOGY}?" in error["message"]
+    )
+    assert "pltr ontology action-validate" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_action_apply_prompts_when_interactive(stub_foundry_http, interactive):
+    declined = invoke(
+        "action-apply",
+        fo.ONTOLOGY,
+        "transferEmployee",
+        json.dumps(PARAMETERS),
+        input="n\n",
+    )
+
+    assert declined.exit_code == 1
+    assert (
+        f"Apply action transferEmployee in ontology {fo.ONTOLOGY}?" in declined.stderr
+    )
+    assert stub_foundry_http.requests == []
+
+    stub_foundry_http.respond(json=fo.apply_response())
+    accepted = invoke(
+        "action-apply",
+        fo.ONTOLOGY,
+        "transferEmployee",
+        json.dumps(PARAMETERS),
+        input="y\n",
+    )
+
+    assert accepted.exit_code == 0, accepted.output
+    assert "Applied action transferEmployee" in accepted.stderr
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_action_apply_batch_requires_yes_when_not_interactive(stub_foundry_http):
+    result = invoke(
+        "action-apply-batch",
+        fo.ONTOLOGY,
+        "transferEmployee",
+        json.dumps(BATCH),
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 2
+    error = json_error(result)
+    assert error["type"] == "confirmation_required"
+    assert (
+        f"Apply 2 transferEmployee actions in ontology {fo.ONTOLOGY}?"
+        in error["message"]
+    )
+    assert "pltr ontology action-validate" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_action_apply_checks_its_parameters_before_asking(stub_foundry_http):
+    """A usage error beats the confirmation: nothing to confirm yet."""
+    result = invoke(
+        "action-apply", fo.ONTOLOGY, "transferEmployee", "not json", "-f", "json"
+    )
+
+    assert result.exit_code == 2
+    assert json_error(result)["type"] == "usage_error"
+    assert stub_foundry_http.requests == []
+
+
+def test_action_validate_needs_no_yes(stub_foundry_http):
+    stub_foundry_http.respond(json=fo.apply_response())
+
+    result = invoke(
+        "action-validate",
+        fo.ONTOLOGY,
+        "transferEmployee",
+        json.dumps(PARAMETERS),
+        "-f",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(stub_foundry_http.requests) == 1
+
+
+def test_generated_action_apply_requires_yes(stub_foundry_http):
+    result = runner.invoke(
+        app,
+        [
+            "api",
+            "ontologies",
+            "action",
+            "apply",
+            fo.ONTOLOGY,
+            "transferEmployee",
+            "--parameters",
+            json.dumps(PARAMETERS),
+            "-f",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert json_error(result)["type"] == "confirmation_required"
     assert stub_foundry_http.requests == []
 
 

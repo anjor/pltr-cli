@@ -157,6 +157,14 @@ V2_DESTRUCTIVE = frozenset(
         "connectivity.Connection.update_secrets",
         # Replaces the dataset's schema on a branch.
         "datasets.Dataset.put_schema",
+        # Apply an action's edits, which can create, modify or delete objects
+        # (#217). `pltr ontology action-validate` is the dry run.
+        "ontologies.Action.apply",
+        "ontologies.Action.apply_batch",
+        "ontologies.Action.apply_batch_with_overrides",
+        "ontologies.Action.apply_with_overrides",
+        # Writes edits to objects inside an ontology transaction (#217).
+        "ontologies.OntologyTransaction.post_edits",
         # Reviewed first by hand; their names have a destructive word too (reset,
         # clear, undeploy).
         # Soft-deletes the item at a path and every older item at that path.

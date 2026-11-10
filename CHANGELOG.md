@@ -12,6 +12,22 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Applying an ontology action asks first** (#217). An action's edits can
+  create, modify or delete objects, so the commands that apply them are now
+  destructive, like deletes and SNAPSHOT uploads: they ask for confirmation,
+  `--yes` skips the question, and with `--format json` or without a terminal
+  they fail with exit code 2 (`confirmation_required`) and apply nothing
+  unless `--yes` is given. **Scripts that apply actions without `--yes` now
+  stop.** The commands are `ontology action-apply` and `action-apply-batch`
+  (which gain `--yes`), and `pltr api ontologies action apply`, `apply-batch`,
+  `apply-with-overrides`, `apply-batch-with-overrides` and
+  `pltr api ontologies ontology-transaction post-edits`. `ontology
+  action-validate` is unchanged: it never applies anything, and the prompt
+  and help point to it as the dry run. The manifest marks all seven
+  `destructive: true`.
+
 ### Removed
 
 - **`ontology object-type-create` and `ontology link-type-create`** (#216).

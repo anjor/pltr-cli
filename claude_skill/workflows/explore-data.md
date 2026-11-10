@@ -84,6 +84,8 @@ pltr api ontologies ontology-object search ri.ontology.main.ontology.<id> Aircra
 ```
 
 Pass the response's `nextPageToken` to `--page-token` for the next page.
-Applying actions changes data: `pltr api ontologies action apply` takes the
-action's parameters as JSON (`--parameters`); confirm the action and its
-parameters with the user first.
+Applying actions changes data, so every command that applies one asks first
+(`--yes` skips the question). Check the parameters with `pltr ontology
+action-validate`, confirm the action and its parameters with the user, then
+run `pltr ontology action-apply ... --yes`. `pltr api ontologies action apply`
+takes the action's parameters as JSON (`--parameters`).

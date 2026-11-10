@@ -34,7 +34,7 @@ Apply an action: validate its parameters and make its edits.
 - `--return-edits` ALL|ALL_V2_WITH_DELETIONS|NONE: Return the edits the action made (Foundry's default: NONE).
 - `--attribution` TEXT: Attribution to record for the request (sent as the attribution header).
 - `--scenario-rid` TEXT: RID of an ontology scenario to work in.
-- SDK: `ontologies.Action.apply`
+- **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply`
 
 ### pltr ontology action-apply-batch
 
@@ -47,7 +47,7 @@ Apply several actions of one action type in a single request.
 - `REQUESTS`: The actions to apply: a JSON list of {"parameters": {...}} objects, inline, @file.json or @- (stdin), e.g. [{"parameters": {"employee": "EMP001"}}, {"parameters": {"employee": "EMP002"}}].
 - `--return-edits` ALL|NONE: Return the edits the actions made (Foundry's default: NONE).
 - `--scenario-rid` TEXT: RID of an ontology scenario to work in.
-- SDK: `ontologies.Action.apply_batch`
+- **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply_batch`
 
 ### pltr ontology action-validate
 

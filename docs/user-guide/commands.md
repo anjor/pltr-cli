@@ -389,10 +389,10 @@ pltr ontology object-aggregate <ontology> Employee \
   --aggregation '[{"type": "count", "name": "employees"}, {"type": "avg", "field": "salary", "name": "avgSalary"}]' \
   --group-by department
 
-# Actions: validate, then apply
+# Actions: validate, then apply (applying asks first; --yes skips the question)
 pltr ontology action-validate <ontology> promote-employee '{"employee": "E-12345", "level": 5}'
-pltr ontology action-apply <ontology> promote-employee @params.json
-pltr ontology action-apply-batch <ontology> promote-employee @requests.json
+pltr ontology action-apply <ontology> promote-employee @params.json --yes
+pltr ontology action-apply-batch <ontology> promote-employee @requests.json --yes
 
 # Query functions
 pltr ontology query-execute <ontology> employeeStats --parameters '{"department": "Engineering"}'
@@ -406,6 +406,12 @@ Notes:
   problem.
 - `object-aggregate --group-by` takes the API's group-by objects as JSON, or
   comma-separated property names for exact groupings.
+- `action-apply` and `action-apply-batch` ask for confirmation before
+  applying, like the other destructive commands, since an action's edits
+  can create, modify or delete objects; `--yes` skips the question, and is
+  required with `--format json` or without a terminal. So do the
+  `pltr api ontologies` commands that apply actions or post transaction
+  edits. `action-validate` never applies anything and never asks.
 - `action-apply` exits with code 6 when Foundry reports the parameters
   invalid; `action-validate` exits with 0 and prints the validation result.
 - pltr can't create object types, link types or action types: the
