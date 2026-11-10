@@ -431,6 +431,7 @@ hints come from:
 | Permission denied on an operation | `permission_denied` (`<Operation>PermissionDenied`) | the operation and the resource; `pltr resource-role list <rid> --include-inherited` |
 | An expired or revoked token (HTTP 401) | `auth_error` | `export FOUNDRY_TOKEN=<new-token>`, or the `pltr configure configure` command for the profile |
 | No resource at a path | `path_not_found` | what a path looks like |
+| A build whose targets are up to date (nothing built) | `validation_error` (`BuildTargetsUpToDate`) | add `--force`; the same command with it (`--force-build` for `pltr api`) |
 
 A resource parameter (`ResourceRef`) also refuses a RID whose format names
 another kind of resource before any call (`ri.compass.main.folder.*` for a

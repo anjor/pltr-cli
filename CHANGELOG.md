@@ -26,6 +26,10 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   `projectRids` in `--scope-mode`; and the subject's `datasetRid` in
   `data-health check create`. A bare RID or path given as TARGET is a usage
   error that points at `--dataset`.
+- **A hint when there is nothing to build** (#218). When Foundry refuses a
+  build because its targets are up to date (`BuildTargetsUpToDate`, still
+  exit 6), the error says so and its `suggestedCommand` repeats the command
+  with `--force` (`--force-build` for `pltr api orchestration build create`).
 
 ## [0.18.0] - 2026-11-08
 

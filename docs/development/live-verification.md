@@ -597,7 +597,9 @@ its job wrote that dataset), the same with the path inside a JSON TARGET's
 path for `--dataset` (exit 2 `wrong_resource_type`, no build), and the usage
 errors for both or neither of TARGET and `--dataset` (exit 2, no call).
 Without `--force`, an up-to-date dataset answers 400 `BuildTargetsUpToDate`
-(exit 6) and nothing is built. Not verified live:
+(exit 6) and nothing is built; the hint pltr now adds for that `errorName`
+(and its `--force` suggested command) came later and wasn't run live. Not
+verified live:
 
 - **Paths in `schedules create`/`replace` ACTION, `--trigger` and
   `--scope-mode`, and in `data-health check create`'s subject.** They use the

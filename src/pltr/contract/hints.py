@@ -427,6 +427,83 @@ def clear_started() -> None:
     _STARTED.set(None)
 
 
+def _long_flag(param: click.Parameter) -> str:
+    return next((opt for opt in param.opts if opt.startswith("--")), param.opts[0])
+
+
+def _flag_option(ctx: Optional[click.Context], name: str) -> Optional[click.Option]:
+    """The running command's boolean flag option called ``name``, if it has one."""
+    for param in ctx.command.params if ctx is not None else ():
+        if param.name == name and isinstance(param, click.Option) and param.is_flag:
+            return param
+    return None
+
+
+def rerun_with_flag(ctx: click.Context, flag: click.Option) -> str:
+    """The running command again, with ``flag`` turned on.
+
+    Rebuilt from the parsed parameters (the values as typed, before any path
+    was resolved): arguments in order, then the options that differ from
+    their defaults, then the flag, then ``--profile`` (:func:`suggest`).
+    Hidden options (deprecated aliases) are left out.
+    """
+    names: List[str] = []
+    parent: Optional[click.Context] = ctx
+    while parent is not None and parent.parent is not None:
+        names.insert(0, str(parent.info_name))
+        parent = parent.parent
+    positional: List[Any] = []
+    options: List[Any] = []
+    for param in ctx.command.params:
+        value = ctx.params.get(str(param.name))
+        if param.name == "profile" or not param.expose_value:
+            continue
+        if isinstance(param, click.Argument):
+            if isinstance(value, (list, tuple)):
+                positional += list(value)
+            elif value is not None:
+                positional.append(value)
+            continue
+        if not isinstance(param, click.Option) or param.hidden:
+            continue
+        if value is None or value == () or value == param.default:
+            continue
+        if param.is_flag and param.secondary_opts and value is False:
+            options.append(param.secondary_opts[0])
+        elif param.is_flag:
+            options.append(_long_flag(param))
+        elif param.multiple:
+            for item in value:
+                options += [_long_flag(param), item]
+        else:
+            options += [_long_flag(param), value]
+    return suggest(ctx, "pltr", *names, *positional, *options, _long_flag(flag))
+
+
+_UP_TO_DATE = (
+    "Nothing to build: every target is already up to date, so no build was started."
+)
+
+
+def build_targets_up_to_date(
+    info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
+) -> Optional[Recovery]:
+    """400 ``BuildTargetsUpToDate``: nothing was built; the force flag rebuilds.
+
+    The suggested command is the same command with ``--force`` (or the
+    generated command's ``--force-build``).
+    """
+    if info.error_name != "BuildTargetsUpToDate":
+        return None
+    flag = _flag_option(ctx, "force_build")
+    if ctx is None or flag is None or ctx.params.get("force_build"):
+        return Recovery(_UP_TO_DATE)
+    return Recovery(
+        f"{_UP_TO_DATE} Add {_long_flag(flag)} to rebuild anyway.",
+        rerun_with_flag(ctx, flag),
+    )
+
+
 def started_work(
     info: ErrorInfo, exc: BaseException, ctx: Optional[click.Context]
 ) -> Optional[Recovery]:
@@ -446,6 +523,7 @@ PROVIDERS: List[Provider] = [
     started_work,
     ontology_names,
     open_transaction,
+    build_targets_up_to_date,
     missing_scope,
     permission_denied,
     rejected_token,

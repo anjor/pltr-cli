@@ -121,6 +121,9 @@ When pltr knows how to recover, the error object has a `hint` and often a
 - `auth_error` after HTTP 401: the token expired or was revoked; ask the user
   for a new one (`suggestedCommand` shows where it goes);
 - `path_not_found`: what a Compass path looks like.
+- `BuildTargetsUpToDate` (`validation_error`, exit 6): nothing was built
+  because the datasets are already up to date. That is usually fine;
+  `suggestedCommand` repeats the command with `--force` if you must rebuild.
 
 ## 4. Safety rules
 
