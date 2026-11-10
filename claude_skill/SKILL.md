@@ -303,7 +303,46 @@ types, run it again with every type and `--replace`.
 `npx @osdk/create-app` needs a terminal, so write the app from
 [workflows/osdk-react-app.md](workflows/osdk-react-app.md). Signing users
 in needs an OAuth client ID from the user, with the app's redirect URIs
-registered in Developer Console.
+registered in Developer Console. To host the built app on Foundry, see §6e.
+
+## 6e. Hosting a web app: `pltr site deploy`
+
+To put a built web app (an OSDK React app, say) on Foundry, build it, then
+deploy the build folder to its third-party application's website. One command
+zips the folder, uploads it as a new version and deploys it:
+
+```bash
+npm run build
+pltr site deploy dist --application ri.third-party-applications.main.application.<id> --auto-version package-json --yes --format json
+```
+
+- The JSON has the `version`, the website's `subdomains` and `url`
+  (`https://` and the first subdomain); `curl` the `url` to check the deploy.
+  No `url` comes with a warning that says why: usually the website has no
+  approved subdomain yet.
+- Versions are `MAJOR.MINOR.PATCH` and can't be uploaded twice (exit 7,
+  `conflict`, before anything is uploaded): bump `version` in package.json,
+  or pass `--version`. `--auto-version git-describe` takes the git tag
+  (`v1.2.0` gives `1.2.0`; commits after it give a pre-release, which Foundry
+  may refuse) and refuses uncommitted changes to tracked files. Without a
+  version flag the command refuses to run.
+- If the deploy fails after the upload, follow the error's message: it says
+  whether to deploy the uploaded version with `pltr site rollback` or to
+  upload a new one. Don't re-run `site deploy` with the same version.
+- Deploying replaces the live site: pass `--yes` only when the user asked for
+  the deploy. `--upload-only` uploads without deploying (no `--yes` needed);
+  `pltr site rollback <version> --application <rid> --yes` deploys an
+  uploaded version, and `pltr site versions --application <rid>` lists them.
+- Exit 9 means Foundry was still scanning the upload for vulnerabilities after
+  `--timeout`: the version is uploaded, and the error's `suggestedCommand`
+  deploys it.
+
+Hosting needs a one-time setup in the UI that pltr can't do; ask the user for
+it: website hosting turned on for the application in Developer Console, a
+subdomain requested there and approved, the domain added to Control Panel's
+network ingress allowlist (otherwise visitors get an ingress 403), and
+`https://<subdomain>/auth/callback` registered as a redirect URL of the
+application.
 
 ## 7. Workflows
 

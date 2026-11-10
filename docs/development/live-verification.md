@@ -630,6 +630,35 @@ until `--timeout`. Not verified live:
 - **A trashed resource at a path**: `resource wait` treats it as existing and
   warns. Manual: trash a scratch dataset, then wait for its path.
 
+### Site hosting: `pltr site` (#221)
+
+Verified live on 2026-11-10 (one stack, an application with website hosting
+and an approved subdomain): `pltr site deploy dist --version ... --yes`
+uploaded a Vite build as a new version and deployed it in about two seconds,
+and the hosted URL then answered 200 with the app's page; `--upload-only`
+uploaded a version and left the deployed one unchanged; `pltr site versions`;
+an existing version refused before any upload (exit 7); a missing version
+answering 404 `VersionNotFound`; the usage errors (a project folder, no
+version flag, `v0.1.1`). `Website.get` and `Website.deploy` return each
+subdomain as the full hostname (`<name>.apps.<region>.<domain>`),
+so pltr's `url` is `https://` and the first one. Not verified live:
+
+- **The `ScanningInProgress` retry**: the deploy above succeeded at once.
+  Manual: deploy a large build; if the scan takes a while, stderr says
+  Foundry is scanning and the deploy goes through when it's done (or exits 9
+  after `--timeout`).
+- **A website without an approved subdomain**: `subdomains` is assumed to be
+  `[]`, so pltr warns and prints no `url`. Manual: deploy to a new
+  application before its subdomain is approved.
+- **An application without website hosting**: probably 404
+  `WebsiteNotFound` (exit 5) from the first call. Manual: `pltr site versions
+  --application <rid>` for such an application.
+- **Pre-release versions**, which `--auto-version git-describe` gives after a
+  tag (`1.2.0-2-g<sha>`): Foundry's `InvalidVersion` error only describes
+  `MAJOR.MINOR.PATCH`. Manual: `pltr site deploy dist --application <rid>
+  --version 0.0.1-rc.1 --upload-only` on a test application.
+- **`pltr site rollback`** (the same `Website.deploy` call as `site deploy`).
+
 ### The smoke test itself (d2)
 
 The smoke script has run only against fakes, so a failing check can be the

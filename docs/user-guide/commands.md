@@ -46,6 +46,7 @@ Contents: [Setup](#setup-configure-verify-commands) ·
 [Connectivity](#connectivity-pltr-connectivity) ·
 [Language models](#language-models-pltr-language-models) ·
 [AIP agents, widgets and third-party apps](#aip-agents-widgets-and-third-party-apps) ·
+[Site hosting](#site-hosting-pltr-site) ·
 [Audit logs](#audit-logs-pltr-audit) · [Admin](#admin-pltr-admin) ·
 [Aliases, shell and completion](#aliases-shell-and-completion)
 
@@ -806,6 +807,72 @@ pltr widgets release delete <widget-set-rid> 1.2.0 --yes
 
 Widget dev mode has no curated command; use
 `pltr api widgets dev-mode-settings` and `dev-mode-settings-v2`.
+
+## Site hosting: `pltr site`
+
+A third-party application can host a static web app, such as an OSDK React
+app, on Foundry. `pltr site deploy` replaces the manual steps: it zips the
+build folder, uploads it as a new website version and deploys it. These
+endpoints are GA.
+
+| Command | What it does |
+|---|---|
+| `site deploy DIST_DIR --application RID` | Zip, upload and deploy a built site (asks first, unless `--upload-only`) |
+| `site versions --application RID` | List the uploaded versions (paged) |
+| `site rollback VERSION --application RID` | Deploy a version that was already uploaded (asks first) |
+
+```bash
+npm run build
+pltr site deploy dist --application <application-rid> --version 0.2.0
+pltr site deploy dist --application <application-rid> --auto-version package-json --yes --format json
+pltr site deploy dist --application <application-rid> --auto-version git-describe --upload-only
+pltr site versions --application <application-rid>
+pltr site rollback 0.1.0 --application <application-rid> --yes
+```
+
+- **The folder** must have `index.html` at its root (Vite: `dist`, not the
+  project folder; a folder with `package.json` or `node_modules` is refused).
+  pltr zips its contents, so `index.html` is at the root of the upload.
+  Links are followed (as `zip -r` does), hidden files such as `.well-known`
+  are uploaded, and `.git` folders are left out.
+- **The version** is required and must not exist yet: pltr checks before it
+  asks or uploads (exit 7, `conflict`). Use `MAJOR.MINOR.PATCH`; pltr accepts
+  any semantic version, but whether Foundry takes a pre-release such as
+  `1.2.3-rc.1` hasn't been checked. `--auto-version package-json` reads
+  `version` from the nearest `package.json` at or above the folder's parent.
+  `--auto-version git-describe` runs `git describe --tags --dirty` there,
+  with tags that look like versions (`v1...`, `1...`), and drops a leading
+  `v`: on a tag `v1.2.0` that gives `1.2.0`, and two commits later
+  `1.2.0-2-g<sha>` (a pre-release, as `@osdk/cli` does). It refuses
+  uncommitted changes to tracked files and a tag that isn't a semantic
+  version.
+- **The output** is `thirdPartyApplicationRid`, `version` and `deployed`, and
+  after a deploy the website's `deployedVersion` and `subdomains` and `url`.
+  The API returns each subdomain as a full hostname, and `url` is `https://`
+  and the first one. With no subdomain (none approved yet) or a subdomain
+  without a domain, there's no `url` and pltr warns.
+- **Scanning.** Foundry scans each upload for vulnerabilities and refuses to
+  deploy it until the scan is done. pltr retries the deploy for up to
+  `--timeout` seconds (default 300), then exits 9: the version stays
+  uploaded, and the error's `suggestedCommand` deploys it.
+- **When the deploy fails after the upload**, running `site deploy` again
+  with the same version would be a conflict, so the error says what to do:
+  deploy the version with `site rollback` once the problem is fixed; build
+  and upload a new version when Foundry found vulnerabilities in it or
+  couldn't scan it; or, when pltr couldn't read Foundry's answer, check
+  whether it went live first. With too many versions, delete an old one that
+  isn't deployed (`pltr api third-party-applications third-party-application
+  website version delete`).
+
+Before the first deploy, set up hosting in the UI (the public API can't):
+
+1. In Developer Console, turn on website hosting for the application.
+2. Request a subdomain there and wait until it is approved. Until then the
+   website has no subdomains.
+3. In Control Panel, add the domain to the network ingress allowlist;
+   otherwise visitors get a 403 from the ingress.
+4. Register `https://<subdomain>/auth/callback` as a redirect URL of the
+   application, so that sign-in works on the hosted site.
 
 ## Audit logs: `pltr audit`
 

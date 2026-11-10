@@ -65,6 +65,18 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   The skill has a minimal OSDK React app recipe
   (`claude_skill/workflows/osdk-react-app.md`), since `npx @osdk/create-app`
   needs a terminal.
+- **`pltr site deploy DIST_DIR --application <rid>`** deploys a built web app
+  (an OSDK React app, say) to a third-party application's website in one
+  command (#221): it checks the folder (`index.html` at its root), zips it,
+  checks that the version is new, uploads it and deploys it, retrying while
+  Foundry scans the upload (`--timeout`, exit 9). The version comes from
+  `--version`, or `--auto-version package-json|git-describe` (a dirty tree
+  or a non-semver tag is refused); without one the command refuses to run.
+  It prints the version, the website's subdomains and its `url`. Deploying
+  asks first (`--yes`); `--upload-only` doesn't deploy. `pltr site versions`
+  lists the uploaded versions, and `pltr site rollback VERSION` deploys one.
+  The one-time setup in Developer Console and Control Panel is in the
+  Command Reference and the skill.
 
 ## [0.18.0] - 2026-11-08
 

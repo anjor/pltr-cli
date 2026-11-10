@@ -37,6 +37,7 @@ from pltr.commands import (
     audit,
     widgets,
 )
+from pltr.commands import site
 from pltr.commands.cp import cp_command
 from pltr.commands import api as api_commands
 from pltr.commands import manifest as manifest_commands
@@ -105,6 +106,9 @@ app.add_typer(
     third_party_applications.app,
     name="third-party-apps",
     help="Manage third-party applications",
+)
+app.add_typer(
+    site.app, name="site", short_help="Deploy a built web app to website hosting"
 )
 app.add_typer(
     aip_agents.app,
