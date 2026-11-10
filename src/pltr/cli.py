@@ -18,6 +18,7 @@ from pltr.commands import (
     resource_role,
     space,
     ontology,
+    osdk,
     orchestration,
     sql,
     admin,
@@ -79,6 +80,11 @@ app.add_typer(
 )
 app.add_typer(space.app, name="space", short_help="Manage spaces")
 app.add_typer(ontology.app, name="ontology", short_help="Ontology operations")
+app.add_typer(
+    osdk.app,
+    name="osdk",
+    short_help="Generate OSDK TypeScript packages for apps (needs Node.js)",
+)
 app.add_typer(
     orchestration.app,
     name="orchestration",

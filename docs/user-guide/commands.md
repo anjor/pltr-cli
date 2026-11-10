@@ -38,6 +38,7 @@ Contents: [Setup](#setup-configure-verify-commands) ·
 [Datasets](#datasets-pltr-dataset) · [Copying](#copying-pltr-cp) ·
 [Filesystem](#filesystem-folder-space-project-resource-resource-role) ·
 [Ontology](#ontology-pltr-ontology) · [SQL](#sql-pltr-sql) ·
+[OSDK apps](#osdk-apps-pltr-osdk) ·
 [Orchestration](#orchestration-pltr-orchestration) ·
 [Data health](#data-health-pltr-data-health) ·
 [Functions](#functions-pltr-functions) · [Models](#models-pltr-models) ·
@@ -445,6 +446,78 @@ is `{"data": [...]}`, one object per row. `submit`, `status` and `cancel`
 print the query status (`{"type": "running", "queryId": "..."}`); `submit
 --wait` waits and prints the final status. A failed or canceled query exits
 with code 8, and `--timeout` with code 9 (the query keeps running). `sql results` exits with 6 while the query is still running.
+
+## OSDK apps: `pltr osdk`
+
+| Command | What it does |
+|---|---|
+| `osdk generate` | Generate an OSDK TypeScript package for an app from the pltr profile (needs Node.js 18+ and npm) |
+
+```bash
+pltr osdk generate --ontology <ontology> --object-type Employee --object-type Department \
+  --link-type Employee.department --action-type promote-employee \
+  --out ./osdk --package-name @hr-app/sdk --format json
+
+# Change the types later: give every type again, and --replace
+pltr osdk generate --ontology <ontology> --object-type Employee --out ./osdk \
+  --package-name @hr-app/sdk --replace
+```
+
+The package goes to `<out>/<package-name>` (`./osdk/@hr-app/sdk`). The
+result says how to use it, in JSON for agents:
+
+- `packagePath`, and `dependency`, the line for the app's `package.json`
+  (`"@hr-app/sdk": "file:./osdk/@hr-app/sdk"`, relative to the current
+  directory: run the command from the app's root);
+- `peerDependencies` (`@osdk/client`) and, for a React app,
+  `reactDependencies` (`@osdk/react`, `@osdk/oauth`), at the versions that
+  work with the generated code;
+- `overrides`: `{"@osdk/api": "2.87.0"}`. Put it in the app's
+  `package.json`. `@osdk/react` 2.87.0 accepts any newer `@osdk/api`, so npm
+  installs 2.88.0 for it while `@osdk/client` 2.87.0 keeps 2.87.0, and `tsc`
+  then fails with TS2322 on the generated types.
+
+How it works:
+
+- pltr runs Palantir's `@osdk/foundry-sdk-generator`, pinned to 2.87.0, the
+  version proven end to end, with the host and token of the pltr profile
+  (`https://` is added to the host). It needs no Developer Console
+  application; an app still needs one, for the OAuth client that signs its
+  users in.
+- The first run installs the generator into
+  `~/.cache/pltr/osdk-generator/2.87.0` with `npm ci --ignore-scripts`, from
+  a `package-lock.json` pltr ships, so every one of its dependencies is
+  pinned too (they run in the process that holds the token). No subprocess
+  inherits `FOUNDRY_TOKEN` or `FOUNDRY_CLIENT_SECRET`.
+- **The token stays off command lines.** The generator's own command line
+  takes the token only as `--authToken`, where anyone who can list processes
+  can read it. pltr ships a small Node script instead, which imports the
+  generator's library entry point and calls it in-process, adding the token
+  in memory. The token reaches that script in the `PLTR_OSDK_TOKEN`
+  environment variable, which only the same user (and root) can read, and
+  the script deletes it before the generator runs. The token is never
+  written to disk or to a log, and is redacted from any generator output
+  pltr shows.
+- The generator writes into a staging directory inside `--out`; the package
+  is moved into place only once it is complete, and an existing one is moved
+  aside first and deleted only after that, so a failure leaves it as it was.
+  Without `--replace` pltr refuses to touch an existing package, and
+  `--replace` only ever replaces a package the generator made under the same
+  name (never a symbolic link, or the directory you run pltr in).
+
+Errors: Node.js or npm missing or too old is `missing_dependency` (exit
+code 2, with the version found and required in `parameters`). A failed
+generation, install or replacement is `work_failed` (exit code 8, with
+`parameters.step`): the generator's own errors, such as `Unable to find the
+following object types`, are in the message and in `parameters.errors`.
+Check API names with `pltr context ontology <ontology> --types
+<ObjectType>`; actions and queries also need the object types their
+parameters take, and objects only get the links you pass with `--link-type`.
+After `--replace`, run `npm install` in the app again.
+
+For a minimal React app around the package (Vite, `@osdk/oauth`,
+`@osdk/react`; `npx @osdk/create-app` needs a terminal), see the skill's
+[OSDK React app recipe](../../claude_skill/workflows/osdk-react-app.md).
 
 ## Orchestration: `pltr orchestration`
 

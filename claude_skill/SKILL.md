@@ -93,13 +93,13 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 |---|---|---|
 | 0 | success | |
 | 1 | unexpected error, or "no" at a prompt | read the message; `PLTR_DEBUG=1` shows a traceback |
-| 2 | usage error, or `--yes` required; `wrong_resource_type`: a path to the wrong kind of resource | fix the arguments (`pltr commands show ...`) |
+| 2 | usage error, or `--yes` required; `wrong_resource_type`: a path to the wrong kind of resource; `missing_dependency`: Node.js or npm is missing or too old (`pltr osdk generate`) | fix the arguments (`pltr commands show ...`); for `missing_dependency`, tell the user what to install (see `hint`) |
 | 3 | authentication | check credentials with `pltr verify` |
 | 4 | permission denied (403) | the account lacks access; tell the user |
 | 5 | not found (404); `path_not_found`: nothing at a path you gave | check the RID or path and that the account can see it |
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
 | 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
-| 8 | the work failed (`work_failed`: a build, query or import you waited for) or a `pltr assert` check failed (`assertion_failed`) | read `parameters` (failed jobs) or the assert result on stdout |
+| 8 | the work failed (`work_failed`: a build, query or import you waited for, or `pltr osdk generate`'s generator) or a `pltr assert` check failed (`assertion_failed`) | read `parameters` (failed jobs, the generator's `errors`) or the assert result on stdout |
 | 9 | `--wait` timed out (`wait_timeout`); the work keeps running. Or `resource wait` timed out: still nothing at the path | run `suggestedCommand` to wait again |
 
 ### Errors that say how to recover
@@ -282,6 +282,28 @@ Compass path you gave, and pages the SDK's way: read its comments. Nothing runs,
 it's safe on destructive commands. A command that makes several calls (or no
 Foundry call) fails with `emit_code_unsupported` (exit 2): use `pltr commands
 show <command>` for its SDK methods and `pltr api ... --emit-code` for each.
+
+## 6d. Building an OSDK app: `pltr osdk generate`
+
+To build a TypeScript or React app on ontology objects, generate the OSDK
+package with pltr: it needs Node.js 18+ and npm, but no Developer Console
+application, and it keeps the token off command lines. Run it from the app's
+root:
+
+```bash
+pltr context ontology <ontology> --types Order          # API names: properties, links, actions
+pltr osdk generate --ontology <ontology> --object-type Order --action-type assign-order --out ./osdk --package-name @orders-app/sdk --format json
+```
+
+Add the result's `dependency`, `peerDependencies` (and `reactDependencies`)
+to the app's `package.json`, and its `overrides` entry (`@osdk/api`): without
+it `tsc` fails with TS2322. Objects get links only with
+`--link-type Order.customer` (and the linked object type). To change the
+types, run it again with every type and `--replace`.
+`npx @osdk/create-app` needs a terminal, so write the app from
+[workflows/osdk-react-app.md](workflows/osdk-react-app.md). Signing users
+in needs an OAuth client ID from the user, with the app's redirect URIs
+registered in Developer Console.
 
 ## 7. Workflows
 

@@ -176,6 +176,13 @@ def contract_env(stub_foundry_http, isolated_home, mock_keyring, monkeypatch):
     return stub_foundry_http
 
 
+def run_setup(path: str, monkeypatch, tmp_path) -> None:
+    """The command's ``SETUP`` case, if any (fakes besides Foundry's HTTP)."""
+    setup = CASES.setup.get(path)
+    if setup is not None:
+        setup(monkeypatch, tmp_path)
+
+
 def run_error_scenarios(path: str, stub, tmp_path) -> List[str]:
     problems = []
     for status, code, name, error_type, exit_code in SCENARIOS:
@@ -201,8 +208,9 @@ def run_error_scenarios(path: str, stub, tmp_path) -> List[str]:
 
 
 @pytest.mark.parametrize("path", API_COMMANDS)
-def test_api_errors_are_structured(path, contract_env, tmp_path):
+def test_api_errors_are_structured(path, contract_env, tmp_path, monkeypatch):
     """404 -> exit 5 and 400 -> exit 6, with the structured error on stderr."""
+    run_setup(path, monkeypatch, tmp_path)
     problems = run_error_scenarios(path, contract_env, tmp_path)
     if path in CASES.not_converted:
         if not problems:
@@ -215,10 +223,13 @@ def test_api_errors_are_structured(path, contract_env, tmp_path):
 
 
 @pytest.mark.parametrize("path", NEEDS_SUCCESS)
-def test_success_prints_exactly_one_json_document(path, contract_env, tmp_path):
+def test_success_prints_exactly_one_json_document(
+    path, contract_env, tmp_path, monkeypatch
+):
     assert path in CASES.success, (
         f"'{path}' is converted but has no SUCCESS case in tests/test_contract/cases/"
     )
+    run_setup(path, monkeypatch, tmp_path)
     for response in CASES.success[path]:
         contract_env.respond(**response)
 
@@ -239,6 +250,7 @@ def test_success_exempt_matches_whole_path_segments(monkeypatch):
 def test_case_modules_name_real_commands():
     named = set(CASES.not_converted) | set(CASES.local) | set(CASES.success)
     named |= set(CASES.args)
+    named |= set(CASES.setup)
     stale_prefixes = [
         prefix
         for prefix in CASES.success_exempt
