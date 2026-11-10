@@ -23,7 +23,7 @@ Examples:
         pltr resource list-markings ri.foundry.main.dataset.xyz123
         pltr resource access-requirements ri.foundry.main.dataset.xyz123
 
-13 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
+14 commands. Shared options (`--profile`, `--format`, `--output`, `--yes`, paging) are left out; [index.md](../index.md) explains the labels. Every option of one command: `pltr commands show <command>`.
 
 ### pltr resource access-requirements
 
@@ -148,3 +148,13 @@ Find resources below a folder by name, path, description, RID or type.
 - `--limit` INTEGER: Stop after this many matches.
 - `--max-folders` INTEGER (default: 1000): Stop after listing this many folders (one request per page each).
 - SDK: `filesystem.Folder.children`
+
+### pltr resource wait
+
+Wait until a resource exists at a Compass path (or RID), then print it.
+
+`pltr resource wait RESOURCE [OPTIONS]`
+
+- `RESOURCE` (RID or path): Compass path (or RID) of the resource to wait for, such as a transform's output dataset.
+- `--timeout` NUMBER (default: 600): Seconds to wait before giving up (exit 9); 0 checks once.
+- SDK: `filesystem.Resource.get_by_path`, `filesystem.Resource.get`

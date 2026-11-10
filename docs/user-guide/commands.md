@@ -264,6 +264,7 @@ folders and resources such as datasets. Project and folder RIDs look like
 | `project create-from-template` | Create a project from a project template |
 | `resource get` | Get a resource's metadata by RID |
 | `resource get-by-path` | Get a resource's metadata by its path |
+| `resource wait` | Wait until a resource exists at a path or RID (after a git push), then print it |
 | `resource list` | List the resources directly inside a folder (paged) |
 | `resource search` | Find resources below a folder by name, path, description, RID or type |
 | `resource batch-get` | Get several resources in one request |
@@ -286,6 +287,7 @@ pltr project list --space-rid <space-rid>
 pltr folder list <project-or-folder-rid> --all
 pltr resource get-by-path "/My Space/My Project/sales"
 pltr resource search sales --folder-rid <project-rid> --type dataset
+pltr resource wait "/My Space/My Project/clean/orders" --timeout 300   # after a git push
 
 # Folders and projects
 pltr folder create "Reports" --parent-folder <project-or-folder-rid>
@@ -332,6 +334,12 @@ Notes:
   so they keep their values.
 - `project list-orgs` and `resource list-markings` print IDs only, as the API
   returns them.
+- `resource wait` polls until something exists at the path or RID: after the
+  first git push of a transform, Foundry's checks create its output dataset,
+  which takes a few minutes. "Not found" means "not yet"; other errors fail at
+  once. It exits 9 after `--timeout` seconds (default 600). The public API
+  has no check or commit status, so for a dataset that already exists it
+  returns at once, even while the checks of a later push are still running.
 
 ## Ontology: `pltr ontology`
 

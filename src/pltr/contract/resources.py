@@ -132,7 +132,9 @@ class ResourceRef(click.ParamType):
     """Click type of a parameter that takes a resource RID or a Compass path.
 
     It passes values through unchanged: ``@pltr_command`` resolves the paths
-    (:func:`resolve_resource_paths`) once all parameters are parsed.
+    (:func:`resolve_resource_paths`) once all parameters are parsed, unless
+    ``resolve`` is False: then the command looks them up itself (``pltr
+    resource wait`` polls a path that doesn't exist yet, #219).
     """
 
     name = "resource"
@@ -140,10 +142,11 @@ class ResourceRef(click.ParamType):
     #: A Windows path: what Git Bash (MSYS) makes of a leading-slash argument.
     _WINDOWS_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 
-    def __init__(self, kind: str) -> None:
+    def __init__(self, kind: str, *, resolve: bool = True) -> None:
         if kind not in KINDS:
             raise ValueError(f"Unknown resource kind: {kind!r}")
         self.kind = KINDS[kind]
+        self.resolve = resolve
 
     def convert(
         self, value: Any, param: Optional[click.Parameter], ctx: Optional[click.Context]
@@ -181,14 +184,18 @@ RID_RESOURCE_TYPES: Dict[tuple, str] = {
 _RID = re.compile(r"ri\.([a-z0-9-]+)\.[a-z0-9-]*\.([a-z0-9-]+)\..+")
 
 
-def rid_resource_type(value: Any) -> Optional[str]:
-    """The ``ResourceType`` a RID names, when pltr knows its format."""
+def rid_service_and_type(value: Any) -> Optional[Tuple[str, str]]:
+    """The service and type of a RID (``ri.<service>.<instance>.<type>.<id>``)."""
     if not isinstance(value, str):
         return None
     match = _RID.fullmatch(value)
-    if match is None:
-        return None
-    return RID_RESOURCE_TYPES.get((match.group(1), match.group(2)))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def rid_resource_type(value: Any) -> Optional[str]:
+    """The ``ResourceType`` a RID names, when pltr knows its format."""
+    parts = rid_service_and_type(value)
+    return RID_RESOURCE_TYPES.get(parts) if parts else None
 
 
 def is_path(value: Any) -> bool:
@@ -424,17 +431,19 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     ctx = click.get_current_context(silent=True)
     if ctx is None:
         return kwargs
-    targets = [
+    params = [
         param
         for param in ctx.command.params
         if isinstance(param.type, ResourceRef) and param.name in kwargs
     ]
     profile = kwargs.get("profile", ctx.params.get("profile"))
-    for param in targets:
+    for param in params:
         assert isinstance(param.type, ResourceRef)
         for value in _values(kwargs[str(param.name)]):
             if isinstance(value, str) and not is_path(value):
                 check_rid_kind(value, param.type.kind, _parameter_label(param), profile)
+    # resolve=False: the command looks its paths up itself.
+    targets = [param for param in params if getattr(param.type, "resolve", True)]
     wanted = [
         (value, param)
         for param in targets
@@ -625,16 +634,23 @@ def _with_path_help(text: str) -> str:
     return f"{text} {PATH_HELP}" if text else PATH_HELP
 
 
-def resource_argument(kind: str, *, help: str, **kwargs: Any) -> Any:
+def resource_argument(
+    kind: str, *, help: str, resolve: bool = True, **kwargs: Any
+) -> Any:
     """A ``typer.Argument`` that takes a resource RID or a Compass path.
 
     Use it in ``Annotated[str, resource_argument("dataset", help="...")]``.
-    The help gets :data:`PATH_HELP` appended.
+    The help gets :data:`PATH_HELP` appended. With ``resolve=False`` the
+    command gets a path as given and looks it up itself (a RID of a known
+    wrong kind is still refused); ``--emit-code`` then can't render the path,
+    so such a command declares ``no_emit_code``.
     """
     import typer
 
     return typer.Argument(
-        help=_with_path_help(help), click_type=ResourceRef(kind), **kwargs
+        help=_with_path_help(help),
+        click_type=ResourceRef(kind, resolve=resolve),
+        **kwargs,
     )
 
 

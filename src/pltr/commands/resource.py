@@ -3,20 +3,23 @@ Resource commands (Foundry filesystem API).
 """
 
 import difflib
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+import click
 import typer
 from typing_extensions import Annotated
 
 from ..contract import (
     AllPagesOption,
     Columns,
+    ExitCode,
     ForceAliasOption,
     FormatOption,
     MaxPagesOption,
     OutputOption,
     PageSizeOption,
     PageTokenOption,
+    PltrError,
     ProfileOption,
     YesOption,
     collect_pages,
@@ -31,12 +34,15 @@ from ..contract import (
     success,
     warn,
 )
+from ..contract.hints import suggest
+from ..contract.resources import rid_service_and_type
 from ..services.resource import (
     DEFAULT_MAX_SEARCH_FOLDERS,
     MAX_BATCH_SIZE,
     ROOT_FOLDER_RID,
     ROOT_FOLDER_UNSUPPORTED,
     ResourceService,
+    format_seconds,
     normalize_resource_type,
     resource_types,
 )
@@ -231,6 +237,130 @@ def get_resource_by_path(
     cache_rid(resource.rid)
     emit(
         resource,
+        format=format,
+        output=output,
+        columns=RESOURCE_COLUMNS,
+        title="Resource",
+    )
+
+
+#: Default --timeout of `resource wait`, as for --wait (#195).
+DEFAULT_WAIT_TIMEOUT = 600
+
+#: RID formats that are never Compass resources: what they are, and the
+#: command that waits for one. The API answers ResourceNotFound for them, as
+#: for a resource that doesn't exist yet, so `resource wait` refuses them
+#: instead of polling until --timeout.
+NOT_COMPASS_RIDS: Dict[Tuple[str, str], Tuple[str, Optional[str]]] = {
+    ("foundry", "build"): ("a build", "pltr orchestration builds wait"),
+    ("foundry", "job"): ("a job", None),
+    ("foundry", "transaction"): ("a dataset transaction", None),
+    ("scheduler", "schedule"): ("a schedule", None),
+}
+
+WaitTarget = Annotated[
+    str,
+    resource_argument(
+        "resource",
+        help=(
+            "Compass path (or RID) of the resource to wait for, such as a "
+            "transform's output dataset. A resource has no RID until it "
+            "exists, so this is usually its path."
+        ),
+        resolve=False,  # a path that doesn't exist yet is what we wait for
+        autocompletion=complete_rid,
+    ),
+]
+WaitTimeout = Annotated[
+    float,
+    typer.Option(
+        "--timeout",
+        min=0,
+        help="Seconds to wait before giving up (exit 9); 0 checks once.",
+    ),
+]
+
+
+def _check_waitable(value: str) -> None:
+    """Refuse, before any call, a RID that can never be a Compass resource."""
+    parts = rid_service_and_type(value)
+    known = NOT_COMPASS_RIDS.get(parts) if parts else None
+    if known is None:
+        return
+    what, waits_for_it = known
+    raise PltrError(
+        f"{value} is {what}, not a Compass resource: `pltr resource wait` waits "
+        "for datasets, folders and other resources at a Compass path.",
+        error_type="wrong_resource_type",
+        exit_code=ExitCode.USAGE,
+        parameters={"rid": value},
+        suggested_command=(
+            suggest(
+                click.get_current_context(silent=True), *waits_for_it.split(), value
+            )
+            if waits_for_it
+            else None
+        ),
+    )
+
+
+@app.command("wait")
+@pltr_command(
+    sdk=("filesystem.Resource.get_by_path", "filesystem.Resource.get"),
+    no_emit_code=(
+        "it polls until the resource exists. `pltr resource get-by-path "
+        "<path> --emit-code` (or `pltr resource get <rid> --emit-code`) shows "
+        "one lookup."
+    ),
+)
+def wait_for_resource(
+    resource: WaitTarget,
+    timeout: WaitTimeout = DEFAULT_WAIT_TIMEOUT,
+    profile: ProfileOption = None,
+    format: FormatOption = "table",
+    output: OutputOption = None,
+):
+    """Wait until a resource exists at a Compass path (or RID), then print it.
+
+    For the step between a git push to a code repository and a build: on the
+    first push, Foundry's checks create the transform's output dataset, which
+    takes a few minutes. Wait for its path, then build it.
+
+    Polls with backoff (2 s, growing to at most 10 s). "Not found" means "not
+    yet": it keeps polling. Any other error (credentials, permissions, an
+    invalid path or RID) fails at once. Once polling has started, rate limits,
+    5xx and network errors are retried (on the first check they exit 7). Exits
+    0 with the resource as soon as it exists, and 9 if it still doesn't after
+    --timeout seconds (the error's suggestedCommand waits again).
+
+    The public API has no code repository check or commit status, so this
+    can't tell when the checks of a later push have finished: for a dataset
+    that already exists it returns at once.
+    """
+    _check_waitable(resource)
+    again = (
+        ["--timeout", format_seconds(timeout)]
+        if timeout != DEFAULT_WAIT_TIMEOUT
+        else []
+    )
+    resume = suggest(
+        click.get_current_context(silent=True),
+        "pltr",
+        "resource",
+        "wait",
+        resource,
+        *again,
+    )
+    with spinner(f"Waiting for {resource} to exist..."):
+        found = ResourceService(profile=profile).wait_for_resource(
+            resource, timeout=timeout, resume=resume
+        )
+    if found.trash_status not in (None, "NOT_TRASHED"):
+        warn(f"{resource!r} is in the trash ({found.rid}, {found.trash_status}).")
+    cache_rid(found.rid)
+    success(f"Found {found.path} ({found.rid}, {found.type})")
+    emit(
+        found,
         format=format,
         output=output,
         columns=RESOURCE_COLUMNS,

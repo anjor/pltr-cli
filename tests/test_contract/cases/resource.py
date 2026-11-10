@@ -6,6 +6,7 @@ from tests.test_contract.cases import CONTRACT_RID
 SUCCESS = {
     "resource get": [{"json": fs.child_resource(CONTRACT_RID, "Data")}],
     "resource get-by-path": [{"json": fs.child_resource(fs.DATASET_RID, "Data")}],
+    "resource wait": [{"json": fs.child_resource(CONTRACT_RID, "Data")}],
     "resource list": [
         {"json": fs.page([fs.child_resource(fs.DATASET_RID, "Data")], token="next")}
     ],

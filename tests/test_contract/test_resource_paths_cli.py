@@ -88,6 +88,18 @@ def make_app() -> typer.Typer:
         """Get several things."""
         typer.echo(json.dumps({"rids": list(rids)}))
 
+    @things.command("await")
+    @pltr_command(sdk="filesystem.Resource.get_by_path")
+    def await_thing(
+        target: Annotated[
+            str, resource_argument("dataset", help="What to wait for.", resolve=False)
+        ],
+        profile: ProfileOption = None,
+        format: FormatOption = "table",
+    ):
+        """Wait for a thing (resolves its own path, #219)."""
+        typer.echo(json.dumps({"target": target}))
+
     return app
 
 
@@ -322,3 +334,27 @@ def test_the_folder_suggestion_keeps_the_profile(stub_foundry_http) -> None:
     assert error["suggestedCommand"] == (
         f"pltr folder list {FOLDER_RID} --profile staging"
     )
+
+
+def test_a_parameter_can_leave_its_paths_to_the_command(stub_foundry_http) -> None:
+    """resolve=False: the command looks the path up itself (`resource wait`
+    polls a path that doesn't exist yet, #219)."""
+    result = invoke("things", "await", "/S/P/not-there-yet")
+
+    assert stdout_json(result) == {"target": "/S/P/not-there-yet"}
+    assert stub_foundry_http.requests == []
+    things = APP.commands["things"]  # type: ignore[attr-defined]
+    [param] = [p for p in things.commands["await"].params if p.name == "target"]
+    assert isinstance(param.type, ResourceRef)
+    assert PATH_HELP in (param.help or "")
+
+
+def test_a_parameter_that_leaves_paths_still_refuses_a_wrong_kind_rid(
+    stub_foundry_http,
+) -> None:
+    result = invoke("things", "await", FOLDER_RID, "--format", "json")
+
+    assert result.exit_code == 2
+    error = json.loads(result.stderr.strip().splitlines()[-1])
+    assert error["type"] == "wrong_resource_type"
+    assert stub_foundry_http.requests == []

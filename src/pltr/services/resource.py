@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional, Set, Tuple
 
 from ..contract import Page
+from ..contract.resources import is_path
 from .base import BaseService
 
 #: RID of the root folder. Its children are the spaces, but the API can't get
@@ -37,6 +38,15 @@ FOLDER_TYPE = "COMPASS_FOLDER"
 
 #: Short names accepted by ``--type`` (earlier releases documented them).
 TYPE_ALIASES = {"DATASET": "FOUNDRY_DATASET", "FOLDER": "COMPASS_FOLDER"}
+
+#: Most seconds between two polls of ``resource wait``: one cheap GET, for
+#: something (code repository checks) that takes minutes, not hours (#219).
+WAIT_MAX_POLL = 10.0
+
+
+def format_seconds(seconds: float) -> str:
+    """``600``, ``2.5``: a --timeout as the user would type it."""
+    return str(int(seconds)) if float(seconds).is_integer() else repr(float(seconds))
 
 
 def _literal_values(tp: Any) -> List[str]:
@@ -111,6 +121,74 @@ class ResourceService(BaseService):
     def get_resource_by_path(self, path: str) -> Any:
         """Get a resource by absolute path (``Resource.get_by_path``, GA)."""
         return self.service.Resource.get_by_path(path=path)
+
+    def find_resource(self, resource: str) -> Optional[Any]:
+        """The resource at a Compass path or RID, or ``None`` while there is none.
+
+        Only the API's answers for a resource that doesn't exist (or that the
+        account can't see) mean ``None``: 404 ``PathNotFound`` for a path and
+        404 ``ResourceNotFound`` for a RID. Every other error is raised.
+        """
+        from foundry_sdk.v2.filesystem import errors as filesystem_errors
+
+        try:
+            if is_path(resource):
+                return self.get_resource_by_path(resource)
+            return self.get_resource(resource)
+        except (filesystem_errors.PathNotFound, filesystem_errors.ResourceNotFound):
+            return None
+
+    def wait_for_resource(self, resource: str, *, timeout: float, resume: str) -> Any:
+        """Poll until a resource exists at a Compass path or RID (#219).
+
+        Backoff as for ``--wait`` (``pltr.services.waiting``), but at most
+        ``WAIT_MAX_POLL`` seconds between calls. After the first call, rate
+        limits, 5xx and network errors are retried until the deadline; other
+        errors are raised at once.
+
+        Args:
+            resume: the command line that waits again, for the timeout error.
+
+        Raises:
+            WaitTimedOut: (exit 9) still nothing after ``timeout`` seconds.
+        """
+        from ..contract import WaitTimedOut
+        from .waiting import wait_until
+
+        seconds = format_seconds(timeout)
+
+        def timed_out(_: Any) -> Exception:
+            if is_path(resource):
+                message = f"No resource at {resource!r} after {seconds} seconds."
+                parameters = {"path": resource}
+                hint = (
+                    "It may not exist yet (after a git push, a code repository's "
+                    "checks create a transform's output dataset, which can take "
+                    "a few minutes), or your account can't see it, or the path "
+                    "has a typo. Wait again, or check the path."
+                )
+            else:
+                message = f"Resource {resource} doesn't exist after {seconds} seconds."
+                parameters = {"resourceRid": resource}
+                hint = (
+                    "A resource gets its RID when it is created, so check the "
+                    "RID, or that your account can see it. To wait for "
+                    "something that doesn't exist yet, wait for its path."
+                )
+            return WaitTimedOut(
+                message,
+                hint=hint,
+                suggested_command=resume,
+                parameters=parameters,
+            )
+
+        return wait_until(
+            lambda: self.find_resource(resource),
+            lambda found: found is not None,
+            timeout=timeout,
+            on_timeout=timed_out,
+            max_poll=WAIT_MAX_POLL,
+        )
 
     def list_children(
         self,
