@@ -12,6 +12,14 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-10
+
+This release fills the gaps found building a dataset-to-OSDK-app demo with
+a coding agent (#203): build a dataset by its Compass path, wait for a
+pushed transform's output to appear, generate an OSDK package from the pltr
+profile, and deploy a built web app in one command. There are no breaking
+changes.
+
 ### Added
 
 - **Builds from Compass paths: `orchestration builds create --dataset`**
@@ -1420,7 +1428,8 @@ No changes to pltr itself; only the version number changed.
   and OAuth2 profiles, with credentials in the system keyring),
   `pltr verify`, `pltr dataset get` and `pltr dataset create`.
 
-[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/anjor/pltr-cli/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/anjor/pltr-cli/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/anjor/pltr-cli/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/anjor/pltr-cli/compare/v0.15.0...v0.16.0
