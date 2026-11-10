@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from pltr.contract import resolve_json_paths
+from pltr.contract import resolve_json_documents, resolve_json_paths
 from pltr.contract.resources import PathNotFoundError, WrongResourceTypeError
 from tests import foundry_json as fj
 
@@ -153,3 +153,37 @@ def test_a_rid_of_the_wrong_kind_fails_before_any_request(stub_foundry_http) -> 
 def test_an_unknown_kind_is_a_programming_error() -> None:
     with pytest.raises(ValueError):
         resolve_json_paths({}, {"targetRids": "build"}, label="TARGET")
+
+
+def test_several_documents_share_one_lookup(stub_foundry_http) -> None:
+    stub_foundry_http.respond(json=dataset(DS, "sales"))
+    action = {"target": {"type": "manual", "targetRids": ["/Space/Project/sales"]}}
+    trigger = {"type": "datasetUpdated", "datasetRid": "/Space/Project/sales"}
+
+    result = resolve_json_documents(
+        [
+            (action, BUILD_TARGET, "ACTION"),
+            (trigger, {"datasetRid": "dataset"}, "--trigger"),
+            (None, {"projectRids": "project"}, "--scope-mode"),
+        ]
+    )
+
+    assert result == [
+        {"target": {"type": "manual", "targetRids": [DS]}},
+        {"type": "datasetUpdated", "datasetRid": DS},
+        None,
+    ]
+    [request] = stub_foundry_http.requests
+    assert request.url.path == "/api/v2/filesystem/resources/getByPath"
+
+
+def test_every_rid_is_checked_before_any_lookup(stub_foundry_http) -> None:
+    with pytest.raises(WrongResourceTypeError):
+        resolve_json_documents(
+            [
+                ({"targetRids": ["/Space/Project/sales"]}, BUILD_TARGET, "ACTION"),
+                ({"projectRids": [DS]}, {"projectRids": "project"}, "--scope-mode"),
+            ]
+        )
+
+    assert stub_foundry_http.requests == []

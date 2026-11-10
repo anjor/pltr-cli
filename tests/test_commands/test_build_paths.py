@@ -210,12 +210,38 @@ def test_a_bare_rid_or_path_as_target_points_at_dataset(
     assert stub_foundry_http.requests == []
 
 
+def test_a_json_file_without_at_suggests_the_at_form(stub_foundry_http) -> None:
+    result = run_json("/tmp/target.json")
+
+    assert result.exit_code == 2
+    assert "@/tmp/target.json" in error_of(result)["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_a_second_path_after_dataset_says_to_repeat_dataset(
+    stub_foundry_http,
+) -> None:
+    # `--dataset A B`: B is parsed as TARGET
+    result = run_json("--dataset", SALES, ORDERS)
+
+    assert result.exit_code == 2
+    error = error_of(result)
+    assert error["type"] == "usage_error"
+    assert "repeat --dataset" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
 def test_help_shows_both_forms() -> None:
-    result = run("--help")
+    result = runner.invoke(
+        app,
+        ["orchestration", "builds", "create", "--help"],
+        env={"COLUMNS": "1000", "PLTR_FORMAT": "table"},
+    )
 
     assert result.exit_code == 0
     assert "--dataset" in result.stdout
-    assert "Compass path" in result.stdout
+    assert "Compass paths allowed in its RID fields" in result.stdout
+    assert "In targetRids, inputRids and ignoredRids a Compass path" in result.stdout
 
 
 # --------------------------------------------- builds create: paths in TARGET
@@ -352,45 +378,117 @@ def test_emit_code_looks_the_path_up(stub_foundry_http, monkeypatch, args) -> No
 SCHEDULES = "/api/v2/orchestration/schedules"
 
 
-def test_schedule_create_resolves_paths_in_action_trigger_and_scope(
+def schedule_create(*args: str) -> Any:
+    return runner.invoke(
+        app, ["orchestration", "schedules", "create", *args, "--format", "json"]
+    )
+
+
+def action(*target_rids: str) -> str:
+    return json.dumps({"target": {"type": "manual", "targetRids": list(target_rids)}})
+
+
+def trigger(dataset_rid: str) -> str:
+    return json.dumps(
+        {"type": "datasetUpdated", "datasetRid": dataset_rid, "branchName": "master"}
+    )
+
+
+def test_schedule_create_resolves_all_its_paths_in_one_lookup(
     stub_foundry_http,
 ) -> None:
     project = fj.resource(fj.PROJECT_RID, "Project")
     project["path"] = "/Space/Project"
-    stub_foundry_http.respond(json=dataset(DS, "sales"))  # ACTION
-    stub_foundry_http.respond(json=dataset(DS_2, "orders"))  # --trigger
-    stub_foundry_http.respond(json=project)  # --scope-mode
+    stub_foundry_http.respond(
+        json={"data": [dataset(DS, "sales"), dataset(DS_2, "orders"), project]}
+    )
     stub_foundry_http.respond(json=fo.schedule())
 
-    result = runner.invoke(
-        app,
-        [
-            "orchestration",
-            "schedules",
-            "create",
-            json.dumps({"target": {"type": "manual", "targetRids": [SALES]}}),
-            "--trigger",
-            json.dumps(
-                {"type": "datasetUpdated", "datasetRid": ORDERS, "branchName": "master"}
-            ),
-            "--scope-mode",
-            json.dumps({"type": "project", "projectRids": ["/Space/Project"]}),
-            "--format",
-            "json",
-        ],
+    result = schedule_create(
+        action(SALES),
+        "--trigger",
+        trigger(ORDERS),
+        "--scope-mode",
+        json.dumps({"type": "project", "projectRids": ["/Space/Project"]}),
     )
 
     assert result.exit_code == 0, result.stderr
-    assert paths(stub_foundry_http) == [
-        GET_BY_PATH,
-        GET_BY_PATH,
-        GET_BY_PATH,
-        SCHEDULES,
+    assert paths(stub_foundry_http) == [GET_BY_PATH_BATCH, SCHEDULES]
+    assert json.loads(stub_foundry_http.requests[0].content) == [
+        {"path": SALES},
+        {"path": ORDERS},
+        {"path": "/Space/Project"},
     ]
     sent = body(stub_foundry_http.requests[-1])
     assert sent["action"]["target"]["targetRids"] == [DS]
     assert sent["trigger"]["datasetRid"] == DS_2
     assert sent["scopeMode"]["projectRids"] == [fj.PROJECT_RID]
+
+
+def test_the_same_path_in_action_and_trigger_is_looked_up_once(
+    stub_foundry_http,
+) -> None:
+    stub_foundry_http.respond(json=dataset(DS, "sales"))
+    stub_foundry_http.respond(json=fo.schedule())
+
+    result = schedule_create(action(SALES), "--trigger", trigger(SALES))
+
+    assert result.exit_code == 0, result.stderr
+    assert paths(stub_foundry_http) == [GET_BY_PATH, SCHEDULES]
+    sent = body(stub_foundry_http.requests[-1])
+    assert sent["action"]["target"]["targetRids"] == [DS]
+    assert sent["trigger"]["datasetRid"] == DS
+
+
+def test_a_wrong_kind_rid_in_scope_fails_before_any_lookup(
+    stub_foundry_http,
+) -> None:
+    result = schedule_create(
+        action(SALES),
+        "--scope-mode",
+        json.dumps({"type": "project", "projectRids": [DS]}),
+    )
+
+    assert result.exit_code == 2
+    error = error_of(result)
+    assert error["type"] == "wrong_resource_type"
+    assert "projectRids in --scope-mode" in error["message"]
+    assert stub_foundry_http.requests == []
+
+
+def test_a_media_set_path_in_a_trigger(stub_foundry_http) -> None:
+    media_set = fj.resource(fo.MEDIA_SET_RID, "images", "MIO_MEDIA_SET")
+    stub_foundry_http.respond(json=media_set)
+    stub_foundry_http.respond(json=fo.schedule())
+
+    result = schedule_create(
+        action(DS),
+        "--trigger",
+        json.dumps(
+            {
+                "type": "mediaSetUpdated",
+                "mediaSetRid": "/Space/Project/images",
+                "branchName": "master",
+            }
+        ),
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert body(stub_foundry_http.requests[-1])["trigger"]["mediaSetRid"] == (
+        fo.MEDIA_SET_RID
+    )
+
+
+def test_a_missing_path_in_a_trigger_creates_no_schedule(stub_foundry_http) -> None:
+    stub_foundry_http.respond(
+        404, json=fj.error("PathNotFound", parameters={"path": ORDERS})
+    )
+
+    result = schedule_create(action(DS), "--trigger", trigger(ORDERS))
+
+    assert result.exit_code == 5
+    assert error_of(result)["type"] == "path_not_found"
+    assert paths(stub_foundry_http) == [GET_BY_PATH]
 
 
 def test_schedule_scope_refuses_a_folder_that_is_not_a_project(

@@ -519,46 +519,48 @@ def resolve_json_paths(
 ) -> Any:
     """Replace Compass paths in a JSON argument's RID fields with their RIDs.
 
-    ``fields`` maps the JSON keys that the SDK types as Compass resource RIDs
-    (``targetRids``, ``datasetRid``) to the kind of resource each takes
-    (:data:`KINDS`). Wherever such a key appears in ``document``, at any
-    depth, a value that starts with ``/`` (the value itself, or an item of a
-    list) is a path: all of them are resolved in one call
-    (:func:`resolve_paths`), checked against their field's kind, reported
-    on stderr (text mode only) and replaced by their RIDs. RIDs of a known
-    wrong kind fail before any call. Other keys are left alone, whatever
-    their values. ``label`` names the argument in messages (``TARGET``,
-    ``--trigger``), after the field: ``targetRids in TARGET``.
+    ``fields`` maps the JSON keys that hold resource RIDs in the SDK's
+    model (``targetRids``, ``datasetRid``) to the kind of resource each
+    takes (:data:`KINDS`; ``resource`` for any). Wherever such a key appears
+    in ``document``, at any depth, a value that starts with ``/`` (the value
+    itself, or an item of a list) is a path: all of them are resolved in one
+    call (:func:`resolve_paths`), checked against their field's kind,
+    reported on stderr (text mode only) and replaced by their RIDs. RIDs of a
+    known wrong kind fail before any call. Other keys are left alone,
+    whatever their values. ``label`` names the argument in messages
+    (``TARGET``, ``--trigger``), after the field: ``targetRids in TARGET``.
 
     Returns a new document (``document`` itself when it holds no path) and
     makes no call when there is no path. With ``--emit-code`` the paths are
-    marked for the snippet to look up instead.
+    marked for the snippet to look up instead. For a command with several
+    JSON arguments, use :func:`resolve_json_documents`.
     """
-    for name in fields.values():
-        if name not in KINDS:
-            raise ValueError(f"Unknown resource kind: {name!r}")
-    kinds = {key: KINDS[name] for key, name in fields.items()}
+    return resolve_json_documents([(document, fields, label)], profile=profile)[0]
+
+
+def resolve_json_documents(
+    documents: Sequence[Tuple[Any, Mapping[str, str], str]],
+    *,
+    profile: Optional[str] = None,
+) -> List[Any]:
+    """:func:`resolve_json_paths` for several JSON arguments at once.
+
+    ``documents`` holds ``(document, fields, label)`` triples. Every RID is
+    checked before any call, and the paths of all the documents are
+    resolved in one call (a path given twice is looked up once). Returns
+    the documents in the same order.
+    """
     wanted: List[Tuple[str, ResourceKind, str]] = []
-
-    def visit(node: Any) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if key in kinds and isinstance(value, (str, list)):
-                    where = f"{key} in {label}"
-                    for item in _values(value):
-                        if is_path(item):
-                            wanted.append((item, kinds[key], where))
-                        elif isinstance(item, str):
-                            check_rid_kind(item, kinds[key], where, profile)
-                else:
-                    visit(value)
-        elif isinstance(node, list):
-            for item in node:
-                visit(item)
-
-    visit(document)
+    prepared: List[Tuple[Any, Dict[str, ResourceKind]]] = []
+    for document, fields, label in documents:
+        for name in fields.values():
+            if name not in KINDS:
+                raise ValueError(f"Unknown resource kind: {name!r}")
+        kinds = {key: KINDS[name] for key, name in fields.items()}
+        _collect_paths(document, kinds, label, profile, wanted)
+        prepared.append((document, kinds))
     if not wanted:
-        return document
+        return [document for document, _ in prepared]
 
     from .emit import emit_mode
 
@@ -566,9 +568,35 @@ def resolve_json_paths(
         # Nothing is called: the snippet looks the paths up (#192).
         from .codegen import PathValue
 
-        return _replace_paths(document, kinds, PathValue)
+        return [_replace_paths(doc, kinds, PathValue) for doc, kinds in prepared]
     rids = _look_up(wanted, profile)
-    return _replace_paths(document, kinds, lambda path: rids[path])
+    return [
+        _replace_paths(doc, kinds, lambda path: rids[path]) for doc, kinds in prepared
+    ]
+
+
+def _collect_paths(
+    node: Any,
+    kinds: Mapping[str, ResourceKind],
+    label: str,
+    profile: Optional[str],
+    wanted: List[Tuple[str, ResourceKind, str]],
+) -> None:
+    """Add the paths in ``node``'s RID fields to ``wanted``; check its RIDs."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in kinds and isinstance(value, (str, list)):
+                where = f"{key} in {label}"
+                for item in _values(value):
+                    if is_path(item):
+                        wanted.append((item, kinds[key], where))
+                    elif isinstance(item, str):
+                        check_rid_kind(item, kinds[key], where, profile)
+            else:
+                _collect_paths(value, kinds, label, profile, wanted)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_paths(item, kinds, label, profile, wanted)
 
 
 def _replace_paths(node: Any, kinds: Mapping[str, Any], replace: Any) -> Any:

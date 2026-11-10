@@ -31,6 +31,7 @@ from ..contract import (
     info,
     load_json_input,
     pltr_command,
+    resolve_json_documents,
     resolve_json_paths,
     resource_option,
     spinner,
@@ -239,8 +240,9 @@ BUILD_TARGET_PATHS = {
     "inputRids": "resource",
     "ignoredRids": "resource",
 }
-#: RID fields of a schedule trigger that take paths (``ScheduleSucceeded``'s
-#: ``scheduleRid`` names a schedule, not a Compass resource).
+#: RID fields of a schedule trigger that take paths (the ``scheduleRid`` of
+#: ``scheduleSucceeded``/``scheduleFailed`` names a schedule, not a Compass
+#: resource, and pltr has no kind for ``tableUpdated``'s ``tableRid``).
 TRIGGER_PATHS = {"datasetRid": "dataset", "mediaSetRid": "media-set"}
 #: RID fields of a schedule's project scope that take paths.
 SCOPE_MODE_PATHS = {"projectRids": "project"}
@@ -261,6 +263,13 @@ def _one_build_target(ctx: click.Context, param: click.Parameter, value: Any) ->
         return unchanged
     target = value if param.name == "target" else ctx.params[other]
     datasets = value if param.name == "datasets" else ctx.params[other]
+    if target is not None and datasets and target.startswith(("/", "ri.")):
+        # `--dataset A B`: B was parsed as TARGET
+        raise click.UsageError(
+            f"{target!r} was read as TARGET: repeat --dataset for each dataset "
+            "(--dataset A --dataset B).",
+            ctx=ctx,
+        )
     if target is not None and datasets:
         raise click.UsageError(
             "Give TARGET or --dataset, not both: --dataset builds exactly those "
@@ -294,20 +303,23 @@ def _schedule_json(
 ) -> Tuple[Any, Any, Any]:
     """A schedule's ACTION, --trigger and --scope-mode JSON, with the Compass
     paths in their RID fields resolved (#218)."""
-    action_json = load_json_input(action, param_hint="ACTION")
-    trigger_json = _optional_json(trigger, "'--trigger'")
-    scope_json = _optional_json(scope_mode, "'--scope-mode'")
-    return (
-        resolve_json_paths(
-            action_json, BUILD_TARGET_PATHS, label="ACTION", profile=profile
-        ),
-        resolve_json_paths(
-            trigger_json, TRIGGER_PATHS, label="--trigger", profile=profile
-        ),
-        resolve_json_paths(
-            scope_json, SCOPE_MODE_PATHS, label="--scope-mode", profile=profile
-        ),
+    action_json, trigger_json, scope_json = resolve_json_documents(
+        [
+            (
+                load_json_input(action, param_hint="ACTION"),
+                BUILD_TARGET_PATHS,
+                "ACTION",
+            ),
+            (_optional_json(trigger, "'--trigger'"), TRIGGER_PATHS, "--trigger"),
+            (
+                _optional_json(scope_mode, "'--scope-mode'"),
+                SCOPE_MODE_PATHS,
+                "--scope-mode",
+            ),
+        ],
+        profile=profile,
     )
+    return action_json, trigger_json, scope_json
 
 
 # ------------------------------------------------------------------ builds
@@ -447,8 +459,10 @@ def create_build(
         assert target is not None  # _one_build_target
         if target.startswith(("/", "ri.")):  # a path or RID, not JSON
             raise typer.BadParameter(
-                "TARGET is build target JSON; to build a dataset by RID or "
-                f"path, use --dataset {shlex.quote(target)}",
+                "TARGET is build target JSON, inline or @file.json"
+                + (f" (@{target} for that file)" if target.startswith("/") else "")
+                + "; to build a dataset by RID or path, use "
+                f"--dataset {shlex.quote(target)}",
                 param_hint="TARGET",
             )
         target_json = resolve_json_paths(
@@ -879,8 +893,8 @@ def get_schedule(
 
 
 _ACTION_HELP = (
-    "What the schedule builds, as JSON or @file.json in the API's shape "
-    "(Compass paths work in the target's RID fields), e.g. "
+    "What the schedule builds, as JSON or @file.json (paths work in the "
+    "target's RID fields), e.g. "
     '\'{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, '
     '"branchName": "master"}\'.'
 )

@@ -137,7 +137,7 @@ Inspect, run and manage schedules
 
 `pltr orchestration schedules create ACTION [OPTIONS]`
 
-- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape (Compass paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}...
+- `ACTION`: What the schedule builds, as JSON or @file.json (paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, "branchName": "master"}'.
 - `--name` TEXT: Display name of the schedule.
 - `--description` TEXT: Description of the schedule.
 - `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape (a datasetRid or mediaSetRid can be a Compass path), e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.
@@ -178,7 +178,7 @@ Pause a schedule: its trigger no longer starts builds.
 `pltr orchestration schedules replace SCHEDULE_RID ACTION [OPTIONS]`
 
 - `SCHEDULE_RID`: Schedule RID (ri.scheduler.main.schedule.<id>).
-- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape (Compass paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}...
+- `ACTION`: What the schedule builds, as JSON or @file.json (paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, "branchName": "master"}'.
 - `--name` TEXT: Display name of the schedule.
 - `--description` TEXT: Description of the schedule.
 - `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape (a datasetRid or mediaSetRid can be a Compass path), e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.

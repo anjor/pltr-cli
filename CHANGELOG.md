@@ -18,9 +18,9 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   (#218). `--dataset <RID or path>` (repeatable) builds exactly those
   datasets, the same as a `{"type": "manual", "targetRids": [...]}` TARGET,
   which is then left out; giving both, or neither, is a usage error (exit 2).
-  Inside JSON arguments, the fields the SDK types as Compass resource RIDs
-  now take paths too, resolved in one lookup before the request (a missing
-  path is `path_not_found`, exit 5): `targetRids`, `inputRids` and
+  Inside JSON arguments, these RID fields now take Compass paths too,
+  resolved in one lookup per command before the request (a missing path is
+  `path_not_found`, exit 5): `targetRids`, `inputRids` and
   `ignoredRids` in `builds create`'s TARGET and in `schedules
   create`/`replace`'s ACTION; `datasetRid` and `mediaSetRid` in `--trigger`;
   `projectRids` in `--scope-mode`; and the subject's `datasetRid` in
