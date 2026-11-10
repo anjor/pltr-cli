@@ -21,6 +21,7 @@ from ..contract import (
     emit,
     load_json_input,
     pltr_command,
+    resolve_json_paths,
     spinner,
     success,
 )
@@ -104,7 +105,10 @@ def create_check(
     config: Annotated[
         str,
         typer.Argument(
-            help="Check configuration as JSON or @file.json (see below).",
+            help=(
+                "Check configuration as JSON or @file.json; the subject's "
+                "datasetRid can be a Compass path (see below)."
+            ),
             show_default=False,
         ),
     ],
@@ -118,7 +122,8 @@ def create_check(
 
     CONFIG is the check configuration in the API's JSON shape. Its 'type'
     picks the kind of check, and 'subject' says what it checks (a dataset
-    and branch, or a schedule). Types: allowedColumnValues,
+    and branch, or a schedule; the subject's datasetRid can be a Compass
+    path such as /Space/Project/name). Types: allowedColumnValues,
     approximateUniquePercentage, buildDuration, buildStatus, columnType,
     dateColumnRange, jobDuration, jobStatus, nullPercentage,
     numericColumnMean, numericColumnMedian, numericColumnRange, primaryKey,
@@ -141,7 +146,12 @@ def create_check(
         # Create from a JSON file
         pltr data-health check create @check-config.json --format json
     """
-    config_json = load_json_input(config, param_hint="CONFIG")
+    config_json = resolve_json_paths(
+        load_json_input(config, param_hint="CONFIG"),
+        {"datasetRid": "dataset"},  # in the subject (#218)
+        label="CONFIG",
+        profile=profile,
+    )
     with spinner("Creating check..."):
         check = DataHealthService(profile=profile).create_check(
             config=config_json, intent=intent

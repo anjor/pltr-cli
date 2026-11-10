@@ -15,7 +15,7 @@ Create, inspect, replace and delete checks
 
 `pltr data-health check create CONFIG [OPTIONS]`
 
-- `CONFIG`: Check configuration as JSON or @file.json (see below).
+- `CONFIG`: Check configuration as JSON or @file.json; the subject's datasetRid can be a Compass path (see below).
 - `--intent`, `-i` TEXT: Why the check was set up.
 - beta · SDK: `data_health.Check.create`
 

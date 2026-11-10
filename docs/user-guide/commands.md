@@ -464,8 +464,10 @@ with code 8, and `--timeout` with code 9 (the query keeps running). `sql results
 pltr orchestration builds search --status FAILED --branch master --order-by STARTED_TIME:DESC
 pltr orchestration builds search --started-after 2026-01-31T00:00:00Z --all --format json
 
-# Build a dataset (manual, upstream or connecting target) and follow it
-pltr orchestration builds create '{"type": "manual", "targetRids": ["<dataset-rid>"]}' --branch master
+# Build datasets (by RID or path) and follow the build
+pltr orchestration builds create --dataset /Space/Project/sales --branch master --wait
+# Or give the build target as JSON (manual, upstream or connecting); paths work inside it
+pltr orchestration builds create '{"type": "upstream", "targetRids": ["/Space/Project/sales"], "ignoredRids": []}'
 pltr orchestration builds get <build-rid>
 pltr orchestration builds jobs <build-rid>
 pltr orchestration builds cancel <build-rid> --yes
@@ -483,6 +485,12 @@ pltr orchestration schedules delete <schedule-rid> --yes
 ```
 
 `builds create --help` documents the three build target types.
+`--dataset` (repeatable) builds exactly the datasets you name, like a manual
+target; give it or TARGET, not both. In JSON, Compass paths work in the RID
+fields of build targets (`targetRids`, `inputRids`, `ignoredRids`, also in a
+schedule's ACTION), schedule triggers (`datasetRid`, `mediaSetRid`) and
+`--scope-mode` (`projectRids`), and in the subject of `data-health check
+create`. pltr looks them up before the request.
 `schedules replace` replaces the whole definition: fields you leave out
 aren't kept.
 

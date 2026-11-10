@@ -2,9 +2,10 @@
 Orchestration commands: builds, jobs and schedules (Foundry orchestration API).
 """
 
+import shlex
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import typer
@@ -30,6 +31,8 @@ from ..contract import (
     info,
     load_json_input,
     pltr_command,
+    resolve_json_paths,
+    resource_option,
     spinner,
     success,
 )
@@ -206,7 +209,8 @@ TriggerOption = Annotated[
     typer.Option(
         "--trigger",
         help=(
-            "When the schedule runs, as JSON or @file.json in the API's shape, "
+            "When the schedule runs, as JSON or @file.json in the API's shape "
+            "(a datasetRid or mediaSetRid can be a Compass path), "
             'e.g. \'{"type": "time", "cronExpression": "0 6 * * *", '
             '"timeZone": "UTC"}\'.'
         ),
@@ -217,12 +221,60 @@ ScopeModeOption = Annotated[
     typer.Option(
         "--scope-mode",
         help=(
-            "Whose permissions the schedule's builds use, as JSON or @file.json: "
+            "Whose permissions the schedule's builds use, as JSON or @file.json "
+            "(projectRids can be Compass paths): "
             '\'{"type": "project", "projectRids": ["<project RID>"]}\' or '
             '\'{"type": "user"}\'.'
         ),
     ),
 ]
+
+
+#: RID fields of a build target (manual, upstream, connecting) that take
+#: Compass paths too (#218). The SDK types them ``BuildableRid``, which is
+#: open-ended (datasets, media sets, restricted views, ...), so the API
+#: checks the resource type.
+BUILD_TARGET_PATHS = {
+    "targetRids": "resource",
+    "inputRids": "resource",
+    "ignoredRids": "resource",
+}
+#: RID fields of a schedule trigger that take paths (``ScheduleSucceeded``'s
+#: ``scheduleRid`` names a schedule, not a Compass resource).
+TRIGGER_PATHS = {"datasetRid": "dataset", "mediaSetRid": "media-set"}
+#: RID fields of a schedule's project scope that take paths.
+SCOPE_MODE_PATHS = {"projectRids": "project"}
+
+
+def _one_build_target(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
+    """Exactly one of TARGET and --dataset (#218).
+
+    Runs as a callback of both, so the check happens while the command line
+    is parsed, before any path is resolved: whichever is processed second
+    sees the other in ``ctx.params``.
+    """
+    # Typer turns an empty list option into None before calling this and
+    # converts what it returns again: give back the empty tuple click had.
+    unchanged = () if value is None and getattr(param, "multiple", False) else value
+    other = "datasets" if param.name == "target" else "target"
+    if ctx.resilient_parsing or other not in ctx.params:
+        return unchanged
+    target = value if param.name == "target" else ctx.params[other]
+    datasets = value if param.name == "datasets" else ctx.params[other]
+    if target is not None and datasets:
+        raise click.UsageError(
+            "Give TARGET or --dataset, not both: --dataset builds exactly those "
+            "datasets (a manual target); use TARGET's JSON for an upstream or "
+            "connecting build.",
+            ctx=ctx,
+        )
+    if target is None and not datasets:
+        raise click.UsageError(
+            "Give what to build: --dataset <RID or path> (repeatable), or TARGET "
+            "as build target JSON.",
+            ctx=ctx,
+        )
+    return unchanged
 
 
 def _split_rids(values: List[str]) -> List[str]:
@@ -232,6 +284,30 @@ def _split_rids(values: List[str]) -> List[str]:
 
 def _optional_json(value: Optional[str], param_hint: str) -> Any:
     return None if value is None else load_json_input(value, param_hint=param_hint)
+
+
+def _schedule_json(
+    action: str,
+    trigger: Optional[str],
+    scope_mode: Optional[str],
+    profile: Optional[str],
+) -> Tuple[Any, Any, Any]:
+    """A schedule's ACTION, --trigger and --scope-mode JSON, with the Compass
+    paths in their RID fields resolved (#218)."""
+    action_json = load_json_input(action, param_hint="ACTION")
+    trigger_json = _optional_json(trigger, "'--trigger'")
+    scope_json = _optional_json(scope_mode, "'--scope-mode'")
+    return (
+        resolve_json_paths(
+            action_json, BUILD_TARGET_PATHS, label="ACTION", profile=profile
+        ),
+        resolve_json_paths(
+            trigger_json, TRIGGER_PATHS, label="--trigger", profile=profile
+        ),
+        resolve_json_paths(
+            scope_json, SCOPE_MODE_PATHS, label="--scope-mode", profile=profile
+        ),
+    )
 
 
 # ------------------------------------------------------------------ builds
@@ -263,12 +339,30 @@ def get_build(
 )
 def create_build(
     target: Annotated[
-        str,
+        Optional[str],
         typer.Argument(
-            help="What to build, as JSON or @file.json (see the examples below).",
+            help=(
+                "What to build, as JSON or @file.json, with Compass paths "
+                "allowed in its RID fields (see the examples below); leave it "
+                "out when you use --dataset."
+            ),
             show_default=False,
+            callback=_one_build_target,
         ),
-    ],
+    ] = None,
+    datasets: Annotated[
+        Optional[List[str]],
+        resource_option(
+            "--dataset",
+            kind="dataset",
+            help=(
+                "Dataset RID to build, instead of TARGET (repeat for several): "
+                "builds exactly these datasets, like a manual target."
+            ),
+            show_default=False,
+            callback=_one_build_target,
+        ),
+    ] = None,
     branch_name: Annotated[
         Optional[str],
         typer.Option("--branch", help="Branch to build on."),
@@ -317,8 +411,9 @@ def create_build(
 ):
     """Start a build of datasets (or other build targets).
 
-    TARGET is a JSON object (inline or @file.json) in the API's shape, with a
-    'type' that picks the build strategy:
+    To build datasets, name them with --dataset (a RID or a Compass path,
+    repeatable). Otherwise TARGET is a JSON object (inline or @file.json) in
+    the API's shape, with a 'type' that picks the build strategy:
 
     \b
     manual: build exactly these targets
@@ -330,18 +425,38 @@ def create_build(
       {"type": "connecting", "inputRids": ["ri.foundry.main.dataset.in"],
        "targetRids": ["ri.foundry.main.dataset.out"], "ignoredRids": []}
 
+    In targetRids, inputRids and ignoredRids a Compass path
+    (/Space/Project/name) works too: pltr looks it up and sends the RID.
+
     Follow the build with 'pltr orchestration builds get <build RID>' and
-    its jobs with 'pltr orchestration builds jobs <build RID>'.
+    its jobs with 'pltr orchestration builds jobs <build RID>', or add
+    --wait.
 
     Examples:
 
     \b
+      pltr orchestration builds create --dataset /Space/Project/sales \\
+        --branch master --wait
       pltr orchestration builds create \\
-        '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}' \\
-        --branch master
+        '{"type": "upstream", "targetRids": ["/Space/Project/sales"], "ignoredRids": []}'
       pltr orchestration builds create @target.json --force --format json
     """
-    target_json = load_json_input(target, param_hint="TARGET")
+    if datasets:
+        target_json: Any = {"type": "manual", "targetRids": list(datasets)}
+    else:
+        assert target is not None  # _one_build_target
+        if target.startswith(("/", "ri.")):  # a path or RID, not JSON
+            raise typer.BadParameter(
+                "TARGET is build target JSON; to build a dataset by RID or "
+                f"path, use --dataset {shlex.quote(target)}",
+                param_hint="TARGET",
+            )
+        target_json = resolve_json_paths(
+            load_json_input(target, param_hint="TARGET"),
+            BUILD_TARGET_PATHS,
+            label="TARGET",
+            profile=profile,
+        )
     with spinner("Starting build..."):
         build = OrchestrationService(profile=profile).create_build(
             target=target_json,
@@ -764,7 +879,8 @@ def get_schedule(
 
 
 _ACTION_HELP = (
-    "What the schedule builds, as JSON or @file.json in the API's shape, e.g. "
+    "What the schedule builds, as JSON or @file.json in the API's shape "
+    "(Compass paths work in the target's RID fields), e.g. "
     '\'{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, '
     '"branchName": "master"}\'.'
 )
@@ -800,9 +916,9 @@ def create_schedule(
         --name "Nightly build" \\
         --trigger '{"type": "time", "cronExpression": "0 2 * * *", "timeZone": "UTC"}'
     """
-    action_json = load_json_input(action, param_hint="ACTION")
-    trigger_json = _optional_json(trigger, "'--trigger'")
-    scope_json = _optional_json(scope_mode, "'--scope-mode'")
+    action_json, trigger_json, scope_json = _schedule_json(
+        action, trigger, scope_mode, profile
+    )
     with spinner("Creating schedule..."):
         schedule = OrchestrationService(profile=profile).create_schedule(
             action=action_json,
@@ -844,9 +960,9 @@ def replace_schedule(
     trigger, scope mode). Read the current definition first with
     'pltr orchestration schedules get <RID> --format json'.
     """
-    action_json = load_json_input(action, param_hint="ACTION")
-    trigger_json = _optional_json(trigger, "'--trigger'")
-    scope_json = _optional_json(scope_mode, "'--scope-mode'")
+    action_json, trigger_json, scope_json = _schedule_json(
+        action, trigger, scope_mode, profile
+    )
     confirm_destructive(f"Replace the definition of schedule {schedule_rid}?", yes=yes)
     with spinner(f"Replacing schedule {schedule_rid}..."):
         schedule = OrchestrationService(profile=profile).replace_schedule(
@@ -1030,9 +1146,8 @@ def main():
     Examples:
 
     \b
-        # Start a build and follow it
-        pltr orchestration builds create \\
-            '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}'
+        # Start a build of a dataset (RID or path) and follow it
+        pltr orchestration builds create --dataset /Space/Project/sales
         pltr orchestration builds get <BUILD_RID>
         pltr orchestration builds jobs <BUILD_RID>
     \b

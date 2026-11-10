@@ -7,9 +7,8 @@ Everything is addressed by RID: builds (ri.foundry.main.build.<id>), jobs (ri.fo
 
 Examples:
 
-        # Start a build and follow it
-        pltr orchestration builds create \
-            '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}'
+        # Start a build of a dataset (RID or path) and follow it
+        pltr orchestration builds create --dataset /Space/Project/sales
         pltr orchestration builds get <BUILD_RID>
         pltr orchestration builds jobs <BUILD_RID>
         # Find recent failed builds
@@ -38,9 +37,10 @@ Cancel a build's unfinished jobs.
 
 Start a build of datasets (or other build targets).
 
-`pltr orchestration builds create TARGET [OPTIONS]`
+`pltr orchestration builds create [TARGET] [OPTIONS]`
 
-- `TARGET`: What to build, as JSON or @file.json (see the examples below).
+- `TARGET` (optional): What to build, as JSON or @file.json, with Compass paths allowed in its RID fields (see the examples below); leave it out when you use --dataset.
+- `--dataset` RID|PATH (repeatable): Dataset RID to build, instead of TARGET (repeat for several): builds exactly these datasets, like a manual target.
 - `--branch` TEXT: Branch to build on.
 - `--fallback-branch` TEXT (repeatable): Branch to read an input from when it doesn't exist on --branch (repeat for several, in order).
 - `--force`: Build even if the outputs are already up to date.
@@ -137,11 +137,11 @@ Inspect, run and manage schedules
 
 `pltr orchestration schedules create ACTION [OPTIONS]`
 
-- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape, e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, "branchName": "master"}'.
+- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape (Compass paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}...
 - `--name` TEXT: Display name of the schedule.
 - `--description` TEXT: Description of the schedule.
-- `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape, e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.
-- `--scope-mode` TEXT: Whose permissions the schedule's builds use, as JSON or @file.json: '{"type": "project", "projectRids": ["<project RID>"]}' or '{"type": "user"}'.
+- `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape (a datasetRid or mediaSetRid can be a Compass path), e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.
+- `--scope-mode` TEXT: Whose permissions the schedule's builds use, as JSON or @file.json (projectRids can be Compass paths): '{"type": "project", "projectRids": ["<project RID>"]}' or '{"type": "user"}'.
 - beta · SDK: `orchestration.Schedule.create`
 
 ### pltr orchestration schedules delete
@@ -178,11 +178,11 @@ Pause a schedule: its trigger no longer starts builds.
 `pltr orchestration schedules replace SCHEDULE_RID ACTION [OPTIONS]`
 
 - `SCHEDULE_RID`: Schedule RID (ri.scheduler.main.schedule.<id>).
-- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape, e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}, "branchName": "master"}'.
+- `ACTION`: What the schedule builds, as JSON or @file.json in the API's shape (Compass paths work in the target's RID fields), e.g. '{"target": {"type": "manual", "targetRids": ["<dataset RID>"]}...
 - `--name` TEXT: Display name of the schedule.
 - `--description` TEXT: Description of the schedule.
-- `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape, e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.
-- `--scope-mode` TEXT: Whose permissions the schedule's builds use, as JSON or @file.json: '{"type": "project", "projectRids": ["<project RID>"]}' or '{"type": "user"}'.
+- `--trigger` TEXT: When the schedule runs, as JSON or @file.json in the API's shape (a datasetRid or mediaSetRid can be a Compass path), e.g. '{"type": "time", "cronExpression": "0 6 * * *", "timeZone": "UTC"}'.
+- `--scope-mode` TEXT: Whose permissions the schedule's builds use, as JSON or @file.json (projectRids can be Compass paths): '{"type": "project", "projectRids": ["<project RID>"]}' or '{"type": "user"}'.
 - beta · **destructive** (asks first; `--yes` skips) · SDK: `orchestration.Schedule.replace`
 
 ### pltr orchestration schedules run

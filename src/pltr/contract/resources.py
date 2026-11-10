@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass
-from typing import Any, Dict, FrozenSet, List, Optional, Sequence
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple
 
 import click
 
@@ -463,22 +463,17 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
                 marked[name] = mark(value)
         return marked
 
-    from pltr.services import base
-
-    from .runtime import info
-
-    client = base.AuthManager().get_client(profile)
-    resolved = resolve_paths(client, [path for path, _ in wanted])
-    for path, param in wanted:
-        assert isinstance(param.type, ResourceRef)
-        check_kind(
-            path, resolved[path], param.type.kind, _parameter_label(param), profile
-        )
-    for path, resource in resolved.items():
-        info(f"Resolved {path!r} to {resource.rid} ({resource.type})")
+    rids = _look_up(
+        [
+            (path, param.type.kind, _parameter_label(param))
+            for path, param in wanted
+            if isinstance(param.type, ResourceRef)
+        ],
+        profile,
+    )
 
     def substitute(value: Any) -> Any:
-        return resolved[value].rid if is_path(value) else value
+        return rids[value] if is_path(value) else value
 
     result = dict(kwargs)
     for param in targets:
@@ -489,6 +484,112 @@ def resolve_resource_paths(kwargs: Dict[str, Any]) -> Dict[str, Any]:
         else:
             result[name] = substitute(value)
     return result
+
+
+def _look_up(
+    wanted: Sequence[Tuple[str, ResourceKind, str]], profile: Optional[str]
+) -> Dict[str, str]:
+    """Resolve ``(path, kind, label)`` triples in one call; return path -> RID.
+
+    Checks each resolved resource against its kind and reports it on stderr
+    (text mode only).
+    """
+    from pltr.services import base
+
+    from .runtime import info
+
+    client = base.AuthManager().get_client(profile)
+    resolved = resolve_paths(client, [path for path, _, _ in wanted])
+    for path, kind, label in wanted:
+        check_kind(path, resolved[path], kind, label, profile)
+    for path, resource in resolved.items():
+        info(f"Resolved {path!r} to {resource.rid} ({resource.type})")
+    return {path: resource.rid for path, resource in resolved.items()}
+
+
+# ------------------------------------------------- paths inside JSON (#218)
+
+
+def resolve_json_paths(
+    document: Any,
+    fields: Mapping[str, str],
+    *,
+    label: str,
+    profile: Optional[str] = None,
+) -> Any:
+    """Replace Compass paths in a JSON argument's RID fields with their RIDs.
+
+    ``fields`` maps the JSON keys that the SDK types as Compass resource RIDs
+    (``targetRids``, ``datasetRid``) to the kind of resource each takes
+    (:data:`KINDS`). Wherever such a key appears in ``document``, at any
+    depth, a value that starts with ``/`` (the value itself, or an item of a
+    list) is a path: all of them are resolved in one call
+    (:func:`resolve_paths`), checked against their field's kind, reported
+    on stderr (text mode only) and replaced by their RIDs. RIDs of a known
+    wrong kind fail before any call. Other keys are left alone, whatever
+    their values. ``label`` names the argument in messages (``TARGET``,
+    ``--trigger``), after the field: ``targetRids in TARGET``.
+
+    Returns a new document (``document`` itself when it holds no path) and
+    makes no call when there is no path. With ``--emit-code`` the paths are
+    marked for the snippet to look up instead.
+    """
+    for name in fields.values():
+        if name not in KINDS:
+            raise ValueError(f"Unknown resource kind: {name!r}")
+    kinds = {key: KINDS[name] for key, name in fields.items()}
+    wanted: List[Tuple[str, ResourceKind, str]] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in kinds and isinstance(value, (str, list)):
+                    where = f"{key} in {label}"
+                    for item in _values(value):
+                        if is_path(item):
+                            wanted.append((item, kinds[key], where))
+                        elif isinstance(item, str):
+                            check_rid_kind(item, kinds[key], where, profile)
+                else:
+                    visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(document)
+    if not wanted:
+        return document
+
+    from .emit import emit_mode
+
+    if emit_mode():
+        # Nothing is called: the snippet looks the paths up (#192).
+        from .codegen import PathValue
+
+        return _replace_paths(document, kinds, PathValue)
+    rids = _look_up(wanted, profile)
+    return _replace_paths(document, kinds, lambda path: rids[path])
+
+
+def _replace_paths(node: Any, kinds: Mapping[str, Any], replace: Any) -> Any:
+    """A copy of ``node`` with ``replace(path)`` for each path in a RID field."""
+
+    def swap(value: Any) -> Any:
+        return replace(value) if is_path(value) else value
+
+    if isinstance(node, dict):
+        copied = {}
+        for key, value in node.items():
+            if key in kinds and isinstance(value, str):
+                copied[key] = swap(value)
+            elif key in kinds and isinstance(value, list):
+                copied[key] = [swap(item) for item in value]
+            else:
+                copied[key] = _replace_paths(value, kinds, replace)
+        return copied
+    if isinstance(node, list):
+        return [_replace_paths(item, kinds, replace) for item in node]
+    return node
 
 
 def _with_path_help(text: str) -> str:

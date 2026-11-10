@@ -12,6 +12,21 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+### Added
+
+- **Builds from Compass paths: `orchestration builds create --dataset`**
+  (#218). `--dataset <RID or path>` (repeatable) builds exactly those
+  datasets, the same as a `{"type": "manual", "targetRids": [...]}` TARGET,
+  which is then left out; giving both, or neither, is a usage error (exit 2).
+  Inside JSON arguments, the fields the SDK types as Compass resource RIDs
+  now take paths too, resolved in one lookup before the request (a missing
+  path is `path_not_found`, exit 5): `targetRids`, `inputRids` and
+  `ignoredRids` in `builds create`'s TARGET and in `schedules
+  create`/`replace`'s ACTION; `datasetRid` and `mediaSetRid` in `--trigger`;
+  `projectRids` in `--scope-mode`; and the subject's `datasetRid` in
+  `data-health check create`. A bare RID or path given as TARGET is a usage
+  error that points at `--dataset`.
+
 ## [0.18.0] - 2026-11-08
 
 This release makes pltr easier for coding agents to build on Foundry with

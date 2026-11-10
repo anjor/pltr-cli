@@ -159,6 +159,12 @@ RID-based: output shows RIDs, so save the RID for later calls. Spaces and the
 root folder can't be looked up by path. Usage lines show such options as
 `RID|PATH`, and the reference marks such arguments "(RID or path)".
 
+Inside JSON arguments, paths work only in the RID fields a command's help
+names: `targetRids`, `inputRids` and `ignoredRids` of a build target
+(`builds create` TARGET, `schedules create`/`replace` ACTION), schedule
+`--trigger` and `--scope-mode`, and a data-health check's subject. Other
+JSON, including every `pltr api` JSON option, takes RIDs only.
+
 Users and groups are identified by UUIDs, ontologies by RID or API name, and
 object types by API name. Don't construct RIDs; get them from the user, from
 a path, or from command output:
@@ -213,8 +219,8 @@ running (then run the error's `suggestedCommand`). Then verify the output
 with `pltr assert`, which exits 8 when a check fails:
 
 ```bash
-pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.abc"]}' --wait --format json
-pltr assert dataset ri.foundry.main.dataset.abc --min-rows 1 --updated-within 1h --format json
+pltr orchestration builds create --dataset "/My Space/My Project/sales" --branch master --wait --format json
+pltr assert dataset "/My Space/My Project/sales" --min-rows 1 --updated-within 1h --format json
 pltr assert build ri.foundry.main.build.abc --succeeded
 pltr assert objects my-ontology Employee --min-count 1
 ```
@@ -262,7 +268,8 @@ pltr sql execute 'SELECT origin, COUNT(*) AS n FROM `ri.foundry.main.dataset.<id
 **Build a dataset and follow the build**
 
 ```bash
-pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.<id>"]}' --branch master --format json
+pltr orchestration builds create --dataset ri.foundry.main.dataset.<id> --branch master --format json
+pltr orchestration builds create '{"type": "upstream", "targetRids": ["/My Space/My Project/sales"], "ignoredRids": []}' --branch master --format json
 pltr orchestration builds get ri.foundry.main.build.<id> --format json
 pltr orchestration builds jobs ri.foundry.main.build.<id> --format json
 ```

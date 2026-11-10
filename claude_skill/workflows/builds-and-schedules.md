@@ -6,11 +6,19 @@ and schedules are addressed by RID; `--format json` prints the API's shapes
 
 ## Start a build and follow it
 
-`builds create` takes the build target as JSON in the API's shape:
+`builds create --dataset` builds exactly the datasets you name, by RID or
+Compass path (repeat it for several). For an upstream or connecting build,
+give the build target as JSON in the API's shape instead; paths work in its
+`targetRids`, `inputRids` and `ignoredRids` too:
 
 ```bash
-# Build exactly these datasets on master
-pltr orchestration builds create '{"type": "manual", "targetRids": ["ri.foundry.main.dataset.<id>"]}' \
+# Build exactly these datasets on master, and wait for the result
+pltr orchestration builds create --dataset "/My Space/My Project/sales" \
+  --dataset ri.foundry.main.dataset.<id> --branch master --wait --format json
+
+# Build a dataset and everything upstream of it
+pltr orchestration builds create \
+  '{"type": "upstream", "targetRids": ["/My Space/My Project/sales"], "ignoredRids": []}' \
   --branch master --format json
 
 # Follow it: status, then its jobs

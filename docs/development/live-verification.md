@@ -587,6 +587,26 @@ Verified live on 2026-11-08 (read-only): `pltr assert dataset <path>
   **`connectivity import execute-* --wait`** waits for the build the import
   returns. Manual: run each on a scratch schedule/import.
 
+### Builds from Compass paths (#218)
+
+Verified live on 2026-11-10 (one stack): `pltr orchestration builds create
+--dataset /<space>/<project>/<dataset> --branch master --force --wait`
+(one `getByPath`, then `Build.create` with the RID; the build succeeded and
+its job wrote that dataset), the same with the path inside a JSON TARGET's
+`targetRids`, a missing path (exit 5 `path_not_found`, no build), a folder
+path for `--dataset` (exit 2 `wrong_resource_type`, no build), and the usage
+errors for both or neither of TARGET and `--dataset` (exit 2, no call).
+Without `--force`, an up-to-date dataset answers 400 `BuildTargetsUpToDate`
+(exit 6) and nothing is built. Not verified live:
+
+- **Paths in `schedules create`/`replace` ACTION, `--trigger` and
+  `--scope-mode`, and in `data-health check create`'s subject.** They use the
+  same lookup. Manual, on a scratch dataset: `pltr orchestration schedules
+  create '{"target": {"type": "manual", "targetRids": ["/<space>/<project>/<dataset>"]}}'
+  --name test`, then `schedules get` shows the RID; `schedules delete --yes`.
+- **Build targets that aren't datasets** (media sets, restricted views) given
+  by path inside TARGET: pltr doesn't check their type, the API does.
+
 ### The smoke test itself (d2)
 
 The smoke script has run only against fakes, so a failing check can be the
