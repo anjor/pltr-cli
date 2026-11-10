@@ -231,7 +231,7 @@ pltr is built to be scripted, by people and by agents.
 | 6 | API validation error (HTTP 400, 422) | `validation_error` |
 | 7 | Other API or network error: HTTP 409, 413, 429, 5xx, timeouts, connection errors; or the API's response doesn't match the SDK's model or isn't JSON (`invalid_response`: upgrade pltr, a retry won't help) | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` |
 | 8 | The work finished but failed (a build, query or import waited for with `--wait`), or a `pltr assert` check failed | `work_failed`, `assertion_failed` |
-| 9 | `--wait` timed out; the work keeps running (the error's `suggestedCommand` waits again) | `wait_timeout` |
+| 9 | `--wait` timed out; the work keeps running. Or `resource wait` timed out: still nothing at the path. The error's `suggestedCommand` waits again | `wait_timeout` |
 
 **Destructive commands ask first.** Commands that delete, remove, revoke,
 reset, cancel, abort or replace something ask for confirmation, and

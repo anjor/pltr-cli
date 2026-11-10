@@ -31,6 +31,21 @@ and pull requests. Numbers in parentheses are pull requests or issues.
   exit 6), the error says so and its `suggestedCommand` repeats the command
   with `--force` (`--force-build` for `pltr api orchestration build create`).
 
+- **`pltr resource wait <rid-or-path>`: wait until a resource exists**
+  (#219). It is for the step between a git push to a code repository and a
+  build: on the first push, Foundry's checks create the transform's output
+  dataset, which takes a few minutes. pltr polls the path (or RID), 2 s at
+  first and growing to at most 10 s, and prints the resource as soon as it
+  exists (exit 0). A 404 `PathNotFound` or `ResourceNotFound` means "not
+  yet". Other errors fail at once, except rate limits, 5xx and network
+  errors once polling has started, which are retried. After `--timeout`
+  (default 600 s) it exits 9
+  (`wait_timeout`) with a `suggestedCommand` that waits again. A build, job,
+  transaction or schedule RID exits 2 (`wrong_resource_type`) before any call,
+  since the API answers "not found" for those too. The public API has no
+  code repository check or commit status, so there is no `--after-commit`:
+  for a dataset that already exists the command returns at once.
+
 ## [0.18.0] - 2026-11-08
 
 This release makes pltr easier for coding agents to build on Foundry with

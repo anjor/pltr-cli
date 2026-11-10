@@ -597,9 +597,9 @@ its job wrote that dataset), the same with the path inside a JSON TARGET's
 path for `--dataset` (exit 2 `wrong_resource_type`, no build), and the usage
 errors for both or neither of TARGET and `--dataset` (exit 2, no call).
 Without `--force`, an up-to-date dataset answers 400 `BuildTargetsUpToDate`
-(exit 6) and nothing is built; the hint pltr now adds for that `errorName`
-(and its `--force` suggested command) came later and wasn't run live. Not
-verified live:
+(exit 6) and nothing is built; the hint pltr adds for that `errorName` was
+then checked live too: the error carries the hint and a `suggestedCommand`
+that repeats the command with `--force`. Not verified live:
 
 - **Paths in `schedules create`/`replace` ACTION, `--trigger` and
   `--scope-mode`, and in `data-health check create`'s subject.** They use the
@@ -608,6 +608,27 @@ verified live:
   --name test`, then `schedules get` shows the RID; `schedules delete --yes`.
 - **Build targets that aren't datasets** (media sets, restricted views) given
   by path inside TARGET: pltr doesn't check their type, the API does.
+
+### `pltr resource wait` (#219)
+
+Verified live on 2026-11-10 (one stack, read-only): an existing dataset by
+path and by RID returns at once with the same JSON; a missing path in an
+existing folder, a missing path under a missing folder (both 404
+`PathNotFound`) and a missing dataset RID (404 `ResourceNotFound`) poll until
+`--timeout` and exit 9; a code repository path resolves to a
+`STEMMA_REPOSITORY` resource. A made-up build RID also answers 404
+`ResourceNotFound`, as if it didn't exist yet, which is why `resource wait`
+refuses build, job, transaction and schedule RIDs before any call. A made-up
+ontology RID answers the same; ontology RIDs aren't refused, so they poll
+until `--timeout`. Not verified live:
+
+- **The real push loop**: after the first git push of a transform, the output
+  dataset appears at its path once the checks have run, and `resource wait`
+  returns then. It needs a push (a write). Manual: push a transform with a
+  new output path, run `pltr resource wait <output path> --timeout 300`, then
+  `pltr orchestration builds create ... --wait`.
+- **A trashed resource at a path**: `resource wait` treats it as existing and
+  warns. Manual: trash a scratch dataset, then wait for its path.
 
 ### The smoke test itself (d2)
 

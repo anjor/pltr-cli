@@ -256,6 +256,10 @@ fail first, and `--emit-code` snippets look the paths up. Only name fields
 the SDK types as RIDs: free-form values (ontology properties, function
 parameters) can legitimately start with `/`.
 
+`resource_argument(..., resolve=False)` leaves a path for the command to look
+up itself (`pltr resource wait` polls a path that doesn't exist yet). The
+parameter still takes a path, and the manifest still says so.
+
 ## `--emit-code` (#192)
 
 `pltr <command> --emit-code` prints the foundry-platform-sdk code for the
@@ -391,7 +395,7 @@ Commands contain no `try/except` for reporting.
 | 6 | `validation_error` | HTTP 400, 422 |
 | 7 | `conflict`, `request_too_large`, `rate_limited`, `server_error`, `api_error`, `invalid_response`, `network_error`, `timeout` | 409, 413, 429, 5xx, other API errors, a response the SDK can't read (`invalid_response`: it doesn't match the SDK's model, or isn't JSON), connection and timeout errors |
 | 8 | `work_failed`, `assertion_failed` | work pltr waited for (`--wait`) finished but failed; a `pltr assert` check failed (its result is still on stdout) |
-| 9 | `wait_timeout` | `--wait`/`sql wait` gave up after `--timeout`; the work keeps running |
+| 9 | `wait_timeout` | `--wait`/`sql wait` gave up after `--timeout`; the work keeps running. `resource wait` gave up: still nothing at the path or RID |
 
 JSON mode prints one compact object as the last stderr line, and leaves out
 keys that don't apply:

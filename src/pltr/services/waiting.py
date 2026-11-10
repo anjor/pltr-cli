@@ -18,11 +18,13 @@ def wait_until(
     timeout: float,
     on_timeout: Callable[[T], Exception],
     current: Optional[T] = None,
+    max_poll: float = MAX_POLL,
 ) -> T:
     """Call ``fetch`` with backoff until ``done(value)``; return that value.
 
     ``current`` is the latest value if already known (saves one call). After
-    ``timeout`` seconds raises ``on_timeout(latest value)``.
+    ``timeout`` seconds raises ``on_timeout(latest value)``. The wait between
+    calls grows from FIRST_POLL by BACKOFF up to ``max_poll`` seconds.
     """
     deadline = time.monotonic() + timeout
     value = fetch() if current is None else current
@@ -32,7 +34,7 @@ def wait_until(
         if remaining <= 0:
             raise on_timeout(value)
         time.sleep(min(interval, remaining))
-        interval = min(interval * BACKOFF, MAX_POLL)
+        interval = min(interval * BACKOFF, max_poll)
         try:
             value = fetch()
         except Exception as exc:

@@ -25,7 +25,7 @@ failure it was:
 | 6 | Validation error (HTTP 400, 422) | The values you sent; the message has Foundry's error name |
 | 7 | Other API or network errors, or a response pltr can't read | Connectivity, rate limits (429), server errors. For `invalid_response` (the API's response doesn't match the SDK's model or isn't JSON), upgrade pltr: a retry won't help |
 | 8 | The work you waited for failed, or a `pltr assert` check failed | The error's failed jobs, or the checks on stdout |
-| 9 | `--wait` timed out; the work keeps running | Wait again with the suggested command |
+| 9 | `--wait` timed out; the work keeps running. Or `resource wait` timed out: still nothing at the path | Wait again with the suggested command |
 
 In text mode the error is printed as `Error: ...` on stderr, with Foundry's
 error name and parameters. With `--format json` (or `PLTR_FORMAT=json`), the

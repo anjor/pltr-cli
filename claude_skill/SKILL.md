@@ -100,7 +100,7 @@ Pass `--format json`, or set `PLTR_FORMAT=json` once for the session.
 | 6 | the API rejected the request (400, 422) | fix the input; see `errorName` and `parameters` |
 | 7 | other API or network error (409, 429, 5xx, timeouts), or `invalid_response`: the API's response doesn't match the SDK's model or isn't JSON | retry later, or report it; for `invalid_response`, upgrade pltr: a retry won't help |
 | 8 | the work failed (`work_failed`: a build, query or import you waited for) or a `pltr assert` check failed (`assertion_failed`) | read `parameters` (failed jobs) or the assert result on stdout |
-| 9 | `--wait` timed out (`wait_timeout`); the work keeps running | run `suggestedCommand` to wait again |
+| 9 | `--wait` timed out (`wait_timeout`); the work keeps running. Or `resource wait` timed out: still nothing at the path | run `suggestedCommand` to wait again |
 
 ### Errors that say how to recover
 
@@ -236,6 +236,32 @@ work twice. Never re-run the trigger command to "retry" a wait.
 `--schema expected.json` compares a dataset's columns with the output of
 `pltr dataset schema get --format json`. To check an ontology action without
 applying it, use `pltr ontology action-validate`.
+
+**After a git push to a code repository**, Foundry's checks run first (a few
+minutes) and, on the first push, create the transform's output dataset; you
+can't build it before that. Don't write a polling loop: `pltr resource wait`
+polls until a resource exists at the path (or RID), then prints it (exit 0),
+or exits 9 after `--timeout` (run the error's `suggestedCommand`; it started
+nothing, so waiting again is always safe). Then build the branch you pushed
+with `--wait`, and check the change itself:
+
+```bash
+git push origin my-feature
+pltr resource wait "/Space/Project/clean/orders" --timeout 100 --format json
+pltr orchestration builds create --dataset "/Space/Project/clean/orders" --branch my-feature --wait --format json
+pltr assert dataset "/Space/Project/clean/orders" --branch my-feature --schema expected.json --min-rows 1
+```
+
+Without `--branch` the build runs the default branch's code. If it fails at
+once with `BuildTargetsMissingJobSpecs` (exit 6), the checks haven't
+published the transform on that branch yet: wait a minute and build again.
+
+The public API has no check or commit status: `resource wait` only knows
+that the dataset exists, so after a later push it returns at once, and a
+build started before the checks finish can run the previous code. Fresh
+rows don't prove the new code ran: assert what the change should show
+(`--schema` for a new column), and if it doesn't, wait a few minutes and
+build again.
 
 ## 6c. Writing app code: `--emit-code`
 
