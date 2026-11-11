@@ -12,6 +12,14 @@ and pull requests. Numbers in parentheses are pull requests or issues.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-11
+
+This release tidies the ontology commands before the dataset-to-OSDK-app
+demo (#203). The two commands that tried to create object and link types
+are removed, since the Platform API has no endpoints for that. Commands
+that apply ontology actions now ask before making edits. **Breaking:**
+scripts that apply actions without `--yes` now stop with exit code 2.
+
 ### Breaking changes
 
 - **Applying an ontology action asks first** (#217). An action's edits can
@@ -1455,7 +1463,8 @@ No changes to pltr itself; only the version number changed.
   and OAuth2 profiles, with credentials in the system keyring),
   `pltr verify`, `pltr dataset get` and `pltr dataset create`.
 
-[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/anjor/pltr-cli/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/anjor/pltr-cli/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/anjor/pltr-cli/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/anjor/pltr-cli/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/anjor/pltr-cli/compare/v0.16.0...v0.17.0
