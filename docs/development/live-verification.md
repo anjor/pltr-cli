@@ -287,7 +287,7 @@ The SDK-call guardrail (a2) made no live assumptions: it only reads
 - **`action-apply` reports INVALID parameters with a 200 (exit 6), or Foundry
   answers 400 `ActionValidationFailed` (also exit 6).** Manual (applying
   changes data): `pltr ontology action-apply <ontology> <action> '<invalid
-  parameters>'` on a test ontology; both forms exit 6. `action.validate` covers
+  parameters>' --yes` on a test ontology; both forms exit 6. `action.validate` covers
   the VALIDATE_ONLY call.
 - **`object-count` works with `preview=true`.** Smoke: `ontology.object-count`.
 - **`--return-edits`, the attribution header, `--default-load-level`,
@@ -542,7 +542,7 @@ case-sensitive. Not verified live:
   their parameters.** Manual: abort a transaction on a dataset you can read
   but not edit.
 - **`ActionTypeNotFound`** and the action-type list call. Manual:
-  `pltr ontology action-apply <ontology> <misspelled-action> '{}'`.
+  `pltr ontology action-validate <ontology> <misspelled-action> '{}'`.
 
 ### `--emit-code` snippets (#192)
 

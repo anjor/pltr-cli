@@ -128,9 +128,14 @@ When pltr knows how to recover, the error object has a `hint` and often a
 ## 4. Safety rules
 
 - **Destructive commands** (`destructive: true`: delete, remove, revoke,
-  replace, reset, cancel, abort and similar) ask for confirmation. With
-  `--format json`, or without a terminal, they never prompt: they fail with
-  exit code 2 and change nothing unless you pass `--yes`.
+  replace, reset, cancel, abort and similar, and every command that applies
+  an ontology action) ask for confirmation. With `--format json`, or without
+  a terminal, they never prompt: they fail with exit code 2 and change
+  nothing unless you pass `--yes`.
+- **Ontology actions:** check the parameters with
+  `pltr ontology action-validate` (it never applies anything), show the user
+  the action and its parameters, and only then run `pltr ontology
+  action-apply ... --yes`.
 - Pass `--yes` only for a change the user asked for, on resources they
   named. Show them the exact command first when you're unsure. Never loop a
   destructive command over a list you built yourself without confirming the

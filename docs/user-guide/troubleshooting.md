@@ -120,8 +120,8 @@ problem, for example `at value[1].value (type 'gt'): required field
 missing`.
 
 ```bash
-pltr ontology action-apply <ontology> myAction '{"param": "value"}'
-pltr ontology action-apply <ontology> myAction @params.json
+pltr ontology action-validate <ontology> myAction '{"param": "value"}'
+pltr ontology action-validate <ontology> myAction @params.json
 ```
 
 ### Only part of a list comes back

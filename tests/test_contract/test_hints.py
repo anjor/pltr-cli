@@ -354,7 +354,7 @@ def test_an_unknown_action_type_lists_the_closest_names(stub_foundry_http) -> No
         json=oj.page([action_type("promote-employee"), action_type("fire-employee")])
     )
 
-    error = error_of("ontology", "action-apply", ONT, "promote-employe", "{}")
+    error = error_of("ontology", "action-apply", ONT, "promote-employe", "{}", "--yes")
 
     assert error["hint"] == (
         "Closest action type API names to 'promote-employe': promote-employee, "

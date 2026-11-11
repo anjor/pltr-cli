@@ -21,6 +21,7 @@ SPEC = {
                     "summary": "Applies an action using the given parameters.",
                     "help": "Applies an action using the given parameters.\n\nChanges to objects or links stored in Object Storage V1 are eventually consistent and may take some time to be visible.\nEdits to objects or links in Object Storage V2 will be visible immediately after the action completes.\n\nNote that a 200 HTTP status code only indicates that the request was received and processed by the server.\nSee the validation result in the response body to determine if the action was applied successfully.\n\nNote that [parameter default values](https://palantir.com/docs/foundry/action-types/parameters-default-value/) are not currently supported by\nthis endpoint.\n\nRequired scopes: [api:ontologies-read, api:ontologies-write]",
                     "http": "POST /v2/ontologies/{ontology}/actions/{action}/apply",
+                    "destructive": True,
                     "params": [
                         {"name": "ontology", "in": "path", "api": "ontology", "type": "str", "schema": "OntologyIdentifier", "required": True},
                         {"name": "action", "in": "path", "api": "action", "type": "str", "schema": "ActionTypeApiName", "required": True, "help": "The API name of the action to apply. To find the API name for your action, use the **List action types** endpoint or check the **Ontology Manager**."},
@@ -42,6 +43,7 @@ SPEC = {
                     "summary": "Applies multiple actions (of the same Action Type) using the given parameters.",
                     "help": "Applies multiple actions (of the same Action Type) using the given parameters.\n\nChanges to objects or links stored in Object Storage V1 are eventually consistent and may take some time to be visible.\nEdits to objects or links in Object Storage V2 will be visible immediately after the action completes.\n\nUp to 20 actions may be applied in one call. Actions that only modify objects in Object Storage v2 and do not\ncall Functions may receive a higher limit.\n\nNote that [notifications](https://palantir.com/docs/foundry/action-types/notifications/) are not currently supported by this endpoint.\n\nRequired scopes: [api:ontologies-read, api:ontologies-write]",
                     "http": "POST /v2/ontologies/{ontology}/actions/{action}/applyBatch",
+                    "destructive": True,
                     "params": [
                         {"name": "ontology", "in": "path", "api": "ontology", "type": "str", "schema": "OntologyIdentifier", "required": True},
                         {"name": "action", "in": "path", "api": "action", "type": "str", "schema": "ActionTypeApiName", "required": True, "help": "The API name of the action to apply. To find the API name for your action, use the **List action types** endpoint or check the **Ontology Manager**."},
@@ -60,6 +62,7 @@ SPEC = {
                     "help": "Applies multiple actions (of the same Action Type) with per-item overrides\nfor UniqueIdentifier and CurrentTime generated action parameters.\n\nChanges to objects or links stored in Object Storage V1 are eventually consistent and may take some time to be visible.\nEdits to objects or links in Object Storage V2 will be visible immediately after the action completes.\n\nUp to 20 actions may be applied in one call. Actions that only modify objects in Object Storage v2 and do not\ncall Functions may receive a higher limit.\n\nNote that [notifications](https://palantir.com/docs/foundry/action-types/notifications/) are not currently supported by this endpoint.\n\nRequired scopes: [api:ontologies-read, api:ontologies-write]",
                     "http": "POST /v2/ontologies/{ontology}/actions/{action}/applyBatchWithOverrides",
                     "beta": True,
+                    "destructive": True,
                     "params": [
                         {"name": "ontology", "in": "path", "api": "ontology", "type": "str", "schema": "OntologyIdentifier", "required": True},
                         {"name": "action", "in": "path", "api": "action", "type": "str", "schema": "ActionTypeApiName", "required": True, "help": "The API name of the action to apply. To find the API name for your action, use the **List action types** endpoint or check the **Ontology Manager**."},
@@ -78,6 +81,7 @@ SPEC = {
                     "help": "Same as regular apply action operation, but allows specifying overrides for UniqueIdentifier and\nCurrentTime generated action parameters.\n\nRequired scopes: [api:ontologies-read, api:ontologies-write]",
                     "http": "POST /v2/ontologies/{ontology}/actions/{action}/applyWithOverrides",
                     "beta": True,
+                    "destructive": True,
                     "params": [
                         {"name": "ontology", "in": "path", "api": "ontology", "type": "str", "schema": "OntologyIdentifier", "required": True},
                         {"name": "action", "in": "path", "api": "action", "type": "str", "schema": "ActionTypeApiName", "required": True, "help": "The API name of the action to apply. To find the API name for your action, use the **List action types** endpoint or check the **Ontology Manager**."},
@@ -1390,6 +1394,7 @@ SPEC = {
                     "help": "Applies a set of edits to a transaction in order.\n\nRequired scopes: [api:ontologies-read]",
                     "http": "POST /v2/ontologies/{ontology}/transactions/{transactionId}/edits",
                     "beta": True,
+                    "destructive": True,
                     "params": [
                         {"name": "ontology", "in": "path", "api": "ontology", "type": "str", "schema": "OntologyIdentifier", "required": True},
                         {"name": "transaction_id", "in": "path", "api": "transactionId", "type": "str", "schema": "OntologyTransactionId", "required": True, "help": "The ID of the transaction to apply edits to. Transactions are an experimental feature and all workflows may not be supported."},

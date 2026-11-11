@@ -15,7 +15,7 @@ Applies an action using the given parameters.
 - `ACTION`: The API name of the action to apply.
 - `--parameters` JSON (required): Dict[ParameterId, Optional[DataValue]].
 - Options: `--attribution` TEXT, `--branch` TEXT, `--options` JSON, `--scenario-rid` TEXT, `--sdk-package-rid` TEXT, `--sdk-version` TEXT, `--trace-parent` TEXT, `--trace-state` TEXT, `--transaction-id` TEXT
-- SDK: `ontologies.Action.apply`
+- **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply`
 
 ### pltr api ontologies action apply-batch
 
@@ -27,7 +27,7 @@ Applies multiple actions (of the same Action Type) using the given parameters.
 - `ACTION`: The API name of the action to apply.
 - `--requests` JSON (required): List[BatchApplyActionRequestItem].
 - Options: `--branch` TEXT, `--options` JSON, `--scenario-rid` TEXT, `--sdk-package-rid` TEXT, `--sdk-version` TEXT
-- SDK: `ontologies.Action.apply_batch`
+- **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply_batch`
 
 ### pltr api ontologies action apply-batch-with-overrides
 
@@ -39,7 +39,7 @@ Applies multiple actions (of the same Action Type) using the given parameters.
 - `ACTION`: The API name of the action to apply.
 - `--requests` JSON (required): List[BatchApplyActionRequestItemWithOverrides].
 - Options: `--branch` TEXT, `--options` JSON, `--scenario-rid` TEXT, `--sdk-package-rid` TEXT, `--sdk-version` TEXT
-- beta · SDK: `ontologies.Action.apply_batch_with_overrides`
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply_batch_with_overrides`
 
 ### pltr api ontologies action apply-with-overrides
 
@@ -52,4 +52,4 @@ Applies multiple actions (of the same Action Type) using the given parameters.
 - `--overrides` JSON (required): ApplyActionOverrides.
 - `--request` JSON (required): ApplyActionRequestV2.
 - Options: `--branch` TEXT, `--scenario-rid` TEXT, `--sdk-package-rid` TEXT, `--sdk-version` TEXT, `--transaction-id` TEXT
-- beta · SDK: `ontologies.Action.apply_with_overrides`
+- beta · **destructive** (asks first; `--yes` skips) · SDK: `ontologies.Action.apply_with_overrides`
