@@ -305,6 +305,11 @@ types, run it again with every type and `--replace`.
 in needs an OAuth client ID from the user, with the app's redirect URIs
 registered in Developer Console. To host the built app on Foundry, see §6e.
 
+The object, link and action types must already exist. The Platform API
+can't create them, so neither can pltr: ask the user to create them in
+Ontology Manager (or in an Ontology as Code repository, where their stack
+has one), then check them with `pltr context ontology`.
+
 ## 6e. Hosting a web app: `pltr site deploy`
 
 To put a built web app (an OSDK React app, say) on Foundry, build it, then

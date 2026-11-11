@@ -358,8 +358,6 @@ is sent.
 | `ontology get` | Get an ontology's metadata |
 | `ontology object-type-list` | List an ontology's object types (paged) |
 | `ontology object-type-get` | Get an object type: its primary key, title property and properties |
-| `ontology object-type-create` | Create an object type (direct HTTP: the SDK can't create object types) |
-| `ontology link-type-create` | Create a link type (direct HTTP: the SDK can't create link types) |
 | `ontology object-list` | List the objects of an object type (paged) |
 | `ontology object-get` | Get an object by primary key |
 | `ontology object-search` | Search the objects of an object type with a typed query (paged) |
@@ -410,9 +408,12 @@ Notes:
   comma-separated property names for exact groupings.
 - `action-apply` exits with code 6 when Foundry reports the parameters
   invalid; `action-validate` exits with 0 and prints the validation result.
-- `object-type-create` and `link-type-create` call schema endpoints that
-  aren't part of the public API and may not exist on your stack (exit code
-  5 when none does).
+- pltr can't create object types, link types or action types: the
+  Foundry Platform API has no endpoints for it. Create them in Ontology
+  Manager in the Foundry UI, or, where your stack offers Ontology as Code
+  repositories, in code with
+  [`@osdk/maker`](https://github.com/palantir/osdk-ts/tree/main/packages/maker).
+  pltr then reads their objects and applies their actions.
 
 ## SQL: `pltr sql`
 

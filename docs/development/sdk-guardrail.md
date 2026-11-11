@@ -56,7 +56,6 @@ doesn't grow:
 | Function | Command |
 |---|---|
 | `services/dataset.py::DatasetService.apply_schema` | `dataset schema apply` |
-| `services/ontology.py::ObjectTypeService._create_schema_entity` | `ontology object-type-create` / `link-type-create` fallback |
 | `services/language_models.py::LanguageModelsService.enroll_model` | `language-models enroll` |
 | `services/base.py::BaseService._make_request` | the shared helper they use |
 

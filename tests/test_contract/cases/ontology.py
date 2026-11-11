@@ -12,9 +12,6 @@ SUCCESS = {
         {"json": fo.page([fo.object_type()], "next")},
     ],
     "ontology object-type-get": [{"json": fo.object_type(datasources=True)}],
-    # labeled direct-HTTP exception: the first schema endpoint answers
-    "ontology object-type-create": [{"json": {"apiName": "contract-test"}}],
-    "ontology link-type-create": [{"json": {"apiName": "contract-test"}}],
     "ontology object-list": [
         {"json": fo.page([fo.employee()], "next", totalCount="2")},
     ],

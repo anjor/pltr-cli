@@ -99,8 +99,7 @@ class FolderService(BaseService):
   if startup imports `foundry_sdk`.
 - `self._make_request(method, endpoint, ...)` calls a Foundry endpoint
   directly with the client's host and token. It is only for the labeled
-  direct-HTTP exceptions (`dataset schema apply`, the
-  `ontology object-type-create`/`link-type-create` fallback and
+  direct-HTTP exceptions (`dataset schema apply` and
   `language-models enroll`); new code goes through the SDK.
 
 ### Using services from Python
