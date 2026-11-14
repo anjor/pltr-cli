@@ -1,7 +1,7 @@
 # The prompt
 
 Paste this into a fresh Claude Code session started in the demo directory
-(see [SETUP.md](SETUP.md)). Fill in the four `<...>` values first. Don't add
+(see [SETUP.md](SETUP.md)). Fill in the three `<...>` values first. Don't add
 anything else: the prompt is the only input the video shows.
 
 ```text

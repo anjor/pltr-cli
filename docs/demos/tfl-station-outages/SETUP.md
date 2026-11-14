@@ -29,18 +29,20 @@ website subdomain needs approval.
 - [ ] `uv tool install pltr-cli==0.20.0` (or `pipx install
       pltr-cli==0.20.0`). Then `pltr --version` should print 0.20.0.
 - [ ] `pltr verify` passes with the default profile.
-- [ ] The skill from the 0.20.0 tag is installed:
-      `git -C <pltr-cli checkout> checkout v0.20.0`, then
-      `cp -r claude_skill ~/.claude/skills/pltr`. Remove any older copy
-      first.
+- [ ] The skill from the 0.20.0 tag is installed, replacing any older
+      copy, without changing your checkout:
+      `rm -rf ~/.claude/skills/pltr && mkdir -p ~/.claude/skills/pltr`, then
+      `git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x
+      --strip-components=1 -C ~/.claude/skills/pltr`.
 - [ ] Node.js 18 or later and npm (`node --version`).
 - [ ] An empty demo directory, such as `~/demos/station-outages`, holding
       only the clone of the code repository at `./transforms`. Check that
       `git push` works from the clone.
 - [ ] No Claude Code memory or `CLAUDE.md` for that directory, and none
       from the earlier spike. The run must start cold.
-- [ ] The three data URLs in [PROMPT.md](PROMPT.md) answer: `curl -sI
-      <url>` gives 200.
+- [ ] The three data URLs in [PROMPT.md](PROMPT.md) answer:
+      `curl -s -o /dev/null -w '%{http_code}\n' '<url>'` prints 200. Use a
+      GET, not `curl -I`: TfL's API answers 404 to HEAD requests.
 
 ## Recording setup
 
