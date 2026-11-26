@@ -7,7 +7,7 @@ website subdomain needs approval.
 ## Foundry
 
 - [ ] **Folder** `/<space>/pltr demos/station-outages`, where `<space>` is
-      the first part of the `pltr demos` project's path in
+      the first part of the "pltr demos" project's path in
       `pltr project list`. Create it with
       `pltr folder create station-outages --parent-folder "/<space>/pltr demos"`
       or in the UI. The code repository goes in it.

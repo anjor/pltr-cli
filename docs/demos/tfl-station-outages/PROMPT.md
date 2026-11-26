@@ -32,7 +32,7 @@ you apply an action or deploy.
 
 | Placeholder | Where to find it |
 |---|---|
-| `<space>` | `pltr project list`: the first part of the `pltr demos` project's `path`, without the leading `/`. Every Compass path starts with it. |
+| `<space>` | `pltr project list`: the first part of the "pltr demos" project's `path`, without the leading `/`. Every Compass path starts with it. |
 | `<application-rid>` | Developer Console: the application's RID. |
 | `<client-id>` | Developer Console: the application's OAuth client ID. |
 | `<subdomain>` | Developer Console: the approved website subdomain, a full hostname. |
