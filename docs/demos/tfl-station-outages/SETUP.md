@@ -7,7 +7,8 @@ website subdomain needs approval.
 ## Foundry
 
 - [ ] **Folder** `/<space>/pltr demos/station-outages`, where `<space>` is
-      the space's path from `pltr space list`. Create it with
+      the first part of the `pltr demos` project's path in
+      `pltr project list`. Create it with
       `pltr folder create station-outages --parent-folder "/<space>/pltr demos"`
       or in the UI. The code repository goes in it.
 - [ ] **Code repository** in that folder: the Python transforms template,
@@ -34,11 +35,14 @@ website subdomain needs approval.
 - [ ] A separate Claude Code configuration for the demo, so the run starts
       cold. Your usual one loads your global `CLAUDE.md`, rules, plugins and
       memory, and a plugin with an older pltr skill would compete with
-      0.20.0's. Set `export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo`, run
-      `mkdir -p "$CLAUDE_CONFIG_DIR/skills/pltr"`, then install the skill
-      from the 0.20.0 tag without changing your checkout:
-      `git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x
-      --strip-components=1 -C "$CLAUDE_CONFIG_DIR/skills/pltr"`.
+      0.20.0's. Install the skill from the 0.20.0 tag into it, without
+      changing your checkout:
+
+      ```sh
+      export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo
+      mkdir -p "$CLAUDE_CONFIG_DIR/skills/pltr"
+      git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x --strip-components=1 -C "$CLAUDE_CONFIG_DIR/skills/pltr"
+      ```
 - [ ] Run `claude` with `CLAUDE_CONFIG_DIR` set, and sign in with `/login`.
       Start the rehearsal and the recording the same way.
 - [ ] Node.js 18 or later and npm (`node --version`).

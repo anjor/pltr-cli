@@ -56,7 +56,8 @@ so a join that misses it drops the outage that should rank first.
 The lift feed is mostly redundant. Only 5 of its 23 `stationUniqueId`
 values equal a disruption's `stationAtcoCode`, because it uses hub and rail
 codes. But 13 of its messages appear word for word in the disruption feed,
-and the other 10 are at stations off the Tube. 23 disruptions say "step
+and the other 10 are for lifts outside the Tube feed, such as at
+Overground and Elizabeth line stations. 23 disruptions say "step
 free" themselves, so the disruption text alone can set `step_free_lost`.
 
 ## What gets built
