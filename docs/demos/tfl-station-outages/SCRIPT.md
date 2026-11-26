@@ -12,7 +12,7 @@ that order. Cut and speed up, but never re-stage or re-type anything.
 
 | Time | On screen | Caption | Edit |
 |---|---|---|---|
-| 0:00–0:08 | **Cold open.** The finished, hosted app: outages ranked by impact, with Pimlico's "no down escalator" near the top. | "A Foundry app for Tube lift and escalator outages. Built by Claude Code from the terminal, from one prompt." | Real speed. A slow zoom on the top rows. |
+| 0:00–0:08 | **Cold open.** The finished, hosted app: outages ranked by impact, with the day's worst outage at the top. | "A Foundry app for Tube lift and escalator outages. Built by Claude Code from the terminal, from one prompt." | Real speed. A slow zoom on the top rows. |
 | 0:08–0:20 | The prompt pasted into a fresh Claude Code session. | "The input: a business problem and three links to TfL open data." | Hold long enough to read the first paragraph, then scroll. |
 | 0:20–0:40 | **Act 1, data in.** The agent `curl`s the three sources, then runs `pltr dataset create`, `pltr dataset files upload` and `pltr dataset schema apply`, then `pltr context dataset` on the footfall data. | "It fetches public TfL data and lands it in Foundry with pltr. No RIDs looked up by hand: pltr takes Compass paths." | 4x to 8x. Freeze on the `context dataset` output, showing columns and sample rows. |
 | 0:40–1:10 | **Act 2, pipeline.** The agent writes the transform (show the join and the impact score), then `git push`, `pltr resource wait`, `pltr orchestration builds create --dataset ... --wait` and `pltr assert dataset ...` passing. | "It writes the pipeline, pushes it, builds it and checks the output. All from the terminal." Then, on the wait: "Waiting for Foundry's checks (sped up 20x)." | Skim the code at 8x. The wait at 20x or more. Hold one second on the passing assert. |
@@ -56,8 +56,8 @@ that order. Cut and speed up, but never re-stage or re-type anything.
 
 ## After recording
 
-- Blur the hostname, RIDs, OAuth client ID and subdomain everywhere they
-  appear, including the browser's address bar.
+- Blur the hostname, space name, RIDs, OAuth client ID and subdomain
+  everywhere they appear, including the browser's address bar.
 - Export at 1080p, under 100 MB, for the forum.
 - Write `README.md` (the walkthrough) from the transcript, and
   commit the agent's transform and app code here, without `.env` files.

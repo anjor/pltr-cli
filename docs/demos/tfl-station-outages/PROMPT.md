@@ -1,7 +1,7 @@
 # The prompt
 
 Paste this into a fresh Claude Code session started in the demo directory
-(see [SETUP.md](SETUP.md)). Fill in the three `<...>` values first. Don't add
+(see [SETUP.md](SETUP.md)). Fill in the four `<...>` values first. Don't add
 anything else: the prompt is the only input the video shows.
 
 ```text
@@ -20,7 +20,7 @@ TfL publishes the data:
 - lift outages: https://api.tfl.gov.uk/Disruptions/Lifts/v2/
 - daily entries and exits per station: https://crowding.data.tfl.gov.uk/Network%20Demand/StationFootfall_2025_2026%20.csv
 
-Use pltr for everything in Foundry. Work in "/pltr demos/station-outages";
+Use pltr for everything in Foundry. Work in "/<space>/pltr demos/station-outages";
 the Python transforms repository there is cloned at ./transforms. The app's
 Developer Console application is <application-rid>, its OAuth client ID is
 <client-id>, and it will be hosted at https://<subdomain>. If something
@@ -32,10 +32,11 @@ you apply an action or deploy.
 
 | Placeholder | Where to find it |
 |---|---|
+| `<space>` | `pltr space list`: the space's `path`, without the leading `/`. Every Compass path starts with it. |
 | `<application-rid>` | Developer Console: the application's RID. |
 | `<client-id>` | Developer Console: the application's OAuth client ID. |
 | `<subdomain>` | Developer Console: the approved website subdomain, a full hostname. |
-| The folder path | Only if you used a different folder in setup. |
+| The folder path | Change it only if you used a different folder in setup. |
 
 ## A harder variant, for a second take
 

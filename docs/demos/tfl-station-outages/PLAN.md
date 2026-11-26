@@ -33,29 +33,38 @@ engineer and track progress.
 
 ## The data
 
-All of it is public and small, and it was checked on 2026-11-11.
+All of it is public and small. The numbers below are from 2026-11-26. To
+check them again, run `uv run docs/demos/tfl-station-outages/check_data.py`.
 
 | Data | Source | Size | Notes |
 |---|---|---|---|
-| Disruptions at Tube stations | `https://api.tfl.gov.uk/StopPoint/Mode/tube/Disruption` | about 20 KB of JSON | 31 items on 2026-11-11: 12 escalator, 8 lift and 11 other. Free text, such as "PIMLICO STATION: ... no down escalator. Please use the stairs." Has `fromDate` and `toDate`. |
-| Lift outages | `https://api.tfl.gov.uk/Disruptions/Lifts/v2/` | about 3 KB of JSON | 9 on 2026-11-11, each with `stationUniqueId`, lift IDs and a message such as "No Step Free Access". |
-| Daily station traffic | `https://crowding.data.tfl.gov.uk/Network%20Demand/StationFootfall_2025_2026%20.csv` | about 12 MB of CSV | `TravelDate, DayOFWeek, Station, EntryTapCount, ExitTapCount`, up to 7 Nov 2026. Note the space before `.csv` in the file name. |
+| Disruptions at Tube stations | `https://api.tfl.gov.uk/StopPoint/Mode/tube/Disruption` | about 35 KB of JSON | 57 items: 15 that mention an escalator, 14 a lift and 28 neither. Free text, such as "PIMLICO STATION: ... no down escalator. Please use the stairs." Has `fromDate` and `toDate` as ISO timestamps, such as `2026-11-26T02:27:00Z`. |
+| Lift outages | `https://api.tfl.gov.uk/Disruptions/Lifts/v2/` | about 7 KB of JSON | 23 items, at stations on every mode, not only the Tube. Each has a `stationUniqueId`, lift IDs and a message such as "Tower Hill: No Step Free Access - ...". |
+| Daily station traffic | `https://crowding.data.tfl.gov.uk/Network%20Demand/StationFootfall_2025_2026%20.csv` | about 12 MB of CSV | `TravelDate, DayOfWeek, Station, EntryTapCount, ExitTapCount`, up to 21 Nov 2026. `TravelDate` is a number such as `20261121`, not a date. Note the space before `.csv` in the file name. |
 
 No API key is needed. TfL's API rate-limits anonymous calls, and this demo
 makes only a handful.
 
-**The join is real but small.** The disruption names (`Pimlico Underground
+**The join needs care.** The disruption names (`Pimlico Underground
 Station`) match the footfall names (`Pimlico`) once ` Underground Station`
-is removed. All 31 disruptions on 2026-11-11 matched that way. The lift feed
-uses `stationUniqueId` (NaPTAN-style codes), so the agent has to match it to
-the disruptions or to station names.
+is removed. That matches 54 of the 57 disruptions. The other three names
+have punctuation that the footfall file drops: `King's Cross St. Pancras`
+is `Kings Cross St Pancras` there. Dropping apostrophes and full stops
+matches all 57. King's Cross is the busiest station in the footfall data,
+so a join that misses it drops the outage that should rank first.
+
+The lift feed is mostly redundant. Only 5 of its 23 `stationUniqueId`
+values equal a disruption's `stationAtcoCode`, because it uses hub and rail
+codes. But 13 of its messages appear word for word in the disruption feed,
+and the other 10 are at stations off the Tube. 23 disruptions say "step
+free" themselves, so the disruption text alone can set `step_free_lost`.
 
 ## What gets built
 
 | Step | Who | Commands | Result |
 |---|---|---|---|
 | 1. Fetch | agent | `curl` | three files on disk |
-| 2. Land | agent | `pltr dataset create`, `pltr dataset files upload`, `pltr dataset schema apply`, `pltr context dataset` | three raw datasets in `/pltr demos/station-outages/raw` |
+| 2. Land | agent | `pltr dataset create`, `pltr dataset files upload`, `pltr dataset schema apply`, `pltr context dataset` | three raw datasets in `/<space>/pltr demos/station-outages/raw` |
 | 3. Pipeline | agent | writes a Python transform, `git push`, `pltr resource wait`, `pltr orchestration builds create --dataset ... --wait`, `pltr assert dataset ...` | `station_outages`: one row per lift or escalator outage |
 | 4. Ontology | **person**, from the agent's spec | Ontology Manager, then Developer Console | `StationOutage` object type and `assign-engineer` action |
 | 5. Check | agent | `pltr context ontology --types StationOutage`, `pltr assert objects ...` | the objects exist |
@@ -69,7 +78,7 @@ the disruptions or to station names.
 - give each outage a stable `outage_id`, for example a hash of the station,
   the description and the start date;
 - add each station's average weekday entries plus exits over the last four
-  weeks of footfall;
+  weeks of footfall, matching names without apostrophes or full stops;
 - set `step_free_lost` from the lift feed or the text ("No Step Free
   Access");
 - compute `impact_score` from traffic, with extra weight when step-free
@@ -95,8 +104,8 @@ expected shape):**
 - **Released features only.** Use pltr 0.20.0 from PyPI, which includes
   #231 and #232. Note any gap the rehearsal finds and record with what's
   released. Fix and release before recording only if a gap blocks the demo.
-- **Public data only.** Hide the hostname, the RIDs, the OAuth client ID and
-  the application subdomain in the video.
+- **Public data only.** Hide the hostname, the space name, the RIDs, the
+  OAuth client ID and the application subdomain in the video.
 - **Snapshot data.** The outages are as fetched at recording time. Say so on
   screen. Scheduled refresh is a possible follow-up.
 - **No TfL branding** beyond the attribution. The app must not look like an
@@ -111,7 +120,7 @@ expected shape):**
   gives no failure reason. Egress policies also need the UI, and a REST
   connection used from a transform needs the repo set up in the UI. So the
   agent fetches the data itself and uploads it. The trial resources are in
-  `/pltr demos/connectivity-trial`.
+  `/<space>/pltr demos/connectivity-trial`.
 - **One UI step, on camera.** The object type and action. Everything else in
   the UI is done beforehand (see [SETUP.md](SETUP.md)).
 - **Captions, not voice-over** (see [SCRIPT.md](SCRIPT.md)).
@@ -123,6 +132,7 @@ expected shape):**
 | The new object type takes minutes to index, and `pltr assert objects` has no `--wait`. | The agent re-runs the assert. File an issue for `--wait` if it hurts. |
 | The OAuth client can't read the new types until they're added to the Developer Console application. | Add them during the on-camera UI step (it's in the agent's spec). |
 | The hosted site's domain isn't on the ingress allowlist, so the site answers 403. | It's in SETUP.md. |
+| The station-name join drops the stations with apostrophes or full stops in their names, King's Cross among them. | Compare the output's row count with the escalator and lift disruptions. If rows are missing, tell the agent the count is short, as you would a colleague. |
 | The agent struggles to classify the free-text disruptions. | The prompt is fine as is; let it try. If it flails, add "escalator and lift outages" to the prompt. |
 | Applying the action asks for confirmation (0.20.0), and the agent doesn't show the user the command first. | SKILL.md tells it to. If it doesn't, that's a skill fix. |
 | A TfL endpoint is down on the day. | Re-check the three URLs before recording. |

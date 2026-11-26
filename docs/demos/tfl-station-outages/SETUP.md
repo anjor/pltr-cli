@@ -6,8 +6,10 @@ website subdomain needs approval.
 
 ## Foundry
 
-- [ ] **Folder** `/pltr demos/station-outages`. Create it in the UI, because
-      the code repository has to be created in it.
+- [ ] **Folder** `/<space>/pltr demos/station-outages`, where `<space>` is
+      the space's path from `pltr space list`. Create it with
+      `pltr folder create station-outages --parent-folder "/<space>/pltr demos"`
+      or in the UI. The code repository goes in it.
 - [ ] **Code repository** in that folder: the Python transforms template,
       named `station-outages-transforms`. Leave the template's example
       transform as it is.
@@ -41,8 +43,9 @@ website subdomain needs approval.
 - [ ] No Claude Code memory or `CLAUDE.md` for that directory, and none
       from the earlier spike. The run must start cold.
 - [ ] The three data URLs in [PROMPT.md](PROMPT.md) answer:
-      `curl -s -o /dev/null -w '%{http_code}\n' '<url>'` prints 200. Use a
-      GET, not `curl -I`: TfL's API answers 404 to HEAD requests.
+      `uv run docs/demos/tfl-station-outages/check_data.py` in the pltr-cli
+      checkout prints 200 for each, then the counts that
+      [PLAN.md](PLAN.md) quotes.
 
 ## Recording setup
 
@@ -67,5 +70,5 @@ website subdomain needs approval.
   - the website versions.
 
   Or use a second folder and application for the recording.
-- [ ] Note every place the agent stumbled, in the rehearsal section of
+- [ ] Note every place the agent stumbled, in a new Rehearsal section of
       [PLAN.md](PLAN.md).
