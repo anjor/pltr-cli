@@ -31,17 +31,22 @@ website subdomain needs approval.
 - [ ] `uv tool install pltr-cli==0.20.0` (or `pipx install
       pltr-cli==0.20.0`). Then `pltr --version` should print 0.20.0.
 - [ ] `pltr verify` passes with the default profile.
-- [ ] The skill from the 0.20.0 tag is installed, replacing any older
-      copy, without changing your checkout:
-      `rm -rf ~/.claude/skills/pltr && mkdir -p ~/.claude/skills/pltr`, then
+- [ ] A separate Claude Code configuration for the demo, so the run starts
+      cold. Your usual one loads your global `CLAUDE.md`, rules, plugins and
+      memory, and a plugin with an older pltr skill would compete with
+      0.20.0's. Set `export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo`, run
+      `mkdir -p "$CLAUDE_CONFIG_DIR/skills/pltr"`, then install the skill
+      from the 0.20.0 tag without changing your checkout:
       `git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x
-      --strip-components=1 -C ~/.claude/skills/pltr`.
+      --strip-components=1 -C "$CLAUDE_CONFIG_DIR/skills/pltr"`.
+- [ ] Run `claude` with `CLAUDE_CONFIG_DIR` set, and sign in with `/login`.
+      Start the rehearsal and the recording the same way.
 - [ ] Node.js 18 or later and npm (`node --version`).
 - [ ] An empty demo directory, such as `~/demos/station-outages`, holding
       only the clone of the code repository at `./transforms`. Check that
       `git push` works from the clone.
-- [ ] No Claude Code memory or `CLAUDE.md` for that directory, and none
-      from the earlier spike. The run must start cold.
+- [ ] No `CLAUDE.md` in the demo directory or its parents. The separate
+      configuration takes care of memory and plugins.
 - [ ] The three data URLs in [PROMPT.md](PROMPT.md) answer:
       `uv run docs/demos/tfl-station-outages/check_data.py` in the pltr-cli
       checkout prints 200 for each, then the counts that

@@ -40,7 +40,7 @@ check them again, run `uv run docs/demos/tfl-station-outages/check_data.py`.
 |---|---|---|---|
 | Disruptions at Tube stations | `https://api.tfl.gov.uk/StopPoint/Mode/tube/Disruption` | about 35 KB of JSON | 57 items: 15 that mention an escalator, 14 a lift and 28 neither. Free text, such as "PIMLICO STATION: ... no down escalator. Please use the stairs." Has `fromDate` and `toDate` as ISO timestamps, such as `2026-11-26T02:27:00Z`. |
 | Lift outages | `https://api.tfl.gov.uk/Disruptions/Lifts/v2/` | about 7 KB of JSON | 23 items, at stations on every mode, not only the Tube. Each has a `stationUniqueId`, lift IDs and a message such as "Tower Hill: No Step Free Access - ...". |
-| Daily station traffic | `https://crowding.data.tfl.gov.uk/Network%20Demand/StationFootfall_2025_2026%20.csv` | about 12 MB of CSV | `TravelDate, DayOfWeek, Station, EntryTapCount, ExitTapCount`, up to 21 Nov 2026. `TravelDate` is a number such as `20261121`, not a date. Note the space before `.csv` in the file name. |
+| Daily station traffic | `https://crowding.data.tfl.gov.uk/Network%20Demand/StationFootfall_2025_2026%20.csv` | about 12 MB of CSV | `TravelDate, DayOfWeek, Station, EntryTapCount, ExitTapCount`, up to 21 Nov 2026. `TravelDate` is written like `20261121`, and schema inference reads it as a DATE. Note the space before `.csv` in the file name. |
 
 No API key is needed. TfL's API rate-limits anonymous calls, and this demo
 makes only a handful.
@@ -125,6 +125,22 @@ expected shape):**
   the UI is done beforehand (see [SETUP.md](SETUP.md)).
 - **Captions, not voice-over** (see [SCRIPT.md](SCRIPT.md)).
 
+## Checked before the rehearsal
+
+On 2026-11-26, act 1 was run by hand with pltr 0.20.0, in
+`/<space>/pltr demos/station-outages-spike`:
+
+- `pltr dataset create`, `pltr dataset files upload` and
+  `pltr context dataset` work with Compass paths, including the 12 MB CSV.
+- `pltr dataset schema apply` on the footfall CSV gives `TravelDate` as
+  DATE, `DayOfWeek` and `Station` as STRING, and the counts as INTEGER.
+- `pltr dataset schema apply` on the disruptions JSON fails with exit code 7
+  and a hint to use a format such as CSV. The JSON can stay as raw files
+  for the transform to parse.
+- If the agent turns the disruptions into CSV first, `schema apply` makes
+  `fromDate` and `toDate` into `STRUCT<timestamp:TIMESTAMP,offset:INTEGER>`,
+  as #222 describes. The transform then has to read the `timestamp` field.
+
 ## Risks to settle in the rehearsal
 
 | Risk | Fallback |
@@ -133,6 +149,7 @@ expected shape):**
 | The OAuth client can't read the new types until they're added to the Developer Console application. | Add them during the on-camera UI step (it's in the agent's spec). |
 | The hosted site's domain isn't on the ingress allowlist, so the site answers 403. | It's in SETUP.md. |
 | The station-name join drops the stations with apostrophes or full stops in their names, King's Cross among them. | Compare the output's row count with the escalator and lift disruptions. If rows are missing, tell the agent the count is short, as you would a colleague. |
+| The agent converts the JSON to CSV, and the timestamps come out as structs (#222). | Let it cope in the transform. Note it on #222, which proposes a warning after `schema apply`. |
 | The agent struggles to classify the free-text disruptions. | The prompt is fine as is; let it try. If it flails, add "escalator and lift outages" to the prompt. |
 | Applying the action asks for confirmation (0.20.0), and the agent doesn't show the user the command first. | SKILL.md tells it to. If it doesn't, that's a skill fix. |
 | A TfL endpoint is down on the day. | Re-check the three URLs before recording. |
