@@ -38,11 +38,11 @@ website subdomain needs approval.
       0.20.0's. Install the skill from the 0.20.0 tag into it, without
       changing your checkout:
 
-      ```sh
-      export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo
-      mkdir -p "$CLAUDE_CONFIG_DIR/skills/pltr"
-      git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x --strip-components=1 -C "$CLAUDE_CONFIG_DIR/skills/pltr"
-      ```
+  ```sh
+  export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo
+  mkdir -p "$CLAUDE_CONFIG_DIR/skills/pltr"
+  git -C <pltr-cli checkout> archive v0.20.0 claude_skill | tar -x --strip-components=1 -C "$CLAUDE_CONFIG_DIR/skills/pltr"
+  ```
 - [ ] Run `claude` with `CLAUDE_CONFIG_DIR` set, and sign in with `/login`.
       Start the rehearsal and the recording the same way.
 - [ ] Node.js 18 or later and npm (`node --version`).
