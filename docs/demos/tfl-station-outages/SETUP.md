@@ -34,9 +34,8 @@ website subdomain needs approval.
 - [ ] `pltr verify` passes with the default profile.
 - [ ] A separate Claude Code configuration for the demo, so the run starts
       cold. Your usual one loads your global `CLAUDE.md`, rules, plugins and
-      memory, and a plugin with an older pltr skill would compete with
-      0.20.0's. Install the skill from the 0.20.0 tag into it, without
-      changing your checkout:
+      memory, and any older pltr skill you have installed. Install the skill
+      from the 0.20.0 tag into the new one, without changing your checkout:
 
   ```sh
   export CLAUDE_CONFIG_DIR=~/.claude-pltr-demo
